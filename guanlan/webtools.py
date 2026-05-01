@@ -29,6 +29,7 @@ _UA = "Mozilla/5.0 (compatible; Guanlan/1.4)"
 _TIMEOUT = 20
 _CACHE_VERSION = 1
 _MIN_USEFUL_READ_CHARS = 180
+_RECENCY_DEFAULT_WINDOW_DAYS = 30
 _WEAK_READ_MARKERS = (
     "captcha",
     "access denied",
@@ -326,6 +327,7 @@ def search_web(
     query = original_query
     if not original_query:
         raise ValueError("query is required")
+    recency = detect_recency_intent(original_query)
     if scope:
         from guanlan.search_sources import resolve_scope, scoped_query
 
@@ -335,6 +337,7 @@ def search_web(
         query = scoped_query(query, domains)
     elif site:
         query = f"site:{site.strip()} {query}"
+    query = _apply_recency_query(query, recency)
 
     cache_meta = {
         "enabled": bool(cache_ttl and cache_ttl > 0 and use_cache),
@@ -354,6 +357,12 @@ def search_web(
                 "backend": backend,
                 "profile": profile or "",
                 "cluster_threshold": cluster_threshold,
+                "recency": {
+                    "enabled": recency["enabled"],
+                    "window_days": recency["window_days"],
+                    "start_date": recency["start_date"],
+                    "end_date": recency["end_date"],
+                },
             },
         )
         cached = _cache_get("search", cache_key, ttl=cache_ttl)
@@ -401,10 +410,11 @@ def search_web(
             raise RuntimeError("; ".join(fatal_errors))
     ranked = rank_results(
         results,
-        query=query,
+        query=original_query,
         backend_order=order,
         preferred_scope=scope,
         cluster_threshold=cluster_threshold,
+        recency=recency,
     )
     output_full = [r.to_dict() for r in ranked[:limit]]
     for item in output_full:
@@ -416,6 +426,7 @@ def search_web(
                 "cache": cache_meta["status"],
                 "cache_key": cache_key,
                 "cluster_threshold": cluster_threshold,
+                "query_recency": recency,
                 "errors": list(errors),
             }
         )
@@ -434,6 +445,7 @@ def rank_results(
     backend_order: list[str] | None = None,
     preferred_scope: str | None = None,
     cluster_threshold: str = "conservative",
+    recency: dict[str, Any] | None = None,
 ) -> list[SearchResult]:
     """Normalize, dedupe, classify, and score search results."""
     backend_order = backend_order or []
@@ -449,8 +461,14 @@ def rank_results(
         item.source_type = meta["source_type"]
         item.matched_scope = meta["matched_scope"]
         item.trust_level = meta["trust_level"]
-        item.score_parts = _score_result_parts(item, query=query, backend_order=backend_order)
+        item.score_parts = _score_result_parts(
+            item,
+            query=query,
+            backend_order=backend_order,
+            recency=recency,
+        )
         item.score = item.score_parts["total"]
+        item.trace["recency"] = _result_recency_trace(item, recency)
     ranked = sorted(deduped, key=lambda r: (-r.score, r.rank))
     _assign_topic_clusters(ranked, threshold=cluster_threshold)
     ranked = _order_topic_representatives_first(ranked)
@@ -1345,13 +1363,23 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
         title = _collapse_ws(str(item.get("title", "")))
         parts = item.get("score_parts") or {}
         trace = item.get("trace") or {}
+        recency = trace.get("recency") or {}
         part_text = ", ".join(
             f"{key}={value}" for key, value in parts.items() if key != "total"
         )
+        recency_text = ""
+        if recency.get("enabled"):
+            result_date = recency.get("result_date") or "unknown"
+            age_days = recency.get("age_days")
+            in_window = recency.get("in_window")
+            recency_text = (
+                f"; recency={recency.get('window_days')}d "
+                f"date={result_date} age={age_days} in_window={in_window}"
+            )
         lines.append(
             f"- result {idx}: score={item.get('score', 0)} ({part_text}); "
             f"topic={item.get('topic_key', '')}/{item.get('topic_role', '')}; "
-            f"cache={trace.get('cache', 'disabled')}; title={title}"
+            f"cache={trace.get('cache', 'disabled')}{recency_text}; title={title}"
         )
     return "\n".join(lines)
 
@@ -1389,6 +1417,123 @@ def _pipe_safe(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ").strip()
 
 
+def detect_recency_intent(query: str) -> dict[str, Any]:
+    """Detect whether a query needs tighter time bounds."""
+    text = _collapse_ws(query).lower()
+    today = dt.date.today()
+    matched_terms: list[str] = []
+    window_days = 0
+    label = ""
+
+    explicit_windows: tuple[tuple[str, int, tuple[str, ...]], ...] = (
+        ("today", 1, ("今天", "今日", "当天", "当日", "刚刚", "实时", "now", "today")),
+        ("week", 7, ("近一周", "最近一周", "过去一周", "一周内", "本周", "这周", "7天", "7日", "七天")),
+        (
+            "month",
+            30,
+            ("近一个月", "最近一个月", "过去一个月", "一个月内", "本月", "这个月", "30天", "30日", "三十天"),
+        ),
+        ("quarter", 90, ("近三个月", "最近三个月", "过去三个月", "一个季度", "本季度", "90天", "90日")),
+    )
+    for candidate_label, days, terms in explicit_windows:
+        found = [term for term in terms if _recency_term_matches(text, term)]
+        if found:
+            label = candidate_label
+            window_days = days
+            matched_terms.extend(found)
+            break
+
+    if not window_days:
+        hot_terms = ("热点", "热搜", "快讯", "突发", "爆发", "热议", "刷屏")
+        found_hot = [term for term in hot_terms if _recency_term_matches(text, term)]
+        if found_hot:
+            label = "hot"
+            window_days = 7
+            matched_terms.extend(found_hot)
+
+    if not window_days:
+        recent_terms = (
+            "近期",
+            "最近",
+            "最新",
+            "新近",
+            "动态",
+            "进展",
+            "趋势",
+            "舆情",
+            "新闻",
+            "报道",
+            "current",
+            "recent",
+            "latest",
+            "news",
+        )
+        found_recent = [term for term in recent_terms if _recency_term_matches(text, term)]
+        if found_recent:
+            label = "recent"
+            window_days = _RECENCY_DEFAULT_WINDOW_DAYS
+            matched_terms.extend(found_recent)
+
+    if not window_days:
+        return {
+            "enabled": False,
+            "label": "",
+            "window_days": 0,
+            "start_date": "",
+            "end_date": today.isoformat(),
+            "matched_terms": [],
+        }
+
+    start = today - dt.timedelta(days=max(window_days - 1, 0))
+    return {
+        "enabled": True,
+        "label": label,
+        "window_days": window_days,
+        "start_date": start.isoformat(),
+        "end_date": today.isoformat(),
+        "matched_terms": matched_terms,
+    }
+
+
+def _apply_recency_query(query: str, recency: dict[str, Any]) -> str:
+    if not recency.get("enabled"):
+        return query
+    if _query_already_has_absolute_date(query):
+        return query
+    today = _recency_today(recency)
+    suffix = f"{today.year}年{today.month}月 最新"
+    if int(recency.get("window_days") or 0) <= 1:
+        suffix = f"{today.year}年{today.month}月{today.day}日 最新"
+    if suffix in query:
+        return query
+    return f"{query} {suffix}".strip()
+
+
+def _query_already_has_absolute_date(query: str) -> bool:
+    return bool(
+        re.search(r"(?:19|20)\d{2}", query)
+        or re.search(r"\d{1,2}\s*月\s*\d{1,2}\s*日", query)
+        or re.search(r"\d{4}\s*[-/.]\s*\d{1,2}", query)
+    )
+
+
+def _recency_term_matches(text: str, term: str) -> bool:
+    if re.fullmatch(r"[a-z0-9]+", term):
+        return bool(re.search(rf"\b{re.escape(term)}\b", text, flags=re.I))
+    return term in text
+
+
+def _recency_today(recency: dict[str, Any] | None = None) -> dt.date:
+    if recency:
+        try:
+            end_date = str(recency.get("end_date") or "")
+            if end_date:
+                return dt.date.fromisoformat(end_date)
+        except ValueError:
+            pass
+    return dt.date.today()
+
+
 def _dedupe_results(results: list[SearchResult]) -> list[SearchResult]:
     seen: dict[str, SearchResult] = {}
     deduped: list[SearchResult] = []
@@ -1409,10 +1554,134 @@ def _dedupe_results(results: list[SearchResult]) -> list[SearchResult]:
     return deduped
 
 
+def _result_recency_trace(item: SearchResult, recency: dict[str, Any] | None = None) -> dict[str, Any]:
+    metrics = _result_recency_metrics(item, recency)
+    if not metrics["enabled"]:
+        return {"enabled": False}
+    result_date = metrics.get("result_date")
+    return {
+        "enabled": True,
+        "window_days": metrics["window_days"],
+        "start_date": metrics["start_date"],
+        "end_date": metrics["end_date"],
+        "matched_terms": metrics["matched_terms"],
+        "result_date": result_date.isoformat() if isinstance(result_date, dt.date) else "",
+        "age_days": metrics.get("age_days"),
+        "in_window": metrics["in_window"],
+    }
+
+
+def _result_recency_metrics(item: SearchResult, recency: dict[str, Any] | None = None) -> dict[str, Any]:
+    recency = recency or {}
+    enabled = bool(recency.get("enabled"))
+    today = _recency_today(recency)
+    window_days = int(recency.get("window_days") or 0)
+    start_date = str(recency.get("start_date") or "")
+    result_date = _extract_result_date(item, today=today) if enabled else None
+    age_days = (today - result_date).days if result_date else None
+    return {
+        "enabled": enabled,
+        "window_days": window_days,
+        "start_date": start_date,
+        "end_date": today.isoformat(),
+        "matched_terms": list(recency.get("matched_terms") or []),
+        "result_date": result_date,
+        "age_days": age_days,
+        "in_window": bool(result_date and age_days is not None and age_days <= max(window_days, 0)),
+        "has_freshness_words": _has_freshness_words(item),
+    }
+
+
+def _extract_result_date(item: SearchResult, today: dt.date | None = None) -> dt.date | None:
+    today = today or dt.date.today()
+    text = _collapse_ws(f"{item.title} {item.snippet}")
+    if not text:
+        return None
+
+    relative = _extract_relative_result_date(text, today)
+    if relative:
+        return relative
+
+    patterns = (
+        r"((?:19|20)\d{2})\s*(?:年|[-/.])\s*(\d{1,2})\s*(?:月|[-/.])\s*(\d{1,2})\s*日?",
+        r"((?:19|20)\d{2})\s*年\s*(\d{1,2})\s*月",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        year = int(match.group(1))
+        month = int(match.group(2))
+        day = int(match.group(3)) if len(match.groups()) >= 3 and match.group(3) else 1
+        parsed = _safe_date(year, month, day)
+        if parsed:
+            return parsed
+
+    match = re.search(r"(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日", text)
+    if match:
+        parsed = _safe_date(today.year, int(match.group(1)), int(match.group(2)))
+        if parsed and parsed > today + dt.timedelta(days=7):
+            parsed = _safe_date(today.year - 1, int(match.group(1)), int(match.group(2)))
+        return parsed
+
+    return None
+
+
+def _extract_relative_result_date(text: str, today: dt.date) -> dt.date | None:
+    if any(marker in text for marker in ("刚刚", "今天", "今日", "分钟前", "小时前")):
+        return today
+    if "昨天" in text:
+        return today - dt.timedelta(days=1)
+    if "前天" in text:
+        return today - dt.timedelta(days=2)
+
+    day_match = re.search(r"(\d+)\s*(?:天|日)\s*前", text)
+    if day_match:
+        return today - dt.timedelta(days=int(day_match.group(1)))
+    week_match = re.search(r"(\d+)\s*(?:周|星期|礼拜)\s*前", text)
+    if week_match:
+        return today - dt.timedelta(days=int(week_match.group(1)) * 7)
+    month_match = re.search(r"(\d+)\s*(?:个)?月\s*前", text)
+    if month_match:
+        return today - dt.timedelta(days=int(month_match.group(1)) * 30)
+    year_match = re.search(r"(\d+)\s*年\s*前", text)
+    if year_match:
+        return today - dt.timedelta(days=int(year_match.group(1)) * 365)
+    return None
+
+
+def _safe_date(year: int, month: int, day: int) -> dt.date | None:
+    try:
+        return dt.date(year, month, day)
+    except ValueError:
+        return None
+
+
+def _has_freshness_words(item: SearchResult) -> bool:
+    text = f"{item.title} {item.snippet}".lower()
+    markers = (
+        "今天",
+        "今日",
+        "刚刚",
+        "最新",
+        "热点",
+        "热搜",
+        "快讯",
+        "突发",
+        "实时",
+        "进展",
+        "latest",
+        "breaking",
+        "today",
+    )
+    return any(marker in text for marker in markers)
+
+
 def _score_result_parts(
     item: SearchResult,
     query: str = "",
     backend_order: list[str] | None = None,
+    recency: dict[str, Any] | None = None,
 ) -> dict[str, float]:
     backend_order = backend_order or []
     parts: dict[str, float] = {
@@ -1421,7 +1690,9 @@ def _score_result_parts(
         "content_length": 0.2 if item.snippet else 0.0,
         "keyword_match": 0.0,
         "backend_priority": 0.0,
+        "recency_boost": 0.0,
         "ad_penalty": 0.0,
+        "stale_penalty": 0.0,
     }
     title_text = (item.title + " " + item.snippet).lower()
     terms = [t.lower() for t in re.split(r"\s+", query) if t and not t.startswith("site:")]
@@ -1431,6 +1702,21 @@ def _score_result_parts(
     first_backend = (item.source.split("+")[0] or "").strip()
     if first_backend in backend_order:
         parts["backend_priority"] = max(0, len(backend_order) - backend_order.index(first_backend)) * 0.05
+    if recency and recency.get("enabled"):
+        metrics = _result_recency_metrics(item, recency)
+        if metrics["result_date"] and metrics["age_days"] is not None:
+            age_days = max(int(metrics["age_days"]), 0)
+            window_days = max(int(metrics["window_days"] or 1), 1)
+            if metrics["in_window"]:
+                freshness = max((window_days - age_days) / window_days, 0)
+                parts["recency_boost"] = 0.35 + freshness * 0.75
+            else:
+                overdue = max(age_days - window_days, 0)
+                parts["stale_penalty"] = -min(2.4, 0.45 + overdue / window_days)
+        else:
+            parts["stale_penalty"] = -0.12
+        if metrics["has_freshness_words"]:
+            parts["recency_boost"] += 0.15
     if _looks_like_ad(item):
         parts["ad_penalty"] = -0.8
     total = sum(parts.values())

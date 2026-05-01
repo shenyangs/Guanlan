@@ -38,14 +38,14 @@ GitHub 侧 workflow 已使用 OIDC（`id-token: write`），无需保存 PyPI AP
 
 流程：
 
-1. 更新版本号，例如 `0.1.2 -> 0.1.3`。
+1. 更新版本号，例如 `0.1.3 -> 0.1.4`。
 2. 提交代码并推送到 `main`。
 3. 打 tag 并推送，例如：
 
 ```bash
-git tag v0.1.3
+git tag v0.1.4
 git push origin main
-git push origin v0.1.3
+git push origin v0.1.4
 ```
 
 4. 等待 `release` workflow 完成：

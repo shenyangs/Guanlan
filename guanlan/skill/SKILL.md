@@ -54,6 +54,7 @@ mcporter call 'exa.web_search_exa(query: "query", numResults: 5)'
 
 # 观澜统一网页搜索（默认公开搜索，不需要 Cookie）
 guanlan search "query" --limit 8
+guanlan search "最近 query 热点" --profile china --trace
 guanlan search "query" --site zhihu.com --limit 8
 guanlan search "query" --trace
 guanlan search "query" --cache-ttl 3600

@@ -25,6 +25,7 @@
 | --- | --- |
 | “查一下/搜一下” | `guanlan search "关键词" --limit 8` |
 | “查中文互联网/国内资料” | `guanlan search "关键词" --profile china --limit 8` |
+| “查近期/最近/热点/最新进展” | `guanlan search "最近 关键词 热点" --profile china --trace` |
 | “只搜某个网站” | `guanlan search "关键词" --site zhihu.com --limit 8` |
 | “搜微信公众号文章” | `guanlan search "关键词" --site mp.weixin.qq.com --profile china --limit 8` |
 | “查官方/央媒表述” | `guanlan search "关键词" --profile china --scope party_central` |
@@ -132,6 +133,7 @@ guanlan search --list-scopes
 - 标注 `topic_key`、`topic_size` 和 `topic_role`，帮助识别同题转载、镜像和重复报道。
 - 按 `source_type` 交错展示同题代表结果，优先形成多侧面证据组合。
 - 当用户指定 `--scope` 时，优先按该研究语境解释重叠域名。
+- 当用户使用 `近期`、`最近`、`热点`、`最新`、`快讯` 等时效词时，自动收束时间窗口，优先近期结果，降权明显陈旧内容。
 
 如果 Markdown 中出现 `topic=representative/2`，表示这条是同题簇代表结果，该 topic 共有 2 条相关结果。回答用户时优先选不同 topic 的代表结果做依据，不要把同题转载当成多个独立证据。
 
@@ -275,10 +277,10 @@ guanlan doctor --profile china --trace
 guanlan doctor --check-config
 ```
 
-需要解释搜索排序时，使用 `--trace`。它会展示评分因子、topic 信息、缓存状态和后端顺序，适合排查“为什么 A 在 B 前面”。
+需要解释搜索排序时，使用 `--trace`。它会展示评分因子、topic 信息、缓存状态、后端顺序和时效性判断，适合排查“为什么 A 在 B 前面”。
 
 ```bash
-guanlan search "AI 政策" --profile china --trace
+guanlan search "最新 AI 政策" --profile china --trace
 ```
 
 同一个 query 需要反复查时，可以加 TTL 缓存，默认缓存落在 `~/.guanlan/cache/`：

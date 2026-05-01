@@ -22,7 +22,7 @@
 - 如需定位诊断路径，使用 `guanlan doctor --trace`。
 - 如需深度检查登录态，才使用 `guanlan doctor --auth-check`。
 - Agent 基础搜索/阅读命令已经可用：`guanlan search "关键词"`、`guanlan search "关键词" --profile china`、`guanlan search "关键词" --scope party_central`、`guanlan read "URL"`。
-- 搜索质量层已经可用：多后端聚合、URL 去重、中文信源分类、可信度评分和 scope 语境优先。
+- 搜索质量层已经可用：多后端聚合、URL 去重、中文信源分类、可信度评分、scope 语境优先和近期/热点类查询的时间收束。
 - 来源分布诊断已经可用：`guanlan search "关键词" --source-chart`、`guanlan research "关键词" --source-chart`。
 - 安全版话题回响已经可用：`guanlan pulse "关键词" --format context`，默认只基于公开搜索样本输出倾向、置信度和边界提醒。
 - Jina Reader 已作为第一读取入口，但不是唯一依赖；读取不稳时可用 `guanlan read "URL" --backend direct` 直连原网页。

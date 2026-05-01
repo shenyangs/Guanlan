@@ -67,6 +67,78 @@ def test_search_web_trace_keeps_score_parts(monkeypatch):
     assert results[0]["trace"]["cache"] == "disabled"
 
 
+def test_search_web_detects_recency_intent():
+    intent = webtools.detect_recency_intent("最近 AI 热点")
+
+    assert intent["enabled"] is True
+    assert intent["window_days"] <= 30
+    assert set(intent["matched_terms"]) & {"最近", "热点"}
+    assert intent["start_date"]
+    assert intent["end_date"]
+
+
+def test_search_web_recency_intent_does_not_match_english_substrings():
+    intent = webtools.detect_recency_intent("knowledge graph")
+
+    assert intent["enabled"] is False
+
+
+def test_search_web_recency_augments_query_and_trace(monkeypatch):
+    requested = []
+    today = webtools.dt.date.today()
+
+    def fake_search(query, limit=10):
+        requested.append(query)
+        return [
+            webtools.SearchResult(
+                title=f"AI 热点 {today.year}年{today.month}月{today.day}日",
+                url="https://example.com/fresh",
+                snippet="今日最新进展",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web("最近 AI 热点", backend="duckduckgo", trace=True)
+
+    assert str(today.year) in requested[0]
+    assert "最新" in requested[0]
+    assert results[0]["trace"]["recency"]["enabled"] is True
+    assert results[0]["trace"]["recency"]["in_window"] is True
+    assert results[0]["score_parts"]["recency_boost"] > 0
+
+
+def test_rank_results_penalizes_stale_results_for_recent_query():
+    today = webtools.dt.date.today()
+    fresh_date = f"{today.year}年{today.month}月{today.day}日"
+    recency = webtools.detect_recency_intent("最新 AI 进展")
+
+    results = webtools.rank_results(
+        [
+            webtools.SearchResult(
+                title="AI 进展 2021年1月1日",
+                url="https://example.com/old",
+                source="bing",
+                rank=1,
+            ),
+            webtools.SearchResult(
+                title=f"AI 进展 {fresh_date}",
+                url="https://example.com/new",
+                source="duckduckgo",
+                rank=2,
+            ),
+        ],
+        query="最新 AI 进展",
+        backend_order=["bing", "duckduckgo"],
+        recency=recency,
+    )
+
+    assert results[0].url == "https://example.com/new"
+    assert results[0].score_parts["recency_boost"] > 0
+    assert results[1].score_parts["stale_penalty"] < 0
+    assert results[1].trace["recency"]["in_window"] is False
+
+
 def test_search_web_cache_ttl_reuses_results(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr(webtools, "cache_dir", lambda: tmp_path / "cache")

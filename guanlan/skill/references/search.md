@@ -61,6 +61,15 @@ guanlan search "query" --limit 8
 guanlan search "query" --profile china --limit 8
 ```
 
+时效性搜索：
+
+```bash
+guanlan search "最近 query 热点" --profile china --trace
+guanlan search "最新 query 进展" --profile china --format context
+```
+
+当用户说 `近期`、`最近`、`热点`、`热搜`、`最新`、`快讯` 等词时，观澜会自动补当前年月做搜索收束，并在排序里给近期结果加权、给明显陈旧结果降权。需要解释时使用 `--trace` 查看 `recency_boost`、`stale_penalty`、结果日期和时间窗口。
+
 中文信源白名单：
 
 ```bash

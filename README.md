@@ -137,7 +137,7 @@ guanlan doctor
 guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 5
 ```
 
-看到 `观澜 / Guanlan v0.1.3`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.1.4`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -273,6 +273,7 @@ guanlan configure --from-browser chrome
 | `guanlan status` | 显示渠道运行状态、稳定性标签、授权边界和本地缓存概览。 |
 | `guanlan search "关键词"` | 搜索网页，输出适合 Agent 阅读的结果列表。 |
 | `guanlan search "关键词" --trace` | 展示评分因子、后端顺序、聚类阈值和缓存命中状态。 |
+| `guanlan search "最近 关键词 热点" --trace` | 自动识别时效性意图，收束到近期窗口，并在 trace 中解释结果日期。 |
 | `guanlan search "关键词" --cache-ttl 3600` | 一小时内复用同条件搜索结果，降低上游扰动。 |
 | `guanlan search "关键词" --format context` | 输出紧凑的 LLM-friendly 证据表格。 |
 | `guanlan search "关键词" --source-chart` | 追加 ASCII 来源/域名分布图，快速判断信息面是否偏斜。 |
@@ -313,7 +314,19 @@ guanlan search "AI 眼镜 产业链" --profile china --source-chart
 `--format context` 会输出更紧凑的证据表格，适合直接放进 Agent prompt。
 `--source-chart` 会追加来源类型和域名分布，帮助判断这轮结果是偏官方、偏社交、偏商业媒体，还是来源比较均衡。
 
-### 2. 查政策、部委通知和官方原文
+### 2. 查近期热点、最新动态和时效性问题
+
+适合“最近有什么进展”“今天/本周有什么热点”“某事件最新消息”。观澜会识别 `最近`、`近期`、`热点`、`热搜`、`最新`、`快讯` 等词，把搜索词补上当前年月，并在排序时优先近期结果、降权明显陈旧内容。
+
+```bash
+guanlan search "最近 AI 眼镜 热点" --profile china --limit 8 --trace
+guanlan search "本周 跨境电商 热点" --profile china --scope ecommerce --format context
+guanlan research "最新 人工智能 政策 进展" --preset policy --read-top 2
+```
+
+如果要排查为什么某条排在前面，加 `--trace` 查看 `recency_boost`、`stale_penalty`、结果日期和是否落在时间窗口内。
+
+### 3. 查政策、部委通知和官方原文
 
 适合政策研究、监管变化、行业规则、政府公告。优先找原文，不用媒体解读替代政策文本。
 
@@ -329,7 +342,7 @@ guanlan search "人工智能 新质生产力" --profile china --scope party_cent
 guanlan research "人工智能 新质生产力" --preset official --read-top 2
 ```
 
-### 3. 查地方政策和核心地方官媒
+### 4. 查地方政策和核心地方官媒
 
 适合地方产业、城市治理、区域政策、地方舆论表述。
 
@@ -338,7 +351,7 @@ guanlan search "低空经济 广东 政策" --profile china --scope local_offici
 guanlan research "低空经济 广东 政策" --preset local --read-top 2
 ```
 
-### 4. 查产业、电商和垂类媒体
+### 5. 查产业、电商和垂类媒体
 
 适合跨境电商、零售、新消费、平台生态、产业带研究。这里会优先利用亿邦动力、网经社、雨果跨境、联商网等垂类信源。
 
@@ -353,7 +366,7 @@ guanlan research "跨境电商 AI 工具" --preset ecommerce --read-top 3
 guanlan research "AI Agent 商业化 国内公司" --preset industry --read-top 3
 ```
 
-### 5. 查产品口碑和公开社交讨论
+### 6. 查产品口碑和公开社交讨论
 
 适合产品调研、竞品分析、用户反馈收集。第一版默认走公开网页层面的线索，不要求登录，也不批量触碰高风险社交账号。
 
@@ -372,7 +385,7 @@ guanlan search "某产品 使用体验" --profile china --site bilibili.com --li
 
 `pulse` 只给“基于当前公开样本的讨论倾向”，不是全网舆情结论。默认不读原文；如果需要更强证据，可以显式加 `--read-top 2`。
 
-### 6. 查技术选型和开发者反馈
+### 7. 查技术选型和开发者反馈
 
 适合框架对比、开源项目调研、工程实践、社区反馈。
 
@@ -381,7 +394,7 @@ guanlan research "Python Agent 框架 对比" --preset tech --read-top 2
 guanlan search "LangGraph AutoGen CrewAI 对比" --profile china --scope tech_dev --format context
 ```
 
-### 7. 读取单篇文章或网页
+### 8. 读取单篇文章或网页
 
 适合用户给你一个 URL，希望你读完再总结。默认会先尝试更干净的阅读路径，再按情况降级。
 
@@ -396,7 +409,7 @@ guanlan read "https://example.com/article" --format context
 guanlan read "https://example.com/article" --backend direct --max-chars 12000
 ```
 
-### 8. 批量读取一组链接
+### 9. 批量读取一组链接
 
 适合 Agent 已经搜到一批材料，需要统一读成上下文。
 
@@ -411,7 +424,7 @@ guanlan read batch urls.txt --format context --cache-ttl 3600
 
 批量读取会对微博、小红书、抖音、Twitter/X、LinkedIn 等高风险社交域名保留更谨慎的边界，避免不透明地触碰登录态。
 
-### 9. 追踪网页变化
+### 10. 追踪网页变化
 
 适合政策页、公告页、价格页、项目 README 这类“今天和上次有什么不同”的任务。
 
@@ -422,7 +435,7 @@ guanlan read "https://github.com/shenyangs/Guanlan" --watch
 
 第一次运行会保存本地快照；之后再次运行，会输出内容变化 diff。
 
-### 10. 看中文热榜，再顺藤摸瓜
+### 11. 看中文热榜，再顺藤摸瓜
 
 适合“今天有什么热点”“国内讨论在往哪里流”。
 
@@ -439,23 +452,24 @@ guanlan hotnews v2ex --limit 10
 guanlan research "热榜里的关键词" --profile china --format context
 ```
 
-### 11. 解释搜索结果为什么这样排
+### 12. 解释搜索结果为什么这样排
 
 适合排查“为什么这个结果在前面”“有没有缓存”“是不是 scope 生效了”。
 
 ```bash
 guanlan search "跨境电商 AI" --profile china --scope ecommerce --trace
-guanlan search "人工智能 政策" --profile china --cluster-threshold conservative --trace
+guanlan search "最新 人工智能 政策" --profile china --cluster-threshold conservative --trace
 ```
 
-`--trace` 会展示后端顺序、缓存命中、评分因子、topic 聚类和来源分类，方便 Agent 把检索过程讲清楚。
+`--trace` 会展示后端顺序、缓存命中、评分因子、topic 聚类、来源分类和时效性判断，方便 Agent 把检索过程讲清楚。
 
-### 12. 给 AI Agent 的最短工作流
+### 13. 给 AI Agent 的最短工作流
 
 如果你是在另一个 Agent、MCP 客户端或自动化脚本里调用观澜，优先使用这几类输出：
 
 ```bash
 guanlan search "问题" --profile china --format context
+guanlan search "最近 问题 热点" --profile china --format context --trace
 guanlan research "问题" --preset policy --format context --source-chart
 guanlan research "产品 用户评价" --preset reputation --read-top 0 --format context
 guanlan pulse "产品 用户评价" --format context
@@ -465,7 +479,7 @@ guanlan archive search "问题" --format context
 
 如果当前 Agent 支持 MCP，可以把 `guanlan-mcp` 接进去，让 Agent 直接调用 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search` 和 `guanlan_status`。
 
-### 13. 把读过的网页沉淀成本地知识库
+### 14. 把读过的网页沉淀成本地知识库
 
 适合把 Agent 搜过、读过、核验过的材料保存下来，后续不用重复请求上游，也能导出给 RAG 系统。
 
@@ -479,7 +493,7 @@ guanlan archive export --format jsonl > guanlan-archive.jsonl
 
 本地知识库默认保存在 `~/.guanlan/archive.db`。第一版使用 SQLite + FTS/LIKE 检索，保存 URL、标题、域名、Markdown 正文、摘要、更新时间和元数据。它不是云同步，也不会自动上传内容。
 
-### 14. 安全检查和授权边界
+### 15. 安全检查和授权边界
 
 如果你担心配置里误存了 Cookie、Token、API key 或代理凭据，先跑：
 
