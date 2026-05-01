@@ -207,7 +207,7 @@ def create_server():
     @server.call_tool()
     async def call_tool(name: str, arguments: dict):
         try:
-            # Keep the legacy name for older local MCP clients.
+            # Keep this alias for local MCP clients that already call it.
             result = eyes.doctor_report() if name == "get_status" else _run_tool(name, arguments)
             return [TextContent(type="text", text=_as_text(result))]
         except Exception as e:

@@ -2,7 +2,7 @@
 
 All notable changes to Guanlan will be documented in this file.
 
-观澜自身版本的重要变更从此处开始记录，不再沿用前序项目的历史条目。
+观澜版本的重要变更从此处开始记录。
 
 ---
 

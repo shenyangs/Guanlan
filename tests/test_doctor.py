@@ -129,7 +129,7 @@ class TestDoctor:
             }
         )
 
-        # Strip Rich markup tags for assertion (PR #170 added [bold], [yellow] etc.)
+        # Strip Rich markup tags before checking rendered text.
         import re
         plain = re.sub(r"\[[^\]]*\]", "", report)
         assert "观澜 / Guanlan" in plain

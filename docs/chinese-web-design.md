@@ -27,11 +27,11 @@
 | 英文名 | Guanlan | GitHub、包名、英文文档使用 |
 | CLI | `guanlan` | 简短，便于命令行使用 |
 | Python package | `guanlan` | 当前包名 |
-| 配置目录 | `~/.guanlan/` | 避免和旧配置混用 |
+| 配置目录 | `~/.guanlan/` | 独立存放观澜配置 |
 
 ## 1. 产品定位
 
-观澜（Guanlan）是一个面向 AI Agent 的中国互联网能力路由器。
+观澜（Guanlan）是一个面向 AI Agent 的中文互联网能力路由器。
 
 它聚焦于中文互联网的搜索、阅读、路由和整理。面对“查一下中文互联网”“看国内平台怎么讨论”“追热点”“读公众号”“研究 A 股/招聘/本地生活”这类任务，Agent 需要知道该走哪个平台、用哪个后端、怎样安全调用、如何把结果整理成可用上下文。
 
@@ -265,7 +265,7 @@ Guanlan
 
 | Profile | 用途 | 默认排序 |
 | --- | --- | --- |
-| `global` | 旧版全球默认体验 | GitHub、YouTube、Twitter、Reddit、Exa、Web |
+| `global` | 通用全球资料检索 | GitHub、YouTube、Twitter、Reddit、Exa、Web |
 | `china` | 中国大陆用户和中文互联网任务 | 中文搜索、热榜、公众号、微博、小红书、抖音、B站、财经 |
 | `hybrid` | 跨境开发者、研究任务 | GitHub、Exa、中文搜索、热榜、Web、视频、社交 |
 
@@ -334,7 +334,7 @@ NewsNow 已具备这些特征：
 | 世界资讯 | 联合早报、参考消息、卫星通讯社 |
 | 文娱消费 | 豆瓣热门电影、腾讯视频、爱奇艺、什么值得买 |
 
-### 5.3 为什么不整仓库搬运
+### 5.3 为什么不整包引入
 
 NewsNow 是 TypeScript/Nitro/Vite/Node 服务端项目。直接 vendoring 会把观澜从 Python CLI 脚手架变成 Python + Node 全栈服务，复杂度明显上升。
 
@@ -579,7 +579,7 @@ newsnow_base_url: https://newsnow.busiyi.world
 
 ### 8.3 Native Source Fetcher
 
-从 NewsNow 迁移时不复制运行时，只迁移稳定 source 的“请求和解析逻辑”。第一批建议：
+参考 NewsNow 时不复制运行时，只沉淀稳定 source 的“请求和解析逻辑”。第一批建议：
 
 | Source | 原因 |
 | --- | --- |
@@ -742,12 +742,12 @@ guanlan format source
 
 ### DR-001: NewsNow 是否直接搬代码
 
-结论：不整仓库搬运，采用“可选后端 + source catalog seed + 原生 Python 逐步迁移”。
+结论：不整包引入，采用“可选后端 + source catalog seed + 原生 Python 逐步沉淀”。
 
 理由：
 
-- NewsNow 工程形态是 Node/Nitro/Vite，直接搬运会破坏观澜的轻量 Python CLI 架构。
-- NewsNow 的 source 逻辑非常有价值，适合参考和迁移。
+- NewsNow 工程形态是 Node/Nitro/Vite，直接引入会破坏观澜的轻量 Python CLI 架构。
+- NewsNow 的 source 逻辑非常有价值，适合参考和复用思路。
 - 外部 NewsNow 服务可作为快速 MVP 后端。
 - 长期稳定性来自我们自己的 Python native sources 和 fallback。
 

@@ -245,7 +245,7 @@ def main():
     p_read.add_argument("--no-cache", action="store_true",
                         help="Bypass local cache even when --cache-ttl is set")
     p_read.add_argument("--watch", action="store_true",
-                        help="Compare this read with the previous local snapshot and output a diff")
+                        help="Compare this read with the saved local snapshot and output a diff")
     p_read.add_argument("--interval", default="",
                         help="Accepted for watch workflows; this CLI stores one snapshot per run")
 

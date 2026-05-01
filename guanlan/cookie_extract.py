@@ -147,7 +147,7 @@ def extract_all(browser: str = "chrome") -> Dict[str, dict]:
 
 
 def _sync_xfetch_session(auth_token: str, ct0: str) -> None:
-    """Sync Twitter credentials to ~/.config/xfetch/session.json for legacy compatibility."""
+    """Sync Twitter credentials to ~/.config/xfetch/session.json for xfetch."""
     import json
     import os
 
@@ -168,7 +168,7 @@ def _sync_xfetch_session(auth_token: str, ct0: str) -> None:
             json.dump(session_data, sf, indent=2)
         os.chmod(session_path, 0o600)
     except Exception:
-        # Non-fatal: guanlan config is the source of truth, legacy sync is best-effort
+        # Non-fatal: guanlan config is the source of truth; xfetch sync is best-effort.
         pass
 
 
@@ -221,7 +221,7 @@ def configure_from_browser(browser: str, config) -> List[Tuple[str, bool, str]]:
         if "auth_token" in tc and "ct0" in tc:
             config.set("twitter_auth_token", tc["auth_token"])
             config.set("twitter_ct0", tc["ct0"])
-            # Legacy compatibility sync (best-effort)
+            # xfetch sync (best-effort)
             _sync_xfetch_session(tc["auth_token"], tc["ct0"])
             results_list.append(("Twitter/X", True, "auth_token + ct0"))
         else:

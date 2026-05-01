@@ -760,20 +760,20 @@ def _snapshot_path(url: str) -> Path:
 
 
 def _format_read_watch(url: str, text: str) -> str:
-    """Compare current read content with the previous local snapshot."""
+    """Compare current read content with the saved local snapshot."""
     path = _snapshot_path(url)
-    previous = ""
+    saved_text = ""
     if path.exists():
         try:
-            previous = str(json.loads(path.read_text(encoding="utf-8")).get("text", ""))
+            saved_text = str(json.loads(path.read_text(encoding="utf-8")).get("text", ""))
         except Exception:
-            previous = ""
+            saved_text = ""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps({"url": url, "updated_at": time.time(), "text": text}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    if not previous:
+    if not saved_text:
         return "\n".join(
             [
                 "# 观澜内容追踪",
@@ -784,12 +784,12 @@ def _format_read_watch(url: str, text: str) -> str:
                 text,
             ]
         )
-    if previous == text:
+    if saved_text == text:
         return "\n".join(["# 观澜内容追踪", "", f"URL: {url}", "状态: 未发现内容变化。"])
     diff = difflib.unified_diff(
-        previous.splitlines(),
+        saved_text.splitlines(),
         text.splitlines(),
-        fromfile="previous",
+        fromfile="saved",
         tofile="current",
         lineterm="",
     )

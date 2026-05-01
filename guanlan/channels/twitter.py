@@ -10,7 +10,7 @@ from .base import Channel, skip_sensitive_probes
 class TwitterChannel(Channel):
     name = "twitter"
     description = "Twitter/X 推文"
-    backends = ["twitter-cli", "bird CLI (legacy)"]
+    backends = ["twitter-cli", "bird CLI"]
     tier = 1
 
     def can_handle(self, url: str) -> bool:
