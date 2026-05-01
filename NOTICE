@@ -1,0 +1,27 @@
+Guanlan Third-Party Notices
+===========================
+
+Guanlan is released under the MIT License.
+
+Copyright (c) 2026 Guanlan Team
+
+Portions of Guanlan reference or adapt ideas and implementation patterns from
+the following MIT-licensed open-source projects:
+
+Agent-Reach
+-----------
+
+Copyright (c) 2025 Agent Eyes
+License: MIT License
+Source: https://github.com/Panniantong/Agent-Reach
+License text: https://github.com/Panniantong/Agent-Reach/blob/main/LICENSE
+
+NewsNow
+-------
+
+Copyright (c) 2024 ourongxing
+License: MIT License
+Source: https://github.com/ourongxing/newsnow
+License text: https://github.com/ourongxing/newsnow/blob/main/LICENSE
+
+See docs/SOURCE_ATTRIBUTION.md for the project-level source attribution notes.
