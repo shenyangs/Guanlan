@@ -84,6 +84,56 @@
 
 ## 快速开始
 
+### 小白三步部署
+
+如果你只是想先用起来，不想理解 Python、虚拟环境或 MCP，按下面三步走就可以。
+
+**第一步：安装 `uv`**
+
+macOS / Linux：
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Windows PowerShell：
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+安装后如果终端提示找不到 `uv`，关掉当前终端，重新打开一次。
+
+**第二步：安装观澜**
+
+```bash
+uv tool install git+https://github.com/shenyangs/Guanlan.git
+```
+
+**第三步：确认能用**
+
+```bash
+guanlan version
+guanlan doctor
+guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 5
+```
+
+看到 `观澜 / Guanlan v0.1.0`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
+
+以后更新观澜：
+
+```bash
+uv tool upgrade guanlan
+```
+
+如果更新失败，也可以直接重装：
+
+```bash
+uv tool install --force git+https://github.com/shenyangs/Guanlan.git
+```
+
+### Agent / 开发者安装
+
 观澜第一版优先以 GitHub 源码发布。推荐用 `uv` 一条命令安装为全局 CLI：
 
 ```bash
