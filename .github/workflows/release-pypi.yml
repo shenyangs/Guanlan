@@ -211,13 +211,13 @@ jobs:
           cp "${FORMULA_PATH}" "tap/${FORMULA_PATH}"
 
           cd tap
-          if git diff --quiet -- "${FORMULA_PATH}"; then
+          git add "${FORMULA_PATH}"
+          if git diff --cached --quiet -- "${FORMULA_PATH}"; then
             echo "No formula changes detected."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "${FORMULA_PATH}"
           git commit -m "guanlan ${GITHUB_REF_NAME#v}"
           git push

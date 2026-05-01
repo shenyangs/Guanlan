@@ -41,6 +41,7 @@ dependencies = [
 browser = ["playwright>=1.40"]
 cookies = ["browser-cookie3>=0.19"]
 mcp = ["mcp[cli]>=1.0"]
+wechat = ["wechatsogou==4.5.4", "Werkzeug<1"]
 all = ["playwright>=1.40", "mcp[cli]>=1.0", "browser-cookie3>=0.19"]
 dev = [
     "pytest>=8.0",

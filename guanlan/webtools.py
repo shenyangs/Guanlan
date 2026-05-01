@@ -9,6 +9,7 @@ Keychain access are involved.
 from __future__ import annotations
 
 import base64
+import datetime as dt
 import difflib
 import hashlib
 import html
@@ -233,14 +234,28 @@ class _DuckDuckGoHTMLParser(HTMLParser):
             self._snippet_parts.append(data)
 
 
-def backend_order(backend: str = "auto", profile: str | None = None) -> list[str]:
+_WECHAT_SOGOU_BACKENDS = {"wechat-sogou", "wechat_sogou", "sogou-wechat", "sogou_wechat"}
+
+
+def backend_order(
+    backend: str = "auto",
+    profile: str | None = None,
+    site: str | None = None,
+    query: str | None = None,
+) -> list[str]:
     """Return search backend order for a profile."""
     backend = (backend or "auto").lower()
+    if backend in _WECHAT_SOGOU_BACKENDS:
+        return ["wechat-sogou"]
     if backend != "auto":
         return [backend]
     if profile == "china":
-        return ["baidu", "bing", "duckduckgo"]
-    return ["duckduckgo", "bing"]
+        order = ["baidu", "bing", "duckduckgo"]
+    else:
+        order = ["duckduckgo", "bing"]
+    if _is_wechat_search_intent(site=site, query=query):
+        order.append("wechat-sogou")
+    return order
 
 
 def cache_dir() -> Path:
@@ -355,7 +370,7 @@ def search_web(
 
     errors: list[str] = []
     results: list[SearchResult] = []
-    order = backend_order(backend, profile)
+    order = backend_order(backend, profile, site=site, query=original_query)
     for name in order:
         try:
             if name == "duckduckgo":
@@ -364,6 +379,10 @@ def search_web(
                 results.extend(_search_bing(query, limit=limit))
             elif name == "baidu":
                 results.extend(_search_baidu(query, limit=limit))
+            elif name == "wechat-sogou":
+                if backend == "auto" and len(_dedupe_results(results)) >= limit:
+                    continue
+                results.extend(_search_wechat_sogou(original_query, limit=limit))
             elif name.startswith("plugin:"):
                 results.extend(_search_plugin_backend(name, query, limit=limit))
             else:
@@ -373,7 +392,13 @@ def search_web(
             continue
 
     if not results and errors:
-        raise RuntimeError("; ".join(errors))
+        fatal_errors = [
+            error
+            for error in errors
+            if not (backend == "auto" and error.startswith("wechat-sogou:"))
+        ]
+        if fatal_errors:
+            raise RuntimeError("; ".join(fatal_errors))
     ranked = rank_results(
         results,
         query=query,
@@ -526,6 +551,72 @@ def _search_baidu(query: str, limit: int = 10) -> list[SearchResult]:
     return results
 
 
+def _search_wechat_sogou(query: str, limit: int = 10) -> list[SearchResult]:
+    api = _build_wechat_sogou_api()
+    safe_query = _strip_site_filters(query)
+    results: list[SearchResult] = []
+
+    def reject_captcha(*_args, **_kwargs):
+        raise RuntimeError("Sogou WeChat captcha required")
+
+    pages = max(1, min(2, (max(limit, 1) + 9) // 10))
+    for page in range(1, pages + 1):
+        rows = api.search_article(
+            safe_query,
+            page=page,
+            identify_image_callback=reject_captcha,
+            decode_url=True,
+        )
+        for row in rows:
+            item = _wechat_sogou_result(row, rank=len(results) + 1)
+            if item:
+                results.append(item)
+            if len(results) >= limit:
+                break
+        if len(results) >= limit:
+            break
+    return results
+
+
+def _build_wechat_sogou_api():
+    try:
+        import wechatsogou
+    except ImportError as e:
+        raise RuntimeError(
+            "wechat-sogou backend requires optional dependency: "
+            "install with `pip install 'guanlan[wechat]'` or "
+            "`uv pip install 'guanlan[wechat]'`"
+        ) from e
+    return wechatsogou.WechatSogouAPI(captcha_break_time=1, timeout=min(_TIMEOUT, 10))
+
+
+def _wechat_sogou_result(row: Any, rank: int) -> SearchResult | None:
+    if not isinstance(row, dict):
+        return None
+    article = row.get("article")
+    gzh = row.get("gzh")
+    if not isinstance(article, dict):
+        return None
+    if not isinstance(gzh, dict):
+        gzh = {}
+    title = _collapse_ws(str(article.get("title") or ""))
+    url = str(article.get("url") or article.get("content_url") or "").strip()
+    if not title or not url.startswith(("http://", "https://")):
+        return None
+
+    abstract = _collapse_ws(str(article.get("abstract") or ""))
+    wechat_name = _collapse_ws(str(gzh.get("wechat_name") or ""))
+    published = _format_unix_date(article.get("time") or article.get("datetime"))
+    snippet_parts = [part for part in (abstract, f"公众号: {wechat_name}" if wechat_name else "", f"发布: {published}" if published else "") if part]
+    return SearchResult(
+        title=title,
+        url=url,
+        snippet=" | ".join(snippet_parts),
+        source="wechat_sogou",
+        rank=rank,
+    )
+
+
 def _search_plugin_backend(backend: str, query: str, limit: int = 10) -> list[SearchResult]:
     plugin_ref = backend.split(":", 1)[1].strip()
     if not plugin_ref:
@@ -582,6 +673,29 @@ def _resolve_plugin_backend_path(plugin_ref: str) -> Path:
     if not path.is_file():
         raise ValueError(f"plugin backend path does not exist: {path}")
     return path
+
+
+def _is_wechat_search_intent(site: str | None = None, query: str | None = None) -> bool:
+    text = f"{site or ''} {query or ''}".lower()
+    return "mp.weixin.qq.com" in text or "weixin.qq.com" in text
+
+
+def _strip_site_filters(query: str) -> str:
+    cleaned = re.sub(r"\bsite:\s*[\w.-]+", " ", query or "", flags=re.I)
+    return _collapse_ws(cleaned) or query.strip()
+
+
+def _format_unix_date(value: Any) -> str:
+    try:
+        timestamp = int(value)
+    except (TypeError, ValueError):
+        return ""
+    if timestamp <= 0:
+        return ""
+    try:
+        return dt.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
+    except (OverflowError, OSError, ValueError):
+        return ""
 
 
 def read_url(

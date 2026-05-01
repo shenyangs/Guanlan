@@ -176,7 +176,7 @@ def main():
     p_search.add_argument("--list-scopes", action="store_true",
                           help="List curated search scopes and exit")
     p_search.add_argument("--backend", default="auto",
-                          help="Search backend: auto, duckduckgo, bing, baidu, or plugin:name")
+                          help="Search backend: auto, duckduckgo, bing, baidu, wechat-sogou, or plugin:name")
     p_search.add_argument("--profile", choices=VALID_PROFILES, default="",
                           help="Region profile: global, china, or hybrid")
     p_search.add_argument("--format", choices=["markdown", "json", "context"], default="markdown",
@@ -210,7 +210,7 @@ def main():
     p_research.add_argument("--scope", default="",
                             help="Curated China source scope, e.g. party_central, local_official, ecommerce")
     p_research.add_argument("--search-backend", default="auto",
-                            help="Search backend: auto, duckduckgo, bing, baidu, or plugin:name")
+                            help="Search backend: auto, duckduckgo, bing, baidu, wechat-sogou, or plugin:name")
     p_research.add_argument("--read-backend", choices=["auto", "jina", "direct"],
                             default="auto", help="Read backend for selected evidence")
     p_research.add_argument("--read-top", type=int, default=None,

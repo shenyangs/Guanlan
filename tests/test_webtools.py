@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """Tests for agent-facing search and read primitives."""
 
+import builtins
 import json
 from unittest.mock import patch
+
+import pytest
 
 from guanlan import webtools
 
@@ -107,6 +110,20 @@ def test_search_web_uses_china_backend_order():
     assert webtools.backend_order("auto", "china") == ["baidu", "bing", "duckduckgo"]
 
 
+def test_search_web_adds_wechat_sogou_only_for_wechat_site():
+    assert webtools.backend_order("auto", "china", site="mp.weixin.qq.com") == [
+        "baidu",
+        "bing",
+        "duckduckgo",
+        "wechat-sogou",
+    ]
+    assert webtools.backend_order("auto", "china", site="zhihu.com") == [
+        "baidu",
+        "bing",
+        "duckduckgo",
+    ]
+
+
 def test_search_web_applies_scope(monkeypatch):
     requested = []
 
@@ -186,6 +203,120 @@ def test_search_web_parses_baidu_html(monkeypatch):
     assert results[0]["title"] == "百度结果"
     assert results[0]["url"] == "https://example.cn/a"
     assert results[0]["snippet"] == "百度摘要"
+
+
+def test_search_web_explicit_wechat_sogou_backend(monkeypatch):
+    class FakeWechatSogouAPI:
+        def search_article(self, query, page=1, identify_image_callback=None, decode_url=True):
+            assert query == "人工智能"
+            assert page == 1
+            assert callable(identify_image_callback)
+            assert decode_url is True
+            yield {
+                "article": {
+                    "title": "AI 微信文章",
+                    "url": "https://mp.weixin.qq.com/s/example",
+                    "abstract": "文章摘要",
+                    "time": 1714521600,
+                },
+                "gzh": {"wechat_name": "测试公众号"},
+            }
+
+    monkeypatch.setattr(webtools, "_build_wechat_sogou_api", lambda: FakeWechatSogouAPI())
+
+    results = webtools.search_web("人工智能", backend="wechat-sogou", limit=5)
+
+    assert results[0]["source"] == "wechat_sogou"
+    assert results[0]["title"] == "AI 微信文章"
+    assert results[0]["url"] == "https://mp.weixin.qq.com/s/example"
+    assert "公众号: 测试公众号" in results[0]["snippet"]
+    assert "发布: 2024-05-01" in results[0]["snippet"]
+
+
+def test_search_web_auto_skips_wechat_sogou_when_public_results_are_enough(monkeypatch):
+    monkeypatch.setattr(
+        webtools,
+        "_search_baidu",
+        lambda query, limit=10: [
+            webtools.SearchResult(title="百度微信结果", url="https://mp.weixin.qq.com/s/public")
+        ],
+    )
+    monkeypatch.setattr(webtools, "_search_bing", lambda query, limit=10: [])
+    monkeypatch.setattr(webtools, "_search_duckduckgo", lambda query, limit=10: [])
+    monkeypatch.setattr(
+        webtools,
+        "_search_wechat_sogou",
+        lambda query, limit=10: (_ for _ in ()).throw(RuntimeError("should not run")),
+    )
+
+    results = webtools.search_web(
+        "人工智能",
+        site="mp.weixin.qq.com",
+        profile="china",
+        limit=1,
+    )
+
+    assert results[0]["title"] == "百度微信结果"
+
+
+def test_search_web_auto_uses_wechat_sogou_when_public_results_are_insufficient(monkeypatch):
+    monkeypatch.setattr(webtools, "_search_baidu", lambda query, limit=10: [])
+    monkeypatch.setattr(webtools, "_search_bing", lambda query, limit=10: [])
+    monkeypatch.setattr(webtools, "_search_duckduckgo", lambda query, limit=10: [])
+    monkeypatch.setattr(
+        webtools,
+        "_search_wechat_sogou",
+        lambda query, limit=10: [
+            webtools.SearchResult(
+                title="搜狗微信结果",
+                url="https://mp.weixin.qq.com/s/sogou",
+                source="wechat_sogou",
+            )
+        ],
+    )
+
+    results = webtools.search_web(
+        "site:mp.weixin.qq.com 人工智能",
+        profile="china",
+        limit=3,
+    )
+
+    assert results[0]["source"] == "wechat_sogou"
+    assert results[0]["title"] == "搜狗微信结果"
+
+
+def test_search_web_auto_treats_wechat_sogou_as_non_fatal_backup(monkeypatch):
+    monkeypatch.setattr(webtools, "_search_baidu", lambda query, limit=10: [])
+    monkeypatch.setattr(webtools, "_search_bing", lambda query, limit=10: [])
+    monkeypatch.setattr(webtools, "_search_duckduckgo", lambda query, limit=10: [])
+    monkeypatch.setattr(
+        webtools,
+        "_search_wechat_sogou",
+        lambda query, limit=10: (_ for _ in ()).throw(RuntimeError("captcha")),
+    )
+
+    results = webtools.search_web(
+        "人工智能",
+        site="mp.weixin.qq.com",
+        profile="china",
+        limit=3,
+    )
+
+    assert results == []
+
+
+def test_wechat_sogou_optional_dependency_message(monkeypatch):
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "wechatsogou":
+            raise ImportError("missing")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(RuntimeError, match="wechat-sogou backend requires optional dependency"):
+        webtools._build_wechat_sogou_api()
 
 
 def test_read_url_uses_jina_reader(monkeypatch):

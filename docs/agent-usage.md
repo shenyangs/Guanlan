@@ -26,6 +26,7 @@
 | “查一下/搜一下” | `guanlan search "关键词" --limit 8` |
 | “查中文互联网/国内资料” | `guanlan search "关键词" --profile china --limit 8` |
 | “只搜某个网站” | `guanlan search "关键词" --site zhihu.com --limit 8` |
+| “搜微信公众号文章” | `guanlan search "关键词" --site mp.weixin.qq.com --profile china --limit 8` |
 | “查官方/央媒表述” | `guanlan search "关键词" --profile china --scope party_central` |
 | “查地方官媒/区域政策” | `guanlan search "关键词" --profile china --scope local_official` |
 | “查电商/零售/产业带” | `guanlan search "关键词" --profile china --scope ecommerce` |
@@ -105,6 +106,15 @@ guanlan search "低空经济 广东" --profile china --scope local_official
 
 # 电商与零售垂类，包含亿邦动力等
 guanlan search "跨境电商 AI" --profile china --scope ecommerce
+```
+
+公众号文章搜索优先使用站内定向搜索；当公开搜索结果不足且已安装可选依赖时，
+观澜会把 `wechat-sogou` 作为备份后端追加到末尾。搜狗微信反爬较强，后端遇到验证码会直接降级，
+不会自动打码或读取浏览器 Cookie：
+
+```bash
+guanlan search "关键词" --site mp.weixin.qq.com --profile china --limit 8
+guanlan search "关键词" --backend wechat-sogou --limit 8
 ```
 
 查看全部白名单：

@@ -2,7 +2,7 @@
 """WeChat Official Account articles — read and search.
 
 Read:   Exa crawling (primary) / Camoufox stealth browser (optional)
-Search: Exa web_search with includeDomains mp.weixin.qq.com
+Search: Exa web_search with includeDomains mp.weixin.qq.com / WechatSogou (optional backup)
 """
 
 import shutil
@@ -25,10 +25,19 @@ def _exa_available() -> bool:
         return False
 
 
+def _wechat_sogou_available() -> bool:
+    try:
+        import wechatsogou  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 class WeChatChannel(Channel):
     name = "wechat"
     description = "微信公众号文章"
-    backends = ["Exa via mcporter (搜索+阅读)", "Camoufox (可选阅读)"]
+    backends = ["Exa via mcporter (搜索+阅读)", "WechatSogou (可选搜索备份)", "Camoufox (可选阅读)"]
     tier = 0
 
     def can_handle(self, url: str) -> bool:
@@ -38,6 +47,7 @@ class WeChatChannel(Channel):
 
     def check(self, config=None):
         has_exa = _exa_available()
+        has_wechat_sogou = _wechat_sogou_available()
         has_camoufox = False
         try:
             import camoufox  # noqa: F401
@@ -45,12 +55,22 @@ class WeChatChannel(Channel):
         except ImportError:
             pass
 
-        if has_exa and has_camoufox:
-            return "ok", "完整可用（Exa 搜索 + Exa/Camoufox 阅读公众号文章）"
+        if has_exa and has_wechat_sogou and has_camoufox:
+            return "ok", "完整可用（Exa 搜索+阅读，WechatSogou 搜索备份，Camoufox 可选阅读）"
+        elif has_exa and has_wechat_sogou:
+            return "ok", (
+                "通过 Exa 搜索和阅读微信公众号文章；WechatSogou 可作为公众号定向搜索备份。"
+                "可选安装 Camoufox 获得更好的全文阅读效果。"
+            )
         elif has_exa:
             return "ok", (
                 "通过 Exa 搜索和阅读微信公众号文章（免费，无需额外配置）。"
-                "可选安装 Camoufox 获得更好的全文阅读效果。"
+                "可选安装 WechatSogou 获得公众号定向搜索备份，安装 Camoufox 获得更好的全文阅读效果。"
+            )
+        elif has_wechat_sogou:
+            return "warn", (
+                "WechatSogou 可作为公众号定向搜索备份，但搜狗反爬较强；"
+                "阅读和稳定搜索仍建议安装 Exa。"
             )
         elif has_camoufox:
             return "warn", (
