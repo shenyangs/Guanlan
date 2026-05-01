@@ -1,0 +1,25 @@
+# Guanlan
+
+Guanlan is an AI-agent-first search and source-routing tool for the Chinese internet. It focuses on public search, webpage reading, Chinese hotnews, source classification, safe diagnostics, and explicit authentication boundaries.
+
+## Documentation
+
+- `README.md`: Canonical product documentation in Chinese
+- `docs/agent-usage.md`: Agent-facing commands, routing rules, and fallback behavior
+- `docs/chinese-web-design.md`: Product and technical plan
+- `docs/troubleshooting.md`: Keychain, network, cookie, and platform diagnostics
+- `docs/SOURCE_ATTRIBUTION.md`: Open-source references
+
+## Core Commands
+
+- `guanlan search "keyword" --profile china --limit 8`
+- `guanlan search "keyword" --profile china --scope party_central`
+- `guanlan search "keyword" --profile china --scope ecommerce`
+- `guanlan read "https://example.com/article"`
+- `guanlan read "https://example.com/article" --backend direct`
+- `guanlan hotnews baidu --limit 10`
+- `guanlan doctor --trace`
+
+## Safety
+
+Guanlan defaults to public, read-only, low-disturbance workflows. Cookie, browser, Keychain, and login-state access should only happen after explicit user authorization.

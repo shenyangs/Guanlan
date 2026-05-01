@@ -1,0 +1,313 @@
+# 观澜 Agent 使用说明
+
+本文档写给 AI Agent，不是写给人类用户。你的目标是把观澜当作搜索生产力工具：先找到可信来源，再读取原文，最后把结论和来源一起交付给用户。
+
+## 核心定位
+
+观澜优先服务这些任务：
+
+- 搜索网页资料。
+- 阅读网页、文章、文档和公开页面。
+- 观察中文热榜和社区趋势。
+- 搜索或读取社交平台内容。
+- 在需要 Cookie、登录态或钥匙串时停下来请求用户授权。
+
+默认原则：
+
+- 先读公开信息，不主动读取浏览器 Cookie。
+- 先搜索和阅读，不自动发布、评论、点赞、私信。
+- 输出结论时保留来源链接。
+- 失败时降级，不要硬撞平台风控。
+
+## 最小命令集
+
+| 用户意图 | 首选命令 |
+| --- | --- |
+| “查一下/搜一下” | `guanlan search "关键词" --limit 8` |
+| “查中文互联网/国内资料” | `guanlan search "关键词" --profile china --limit 8` |
+| “只搜某个网站” | `guanlan search "关键词" --site zhihu.com --limit 8` |
+| “查官方/央媒表述” | `guanlan search "关键词" --profile china --scope party_central` |
+| “查地方官媒/区域政策” | `guanlan search "关键词" --profile china --scope local_official` |
+| “查电商/零售/产业带” | `guanlan search "关键词" --profile china --scope ecommerce` |
+| “帮我查清楚并给依据” | `guanlan research "关键词" --profile china` |
+| “查政策/监管/官方通知” | `guanlan research "关键词" --preset policy` |
+| “查产品口碑/用户评价” | `guanlan research "关键词" --preset reputation` |
+| “指定多个平台查口碑” | `guanlan research "关键词" --preset reputation --sites zhihu.com,weibo.com,xiaohongshu.com` |
+| “查技术选型/开发者反馈” | `guanlan research "关键词" --preset tech` |
+| “只要证据包，不读原文” | `guanlan research "关键词" --read-top 0` |
+| “读这个链接” | `guanlan read "URL"` |
+| “Jina 读不了/读取不完整” | `guanlan read "URL" --backend direct` |
+| “只读原文，不要兜底搜索” | `guanlan read "URL" --no-fallback-search` |
+| “今天有什么热点” | `guanlan hotnews baidu --limit 10` |
+| “技术社区在讨论什么” | `guanlan hotnews v2ex --limit 10` |
+| “输出结构化结果” | 给命令加 `--json` |
+| “检查哪些渠道可用” | `guanlan doctor --trace` |
+| “看渠道稳定性/授权边界/缓存概况” | `guanlan status` |
+| “解释为什么这条排第一” | `guanlan search "关键词" --trace` |
+| “重复查同一题，减少请求” | `guanlan search "关键词" --cache-ttl 3600` |
+| “把搜索结果直接塞进 prompt” | `guanlan search "关键词" --format context` |
+| “查企业内部只读搜索后端” | `guanlan search "关键词" --backend plugin:my_company_api` |
+| “批量读一组链接” | `guanlan read batch urls.txt --format context` |
+| “追踪网页内容变化” | `guanlan read "URL" --watch` |
+
+如果当前 Agent 支持 MCP，可以优先使用观澜 MCP 工具面：`guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_hotnews`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
+
+## 推荐工作流
+
+### 网页搜索
+
+用户说：
+
+```text
+查一下某个主题。
+```
+
+执行：
+
+```bash
+guanlan search "某个主题" --limit 8
+```
+
+中文互联网任务优先使用中文场景画像：
+
+```bash
+guanlan search "某个主题" --profile china --limit 8
+```
+
+需要更可信的中文信源时使用白名单 scope：
+
+```bash
+# 党央媒与中央重点媒体
+guanlan search "人工智能 新质生产力" --profile china --scope party_central
+
+# 政府与部委网站
+guanlan search "人工智能 政策" --profile china --scope gov
+
+# 核心地方官媒
+guanlan search "低空经济 广东" --profile china --scope local_official
+
+# 电商与零售垂类，包含亿邦动力等
+guanlan search "跨境电商 AI" --profile china --scope ecommerce
+```
+
+查看全部白名单：
+
+```bash
+guanlan search --list-scopes
+```
+
+观澜会对搜索结果做质量层处理：
+
+- 多后端聚合，不把结论押在单一搜索引擎上。
+- URL 去重，合并来自多个后端的重复结果。
+- 标注 `source_type`、`matched_scope`、`trust_level` 和 `score`。
+- 标注 `topic_key`、`topic_size` 和 `topic_role`，帮助识别同题转载、镜像和重复报道。
+- 按 `source_type` 交错展示同题代表结果，优先形成多侧面证据组合。
+- 当用户指定 `--scope` 时，优先按该研究语境解释重叠域名。
+
+如果 Markdown 中出现 `topic=representative/2`，表示这条是同题簇代表结果，该 topic 共有 2 条相关结果。回答用户时优先选不同 topic 的代表结果做依据，不要把同题转载当成多个独立证据。
+
+如果前几条结果来自不同 `source_type`，这是观澜为了交叉验证刻意做的排序。回答时优先混合使用官方、垂类、社区、财经等不同类型信源；不要只拿同一种信源类型的高分结果。
+
+如果用户希望你直接形成回答依据，而不是只列链接，优先使用研究证据包：
+
+```bash
+guanlan research "某主题" --profile china --limit 8 --read-top 2
+```
+
+`research` 会自动整合搜索质量层、同题聚类、信源多样性和原文摘读。输出仍然不是最终答案，Agent 需要基于证据包再组织结论、依据和不确定性。
+
+Preset 会自动选择一个或多个 scope，并可包含平台定向站点。用户显式传入 `--scope` 时，只查用户指定 scope；显式传入 `--site` 或 `--sites` 时，优先做站内/平台定向研究。
+
+常用 preset：
+
+| Preset | 默认信源策略 | 适合任务 |
+| --- | --- |
+| `policy` | `gov` + `party_central` | 政策、监管、部委通知、法规原文和权威解读。 |
+| `official` | `party_central` + `gov` | 党央媒、中央重点媒体、宏观表述。 |
+| `industry` | `business` + `ecommerce` + `finance`；36氪、虎嗅、一财 | 产业趋势、商业模式、公司动态。 |
+| `ecommerce` | `ecommerce` + `business`；亿邦动力、网经社、雨果跨境 | 电商、零售、跨境、品牌和产业带。 |
+| `reputation` | `social_web` + `tech_dev` + `business`；知乎、微博、小红书、B站 | 产品口碑、用户评价、社交平台公开讨论。 |
+| `tech` | `tech_dev` + `social_web`；V2EX、掘金、SegmentFault、GitHub | 技术选型、开发者社区、工程实践。 |
+| `finance` | `finance` + `business`；财联社、东方财富、雪球 | 财经、资本市场、公司和宏观金融。 |
+| `local` | `local_official` + `gov` + `party_central` | 地方政策、区域产业、城市治理。 |
+
+然后选择 2-4 个高质量结果继续读原文：
+
+```bash
+guanlan read "https://example.com/article" --max-chars 12000
+```
+
+如果默认读取失败或正文明显不完整，改用直连后端：
+
+```bash
+guanlan read "https://example.com/article" --backend direct --max-chars 12000
+```
+
+默认 `guanlan read` 在 `auto` 模式下会做三段降级：
+
+```text
+Jina Reader -> Direct HTML -> Search-as-context
+```
+
+最后一段会返回“观澜阅读兜底”上下文包，包括原始 URL、失败原因和同域公开搜索线索。它只用于继续核验，不能当作原文全文。用户如果明确要求只读原文，用：
+
+```bash
+guanlan read "https://example.com/article" --no-fallback-search
+```
+
+回答用户时给出：
+
+- 简短结论。
+- 关键证据。
+- 来源链接。
+- 不确定性或需要进一步验证的点。
+
+### 中文热点
+
+用户说：
+
+```text
+今天国内 AI 圈有什么热点？
+```
+
+优先：
+
+```bash
+guanlan hotnews baidu --limit 10
+guanlan hotnews v2ex --limit 10
+```
+
+如果需要更深入，再对热点关键词做搜索：
+
+```bash
+guanlan search "热点关键词" --limit 8
+```
+
+### 站内搜索
+
+用户说：
+
+```text
+看看知乎上有没有讨论这个产品。
+```
+
+优先用站内搜索：
+
+```bash
+guanlan search "产品名 评价" --site zhihu.com --limit 8
+```
+
+如果用户明确要求微博、小红书、Twitter 等平台，再先检查可用性：
+
+```bash
+guanlan doctor --profile china --trace
+```
+
+如果配置里可能粘贴过 Cookie、Token、API key 或代理地址，先做本地配置扫描：
+
+```bash
+guanlan doctor --check-config
+```
+
+需要解释搜索排序时，使用 `--trace`。它会展示评分因子、topic 信息、缓存状态和后端顺序，适合排查“为什么 A 在 B 前面”。
+
+```bash
+guanlan search "AI 政策" --profile china --trace
+```
+
+同一个 query 需要反复查时，可以加 TTL 缓存，默认缓存落在 `~/.guanlan/cache/`：
+
+```bash
+guanlan search "AI 政策" --cache-ttl 3600
+```
+
+多 URL 读取时，优先用批量模式；社交平台、登录态平台仍然遵循显式授权和低频原则：
+
+```bash
+guanlan read batch urls.txt --format context
+```
+
+自定义 backend 只在显式调用时启用。配置示例：
+
+```yaml
+backends:
+  my_company_api:
+    type: plugin
+    path: ./backends/my_api.py
+```
+
+插件脚本接收 `query limit` 两个参数，输出 JSON 数组，字段至少包含 `title` 和 `url`。
+
+### 社交平台
+
+社交平台能力分三类：
+
+| 类型 | 处理方式 |
+| --- | --- |
+| 公开可读 | 直接搜索或读取公开页面。 |
+| 需要外部 CLI/MCP | 先 `doctor --trace` 判断是否可用。 |
+| 需要 Cookie/登录态 | 必须向用户说明风险并请求授权。 |
+
+不要自动执行：
+
+- `guanlan configure --from-browser ...`
+- 登录命令。
+- 发帖、评论、点赞、关注、私信。
+
+除非用户明确要求，并且你已经说明风险。
+
+## 降级策略
+
+| 失败场景 | 降级路径 |
+| --- | --- |
+| `guanlan search` 失败 | 尝试缩短关键词，或改用具体站点搜索。 |
+| 中文搜索质量不够 | 加 `--profile china`，或用 `--scope` 选择官方/地方/垂类信源池。 |
+| `guanlan read` 失败 | 默认会先尝试 `--backend direct`，仍失败则返回搜索兜底上下文。 |
+| Jina Reader 读不到正文 | 这是大陆中文站点常见情况，改用 `--backend direct`，或换同题公开信源。 |
+| 热榜源失败 | 换 `baidu` 或 `v2ex`，不要强行读取登录平台。 |
+| 社交平台不可用 | 用 `guanlan search "关键词 site:平台域名"` 或普通站内搜索替代。 |
+| 命令提示需要认证 | 停下来问用户是否授权，不要自动读取 Cookie。 |
+
+## 输出格式建议
+
+面向用户的回答应尽量这样组织：
+
+```text
+结论：
+...
+
+依据：
+1. 来源标题 — URL
+2. 来源标题 — URL
+
+需要注意：
+...
+```
+
+如果来源互相矛盾，要明确说明“不同来源说法不一致”，不要把搜索结果硬揉成一个确定结论。
+
+## 安全边界
+
+观澜默认不会触碰钥匙串。你也不要主动触发敏感动作。
+
+安全命令：
+
+```bash
+guanlan doctor
+guanlan doctor --trace
+guanlan search "关键词"
+guanlan read "URL"
+guanlan read "URL" --backend direct
+guanlan read "URL" --no-fallback-search
+guanlan hotnews baidu
+```
+
+敏感命令：
+
+```bash
+guanlan doctor --auth-check
+guanlan configure --from-browser chrome
+```
+
+只有在用户明确同意后，才运行敏感命令。

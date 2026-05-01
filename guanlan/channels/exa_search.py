@@ -1,0 +1,39 @@
+# -*- coding: utf-8 -*-
+"""Exa Search — check if mcporter + Exa MCP is available."""
+
+import shutil
+import subprocess
+
+from .base import Channel
+
+
+class ExaSearchChannel(Channel):
+    name = "exa_search"
+    description = "全网语义搜索"
+    backends = ["Exa via mcporter"]
+    tier = 0
+
+    def can_handle(self, url: str) -> bool:
+        return False  # Search-only channel
+
+    def check(self, config=None):
+        mcporter = shutil.which("mcporter")
+        if not mcporter:
+            return "off", (
+                "需要 mcporter + Exa MCP。安装：\n"
+                "  npm install -g mcporter\n"
+                "  mcporter config add exa https://mcp.exa.ai/mcp"
+            )
+        try:
+            r = subprocess.run(
+                [mcporter, "config", "list"], capture_output=True,
+                encoding="utf-8", errors="replace", timeout=5
+            )
+            if "exa" in r.stdout.lower():
+                return "ok", "全网语义搜索可用（免费，无需 API Key）"
+            return "off", (
+                "mcporter 已装但 Exa 未配置。运行：\n"
+                "  mcporter config add exa https://mcp.exa.ai/mcp"
+            )
+        except Exception:
+            return "off", "mcporter 连接异常"
