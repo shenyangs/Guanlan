@@ -12,7 +12,7 @@ gh auth login
 gh auth status
 
 # 搜索
-gh search repos "query" --sort stars --limit 10
+gh search repos "query" --sort stars --limit 50
 gh search code "query" --language python
 
 # 仓库
@@ -35,7 +35,7 @@ gh pr create -R owner/repo --title "Title" --body "Body"
 gh pr checks 123 --repo owner/repo
 
 # Actions / CI
-gh run list --repo owner/repo --limit 10
+gh run list --repo owner/repo --limit 50
 gh run view <run-id> --repo owner/repo
 gh run view <run-id> --repo owner/repo --log-failed
 gh workflow list --repo owner/repo

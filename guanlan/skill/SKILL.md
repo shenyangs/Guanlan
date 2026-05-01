@@ -50,12 +50,12 @@ metadata:
 
 ```bash
 # Exa 网页搜索
-mcporter call 'exa.web_search_exa(query: "query", numResults: 5)'
+mcporter call 'exa.web_search_exa(query: "query", numResults: 50)'
 
 # 观澜统一网页搜索（默认公开搜索，不需要 Cookie）
-guanlan search "query" --limit 8
+guanlan search "query" --limit 50
 guanlan search "最近 query 热点" --profile china --trace
-guanlan search "query" --site zhihu.com --limit 8
+guanlan search "query" --site zhihu.com --limit 50
 guanlan search "query" --trace
 guanlan search "query" --cache-ttl 3600
 guanlan search "query" --format context
@@ -73,24 +73,24 @@ guanlan archive search "query" --format context
 guanlan archive export --format jsonl
 
 # GitHub 搜索
-gh search repos "query" --sort stars --limit 10
+gh search repos "query" --sort stars --limit 50
 
 # 中文热榜（原生公开源，不需要 Cookie）
-guanlan hotnews today --limit 10
-guanlan hotnews weibo --limit 10
-guanlan hotnews bilibili --limit 10
-guanlan hotnews ithome --limit 10
+guanlan hotnews today --limit 50
+guanlan hotnews weibo --limit 50
+guanlan hotnews bilibili --limit 50
+guanlan hotnews ithome --limit 50
 guanlan hotnews zhihu --json  # experimental，失败时改用 site:zhihu.com 搜索
 guanlan hotnews list
 
 # Twitter 搜索
-twitter search "query" --limit 10
+twitter search "query" --limit 50
 
 # YouTube/B站字幕
 yt-dlp --write-sub --skip-download -o "/tmp/%(id)s" "URL"
 
 # Reddit 搜索
-rdt search "query" --limit 10
+rdt search "query" --limit 50
 
 # Reddit 读帖 + 评论
 rdt read POST_ID

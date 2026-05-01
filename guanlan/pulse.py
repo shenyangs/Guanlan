@@ -11,6 +11,8 @@ import re
 from collections import Counter
 from typing import Any
 
+from guanlan.limits import DEFAULT_PULSE_LIMIT, DEFAULT_READ_FALLBACK_LIMIT
+
 POSITIVE_TERMS = (
     "好评",
     "推荐",
@@ -88,7 +90,7 @@ CONTROVERSY_TERMS = (
 
 def build_pulse_report(
     query: str,
-    limit: int = 12,
+    limit: int = DEFAULT_PULSE_LIMIT,
     site: str | None = None,
     sites: list[str] | None = None,
     scope: str | None = None,
@@ -127,7 +129,7 @@ def build_pulse_report(
                 max_chars=max(max_read_chars, 1),
                 backend=read_backend,
                 fallback_search=True,
-                fallback_limit=3,
+                fallback_limit=DEFAULT_READ_FALLBACK_LIMIT,
                 profile=profile,
             )
             readings.append({"url": item.get("url", ""), "status": "ok", "content": content})

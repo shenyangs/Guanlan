@@ -5,6 +5,8 @@ import json
 import urllib.request
 from typing import Any
 
+from guanlan.limits import DEFAULT_HOTNEWS_LIMIT, DEFAULT_SEARCH_LIMIT
+
 from .base import Channel
 
 _UA = "guanlan/1.0"
@@ -50,7 +52,7 @@ class V2EXChannel(Channel):
     # Data-fetching methods
     # ------------------------------------------------------------------ #
 
-    def get_hot_topics(self, limit: int = 20) -> list:
+    def get_hot_topics(self, limit: int = DEFAULT_HOTNEWS_LIMIT) -> list:
         """获取热门帖子列表。
 
         Returns a list of dicts with keys:
@@ -75,7 +77,7 @@ class V2EXChannel(Channel):
             )
         return results
 
-    def get_node_topics(self, node_name: str, limit: int = 20) -> list:
+    def get_node_topics(self, node_name: str, limit: int = DEFAULT_HOTNEWS_LIMIT) -> list:
         """获取指定节点的最新帖子。
 
         Args:
@@ -189,7 +191,7 @@ class V2EXChannel(Channel):
             "created": data.get("created", 0),
         }
 
-    def search(self, query: str, limit: int = 10) -> list:
+    def search(self, query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list:
         """搜索帖子。
 
         注意：V2EX 公开 API 暂不支持全文搜索端点（/api/search.json 不可用）。

@@ -16,6 +16,14 @@ import sys
 import time
 
 from guanlan import __version__
+from guanlan.limits import (
+    DEFAULT_ARCHIVE_LIST_LIMIT,
+    DEFAULT_ARCHIVE_SEARCH_LIMIT,
+    DEFAULT_HOTNEWS_LIMIT,
+    DEFAULT_PULSE_LIMIT,
+    DEFAULT_READ_FALLBACK_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+)
 from guanlan.profiles import VALID_PROFILES
 
 
@@ -163,7 +171,7 @@ def main():
                            help="Hotnews backend; auto uses native first, unknown sources as NewsNow")
     p_hotnews.add_argument("--newsnow-base-url", default="",
                            help="Override NewsNow BASE_URL, e.g. https://newsnow.example.com")
-    p_hotnews.add_argument("--limit", type=int, default=10,
+    p_hotnews.add_argument("--limit", type=int, default=DEFAULT_HOTNEWS_LIMIT,
                            help="Maximum number of items to fetch")
     p_hotnews.add_argument("--json", action="store_true",
                            help="Print normalized JSON instead of Markdown")
@@ -171,7 +179,7 @@ def main():
     # ── search ──
     p_search = sub.add_parser("search", help="Search the web for agent-ready results")
     p_search.add_argument("query", nargs="?", default="", help="Search query")
-    p_search.add_argument("--limit", type=int, default=8,
+    p_search.add_argument("--limit", type=int, default=DEFAULT_SEARCH_LIMIT,
                           help="Maximum number of search results")
     p_search.add_argument("--site", default="",
                           help="Restrict search to a domain, e.g. zhihu.com")
@@ -235,7 +243,7 @@ def main():
     # ── pulse ──
     p_pulse = sub.add_parser("pulse", help="Analyze topic echo from public samples with clear caveats")
     p_pulse.add_argument("query", nargs="?", default="", help="Topic or query to analyze")
-    p_pulse.add_argument("--limit", type=int, default=12,
+    p_pulse.add_argument("--limit", type=int, default=DEFAULT_PULSE_LIMIT,
                          help="Maximum number of search samples")
     p_pulse.add_argument("--site", default="",
                          help="Restrict search to a domain, e.g. zhihu.com")
@@ -276,7 +284,7 @@ def main():
                         help="Output format for batch reads")
     p_read.add_argument("--fallback-search", action=argparse.BooleanOptionalAction, default=True,
                         help="When auto reading fails, return public search context instead of hard failing")
-    p_read.add_argument("--fallback-limit", type=int, default=5,
+    p_read.add_argument("--fallback-limit", type=int, default=DEFAULT_READ_FALLBACK_LIMIT,
                         help="Maximum search results to include when fallback search is used")
     p_read.add_argument("--profile", choices=VALID_PROFILES, default="china",
                         help="Region profile for fallback search")
@@ -303,7 +311,7 @@ def main():
                                help="Read backend used before archiving")
     p_archive_add.add_argument("--fallback-search", action=argparse.BooleanOptionalAction, default=True,
                                help="Use public search context when direct reading fails")
-    p_archive_add.add_argument("--fallback-limit", type=int, default=5,
+    p_archive_add.add_argument("--fallback-limit", type=int, default=DEFAULT_READ_FALLBACK_LIMIT,
                                help="Maximum fallback search results")
     p_archive_add.add_argument("--profile", choices=VALID_PROFILES, default="china",
                                help="Region profile for fallback search")
@@ -313,7 +321,7 @@ def main():
 
     p_archive_search = archive_sub.add_parser("search", help="Search the local archive")
     p_archive_search.add_argument("query", help="Archive search query")
-    p_archive_search.add_argument("--limit", type=int, default=8, help="Maximum number of results")
+    p_archive_search.add_argument("--limit", type=int, default=DEFAULT_ARCHIVE_SEARCH_LIMIT, help="Maximum number of results")
     p_archive_search.add_argument("--format", choices=["markdown", "json", "context"], default="markdown",
                                   help="Output format")
     p_archive_search.add_argument("--json", action="store_true",
@@ -321,7 +329,7 @@ def main():
     p_archive_search.add_argument("--db", default="", help="Optional archive database path")
 
     p_archive_list = archive_sub.add_parser("list", help="List recently archived documents")
-    p_archive_list.add_argument("--limit", type=int, default=20, help="Maximum number of records")
+    p_archive_list.add_argument("--limit", type=int, default=DEFAULT_ARCHIVE_LIST_LIMIT, help="Maximum number of records")
     p_archive_list.add_argument("--format", choices=["markdown", "json", "context"], default="markdown",
                                 help="Output format")
     p_archive_list.add_argument("--json", action="store_true",
@@ -1690,7 +1698,7 @@ def _cmd_configure(args):
     elif args.key == "newsnow-base-url":
         config.set("newsnow_base_url", value.rstrip("/"))
         print("✅ NewsNow BASE_URL configured!")
-        print("  Example: guanlan hotnews newsnow:36kr-quick --limit 10")
+        print("  Example: guanlan hotnews newsnow:36kr-quick --limit 50")
 
     elif args.key == "twitter-cookies":
         # Accept two formats:

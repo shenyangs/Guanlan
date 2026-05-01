@@ -37,7 +37,7 @@ curl -s "https://r.jina.ai/URL"
 ## Web Search (Exa)
 
 ```bash
-mcporter call 'exa.web_search_exa(query: "query", numResults: 5)'
+mcporter call 'exa.web_search_exa(query: "query", numResults: 50)'
 mcporter call 'exa.get_code_context_exa(query: "code question", tokensNum: 3000)'
 ```
 
@@ -71,8 +71,8 @@ yt-dlp --write-sub --write-auto-sub --sub-lang "zh-Hans,zh,en" --convert-subs vt
 ## Reddit
 
 ```bash
-curl -s "https://www.reddit.com/r/SUBREDDIT/hot.json?limit=10" -H "User-Agent: guanlan/1.0"
-curl -s "https://www.reddit.com/search.json?q=QUERY&limit=10" -H "User-Agent: guanlan/1.0"
+curl -s "https://www.reddit.com/r/SUBREDDIT/hot.json?limit=50" -H "User-Agent: guanlan/1.0"
+curl -s "https://www.reddit.com/search.json?q=QUERY&limit=50" -H "User-Agent: guanlan/1.0"
 ```
 
 > Server IPs may get 403. Search via Exa instead, or configure a proxy.
@@ -80,7 +80,7 @@ curl -s "https://www.reddit.com/search.json?q=QUERY&limit=10" -H "User-Agent: gu
 ## GitHub (gh CLI)
 
 ```bash
-gh search repos "query" --sort stars --limit 10
+gh search repos "query" --sort stars --limit 50
 gh repo view owner/repo
 gh search code "query" --language python
 gh issue list -R owner/repo --state open
@@ -222,9 +222,9 @@ from guanlan.channels.v2ex import V2EXChannel
 
 ch = V2EXChannel()
 
-# Get hot topics (default 20 items)
+# Get hot topics (default 50 items)
 # Returned fields: id, title, url, replies, node_name, node_title, content(first 200 chars), created
-topics = ch.get_hot_topics(limit=10)
+topics = ch.get_hot_topics(limit=50)
 for t in topics:
     print(f"[{t['node_title']}] {t['title']} ({t['replies']} replies) {t['url']}")
     print(f"  id={t['id']} created={t['created']}")

@@ -25,6 +25,12 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
+from guanlan.limits import (
+    DEFAULT_READ_FALLBACK_LIMIT,
+    DEFAULT_RESEARCH_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+)
+
 _UA = "Mozilla/5.0 (compatible; Guanlan/1.4)"
 _TIMEOUT = 20
 _CACHE_VERSION = 2
@@ -103,7 +109,7 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "scope": "",
         "scopes": [],
         "sites": [],
-        "limit": 8,
+        "limit": DEFAULT_RESEARCH_LIMIT,
         "read_top": 2,
         "max_read_chars": 2400,
         "guidance": ["先看不同 topic 和 source_type，再组织结论。"],
@@ -115,7 +121,7 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "scope": "gov",
         "scopes": ["gov", "party_central"],
         "sites": [],
-        "limit": 8,
+        "limit": DEFAULT_RESEARCH_LIMIT,
         "read_top": 3,
         "max_read_chars": 3200,
         "guidance": ["优先引用政策原文、主管部门通知和官方公告，不要用媒体解读替代原文。"],
@@ -127,7 +133,7 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "scope": "party_central",
         "scopes": ["party_central", "gov"],
         "sites": [],
-        "limit": 8,
+        "limit": DEFAULT_RESEARCH_LIMIT,
         "read_top": 3,
         "max_read_chars": 3000,
         "guidance": ["区分官方原文、权威报道和二次解读，保留措辞差异。"],
@@ -139,7 +145,7 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "scope": "business",
         "scopes": ["business", "ecommerce", "finance"],
         "sites": ["36kr.com", "huxiu.com", "yicai.com"],
-        "limit": 10,
+        "limit": DEFAULT_RESEARCH_LIMIT,
         "read_top": 3,
         "max_read_chars": 2800,
         "guidance": ["注意区分新闻事实、商业观点和软文营销。"],
@@ -151,7 +157,7 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "scope": "ecommerce",
         "scopes": ["ecommerce", "business"],
         "sites": ["ebrun.com", "100ec.cn", "cifnews.com"],
-        "limit": 10,
+        "limit": DEFAULT_RESEARCH_LIMIT,
         "read_top": 3,
         "max_read_chars": 2800,
         "guidance": ["优先关注平台、品牌、渠道、供应链和交易场景。"],
@@ -163,7 +169,7 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "scope": "social_web",
         "scopes": ["social_web", "tech_dev", "business"],
         "sites": ["zhihu.com", "weibo.com", "xiaohongshu.com", "bilibili.com"],
-        "limit": 10,
+        "limit": DEFAULT_RESEARCH_LIMIT,
         "read_top": 2,
         "max_read_chars": 2400,
         "guidance": ["口碑材料偏样本线索，不要直接当作总体结论。"],
@@ -175,7 +181,7 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "scope": "tech_dev",
         "scopes": ["tech_dev", "social_web"],
         "sites": ["v2ex.com", "juejin.cn", "segmentfault.com", "github.com"],
-        "limit": 10,
+        "limit": DEFAULT_RESEARCH_LIMIT,
         "read_top": 3,
         "max_read_chars": 2800,
         "guidance": ["优先提取版本、限制、真实使用反馈和可复现依据。"],
@@ -187,7 +193,7 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "scope": "finance",
         "scopes": ["finance", "business"],
         "sites": ["cls.cn", "eastmoney.com", "xueqiu.com"],
-        "limit": 10,
+        "limit": DEFAULT_RESEARCH_LIMIT,
         "read_top": 3,
         "max_read_chars": 2800,
         "guidance": ["财经内容注意时效性和风险，不把市场观点当作投资建议。"],
@@ -199,7 +205,7 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "scope": "local_official",
         "scopes": ["local_official", "gov", "party_central"],
         "sites": [],
-        "limit": 8,
+        "limit": DEFAULT_RESEARCH_LIMIT,
         "read_top": 3,
         "max_read_chars": 2800,
         "guidance": ["注意地方口径、区域边界和政策适用范围。"],
@@ -363,7 +369,7 @@ def cache_summary() -> dict[str, Any]:
 
 def search_web(
     query: str,
-    limit: int = 10,
+    limit: int = DEFAULT_SEARCH_LIMIT,
     site: str | None = None,
     scope: str | None = None,
     backend: str = "auto",
@@ -538,7 +544,7 @@ def rank_results(
     return ranked
 
 
-def _search_duckduckgo(query: str, limit: int = 10) -> list[SearchResult]:
+def _search_duckduckgo(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchResult]:
     url = "https://duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
     req = urllib.request.Request(
         url,
@@ -555,8 +561,8 @@ def _search_duckduckgo(query: str, limit: int = 10) -> list[SearchResult]:
     return _dedupe_results(parser.results)[:limit]
 
 
-def _search_bing(query: str, limit: int = 10) -> list[SearchResult]:
-    url = "https://www.bing.com/search?" + urllib.parse.urlencode({"q": query})
+def _search_bing(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchResult]:
+    url = "https://www.bing.com/search?" + urllib.parse.urlencode({"q": query, "count": min(max(limit, 1), 50)})
     req = urllib.request.Request(
         url,
         headers={
@@ -591,9 +597,9 @@ def _search_bing(query: str, limit: int = 10) -> list[SearchResult]:
     return results
 
 
-def _search_baidu(query: str, limit: int = 10) -> list[SearchResult]:
+def _search_baidu(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchResult]:
     # Baidu redirects HTTPS to HTTP for classic result HTML in some regions.
-    url = "http://www.baidu.com/s?" + urllib.parse.urlencode({"wd": query})
+    url = "http://www.baidu.com/s?" + urllib.parse.urlencode({"wd": query, "rn": min(max(limit, 1), 50)})
     req = urllib.request.Request(
         url,
         headers={
@@ -630,7 +636,7 @@ def _search_baidu(query: str, limit: int = 10) -> list[SearchResult]:
     return results
 
 
-def _search_wechat_sogou(query: str, limit: int = 10) -> list[SearchResult]:
+def _search_wechat_sogou(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchResult]:
     api = _build_wechat_sogou_api()
     safe_query = _strip_site_filters(query)
     results: list[SearchResult] = []
@@ -638,7 +644,7 @@ def _search_wechat_sogou(query: str, limit: int = 10) -> list[SearchResult]:
     def reject_captcha(*_args, **_kwargs):
         raise RuntimeError("Sogou WeChat captcha required")
 
-    pages = max(1, min(2, (max(limit, 1) + 9) // 10))
+    pages = max(1, min(5, (max(limit, 1) + 9) // 10))
     for page in range(1, pages + 1):
         rows = api.search_article(
             safe_query,
@@ -696,7 +702,7 @@ def _wechat_sogou_result(row: Any, rank: int) -> SearchResult | None:
     )
 
 
-def _search_plugin_backend(backend: str, query: str, limit: int = 10) -> list[SearchResult]:
+def _search_plugin_backend(backend: str, query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchResult]:
     plugin_ref = backend.split(":", 1)[1].strip()
     if not plugin_ref:
         raise ValueError("plugin backend requires plugin:name or plugin:/path/to/script.py")
@@ -782,7 +788,7 @@ def read_url(
     max_chars: int | None = None,
     backend: str = "auto",
     fallback_search: bool = False,
-    fallback_limit: int = 5,
+    fallback_limit: int = DEFAULT_READ_FALLBACK_LIMIT,
     profile: str | None = "china",
     cache_ttl: int = 0,
     use_cache: bool = True,
@@ -863,7 +869,7 @@ def read_batch(
     max_chars: int | None = None,
     backend: str = "auto",
     fallback_search: bool = True,
-    fallback_limit: int = 5,
+    fallback_limit: int = DEFAULT_READ_FALLBACK_LIMIT,
     profile: str | None = "china",
     cache_ttl: int = 0,
 ) -> list[dict[str, Any]]:
@@ -917,7 +923,7 @@ def _batch_block_reason(url: str) -> str:
 def _read_search_context(
     url: str,
     errors: list[str] | None = None,
-    limit: int = 5,
+    limit: int = DEFAULT_READ_FALLBACK_LIMIT,
     profile: str | None = "china",
 ) -> str:
     """Build a search-based context packet when direct reading fails."""
@@ -1052,7 +1058,7 @@ def build_research_packet(
                 max_chars=effective_max_read_chars,
                 backend=read_backend,
                 fallback_search=True,
-                fallback_limit=3,
+                fallback_limit=DEFAULT_READ_FALLBACK_LIMIT,
                 profile=effective_profile,
             )
             readings.append(_reading_record(item, status="ok", content=content))

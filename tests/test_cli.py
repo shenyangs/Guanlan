@@ -8,6 +8,12 @@ import requests
 
 import guanlan.cli as cli
 from guanlan.cli import main
+from guanlan.limits import (
+    DEFAULT_ARCHIVE_SEARCH_LIMIT,
+    DEFAULT_HOTNEWS_LIMIT,
+    DEFAULT_READ_FALLBACK_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+)
 
 
 class TestCLI:
@@ -141,6 +147,66 @@ class TestCLI:
         assert "观澜安全提示" in captured.out
         assert "不会读取你的系统登录密码" in captured.out
         assert "不会上传任何 Cookie" in captured.out
+
+    def test_search_default_limit_is_expanded(self, capsys, monkeypatch):
+        calls = []
+
+        def fake_search_web(*_args, **kwargs):
+            calls.append(kwargs)
+            return []
+
+        monkeypatch.setattr("guanlan.webtools.search_web", fake_search_web)
+
+        with patch("sys.argv", ["guanlan", "search", "人工智能", "--json"]):
+            main()
+
+        capsys.readouterr()
+        assert calls[0]["limit"] == DEFAULT_SEARCH_LIMIT
+
+    def test_hotnews_default_limit_is_expanded(self, capsys, monkeypatch):
+        calls = []
+
+        def fake_fetch_hotnews(*_args, **kwargs):
+            calls.append(kwargs)
+            return []
+
+        monkeypatch.setattr("guanlan.hotnews.fetch_hotnews", fake_fetch_hotnews)
+
+        with patch("sys.argv", ["guanlan", "hotnews", "today", "--json"]):
+            main()
+
+        capsys.readouterr()
+        assert calls[0]["limit"] == DEFAULT_HOTNEWS_LIMIT
+
+    def test_read_default_fallback_limit_is_expanded(self, capsys, monkeypatch):
+        calls = []
+
+        def fake_read_url(*_args, **kwargs):
+            calls.append(kwargs)
+            return "# Article"
+
+        monkeypatch.setattr("guanlan.webtools.read_url", fake_read_url)
+
+        with patch("sys.argv", ["guanlan", "read", "https://example.com"]):
+            main()
+
+        capsys.readouterr()
+        assert calls[0]["fallback_limit"] == DEFAULT_READ_FALLBACK_LIMIT
+
+    def test_archive_search_default_limit_is_expanded(self, capsys, monkeypatch):
+        calls = []
+
+        def fake_search_documents(*_args, **kwargs):
+            calls.append(kwargs)
+            return []
+
+        monkeypatch.setattr("guanlan.archive.search_documents", fake_search_documents)
+
+        with patch("sys.argv", ["guanlan", "archive", "search", "材料", "--json"]):
+            main()
+
+        capsys.readouterr()
+        assert calls[0]["limit"] == DEFAULT_ARCHIVE_SEARCH_LIMIT
 
 
 class TestCheckUpdateRetry:

@@ -17,6 +17,12 @@ import urllib.parse
 from pathlib import Path
 from typing import Any
 
+from guanlan.limits import (
+    DEFAULT_ARCHIVE_LIST_LIMIT,
+    DEFAULT_ARCHIVE_SEARCH_LIMIT,
+    DEFAULT_READ_FALLBACK_LIMIT,
+)
+
 ARCHIVE_SCHEMA_VERSION = 1
 
 
@@ -30,7 +36,7 @@ def add_url(
     max_chars: int | None = None,
     backend: str = "auto",
     fallback_search: bool = True,
-    fallback_limit: int = 5,
+    fallback_limit: int = DEFAULT_READ_FALLBACK_LIMIT,
     profile: str | None = "china",
     db_path: str | Path | None = None,
 ) -> dict[str, Any]:
@@ -62,7 +68,7 @@ def add_urls(
     max_chars: int | None = None,
     backend: str = "auto",
     fallback_search: bool = True,
-    fallback_limit: int = 5,
+    fallback_limit: int = DEFAULT_READ_FALLBACK_LIMIT,
     profile: str | None = "china",
     db_path: str | Path | None = None,
 ) -> list[dict[str, Any]]:
@@ -187,7 +193,7 @@ def add_document(
 
 def search_documents(
     query: str,
-    limit: int = 10,
+    limit: int = DEFAULT_ARCHIVE_SEARCH_LIMIT,
     db_path: str | Path | None = None,
 ) -> list[dict[str, Any]]:
     """Search the local archive with FTS when available and LIKE fallback."""
@@ -213,7 +219,7 @@ def search_documents(
     return [_row_to_record(row, query=query) for row in rows[:limit]]
 
 
-def list_documents(limit: int = 20, db_path: str | Path | None = None) -> list[dict[str, Any]]:
+def list_documents(limit: int = DEFAULT_ARCHIVE_LIST_LIMIT, db_path: str | Path | None = None) -> list[dict[str, Any]]:
     """List recently updated archive documents."""
     with _connect(db_path) as conn:
         rows = conn.execute(

@@ -13,6 +13,20 @@ import sys
 
 from guanlan.config import Config
 from guanlan.core import Guanlan
+from guanlan.limits import (
+    DEFAULT_ARCHIVE_SEARCH_LIMIT,
+    DEFAULT_HOTNEWS_LIMIT,
+    DEFAULT_PULSE_LIMIT,
+    DEFAULT_READ_FALLBACK_LIMIT,
+    DEFAULT_RESEARCH_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+    MAX_ARCHIVE_SEARCH_LIMIT,
+    MAX_HOTNEWS_LIMIT,
+    MAX_PULSE_LIMIT,
+    MAX_READ_FALLBACK_LIMIT,
+    MAX_RESEARCH_LIMIT,
+    MAX_SEARCH_LIMIT,
+)
 
 try:
     from mcp.server import Server
@@ -39,7 +53,12 @@ def _tool_definitions() -> list[dict]:
                 "required": ["query"],
                 "properties": {
                     "query": {"type": "string"},
-                    "limit": {"type": "integer", "default": 8, "minimum": 1, "maximum": 20},
+                    "limit": {
+                        "type": "integer",
+                        "default": DEFAULT_SEARCH_LIMIT,
+                        "minimum": 1,
+                        "maximum": MAX_SEARCH_LIMIT,
+                    },
                     "site": {"type": "string"},
                     "scope": {"type": "string"},
                     "backend": {"type": "string", "default": "auto"},
@@ -61,7 +80,12 @@ def _tool_definitions() -> list[dict]:
                     "max_chars": {"type": "integer", "minimum": 1},
                     "backend": {"type": "string", "enum": ["auto", "jina", "direct"], "default": "auto"},
                     "fallback_search": {"type": "boolean", "default": True},
-                    "fallback_limit": {"type": "integer", "default": 5, "minimum": 1, "maximum": 10},
+                    "fallback_limit": {
+                        "type": "integer",
+                        "default": DEFAULT_READ_FALLBACK_LIMIT,
+                        "minimum": 1,
+                        "maximum": MAX_READ_FALLBACK_LIMIT,
+                    },
                     "profile": {"type": "string", "enum": ["global", "china", "hybrid"], "default": "china"},
                     "cache_ttl": {"type": "integer", "default": 0, "minimum": 0},
                 },
@@ -76,7 +100,12 @@ def _tool_definitions() -> list[dict]:
                 "properties": {
                     "query": {"type": "string"},
                     "preset": {"type": "string", "default": "general"},
-                    "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+                    "limit": {
+                        "type": "integer",
+                        "default": DEFAULT_RESEARCH_LIMIT,
+                        "minimum": 1,
+                        "maximum": MAX_RESEARCH_LIMIT,
+                    },
                     "site": {"type": "string"},
                     "sites": {"type": "array", "items": {"type": "string"}},
                     "scope": {"type": "string"},
@@ -97,7 +126,12 @@ def _tool_definitions() -> list[dict]:
                 "type": "object",
                 "properties": {
                     "source": {"type": "string", "default": "today"},
-                    "limit": {"type": "integer", "default": 10, "minimum": 1, "maximum": 50},
+                    "limit": {
+                        "type": "integer",
+                        "default": DEFAULT_HOTNEWS_LIMIT,
+                        "minimum": 1,
+                        "maximum": MAX_HOTNEWS_LIMIT,
+                    },
                     "backend": {"type": "string", "enum": ["auto", "native", "newsnow"], "default": "auto"},
                     "newsnow_base_url": {"type": "string"},
                     "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
@@ -112,7 +146,12 @@ def _tool_definitions() -> list[dict]:
                 "required": ["query"],
                 "properties": {
                     "query": {"type": "string"},
-                    "limit": {"type": "integer", "default": 12, "minimum": 1, "maximum": 30},
+                    "limit": {
+                        "type": "integer",
+                        "default": DEFAULT_PULSE_LIMIT,
+                        "minimum": 1,
+                        "maximum": MAX_PULSE_LIMIT,
+                    },
                     "site": {"type": "string"},
                     "sites": {"type": "array", "items": {"type": "string"}},
                     "scope": {"type": "string"},
@@ -131,7 +170,12 @@ def _tool_definitions() -> list[dict]:
                 "required": ["query"],
                 "properties": {
                     "query": {"type": "string"},
-                    "limit": {"type": "integer", "default": 8, "minimum": 1, "maximum": 20},
+                    "limit": {
+                        "type": "integer",
+                        "default": DEFAULT_ARCHIVE_SEARCH_LIMIT,
+                        "minimum": 1,
+                        "maximum": MAX_ARCHIVE_SEARCH_LIMIT,
+                    },
                     "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "context"},
                 },
             },
@@ -159,7 +203,7 @@ def _run_tool(name: str, arguments: dict | None = None):
 
         results = search_web(
             str(args.get("query", "")).strip(),
-            limit=int(args.get("limit") or 8),
+            limit=int(args.get("limit") or DEFAULT_SEARCH_LIMIT),
             site=args.get("site") or None,
             scope=args.get("scope") or None,
             backend=str(args.get("backend") or "auto"),
@@ -183,7 +227,7 @@ def _run_tool(name: str, arguments: dict | None = None):
             max_chars=int(args["max_chars"]) if args.get("max_chars") else None,
             backend=str(args.get("backend") or "auto"),
             fallback_search=bool(args.get("fallback_search", True)),
-            fallback_limit=int(args.get("fallback_limit") or 5),
+            fallback_limit=int(args.get("fallback_limit") or DEFAULT_READ_FALLBACK_LIMIT),
             profile=args.get("profile") or "china",
             cache_ttl=int(args.get("cache_ttl") or 0),
         )
@@ -225,7 +269,7 @@ def _run_tool(name: str, arguments: dict | None = None):
 
         items = fetch_hotnews(
             str(args.get("source") or "today"),
-            limit=int(args.get("limit") or 10),
+            limit=int(args.get("limit") or DEFAULT_HOTNEWS_LIMIT),
             backend=str(args.get("backend") or "auto"),
             newsnow_base_url=args.get("newsnow_base_url") or None,
         )
@@ -242,7 +286,7 @@ def _run_tool(name: str, arguments: dict | None = None):
 
         report = build_pulse_report(
             str(args.get("query", "")).strip(),
-            limit=int(args.get("limit") or 12),
+            limit=int(args.get("limit") or DEFAULT_PULSE_LIMIT),
             site=args.get("site") or None,
             sites=args.get("sites") or None,
             scope=args.get("scope") or None,
@@ -266,7 +310,7 @@ def _run_tool(name: str, arguments: dict | None = None):
 
         records = search_documents(
             str(args.get("query", "")).strip(),
-            limit=int(args.get("limit") or 8),
+            limit=int(args.get("limit") or DEFAULT_ARCHIVE_SEARCH_LIMIT),
         )
         output_format = str(args.get("format") or "context")
         if output_format == "json":

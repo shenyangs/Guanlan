@@ -6,10 +6,10 @@
 
 ```bash
 # 通用网页搜索
-guanlan search "关键词" --limit 8
+guanlan search "关键词" --limit 50
 
 # 中国大陆中文资料优先
-guanlan search "关键词" --profile china --limit 8
+guanlan search "关键词" --profile china --limit 50
 
 # 党央媒、政府、地方官媒、垂类媒体等白名单
 guanlan search "人工智能 新质生产力" --profile china --scope party_central
@@ -26,7 +26,7 @@ guanlan search "跨境电商 AI" --profile china --scope ecommerce
 
 ```bash
 # 直接生成 Agent 回答前可用的证据上下文
-guanlan research "关键词" --profile china --limit 8 --read-top 2
+guanlan research "关键词" --profile china --limit 50 --read-top 2
 
 # 只要搜索证据，不读取原文
 guanlan research "关键词" --profile china --read-top 0
@@ -126,13 +126,13 @@ mcporter call 'web-reader.webReader(url: "https://example.com", return_format: "
 
 ```bash
 # 搜索微信公众号文章
-mcporter call 'exa.web_search_exa(query: "搜索关键词", numResults: 5, includeDomains: ["mp.weixin.qq.com"])'
+mcporter call 'exa.web_search_exa(query: "搜索关键词", numResults: 50, includeDomains: ["mp.weixin.qq.com"])'
 
 # 观澜统一搜索：公开搜索优先，必要时把 WechatSogou 作为 best-effort 备份
-guanlan search "搜索关键词" --site mp.weixin.qq.com --profile china --limit 8
+guanlan search "搜索关键词" --site mp.weixin.qq.com --profile china --limit 50
 
 # 显式使用实验性搜狗微信后端（需安装可选依赖）
-guanlan search "搜索关键词" --backend wechat-sogou --limit 8
+guanlan search "搜索关键词" --backend wechat-sogou --limit 50
 ```
 
 公众号能力口径必须诚实：Exa、WechatSogou 或 Camoufox 安装成功只代表 `backend-ready`，不代表端到端 `verified`。遇到搜狗验证码、反爬、登录墙、正文缺失或超时时应降级，不要自动打码、不要读取浏览器 Cookie。

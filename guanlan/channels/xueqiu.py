@@ -9,6 +9,8 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+from guanlan.limits import DEFAULT_HOTNEWS_LIMIT, DEFAULT_SEARCH_LIMIT
+
 from .base import Channel, skip_sensitive_probes
 
 _UA = (
@@ -173,7 +175,7 @@ class XueqiuChannel(Channel):
             "timestamp": q.get("timestamp"),
         }
 
-    def search_stock(self, query: str, limit: int = 10) -> list:
+    def search_stock(self, query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list:
         data = _get_json(
             f"https://xueqiu.com/stock/search.json?code={urllib.parse.quote(query)}&size={limit}"
         )
@@ -189,10 +191,10 @@ class XueqiuChannel(Channel):
             )
         return results
 
-    def get_hot_posts(self, limit: int = 20) -> list:
+    def get_hot_posts(self, limit: int = DEFAULT_HOTNEWS_LIMIT) -> list:
         data = _get_json(
             "https://xueqiu.com/v4/statuses/public_timeline_by_category.json"
-            "?since_id=-1&max_id=-1&count=20&category=-1"
+            f"?since_id=-1&max_id=-1&count={max(limit, 1)}&category=-1"
         )
         items = data.get("list") or []
         results = []
@@ -216,7 +218,7 @@ class XueqiuChannel(Channel):
             )
         return results
 
-    def get_hot_stocks(self, limit: int = 10, stock_type: int = 10) -> list:
+    def get_hot_stocks(self, limit: int = DEFAULT_HOTNEWS_LIMIT, stock_type: int = 10) -> list:
         data = _get_json(
             f"https://stock.xueqiu.com/v5/stock/hot_stock/list.json?size={limit}&type={stock_type}"
         )

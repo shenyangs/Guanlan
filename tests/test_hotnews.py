@@ -214,6 +214,31 @@ def test_fetch_today_round_robins_sources_and_tolerates_failures(monkeypatch):
     assert items[0]["metrics"]["source_rank"] == 1
 
 
+def test_fetch_today_can_fill_expanded_limit(monkeypatch):
+    def make_items(source_id, limit=20):
+        return [
+            hotnews.HotNewsItem(
+                platform=source_id,
+                source_id=source_id,
+                category="hotnews",
+                title=f"{source_id} {idx}",
+                rank=idx,
+            )
+            for idx in range(1, limit + 1)
+        ]
+
+    monkeypatch.setattr(hotnews, "fetch_baidu", lambda limit=20: make_items("baidu", limit))
+    monkeypatch.setattr(hotnews, "fetch_weibo", lambda limit=20: make_items("weibo", limit))
+    monkeypatch.setattr(hotnews, "fetch_bilibili", lambda limit=20: make_items("bilibili", limit))
+    monkeypatch.setattr(hotnews, "fetch_ithome", lambda limit=20: make_items("ithome", limit))
+    monkeypatch.setattr(hotnews, "fetch_v2ex", lambda limit=20: make_items("v2ex", limit))
+
+    items = hotnews.fetch_hotnews("today", limit=50)
+
+    assert len(items) == 50
+    assert items[-1]["rank"] == 50
+
+
 def test_normalize_hotnews_payload_accepts_newsnow_like_shape():
     payload = {
         "data": {

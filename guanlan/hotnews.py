@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from typing import Any
 from xml.etree import ElementTree
 
+from guanlan.limits import DEFAULT_HOTNEWS_LIMIT, MAX_HOTNEWS_PER_SOURCE_LIMIT
+
 _UA = "Mozilla/5.0"
 _TIMEOUT = 12
 DEFAULT_NEWSNOW_BASE_URL = "https://newsnow.busiyi.world"
@@ -221,7 +223,7 @@ def _item(
     )
 
 
-def fetch_baidu(limit: int = 20) -> list[HotNewsItem]:
+def fetch_baidu(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
     """Fetch Baidu realtime hot search using its public board endpoint."""
     payload = _read_json("https://top.baidu.com/api/board?platform=wise&tab=realtime")
     cards = ((payload.get("data") or {}).get("cards") or []) if isinstance(payload, dict) else []
@@ -273,7 +275,7 @@ def _flatten_baidu_content(value: Any) -> list[dict[str, Any]]:
     return rows
 
 
-def fetch_weibo(limit: int = 20) -> list[HotNewsItem]:
+def fetch_weibo(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
     """Fetch Weibo hot searches from a public read-only endpoint."""
     payload = _read_json(
         "https://weibo.com/ajax/side/hotSearch",
@@ -308,7 +310,7 @@ def fetch_weibo(limit: int = 20) -> list[HotNewsItem]:
     return [item for item in results if item.title]
 
 
-def fetch_bilibili(limit: int = 20) -> list[HotNewsItem]:
+def fetch_bilibili(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
     """Fetch Bilibili all-site popular videos from its public ranking API."""
     payload = _read_json("https://api.bilibili.com/x/web-interface/ranking/v2?rid=0&type=all")
     data = payload.get("data") if isinstance(payload, dict) else {}
@@ -347,7 +349,7 @@ def fetch_bilibili(limit: int = 20) -> list[HotNewsItem]:
     return [item for item in results if item.title]
 
 
-def fetch_ithome(limit: int = 20) -> list[HotNewsItem]:
+def fetch_ithome(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
     """Fetch IT Home news from its public RSS feed."""
     raw_xml = _read_text("https://www.ithome.com/rss/")
     root = ElementTree.fromstring(raw_xml)
@@ -368,7 +370,7 @@ def fetch_ithome(limit: int = 20) -> list[HotNewsItem]:
     return [item for item in results if item.title]
 
 
-def fetch_zhihu(limit: int = 20) -> list[HotNewsItem]:
+def fetch_zhihu(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
     """Fetch Zhihu hot list using its public topstory endpoint."""
     url = (
         "https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total"
@@ -404,7 +406,7 @@ def fetch_zhihu(limit: int = 20) -> list[HotNewsItem]:
     return [item for item in results if item.title]
 
 
-def fetch_v2ex(limit: int = 20) -> list[HotNewsItem]:
+def fetch_v2ex(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
     """Fetch V2EX hot topics and normalize them as hotnews items."""
     from guanlan.channels.v2ex import V2EXChannel
 
@@ -428,7 +430,7 @@ def fetch_v2ex(limit: int = 20) -> list[HotNewsItem]:
     return [item for item in results if item.title]
 
 
-def fetch_today(limit: int = 20) -> list[dict[str, Any]]:
+def fetch_today(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
     """Fetch a diverse daily hotnews snapshot without letting one source dominate."""
     limit = max(int(limit), 1)
     source_fetchers = [
@@ -438,7 +440,7 @@ def fetch_today(limit: int = 20) -> list[dict[str, Any]]:
         ("ithome", fetch_ithome),
         ("v2ex", fetch_v2ex),
     ]
-    per_source = max(3, min(8, (limit + len(source_fetchers) - 1) // len(source_fetchers) + 1))
+    per_source = max(3, min(MAX_HOTNEWS_PER_SOURCE_LIMIT, (limit + len(source_fetchers) - 1) // len(source_fetchers) + 2))
     buckets: list[list[dict[str, Any]]] = []
     errors: list[str] = []
 
@@ -468,7 +470,7 @@ def fetch_today(limit: int = 20) -> list[dict[str, Any]]:
 
 def fetch_newsnow(
     source: str,
-    limit: int = 20,
+    limit: int = DEFAULT_HOTNEWS_LIMIT,
     base_url: str | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch NewsNow API source and normalize it into Guanlan hotnews rows."""
@@ -484,7 +486,7 @@ def fetch_newsnow(
 
 def fetch_hotnews(
     source: str = "today",
-    limit: int = 20,
+    limit: int = DEFAULT_HOTNEWS_LIMIT,
     backend: str = "auto",
     newsnow_base_url: str | None = None,
 ) -> list[dict[str, Any]]:

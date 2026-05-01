@@ -168,7 +168,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.1.8`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.1.9`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -323,10 +323,12 @@ guanlan configure --from-browser chrome
 | `guanlan archive add "URL"` | 将网页读取为 Markdown 后沉淀进本地知识库。 |
 | `guanlan archive search "关键词"` | 在本地知识库中检索已归档材料。 |
 | `guanlan archive export --format jsonl` | 导出本地知识库，方便接入 RAG 或其他系统。 |
-| `guanlan hotnews today --limit 10` | 拉取原生多源中文热榜。 |
+| `guanlan hotnews today --limit 50` | 拉取原生多源中文热榜。 |
 | `guanlan profile set china` | 切换到中文场景画像。 |
 | `guanlan configure --from-browser chrome` | 显式从浏览器提取支持平台的 Cookie。 |
 | `guanlan skill --install` | 将观澜使用说明安装到 Agent skills 目录。 |
+
+默认候选池从 `v0.1.9` 起按 Agent 研究场景放大：`search`、`research`、`archive search` 默认 50 条，`hotnews` 默认 50 条且 MCP 最高 100 条，`read` 的搜索兜底默认 20 条。
 
 ## 使用场景与案例
 
@@ -337,7 +339,7 @@ guanlan configure --from-browser chrome
 适合“先给我找一圈资料”“看看公开网页上有什么线索”。
 
 ```bash
-guanlan search "AI 眼镜 产业链" --profile china --limit 8
+guanlan search "AI 眼镜 产业链" --profile china --limit 50
 guanlan search "AI 眼镜 产业链" --profile china --format context
 guanlan search "AI 眼镜 产业链" --profile china --source-chart
 ```
@@ -350,7 +352,7 @@ guanlan search "AI 眼镜 产业链" --profile china --source-chart
 适合“最近有什么进展”“今天/本周有什么热点”“某事件最新消息”。观澜会识别 `最近`、`近期`、`热点`、`热搜`、`最新`、`快讯` 等词，把搜索词补上当前年月，并在排序时优先近期结果、降权明显陈旧内容。
 
 ```bash
-guanlan search "最近 AI 眼镜 热点" --profile china --limit 8 --trace
+guanlan search "最近 AI 眼镜 热点" --profile china --limit 50 --trace
 guanlan search "本周 跨境电商 热点" --profile china --scope ecommerce --format context
 guanlan research "最新 人工智能 政策 进展" --preset policy --read-top 2
 ```
@@ -362,14 +364,14 @@ guanlan research "最新 人工智能 政策 进展" --preset policy --read-top 
 适合政策研究、监管变化、行业规则、政府公告。优先找原文，不用媒体解读替代政策文本。
 
 ```bash
-guanlan search "人工智能 政策" --profile china --scope gov --limit 8
+guanlan search "人工智能 政策" --profile china --scope gov --limit 50
 guanlan research "人工智能 政策" --preset policy --read-top 2 --max-read-chars 2400
 ```
 
 如果想看宏观表述和权威报道，可以切到党央媒与中央重点媒体：
 
 ```bash
-guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 8
+guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 50
 guanlan research "人工智能 新质生产力" --preset official --read-top 2
 ```
 
@@ -378,7 +380,7 @@ guanlan research "人工智能 新质生产力" --preset official --read-top 2
 适合地方产业、城市治理、区域政策、地方舆论表述。
 
 ```bash
-guanlan search "低空经济 广东 政策" --profile china --scope local_official --limit 8
+guanlan search "低空经济 广东 政策" --profile china --scope local_official --limit 50
 guanlan research "低空经济 广东 政策" --preset local --read-top 2
 ```
 
@@ -387,7 +389,7 @@ guanlan research "低空经济 广东 政策" --preset local --read-top 2
 适合跨境电商、零售、新消费、平台生态、产业带研究。这里会优先利用亿邦动力、网经社、雨果跨境、联商网等垂类信源。
 
 ```bash
-guanlan search "跨境电商 AI 工具" --profile china --scope ecommerce --limit 8
+guanlan search "跨境电商 AI 工具" --profile china --scope ecommerce --limit 50
 guanlan research "跨境电商 AI 工具" --preset ecommerce --read-top 3
 ```
 
@@ -410,8 +412,8 @@ guanlan pulse "某产品 用户评价" --sites zhihu.com,weibo.com,xiaohongshu.c
 如果你只想看某个平台的公开网页结果：
 
 ```bash
-guanlan search "某产品 用户评价" --profile china --site zhihu.com --limit 8
-guanlan search "某产品 使用体验" --profile china --site bilibili.com --limit 8
+guanlan search "某产品 用户评价" --profile china --site zhihu.com --limit 50
+guanlan search "某产品 使用体验" --profile china --site bilibili.com --limit 50
 ```
 
 `pulse` 只给“基于当前公开样本的讨论倾向”，不是全网舆情结论。默认不读原文；如果需要更强证据，可以显式加 `--read-top 2`。
@@ -472,12 +474,12 @@ guanlan read "https://github.com/shenyangs/Guanlan" --watch
 
 ```bash
 guanlan hotnews list
-guanlan hotnews today --limit 12
-guanlan hotnews weibo --limit 10
-guanlan hotnews bilibili --limit 10
-guanlan hotnews ithome --limit 10
-guanlan hotnews v2ex --limit 10
-guanlan hotnews newsnow:36kr-quick --limit 10
+guanlan hotnews today --limit 50
+guanlan hotnews weibo --limit 50
+guanlan hotnews bilibili --limit 50
+guanlan hotnews ithome --limit 50
+guanlan hotnews v2ex --limit 50
+guanlan hotnews newsnow:36kr-quick --limit 50
 ```
 
 `today` 是默认推荐入口，会把百度热搜、微博热搜、B站热门视频、IT之家 RSS 和 V2EX 热门混合成一个多源快照；其中单个公开端点失败时不会拖垮其它来源。
@@ -486,14 +488,14 @@ guanlan hotnews newsnow:36kr-quick --limit 10
 
 ```bash
 guanlan configure newsnow-base-url https://your-newsnow.example
-guanlan hotnews newsnow:ithome --limit 10
+guanlan hotnews newsnow:ithome --limit 50
 ```
 
 `zhihu` 热榜是实验源，部分环境会返回 401/403。需要知乎视角时，优先把它当作可选尝试；失败后用站内搜索兜底：
 
 ```bash
-guanlan hotnews zhihu --limit 10
-guanlan search "热点关键词" --site zhihu.com --profile china --limit 8
+guanlan hotnews zhihu --limit 50
+guanlan search "热点关键词" --site zhihu.com --profile china --limit 50
 ```
 
 看到关键词后，可以继续交给 `search` 或 `research` 追原文：

@@ -56,7 +56,7 @@ guanlan doctor
 中文资料优先使用中文场景画像：
 
 ```bash
-guanlan search "关键词" --profile china --limit 8
+guanlan search "关键词" --profile china --limit 50
 ```
 
 需要更明确的信源范围时使用 scope：

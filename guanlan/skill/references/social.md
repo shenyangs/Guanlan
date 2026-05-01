@@ -187,7 +187,7 @@ from guanlan.channels.v2ex import V2EXChannel
 ch = V2EXChannel()
 
 # 获取热门帖子
-topics = ch.get_hot_topics(limit=10)
+topics = ch.get_hot_topics(limit=50)
 for t in topics:
     print(f"[{t['node_title']}] {t['title']} ({t['replies']} 回复)")
 
@@ -208,19 +208,19 @@ user = ch.get_user("Livid")
 
 ```bash
 # 搜索帖子
-rdt search "query" --limit 10
+rdt search "query" --limit 50
 
 # 读帖子全文 + 评论
 rdt read POST_ID
 
 # 浏览 subreddit
-rdt sub python --limit 20
+rdt sub python --limit 50
 
 # 浏览热门
-rdt popular --limit 10
+rdt popular --limit 50
 
 # 浏览 /r/all
-rdt all --limit 10
+rdt all --limit 50
 ```
 
 > **安装**: `pipx install rdt-cli`（确保 v0.4.2+）。无需登录即可搜索和阅读。

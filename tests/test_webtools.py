@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from guanlan import webtools
+from guanlan.limits import DEFAULT_READ_FALLBACK_LIMIT, DEFAULT_RESEARCH_LIMIT
 
 
 class _FakeResponse:
@@ -740,7 +741,7 @@ def test_read_cli_passes_backend():
         max_chars=None,
         backend="direct",
         fallback_search=True,
-        fallback_limit=5,
+        fallback_limit=DEFAULT_READ_FALLBACK_LIMIT,
         profile="china",
         cache_ttl=0,
         use_cache=True,
@@ -968,7 +969,7 @@ def test_build_research_packet_applies_preset_defaults(monkeypatch):
     packet = webtools.build_research_packet("人工智能监管", preset="policy")
 
     assert [call["scope"] for call in calls] == ["gov", "party_central"]
-    assert all(call["limit"] == 6 for call in calls)
+    assert all(call["limit"] == DEFAULT_RESEARCH_LIMIT // 2 + 2 for call in calls)
     assert packet["preset"] == "policy"
     assert packet["scope"] == "gov"
     assert packet["scopes"] == ["gov", "party_central"]
@@ -1014,7 +1015,7 @@ def test_build_research_packet_site_request_skips_preset_scopes(monkeypatch):
 
     assert calls == [
         {
-            "limit": 10,
+            "limit": DEFAULT_RESEARCH_LIMIT,
             "site": "zhihu.com",
             "scope": None,
             "backend": "auto",

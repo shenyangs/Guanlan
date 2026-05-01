@@ -11,24 +11,24 @@
 guanlan hotnews list
 
 # 今日多源热榜，Markdown 输出，适合直接放进 Agent 上下文
-guanlan hotnews today --limit 12
+guanlan hotnews today --limit 50
 
 # 单源观察
-guanlan hotnews baidu --limit 10
-guanlan hotnews weibo --limit 10
-guanlan hotnews bilibili --limit 10
-guanlan hotnews ithome --limit 10
-guanlan hotnews v2ex --limit 10
+guanlan hotnews baidu --limit 50
+guanlan hotnews weibo --limit 50
+guanlan hotnews bilibili --limit 50
+guanlan hotnews ithome --limit 50
+guanlan hotnews v2ex --limit 50
 
 # NewsNow 可选增强源
-guanlan hotnews newsnow:36kr-quick --limit 10
-guanlan hotnews newsnow:ithome --limit 10
-guanlan hotnews newsnow:bilibili-hot-search --limit 10
+guanlan hotnews newsnow:36kr-quick --limit 50
+guanlan hotnews newsnow:ithome --limit 50
+guanlan hotnews newsnow:bilibili-hot-search --limit 50
 guanlan configure newsnow-base-url https://your-newsnow.example
 
 # 知乎热榜（experimental，失败时用搜索 fallback）
-guanlan hotnews zhihu --limit 10 --json
-guanlan search "热点关键词" --site zhihu.com --profile china --limit 8
+guanlan hotnews zhihu --limit 50 --json
+guanlan search "热点关键词" --site zhihu.com --profile china --limit 50
 ```
 
 统一字段包括：
@@ -64,13 +64,13 @@ cat /tmp/hotnews.json | guanlan format hotnews
 默认网页搜索命令：
 
 ```bash
-guanlan search "query" --limit 8
+guanlan search "query" --limit 50
 ```
 
 中文互联网搜索：
 
 ```bash
-guanlan search "query" --profile china --limit 8
+guanlan search "query" --profile china --limit 50
 ```
 
 时效性搜索：
@@ -110,8 +110,8 @@ guanlan search "query" --profile china --scope finance
 限定站点：
 
 ```bash
-guanlan search "query" --site zhihu.com --limit 8
-guanlan search "query" --site mp.weixin.qq.com --limit 8
+guanlan search "query" --site zhihu.com --limit 50
+guanlan search "query" --site mp.weixin.qq.com --limit 50
 ```
 
 结构化输出：
@@ -187,7 +187,7 @@ guanlan read "https://example.com/article" --max-chars 12000
 高质量 AI 搜索引擎，擅长技术和代码搜索。
 
 ```bash
-mcporter call 'exa.web_search_exa(query: "query", numResults: 5)'
+mcporter call 'exa.web_search_exa(query: "query", numResults: 50)'
 mcporter call 'exa.get_code_context_exa(query: "code question", tokensNum: 3000)'
 ```
 
@@ -195,7 +195,7 @@ mcporter call 'exa.get_code_context_exa(query: "code question", tokensNum: 3000)
 
 | 场景 | 参数 |
 |-----|------|
-| 网页搜索 | `web_search_exa(query: "...", numResults: 5)` |
+| 网页搜索 | `web_search_exa(query: "...", numResults: 50)` |
 | 代码搜索 | `get_code_context_exa(query: "...", tokensNum: 3000)` |
 
 ### 特点

@@ -15,12 +15,12 @@ Guanlan은 AI 에이전트를 위한 중국어 인터넷 검색 및 출처 라�
 ## 주요 명령
 
 ```bash
-guanlan search "keyword" --profile china --limit 8
+guanlan search "keyword" --profile china --limit 50
 guanlan search "keyword" --profile china --scope party_central
 guanlan search "keyword" --profile china --scope ecommerce
 guanlan read "https://example.com/article"
 guanlan read "https://example.com/article" --backend direct
-guanlan hotnews baidu --limit 10
+guanlan hotnews baidu --limit 50
 guanlan doctor --trace
 ```
 

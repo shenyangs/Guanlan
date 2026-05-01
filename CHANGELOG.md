@@ -8,6 +8,23 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.1.9 - 2026-05-02
+
+### Changed
+
+- 将 CLI 搜索默认候选池从 8 提升到 50，避免 Agent 只基于少量结果做排序和归纳。
+- 将研究证据包各 preset 默认搜索量统一提升到 50，MCP `guanlan_research` schema 上限提升到 100。
+- 将本地知识库 `archive search/list` 默认结果提升到 50，MCP `guanlan_archive_search` 上限提升到 100。
+- 将 `hotnews` 默认热榜条数提升到 50，MCP 上限提升到 100；今日多源聚合单源抓取上限同步提高，避免 50 条请求被单源上限截断。
+- 将 `read` 和 `archive add` 的搜索兜底默认结果提升到 20，MCP `fallback_limit` 上限同步提升到 20。
+- 将 `pulse` 默认公开样本池提升到 50，MCP 上限提升到 100。
+- 将 V2EX、雪球 channel 的 hot/search 默认 limit 上调到 50。
+
+### Added
+
+- 新增 `guanlan.limits` 统一维护 CLI、MCP、内部函数的默认结果数和 schema 上限。
+- 增加 CLI、MCP、热榜聚合和 research 默认 limit 回归测试，防止后续默认值回落。
+
 ## v0.1.8 - 2026-05-02
 
 ### Added

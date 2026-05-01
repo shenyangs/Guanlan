@@ -2,6 +2,20 @@
 """Tests for Guanlan's MCP helper surface."""
 
 from guanlan.integrations import mcp_server
+from guanlan.limits import (
+    DEFAULT_ARCHIVE_SEARCH_LIMIT,
+    DEFAULT_HOTNEWS_LIMIT,
+    DEFAULT_PULSE_LIMIT,
+    DEFAULT_READ_FALLBACK_LIMIT,
+    DEFAULT_RESEARCH_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+    MAX_ARCHIVE_SEARCH_LIMIT,
+    MAX_HOTNEWS_LIMIT,
+    MAX_PULSE_LIMIT,
+    MAX_READ_FALLBACK_LIMIT,
+    MAX_RESEARCH_LIMIT,
+    MAX_SEARCH_LIMIT,
+)
 
 
 def test_mcp_tool_definitions_include_agent_search_tools():
@@ -22,8 +36,54 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "newsnow_base_url" in hotnews_tool["inputSchema"]["properties"]
 
 
+def test_mcp_tool_definitions_use_expanded_limits():
+    tools = {tool["name"]: tool for tool in mcp_server._tool_definitions()}
+
+    search_limit = tools["guanlan_search"]["inputSchema"]["properties"]["limit"]
+    read_fallback = tools["guanlan_read"]["inputSchema"]["properties"]["fallback_limit"]
+    research_limit = tools["guanlan_research"]["inputSchema"]["properties"]["limit"]
+    hotnews_limit = tools["guanlan_hotnews"]["inputSchema"]["properties"]["limit"]
+    pulse_limit = tools["guanlan_pulse"]["inputSchema"]["properties"]["limit"]
+    archive_limit = tools["guanlan_archive_search"]["inputSchema"]["properties"]["limit"]
+
+    assert search_limit == {"type": "integer", "default": DEFAULT_SEARCH_LIMIT, "minimum": 1, "maximum": MAX_SEARCH_LIMIT}
+    assert read_fallback == {
+        "type": "integer",
+        "default": DEFAULT_READ_FALLBACK_LIMIT,
+        "minimum": 1,
+        "maximum": MAX_READ_FALLBACK_LIMIT,
+    }
+    assert research_limit == {
+        "type": "integer",
+        "default": DEFAULT_RESEARCH_LIMIT,
+        "minimum": 1,
+        "maximum": MAX_RESEARCH_LIMIT,
+    }
+    assert hotnews_limit == {
+        "type": "integer",
+        "default": DEFAULT_HOTNEWS_LIMIT,
+        "minimum": 1,
+        "maximum": MAX_HOTNEWS_LIMIT,
+    }
+    assert pulse_limit == {
+        "type": "integer",
+        "default": DEFAULT_PULSE_LIMIT,
+        "minimum": 1,
+        "maximum": MAX_PULSE_LIMIT,
+    }
+    assert archive_limit == {
+        "type": "integer",
+        "default": DEFAULT_ARCHIVE_SEARCH_LIMIT,
+        "minimum": 1,
+        "maximum": MAX_ARCHIVE_SEARCH_LIMIT,
+    }
+
+
 def test_mcp_search_context_uses_webtools(monkeypatch):
+    calls = []
+
     def fake_search_web(*_args, **_kwargs):
+        calls.append(_kwargs)
         return [
             {
                 "title": "政策原文",
@@ -45,33 +105,48 @@ def test_mcp_search_context_uses_webtools(monkeypatch):
 
     assert "观澜搜索上下文" in text
     assert "政策原文" in text
+    assert calls[0]["limit"] == DEFAULT_SEARCH_LIMIT
 
 
 def test_mcp_read_uses_webtools(monkeypatch):
-    monkeypatch.setattr("guanlan.webtools.read_url", lambda *_args, **_kwargs: "# Article")
+    calls = []
+
+    def fake_read_url(*_args, **kwargs):
+        calls.append(kwargs)
+        return "# Article"
+
+    monkeypatch.setattr("guanlan.webtools.read_url", fake_read_url)
 
     text = mcp_server._run_tool("guanlan_read", {"url": "https://example.com"})
 
     assert text == "# Article"
+    assert calls[0]["fallback_limit"] == DEFAULT_READ_FALLBACK_LIMIT
 
 
 def test_mcp_archive_search_uses_archive(monkeypatch):
-    monkeypatch.setattr(
-        "guanlan.archive.search_documents",
-        lambda *_args, **_kwargs: [
+    calls = []
+
+    def fake_search_documents(*_args, **kwargs):
+        calls.append(kwargs)
+        return [
             {
                 "title": "本地材料",
                 "url": "https://example.com/a",
                 "domain": "example.com",
                 "excerpt": "归档正文",
             }
-        ],
+        ]
+
+    monkeypatch.setattr(
+        "guanlan.archive.search_documents",
+        fake_search_documents,
     )
 
     text = mcp_server._run_tool("guanlan_archive_search", {"query": "材料", "format": "context"})
 
     assert "观澜本地知识库上下文" in text
     assert "本地材料" in text
+    assert calls[0]["limit"] == DEFAULT_ARCHIVE_SEARCH_LIMIT
 
 
 def test_mcp_pulse_uses_pulse(monkeypatch):
