@@ -52,6 +52,19 @@
 
 如果当前 Agent 支持 MCP，可以优先使用观澜 MCP 工具面：`guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_hotnews`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
 
+MCP 客户端安装入口：
+
+```json
+{
+  "mcpServers": {
+    "guanlan": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/shenyangs/Guanlan.git", "guanlan-mcp"]
+    }
+  }
+}
+```
+
 ## 推荐工作流
 
 ### 网页搜索

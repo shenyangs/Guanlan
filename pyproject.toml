@@ -52,6 +52,7 @@ dev = [
 
 [project.scripts]
 guanlan = "guanlan.cli:main"
+guanlan-mcp = "guanlan.integrations.mcp_server:cli_main"
 
 [build-system]
 requires = ["hatchling"]

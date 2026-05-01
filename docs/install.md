@@ -23,7 +23,27 @@
 
 ## 基础安装
 
-克隆 GitHub 仓库后，在仓库根目录执行：
+推荐使用 `uv` 从 GitHub 一条命令安装：
+
+```bash
+uv tool install git+https://github.com/shenyangs/Guanlan.git
+guanlan doctor
+```
+
+如果你使用 `pipx`：
+
+```bash
+pipx install git+https://github.com/shenyangs/Guanlan.git
+guanlan doctor
+```
+
+如果只是临时试运行：
+
+```bash
+uvx --from git+https://github.com/shenyangs/Guanlan.git guanlan version
+```
+
+如果已经克隆 GitHub 仓库，也可以在仓库根目录执行：
 
 ```bash
 pipx install .
@@ -136,6 +156,34 @@ guanlan configure groq-key gsk_xxxxx
 
 ```bash
 guanlan skill --install
+```
+
+## MCP 安装
+
+观澜提供 `guanlan-mcp` console script。支持 JSON 配置的 MCP 客户端可以使用：
+
+```json
+{
+  "mcpServers": {
+    "guanlan": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/shenyangs/Guanlan.git", "guanlan-mcp"]
+    }
+  }
+}
+```
+
+如果已经通过 `uv tool install` 或 `pipx install` 持久安装，也可以把 MCP command 直接写成：
+
+```json
+{
+  "mcpServers": {
+    "guanlan": {
+      "command": "guanlan-mcp",
+      "args": []
+    }
+  }
+}
 ```
 
 ## 完成检查

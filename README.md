@@ -84,12 +84,45 @@
 
 ## 快速开始
 
-观澜第一版优先以 GitHub 源码发布。克隆本仓库后，在仓库根目录安装，推荐使用 `pipx`，避免污染系统 Python：
+观澜第一版优先以 GitHub 源码发布。推荐用 `uv` 一条命令安装为全局 CLI：
+
+```bash
+uv tool install git+https://github.com/shenyangs/Guanlan.git
+guanlan doctor
+```
+
+如果你使用 `pipx`：
+
+```bash
+pipx install git+https://github.com/shenyangs/Guanlan.git
+guanlan doctor
+```
+
+想先试运行、不持久安装：
+
+```bash
+uvx --from git+https://github.com/shenyangs/Guanlan.git guanlan version
+```
+
+如果已经克隆本仓库，也可以在仓库根目录安装：
 
 ```bash
 pipx install .
 guanlan install --env=auto
 guanlan doctor
+```
+
+MCP 客户端可以使用 `guanlan-mcp` 入口。以支持 JSON 配置的客户端为例：
+
+```json
+{
+  "mcpServers": {
+    "guanlan": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/shenyangs/Guanlan.git", "guanlan-mcp"]
+    }
+  }
+}
 ```
 
 如果你的 Python 环境受到 PEP 668 限制，也可以使用虚拟环境：
