@@ -100,6 +100,28 @@
 
 如果你只是想先用起来，不想理解 Python、虚拟环境或 MCP，按下面三步走就可以。
 
+**可以直接复制给 Agent 的安装指令**
+
+如果你在 Codex、Claude Code、Cursor、Devin 或其他 AI Agent 里使用，可以先把下面这段直接发给它：
+
+```text
+请帮我安装观澜 CLI，并验证基础功能可用。
+
+优先使用 Homebrew：
+brew tap shenyangs/tap && brew install guanlan
+
+如果当前环境没有 Homebrew，请改用 PyPI + uv：
+uv tool install guanlan
+
+如果没有 uv，请先按当前系统安装 uv，然后再安装观澜。
+安装完成后请运行：
+guanlan version
+guanlan doctor
+guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 5
+
+安全要求：不要读取浏览器 Cookie，不要触发登录授权，不要请求钥匙串权限。
+```
+
 **第一步：选择安装路线**
 
 - 如果你用 `Homebrew`，可以直接跳到第二步，不需要安装 `uv`。
