@@ -157,8 +157,8 @@ def main():
 
     # ── hotnews ──
     p_hotnews = sub.add_parser("hotnews", help="Fetch Chinese hotnews from native sources")
-    p_hotnews.add_argument("source", nargs="?", default="baidu",
-                           help="Source id: baidu, zhihu, v2ex, newsnow:<id>, or list")
+    p_hotnews.add_argument("source", nargs="?", default="today",
+                           help="Source id: today, baidu, weibo, bilibili, ithome, zhihu, v2ex, newsnow:<id>, or list")
     p_hotnews.add_argument("--backend", choices=["auto", "native", "newsnow"], default="auto",
                            help="Hotnews backend; auto uses native first, unknown sources as NewsNow")
     p_hotnews.add_argument("--newsnow-base-url", default="",
@@ -734,7 +734,7 @@ def _cmd_hotnews(args):
     from guanlan.config import Config
     from guanlan.hotnews import fetch_hotnews, format_hotnews_markdown, list_sources
 
-    source = (args.source or "baidu").lower()
+    source = (args.source or "today").lower()
     if source == "list":
         print(json.dumps(list_sources(), ensure_ascii=False, indent=2))
         return

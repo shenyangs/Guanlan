@@ -41,7 +41,7 @@
 | “读这个链接” | `guanlan read "URL"` |
 | “Jina 读不了/读取不完整” | `guanlan read "URL" --backend direct` |
 | “只读原文，不要兜底搜索” | `guanlan read "URL" --no-fallback-search` |
-| “今天有什么热点” | `guanlan hotnews baidu --limit 10` |
+| “今天有什么热点” | `guanlan hotnews today --limit 10` |
 | “技术社区在讨论什么” | `guanlan hotnews v2ex --limit 10` |
 | “输出结构化结果” | 给命令加 `--json` |
 | “检查哪些渠道可用” | `guanlan doctor --trace` |
@@ -241,9 +241,14 @@ guanlan read "https://example.com/article" --no-fallback-search
 优先：
 
 ```bash
-guanlan hotnews baidu --limit 10
+guanlan hotnews today --limit 12
+guanlan hotnews weibo --limit 10
+guanlan hotnews bilibili --limit 10
+guanlan hotnews ithome --limit 10
 guanlan hotnews v2ex --limit 10
 ```
+
+`today` 会混合百度热搜、微博热搜、B站热门视频、IT之家 RSS 和 V2EX 热门，适合作为“今天发生了什么”的默认入口。单个公开源失败时，观澜会保留其它源的结果。
 
 如果需要更多来源，可以使用 NewsNow 可选增强后端，例如：
 
@@ -387,7 +392,7 @@ backends:
 | 中文搜索质量不够 | 加 `--profile china`，或用 `--scope` 选择官方/地方/垂类信源池。 |
 | `guanlan read` 失败 | 默认会先尝试 `--backend direct`，仍失败则返回搜索兜底上下文。 |
 | Jina Reader 读不到正文 | 这是大陆中文站点常见情况，改用 `--backend direct`，或换同题公开信源。 |
-| 热榜源失败 | 换 `baidu` 或 `v2ex`，不要强行读取登录平台。 |
+| 热榜源失败 | 先换 `today`、`baidu`、`weibo`、`bilibili`、`ithome` 或 `v2ex`，不要强行读取登录平台。 |
 | 社交平台不可用 | 用 `guanlan search "关键词 site:平台域名"` 或普通站内搜索替代。 |
 | 命令提示需要认证 | 停下来问用户是否授权，不要自动读取 Cookie。 |
 
@@ -422,7 +427,7 @@ guanlan search "关键词"
 guanlan read "URL"
 guanlan read "URL" --backend direct
 guanlan read "URL" --no-fallback-search
-guanlan hotnews baidu
+guanlan hotnews today
 ```
 
 敏感命令：

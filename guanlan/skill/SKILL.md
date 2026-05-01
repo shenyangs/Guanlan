@@ -76,7 +76,10 @@ guanlan archive export --format jsonl
 gh search repos "query" --sort stars --limit 10
 
 # 中文热榜（原生公开源，不需要 Cookie）
-guanlan hotnews baidu --limit 10
+guanlan hotnews today --limit 10
+guanlan hotnews weibo --limit 10
+guanlan hotnews bilibili --limit 10
+guanlan hotnews ithome --limit 10
 guanlan hotnews zhihu --json  # experimental，失败时改用 site:zhihu.com 搜索
 guanlan hotnews list
 

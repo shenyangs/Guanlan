@@ -40,7 +40,7 @@
 - **公开网页搜索**：`guanlan search "关键词" --profile china`
 - **中文信源白名单**：`--scope party_central/gov/local_official/ecommerce`
 - **网页阅读与降级**：`guanlan read "URL"`，Jina Reader、直连 HTML、搜索兜底组合使用。
-- **热榜观察**：原生稳定源 `guanlan hotnews baidu/v2ex`；NewsNow 可选增强源 `guanlan hotnews newsnow:36kr-quick`
+- **热榜观察**：原生多源入口 `guanlan hotnews today`，覆盖百度、微博、B站、IT之家、V2EX；NewsNow 可选增强源 `guanlan hotnews newsnow:36kr-quick`
 - **研究证据包**：`guanlan research "关键词" --format context`
 - **本地知识库**：`guanlan archive add/search/export`
 
@@ -148,7 +148,7 @@ guanlan doctor
 guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 5
 ```
 
-看到 `观澜 / Guanlan v0.1.6`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.1.7`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -303,7 +303,7 @@ guanlan configure --from-browser chrome
 | `guanlan archive add "URL"` | 将网页读取为 Markdown 后沉淀进本地知识库。 |
 | `guanlan archive search "关键词"` | 在本地知识库中检索已归档材料。 |
 | `guanlan archive export --format jsonl` | 导出本地知识库，方便接入 RAG 或其他系统。 |
-| `guanlan hotnews baidu --limit 10` | 拉取原生中文热榜。 |
+| `guanlan hotnews today --limit 10` | 拉取原生多源中文热榜。 |
 | `guanlan profile set china` | 切换到中文场景画像。 |
 | `guanlan configure --from-browser chrome` | 显式从浏览器提取支持平台的 Cookie。 |
 | `guanlan skill --install` | 将观澜使用说明安装到 Agent skills 目录。 |
@@ -452,12 +452,17 @@ guanlan read "https://github.com/shenyangs/Guanlan" --watch
 
 ```bash
 guanlan hotnews list
-guanlan hotnews baidu --limit 10
+guanlan hotnews today --limit 12
+guanlan hotnews weibo --limit 10
+guanlan hotnews bilibili --limit 10
+guanlan hotnews ithome --limit 10
 guanlan hotnews v2ex --limit 10
 guanlan hotnews newsnow:36kr-quick --limit 10
 ```
 
-`newsnow:<source>` 是可选增强后端，适合补 36氪、IT之家、B站热搜、财联社、华尔街见闻等更多来源；稳定性取决于 NewsNow BASE_URL、Cloudflare 和上游抓取状态。公共站不稳时可配置自己的 NewsNow：
+`today` 是默认推荐入口，会把百度热搜、微博热搜、B站热门视频、IT之家 RSS 和 V2EX 热门混合成一个多源快照；其中单个公开端点失败时不会拖垮其它来源。
+
+`newsnow:<source>` 是可选增强后端，适合补 36氪、B站热搜、财联社、华尔街见闻等更多来源；稳定性取决于 NewsNow BASE_URL、Cloudflare 和上游抓取状态。公共站不稳时可配置自己的 NewsNow：
 
 ```bash
 guanlan configure newsnow-base-url https://your-newsnow.example

@@ -96,7 +96,7 @@ def _tool_definitions() -> list[dict]:
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "source": {"type": "string", "default": "baidu"},
+                    "source": {"type": "string", "default": "today"},
                     "limit": {"type": "integer", "default": 10, "minimum": 1, "maximum": 50},
                     "backend": {"type": "string", "enum": ["auto", "native", "newsnow"], "default": "auto"},
                     "newsnow_base_url": {"type": "string"},
@@ -224,14 +224,14 @@ def _run_tool(name: str, arguments: dict | None = None):
         from guanlan.hotnews import fetch_hotnews, format_hotnews_markdown
 
         items = fetch_hotnews(
-            str(args.get("source") or "baidu"),
+            str(args.get("source") or "today"),
             limit=int(args.get("limit") or 10),
             backend=str(args.get("backend") or "auto"),
             newsnow_base_url=args.get("newsnow_base_url") or None,
         )
         if str(args.get("format") or "markdown") == "json":
             return items
-        return format_hotnews_markdown(items, title=f"观澜热榜 / {args.get('source') or 'baidu'}")
+        return format_hotnews_markdown(items, title=f"观澜热榜 / {args.get('source') or 'today'}")
 
     if name == "guanlan_pulse":
         from guanlan.pulse import (

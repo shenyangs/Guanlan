@@ -4,16 +4,20 @@
 
 ## 中文热榜 / Hotnews
 
-第一批原生公开源不需要 Cookie、登录态或钥匙串。当前原生稳定源是 `baidu`、`v2ex`；`zhihu` 是 experimental 源，部分环境会返回 401/403，不作为稳定入口承诺。更多来源走 NewsNow 可选增强后端，稳定性取决于 `BASE_URL`、Cloudflare 和上游抓取状态。
+原生公开源不需要 Cookie、登录态或钥匙串。当前推荐入口是 `today`，会混合 `baidu`、`weibo`、`bilibili`、`ithome`、`v2ex`；`zhihu` 是 experimental 源，部分环境会返回 401/403，不作为稳定入口承诺。更多来源走 NewsNow 可选增强后端，稳定性取决于 `BASE_URL`、Cloudflare 和上游抓取状态。
 
 ```bash
 # 查看支持的热榜源
 guanlan hotnews list
 
-# 百度热搜，Markdown 输出，适合直接放进 Agent 上下文
-guanlan hotnews baidu --limit 10
+# 今日多源热榜，Markdown 输出，适合直接放进 Agent 上下文
+guanlan hotnews today --limit 12
 
-# V2EX 热门
+# 单源观察
+guanlan hotnews baidu --limit 10
+guanlan hotnews weibo --limit 10
+guanlan hotnews bilibili --limit 10
+guanlan hotnews ithome --limit 10
 guanlan hotnews v2ex --limit 10
 
 # NewsNow 可选增强源
@@ -31,7 +35,7 @@ guanlan search "热点关键词" --site zhihu.com --profile china --limit 8
 
 | 字段 | 含义 |
 | --- | --- |
-| `platform` | 平台，如 `baidu`、`zhihu`、`v2ex` |
+| `platform` | 平台，如 `baidu`、`weibo`、`bilibili`、`ithome`、`v2ex` |
 | `source_id` | 信源 id |
 | `category` | 分类，如 `hotnews`、`community` |
 | `title` | 标题 |
@@ -49,9 +53,9 @@ cat /tmp/hotnews.json | guanlan format hotnews
 
 使用建议：
 
-- 用户问“今天国内有什么热点”：先 `guanlan hotnews baidu`，再按主题补搜索。
+- 用户问“今天国内有什么热点”：先 `guanlan hotnews today`，再按主题补搜索。
 - 用户问“技术社区在讨论什么”：优先 `guanlan hotnews v2ex`。
-- 用户需要更多媒体/财经/科技热榜：尝试 `guanlan hotnews newsnow:<source>`，公共 BASE_URL 不稳时改用已配置的 NewsNow。
+- 用户需要更多媒体/财经/科技热榜：先看 `ithome`、`bilibili` 等原生源；再尝试 `guanlan hotnews newsnow:<source>`，公共 BASE_URL 不稳时改用已配置的 NewsNow。
 - 用户问“知乎上怎么看”：优先用 `guanlan search "关键词" --site zhihu.com`；`guanlan hotnews zhihu` 只能作为 experimental 尝试。
 - 不要为了热榜读取浏览器 Cookie；需要登录的深度平台应单独确认。
 

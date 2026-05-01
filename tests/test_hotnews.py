@@ -72,6 +72,148 @@ def test_fetch_zhihu_normalizes_topstory_payload(monkeypatch):
     assert items[0]["metrics"]["heat"] == "1000 万热度"
 
 
+def test_fetch_weibo_normalizes_hot_search_payload(monkeypatch):
+    monkeypatch.setattr(
+        hotnews,
+        "_read_json",
+        lambda _url, **_kwargs: {
+            "data": {
+                "realtime": [
+                    {
+                        "word": "五一出行",
+                        "note": "五一出行",
+                        "num": 123456,
+                        "flag_desc": "热",
+                        "word_scheme": "#五一出行#",
+                    }
+                ]
+            }
+        },
+    )
+
+    items = hotnews.fetch_hotnews("weibo", limit=1)
+
+    assert items[0]["source_id"] == "weibo"
+    assert items[0]["title"] == "五一出行"
+    assert "s.weibo.com" in items[0]["url"]
+    assert items[0]["metrics"]["heat"] == 123456
+    assert items[0]["metrics"]["label"] == "热"
+
+
+def test_fetch_bilibili_normalizes_ranking_payload(monkeypatch):
+    monkeypatch.setattr(
+        hotnews,
+        "_read_json",
+        lambda _url: {
+            "data": {
+                "list": [
+                    {
+                        "title": "一个热门视频",
+                        "desc": "视频简介",
+                        "bvid": "BV123",
+                        "owner": {"name": "UP 主"},
+                        "stat": {"view": 1000, "like": 88, "reply": 9},
+                    }
+                ]
+            }
+        },
+    )
+
+    items = hotnews.fetch_hotnews("bilibili", limit=1)
+
+    assert items[0]["source_id"] == "bilibili"
+    assert items[0]["title"] == "一个热门视频"
+    assert items[0]["url"] == "https://www.bilibili.com/video/BV123"
+    assert items[0]["metrics"]["heat"] == 1000
+    assert items[0]["metrics"]["views"] == 1000
+    assert items[0]["metrics"]["owner"] == "UP 主"
+
+
+def test_fetch_bilibili_falls_back_to_popular_payload(monkeypatch):
+    requested = []
+
+    def fake_read_json(url):
+        requested.append(url)
+        if "ranking" in url:
+            return {"code": -352, "message": "-352"}
+        return {
+            "data": {
+                "list": [
+                    {
+                        "title": "热门视频兜底",
+                        "desc": "popular endpoint",
+                        "bvid": "BV999",
+                        "owner": {"name": "UP 主"},
+                        "stat": {"view": 2000},
+                    }
+                ]
+            }
+        }
+
+    monkeypatch.setattr(hotnews, "_read_json", fake_read_json)
+
+    items = hotnews.fetch_hotnews("bilibili", limit=1)
+
+    assert "ranking/v2" in requested[0]
+    assert "popular?ps=1&pn=1" in requested[1]
+    assert items[0]["title"] == "热门视频兜底"
+
+
+def test_fetch_ithome_parses_public_rss(monkeypatch):
+    monkeypatch.setattr(
+        hotnews,
+        "_read_text",
+        lambda _url: """
+        <rss><channel><item>
+          <title>IT 之家消息</title>
+          <link>https://www.ithome.com/0/001/001.htm</link>
+          <description><![CDATA[<p>科技新闻摘要</p>]]></description>
+          <pubDate>Fri, 01 May 2026 08:00:00 GMT</pubDate>
+        </item></channel></rss>
+        """,
+    )
+
+    items = hotnews.fetch_hotnews("ithome", limit=1)
+
+    assert items[0]["source_id"] == "ithome"
+    assert items[0]["title"] == "IT 之家消息"
+    assert items[0]["summary"] == "科技新闻摘要"
+    assert items[0]["published_at"] == "Fri, 01 May 2026 08:00:00 GMT"
+
+
+def test_fetch_today_round_robins_sources_and_tolerates_failures(monkeypatch):
+    monkeypatch.setattr(
+        hotnews,
+        "fetch_baidu",
+        lambda limit=20: [
+            hotnews.HotNewsItem(platform="baidu", source_id="baidu", category="hotnews", title="百度 1", rank=1),
+            hotnews.HotNewsItem(platform="baidu", source_id="baidu", category="hotnews", title="百度 2", rank=2),
+        ],
+    )
+    monkeypatch.setattr(
+        hotnews,
+        "fetch_weibo",
+        lambda limit=20: [
+            hotnews.HotNewsItem(platform="weibo", source_id="weibo", category="social", title="微博 1", rank=1)
+        ],
+    )
+    monkeypatch.setattr(hotnews, "fetch_bilibili", lambda limit=20: (_ for _ in ()).throw(RuntimeError("403")))
+    monkeypatch.setattr(hotnews, "fetch_ithome", lambda limit=20: [])
+    monkeypatch.setattr(
+        hotnews,
+        "fetch_v2ex",
+        lambda limit=20: [
+            hotnews.HotNewsItem(platform="v2ex", source_id="v2ex", category="community", title="V2EX 1", rank=1)
+        ],
+    )
+
+    items = hotnews.fetch_hotnews("today", limit=4)
+
+    assert [item["title"] for item in items] == ["百度 1", "微博 1", "V2EX 1", "百度 2"]
+    assert [item["rank"] for item in items] == [1, 2, 3, 4]
+    assert items[0]["metrics"]["source_rank"] == 1
+
+
 def test_normalize_hotnews_payload_accepts_newsnow_like_shape():
     payload = {
         "data": {
@@ -143,9 +285,9 @@ def test_fetch_hotnews_auto_uses_newsnow_for_unknown_source(monkeypatch):
         ],
     )
 
-    items = hotnews.fetch_hotnews("ithome", limit=1)
+    items = hotnews.fetch_hotnews("juejin", limit=1)
 
-    assert items[0]["source_id"] == "newsnow:ithome"
+    assert items[0]["source_id"] == "newsnow:juejin"
     assert items[0]["title"] == "IT之家消息"
 
 
@@ -175,7 +317,11 @@ def test_hotnews_cli_lists_sources(capsys):
         main()
     captured = capsys.readouterr()
     data = json.loads(captured.out)
+    assert "today" in data
     assert "baidu" in data
+    assert "weibo" in data
+    assert "bilibili" in data
+    assert "ithome" in data
     assert "zhihu" in data
     assert data["zhihu"]["status"] == "experimental"
     assert data["zhihu"]["verified"] is False

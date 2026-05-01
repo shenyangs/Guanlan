@@ -8,13 +8,15 @@ not require cookies, browser access, or Keychain integration.
 from __future__ import annotations
 
 import json
+import re
 import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+from xml.etree import ElementTree
 
-_UA = "guanlan/1.4"
+_UA = "Mozilla/5.0"
 _TIMEOUT = 12
 DEFAULT_NEWSNOW_BASE_URL = "https://newsnow.busiyi.world"
 
@@ -41,6 +43,15 @@ class HotNewsItem:
 
 
 SOURCE_CATALOG: dict[str, dict[str, Any]] = {
+    "today": {
+        "name": "今日多源热榜",
+        "platform": "guanlan",
+        "category": "hotnews",
+        "risk": "low",
+        "backend": "native",
+        "status": "stable",
+        "notes": "聚合 baidu、weibo、bilibili、ithome、v2ex；单源失败不影响其它来源。",
+    },
     "baidu": {
         "name": "百度热搜",
         "platform": "baidu",
@@ -48,6 +59,33 @@ SOURCE_CATALOG: dict[str, dict[str, Any]] = {
         "risk": "low",
         "backend": "native",
         "status": "stable",
+    },
+    "weibo": {
+        "name": "微博热搜",
+        "platform": "weibo",
+        "category": "social",
+        "risk": "low",
+        "backend": "native",
+        "status": "best-effort",
+        "notes": "公开只读热搜端点；不读取 Cookie 或登录态，但可能受反爬和地区网络影响。",
+    },
+    "bilibili": {
+        "name": "B站热门视频",
+        "platform": "bilibili",
+        "category": "video",
+        "risk": "low",
+        "backend": "native",
+        "status": "best-effort",
+        "notes": "公开全站热门视频榜，不等同于 B站搜索框热搜；接口偶尔会限流或返回风控码。",
+    },
+    "ithome": {
+        "name": "IT之家资讯",
+        "platform": "ithome",
+        "category": "tech",
+        "risk": "low",
+        "backend": "native",
+        "status": "stable",
+        "notes": "公开 RSS 源，适合作为科技资讯快照。",
     },
     "zhihu": {
         "name": "知乎热榜",
@@ -106,12 +144,13 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _read_json(url: str, timeout: int = _TIMEOUT) -> Any:
+def _read_json(url: str, timeout: int = _TIMEOUT, headers: dict[str, str] | None = None) -> Any:
     req = urllib.request.Request(
         url,
         headers={
             "User-Agent": _UA,
             "Accept": "application/json,text/plain,*/*",
+            **(headers or {}),
         },
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -119,10 +158,28 @@ def _read_json(url: str, timeout: int = _TIMEOUT) -> Any:
     return json.loads(raw)
 
 
+def _read_text(url: str, timeout: int = _TIMEOUT, headers: dict[str, str] | None = None) -> str:
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": _UA,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            **(headers or {}),
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read().decode("utf-8", errors="replace")
+
+
 def _clean_text(value: Any) -> str:
     if value is None:
         return ""
     return str(value).replace("\n", " ").strip()
+
+
+def _strip_html(value: Any) -> str:
+    text = re.sub(r"<[^>]+>", " ", str(value or ""))
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _pick(raw: dict[str, Any], *keys: str) -> Any:
@@ -216,6 +273,101 @@ def _flatten_baidu_content(value: Any) -> list[dict[str, Any]]:
     return rows
 
 
+def fetch_weibo(limit: int = 20) -> list[HotNewsItem]:
+    """Fetch Weibo hot searches from a public read-only endpoint."""
+    payload = _read_json(
+        "https://weibo.com/ajax/side/hotSearch",
+        headers={"Referer": "https://weibo.com/"},
+    )
+    data = payload.get("data") if isinstance(payload, dict) else {}
+    rows = data.get("realtime") if isinstance(data, dict) else []
+
+    results: list[HotNewsItem] = []
+    for idx, raw in enumerate((rows or [])[:limit], start=1):
+        if not isinstance(raw, dict):
+            continue
+        word = _pick(raw, "word", "note", "small_icon_desc")
+        scheme = _pick(raw, "word_scheme")
+        query = scheme or word
+        url = f"https://s.weibo.com/weibo?q={urllib.parse.quote(str(query))}" if query else ""
+        results.append(
+            _item(
+                source_id="weibo",
+                title=word,
+                url=url,
+                summary=_pick(raw, "note", "category"),
+                metrics={
+                    "heat": _pick(raw, "num", "raw_hot"),
+                    "label": _pick(raw, "flag_desc", "icon_desc", "small_icon_desc"),
+                    "category": _pick(raw, "category"),
+                },
+                rank=idx,
+                confidence="medium",
+            )
+        )
+    return [item for item in results if item.title]
+
+
+def fetch_bilibili(limit: int = 20) -> list[HotNewsItem]:
+    """Fetch Bilibili all-site popular videos from its public ranking API."""
+    payload = _read_json("https://api.bilibili.com/x/web-interface/ranking/v2?rid=0&type=all")
+    data = payload.get("data") if isinstance(payload, dict) else {}
+    rows = data.get("list") if isinstance(data, dict) else []
+    if not rows:
+        payload = _read_json(f"https://api.bilibili.com/x/web-interface/popular?ps={int(limit)}&pn=1")
+        data = payload.get("data") if isinstance(payload, dict) else {}
+        rows = data.get("list") if isinstance(data, dict) else []
+
+    results: list[HotNewsItem] = []
+    for idx, raw in enumerate((rows or [])[:limit], start=1):
+        if not isinstance(raw, dict):
+            continue
+        owner = raw.get("owner") if isinstance(raw.get("owner"), dict) else {}
+        stat = raw.get("stat") if isinstance(raw.get("stat"), dict) else {}
+        bvid = _pick(raw, "bvid")
+        url = _pick(raw, "short_link_v2", "short_link") or (
+            f"https://www.bilibili.com/video/{bvid}" if bvid else ""
+        )
+        results.append(
+            _item(
+                source_id="bilibili",
+                title=_pick(raw, "title"),
+                url=url,
+                summary=_pick(raw, "desc"),
+                metrics={
+                    "heat": _pick(stat, "view"),
+                    "views": _pick(stat, "view"),
+                    "likes": _pick(stat, "like"),
+                    "replies": _pick(stat, "reply"),
+                    "owner": _pick(owner, "name"),
+                },
+                rank=idx,
+            )
+        )
+    return [item for item in results if item.title]
+
+
+def fetch_ithome(limit: int = 20) -> list[HotNewsItem]:
+    """Fetch IT Home news from its public RSS feed."""
+    raw_xml = _read_text("https://www.ithome.com/rss/")
+    root = ElementTree.fromstring(raw_xml)
+    rows = root.findall(".//item")
+
+    results: list[HotNewsItem] = []
+    for idx, row in enumerate(rows[:limit], start=1):
+        results.append(
+            _item(
+                source_id="ithome",
+                title=row.findtext("title", default=""),
+                url=row.findtext("link", default=""),
+                summary=_strip_html(row.findtext("description", default="")),
+                published_at=row.findtext("pubDate", default=""),
+                rank=idx,
+            )
+        )
+    return [item for item in results if item.title]
+
+
 def fetch_zhihu(limit: int = 20) -> list[HotNewsItem]:
     """Fetch Zhihu hot list using its public topstory endpoint."""
     url = (
@@ -276,6 +428,44 @@ def fetch_v2ex(limit: int = 20) -> list[HotNewsItem]:
     return [item for item in results if item.title]
 
 
+def fetch_today(limit: int = 20) -> list[dict[str, Any]]:
+    """Fetch a diverse daily hotnews snapshot without letting one source dominate."""
+    limit = max(int(limit), 1)
+    source_fetchers = [
+        ("baidu", fetch_baidu),
+        ("weibo", fetch_weibo),
+        ("bilibili", fetch_bilibili),
+        ("ithome", fetch_ithome),
+        ("v2ex", fetch_v2ex),
+    ]
+    per_source = max(3, min(8, (limit + len(source_fetchers) - 1) // len(source_fetchers) + 1))
+    buckets: list[list[dict[str, Any]]] = []
+    errors: list[str] = []
+
+    for source_id, fetcher in source_fetchers:
+        try:
+            bucket = [item.to_dict() for item in fetcher(limit=per_source)]
+            if bucket:
+                buckets.append(bucket)
+        except Exception as exc:  # Keep the aggregate useful even when one public endpoint flakes.
+            errors.append(f"{source_id}: {exc}")
+
+    merged: list[dict[str, Any]] = []
+    for offset in range(per_source):
+        for bucket in buckets:
+            if offset >= len(bucket) or len(merged) >= limit:
+                continue
+            item = dict(bucket[offset])
+            item["metrics"] = dict(item.get("metrics") or {})
+            item["metrics"].setdefault("source_rank", item.get("rank") or offset + 1)
+            item["rank"] = len(merged) + 1
+            merged.append(item)
+
+    if not merged and errors:
+        raise RuntimeError("All native hotnews sources failed: " + "; ".join(errors))
+    return merged[:limit]
+
+
 def fetch_newsnow(
     source: str,
     limit: int = 20,
@@ -293,7 +483,7 @@ def fetch_newsnow(
 
 
 def fetch_hotnews(
-    source: str = "baidu",
+    source: str = "today",
     limit: int = 20,
     backend: str = "auto",
     newsnow_base_url: str | None = None,
@@ -302,7 +492,11 @@ def fetch_hotnews(
     source = source.lower().strip()
     backend = (backend or "auto").lower().strip()
     fetchers = {
+        "today": fetch_today,
         "baidu": fetch_baidu,
+        "weibo": fetch_weibo,
+        "bilibili": fetch_bilibili,
+        "ithome": fetch_ithome,
         "zhihu": fetch_zhihu,
         "v2ex": fetch_v2ex,
     }
@@ -317,7 +511,10 @@ def fetch_hotnews(
             return fetch_newsnow(source, limit=limit, base_url=newsnow_base_url)
         available = ", ".join(sorted(fetchers) + [f"newsnow:{name}" for name in sorted(NEWSNOW_RECOMMENDED_SOURCES)])
         raise ValueError(f"Unknown hotnews source: {source}. Available: {available}")
-    return [item.to_dict() for item in fetchers[source](limit=limit)]
+    return [
+        item.to_dict() if hasattr(item, "to_dict") else dict(item)
+        for item in fetchers[source](limit=limit)
+    ]
 
 
 def normalize_hotnews_payload(

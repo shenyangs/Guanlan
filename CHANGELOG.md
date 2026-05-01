@@ -8,6 +8,26 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.1.7 - 2026-05-01
+
+### Added
+
+- `guanlan hotnews` 默认入口改为 `today`，聚合百度热搜、微博热搜、B站热门视频、IT之家 RSS 和 V2EX 热门。
+- 新增原生公开热榜源：`weibo`、`bilibili`、`ithome`。
+- `today` 多源聚合会 round-robin 合并各源结果，并容忍单个公开端点失败。
+- MCP `guanlan_hotnews` 默认源同步为 `today`。
+
+### Changed
+
+- README、Agent 使用说明、skill 和 AGENTS.md 更新为 `today` 优先的热榜路径。
+- 微博和 B站单源标记为 `best-effort`，避免对公开端点稳定性过度承诺。
+
+### Verified
+
+- 新增测试覆盖微博、B站、IT之家、`today` 聚合和 NewsNow fallback。
+- `guanlan hotnews today --limit 5 --json` 在当前环境可返回多源结果。
+- 版本同步到 `0.1.7`。
+
 ## v0.1.6 - 2026-05-01
 
 ### Changed

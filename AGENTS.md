@@ -11,7 +11,10 @@ guanlan search "政策或产业问题" --profile china --scope party_central
 guanlan search "电商零售问题" --profile china --scope ecommerce
 guanlan search --list-scopes
 guanlan read "https://example.com/article" --max-chars 12000
-guanlan hotnews baidu --limit 10
+guanlan hotnews today --limit 10
+guanlan hotnews weibo --limit 10
+guanlan hotnews bilibili --limit 10
+guanlan hotnews ithome --limit 10
 guanlan hotnews v2ex --limit 10
 guanlan doctor --trace
 ```
