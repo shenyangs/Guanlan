@@ -119,7 +119,7 @@ guanlan doctor
 guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 5
 ```
 
-看到 `观澜 / Guanlan v0.1.0`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.1.1`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
 
 以后更新观澜：
 

@@ -30,12 +30,21 @@ GitHub 侧 workflow 已使用 OIDC（`id-token: write`），无需保存 PyPI AP
 
 ## 发版流程
 
-1. 更新版本号（`pyproject.toml`）。
+版本约定：
+
+- 默认每次发布/推送功能改动时递增 patch 版本，即 `+0.0.1`。
+- 版本号需要同时更新 `pyproject.toml` 和 `guanlan/__init__.py`。
+- 默认直接推送到 `main`，不走长期 release 分支。
+
+流程：
+
+1. 更新版本号，例如 `0.1.0 -> 0.1.1`。
 2. 提交代码并推送到 `main`。
 3. 打 tag 并推送，例如：
 
 ```bash
 git tag v0.1.1
+git push origin main
 git push origin v0.1.1
 ```
 
