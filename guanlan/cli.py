@@ -731,8 +731,8 @@ def _cmd_format(args):
 def _cmd_hotnews(args):
     """Fetch Chinese hotnews from native public sources."""
 
-    from guanlan.hotnews import fetch_hotnews, format_hotnews_markdown, list_sources
     from guanlan.config import Config
+    from guanlan.hotnews import fetch_hotnews, format_hotnews_markdown, list_sources
 
     source = (args.source or "baidu").lower()
     if source == "list":

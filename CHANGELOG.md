@@ -8,6 +8,19 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.1.6 - 2026-05-01
+
+### Changed
+
+- README、Agent 使用说明和 skill 搜索参考补充 NewsNow 可选热榜增强入口。
+- 热榜说明区分原生稳定源 `baidu/v2ex` 与 `newsnow:<source>` best-effort 增强源，避免把外部后端误认为原生稳定能力。
+- 文档补充 `newsnow-base-url` 配置方式，提示公共 NewsNow 不稳时可切换自有 endpoint。
+
+### Verified
+
+- 复用已有 NewsNow backend、source catalog、CLI 配置和测试覆盖。
+- 版本同步到 `0.1.6`。
+
 ## v0.1.5 - 2026-05-01
 
 ### Added

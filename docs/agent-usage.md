@@ -245,6 +245,20 @@ guanlan hotnews baidu --limit 10
 guanlan hotnews v2ex --limit 10
 ```
 
+如果需要更多来源，可以使用 NewsNow 可选增强后端，例如：
+
+```bash
+guanlan hotnews newsnow:36kr-quick --limit 10
+guanlan hotnews newsnow:ithome --limit 10
+guanlan hotnews newsnow:bilibili-hot-search --limit 10
+```
+
+NewsNow 源覆盖面更广，但稳定性取决于 `BASE_URL`、Cloudflare 和上游抓取状态；公共站不稳时可先配置自有或可用 endpoint：
+
+```bash
+guanlan configure newsnow-base-url https://your-newsnow.example
+```
+
 `zhihu` 热榜是 experimental 源，不要当作稳定热榜入口。需要知乎视角时可尝试：
 
 ```bash

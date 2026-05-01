@@ -40,7 +40,7 @@
 - **公开网页搜索**：`guanlan search "关键词" --profile china`
 - **中文信源白名单**：`--scope party_central/gov/local_official/ecommerce`
 - **网页阅读与降级**：`guanlan read "URL"`，Jina Reader、直连 HTML、搜索兜底组合使用。
-- **稳定热榜观察**：`guanlan hotnews baidu`、`guanlan hotnews v2ex`
+- **热榜观察**：原生稳定源 `guanlan hotnews baidu/v2ex`；NewsNow 可选增强源 `guanlan hotnews newsnow:36kr-quick`
 - **研究证据包**：`guanlan research "关键词" --format context`
 - **本地知识库**：`guanlan archive add/search/export`
 
@@ -148,7 +148,7 @@ guanlan doctor
 guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 5
 ```
 
-看到 `观澜 / Guanlan v0.1.5`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.1.6`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -454,6 +454,14 @@ guanlan read "https://github.com/shenyangs/Guanlan" --watch
 guanlan hotnews list
 guanlan hotnews baidu --limit 10
 guanlan hotnews v2ex --limit 10
+guanlan hotnews newsnow:36kr-quick --limit 10
+```
+
+`newsnow:<source>` 是可选增强后端，适合补 36氪、IT之家、B站热搜、财联社、华尔街见闻等更多来源；稳定性取决于 NewsNow BASE_URL、Cloudflare 和上游抓取状态。公共站不稳时可配置自己的 NewsNow：
+
+```bash
+guanlan configure newsnow-base-url https://your-newsnow.example
+guanlan hotnews newsnow:ithome --limit 10
 ```
 
 `zhihu` 热榜是实验源，部分环境会返回 401/403。需要知乎视角时，优先把它当作可选尝试；失败后用站内搜索兜底：
