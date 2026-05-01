@@ -105,10 +105,23 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 安装后如果终端提示找不到 `uv`，关掉当前终端，重新打开一次。
 
-**第二步：安装观澜**
+**第二步：安装观澜（任选一种）**
 
 ```bash
-uv tool install git+https://github.com/shenyangs/Guanlan.git
+brew tap shenyangs/tap
+brew install guanlan
+```
+
+或（PyPI + `uv`）：
+
+```bash
+uv tool install guanlan
+```
+
+或（PyPI + `pipx`）：
+
+```bash
+pipx install guanlan
 ```
 
 **第三步：确认能用**
@@ -119,40 +132,50 @@ guanlan doctor
 guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 5
 ```
 
-看到 `观澜 / Guanlan v0.1.1`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.1.2`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
 
 以后更新观澜：
 
 ```bash
+brew upgrade guanlan
 uv tool upgrade guanlan
+pipx upgrade guanlan
 ```
 
-如果更新失败，也可以直接重装：
+如果更新失败，也可以直接重装（`uv`）：
 
 ```bash
-uv tool install --force git+https://github.com/shenyangs/Guanlan.git
+uv tool install --force guanlan
 ```
 
 ### Agent / 开发者安装
 
-观澜第一版优先以 GitHub 源码发布。推荐用 `uv` 一条命令安装为全局 CLI：
+推荐直接从 PyPI 安装：
 
 ```bash
-uv tool install git+https://github.com/shenyangs/Guanlan.git
+uv tool install guanlan
 guanlan doctor
 ```
 
 如果你使用 `pipx`：
 
 ```bash
-pipx install git+https://github.com/shenyangs/Guanlan.git
+pipx install guanlan
 guanlan doctor
 ```
 
-想先试运行、不持久安装：
+如果你偏好 Homebrew：
 
 ```bash
-uvx --from git+https://github.com/shenyangs/Guanlan.git guanlan version
+brew tap shenyangs/tap
+brew install guanlan
+guanlan doctor
+```
+
+想先试运行、不持久安装（`uvx`）：
+
+```bash
+uvx --from guanlan guanlan version
 ```
 
 如果已经克隆本仓库，也可以在仓库根目录安装：
@@ -170,7 +193,7 @@ MCP 客户端可以使用 `guanlan-mcp` 入口。以支持 JSON 配置的客户�
   "mcpServers": {
     "guanlan": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/shenyangs/Guanlan.git", "guanlan-mcp"]
+      "args": ["--from", "guanlan", "guanlan-mcp"]
     }
   }
 }
