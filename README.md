@@ -168,7 +168,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.1.9`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.1.10`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -314,6 +314,7 @@ guanlan configure --from-browser chrome
 | `guanlan research "关键词"` | 生成 Agent 可直接使用的研究证据包。 |
 | `guanlan research --list-presets` | 查看研究模板和默认 scope/site 策略。 |
 | `guanlan research "关键词" --format context` | 输出适合直接放进 prompt 的研究上下文。 |
+| `guanlan research "关键词" --advisor` | 在证据包后追加谨慎助理视角，推测可能意图并给下一步建议。 |
 | `guanlan research "关键词" --sites zhihu.com,weibo.com` | 按多个指定站点生成平台定向证据块。 |
 | `guanlan pulse "关键词"` | 安全版话题回响分析，输出讨论倾向、关键词信号和明确边界。 |
 | `guanlan read "URL"` | 读取网页并转成 Markdown。 |
@@ -328,7 +329,7 @@ guanlan configure --from-browser chrome
 | `guanlan configure --from-browser chrome` | 显式从浏览器提取支持平台的 Cookie。 |
 | `guanlan skill --install` | 将观澜使用说明安装到 Agent skills 目录。 |
 
-默认候选池从 `v0.1.9` 起按 Agent 研究场景放大：`search`、`research`、`archive search` 默认 50 条，`hotnews` 默认 50 条且 MCP 最高 100 条，`read` 的搜索兜底默认 20 条。
+默认候选池从 `v0.1.10` 起按 Agent 研究场景放大：`search`、`research`、`archive search` 默认 50 条，`hotnews` 默认 50 条且 MCP 最高 100 条，`read` 的搜索兜底默认 20 条。
 
 ## 使用场景与案例
 
@@ -578,9 +579,12 @@ guanlan research "人工智能 新质生产力" --profile china --scope party_ce
 guanlan research "跨境电商 AI" --profile china --scope ecommerce --read-top 3
 guanlan research "某产品 用户评价" --profile china --site zhihu.com --read-top 0
 guanlan research "某产品 用户评价" --preset reputation --sites zhihu.com,weibo.com,xiaohongshu.com
+guanlan research "某产品 用户评价" --preset reputation --read-top 0 --advisor
 ```
 
 `research` 会把搜索结果、同题聚类、信源多样性和原文摘读整理成一份更适合 Agent 消化的证据包。
+
+如果用户需要建议、下一步、风险提醒，或希望你判断“他为什么搜这个”，加 `--advisor`。助理视角只基于当前材料提出可能意图和行动建议，必须保留假设性与边界感，不能当作用户真实目的或高风险专业结论。
 
 Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会查 `gov + party_central`，`reputation` 会查 `social_web + tech_dev + business`，并补充知乎、微博、小红书、B站等公开页证据块。用户显式传入 `--scope`、`--site` 或 `--sites` 时，以用户指定范围为准。
 

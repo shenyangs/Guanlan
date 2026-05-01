@@ -32,6 +32,8 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     research_tool = next(tool for tool in tools if tool["name"] == "guanlan_research")
     hotnews_tool = next(tool for tool in tools if tool["name"] == "guanlan_hotnews")
     assert "advisor" in research_tool["inputSchema"]["properties"]
+    assert "advisor=true" in research_tool["description"]
+    assert "助理视角" in research_tool["inputSchema"]["properties"]["advisor"]["description"]
     assert "backend" in hotnews_tool["inputSchema"]["properties"]
     assert "newsnow_base_url" in hotnews_tool["inputSchema"]["properties"]
 

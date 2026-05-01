@@ -19,6 +19,7 @@
 - 输出结论时保留来源链接。
 - 失败时降级，不要硬撞平台风控。
 - 默认候选池按研究任务放大：搜索/研究/归档检索默认 50 条，热榜默认 50 条，读取失败后的搜索兜底默认 20 条。
+- 用户需要建议、影响判断、下一步行动，或询问“为什么会搜这个”时，优先使用 `research --advisor`，但把助理视角当作谨慎假设，不当作用户真实意图。
 
 ## 最小命令集
 
@@ -33,8 +34,10 @@
 | “查地方官媒/区域政策” | `guanlan search "关键词" --profile china --scope local_official` |
 | “查电商/零售/产业带” | `guanlan search "关键词" --profile china --scope ecommerce` |
 | “帮我查清楚并给依据” | `guanlan research "关键词" --profile china` |
+| “查完后给建议/下一步/可能原因” | `guanlan research "关键词" --profile china --advisor` |
 | “查政策/监管/官方通知” | `guanlan research "关键词" --preset policy` |
 | “查产品口碑/用户评价” | `guanlan research "关键词" --preset reputation` |
+| “查产品口碑并给购买/处理建议” | `guanlan research "关键词" --preset reputation --read-top 0 --advisor` |
 | “指定多个平台查口碑” | `guanlan research "关键词" --preset reputation --sites zhihu.com,weibo.com,xiaohongshu.com` |
 | “看话题是被夸还是被骂” | `guanlan pulse "关键词" --format context` |
 | “查技术选型/开发者反馈” | `guanlan research "关键词" --preset tech` |
@@ -185,6 +188,15 @@ guanlan research "某主题" --profile china --limit 50 --read-top 2
 ```
 
 `research` 会自动整合搜索质量层、同题聚类、信源多样性和原文摘读。输出仍然不是最终答案，Agent 需要基于证据包再组织结论、依据和不确定性。
+
+如果用户需要你在证据包之外给一个谨慎的“助理视角”，加 `--advisor`：
+
+```bash
+guanlan research "某主题" --profile china --limit 50 --read-top 2 --advisor
+guanlan research "某产品 用户评价" --preset reputation --read-top 0 --advisor
+```
+
+助理视角会尝试推测用户可能关心的方向、材料能支持什么、不能支持什么，以及下一步可做什么。它必须被表述为“可能/建议/仅供参考”，不能写成用户真实目的，也不能替代医疗、法律、金融等高风险专业判断。
 
 Preset 会自动选择一个或多个 scope，并可包含平台定向站点。用户显式传入 `--scope` 时，只查用户指定 scope；显式传入 `--site` 或 `--sites` 时，优先做站内/平台定向研究。
 

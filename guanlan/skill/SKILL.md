@@ -60,6 +60,8 @@ guanlan search "query" --trace
 guanlan search "query" --cache-ttl 3600
 guanlan search "query" --format context
 guanlan search "query" --source-chart
+guanlan research "query" --profile china --advisor
+guanlan research "product 用户评价" --preset reputation --read-top 0 --advisor
 guanlan pulse "query" --format context
 
 # 通用网页阅读
@@ -82,6 +84,9 @@ guanlan hotnews bilibili --limit 50
 guanlan hotnews ithome --limit 50
 guanlan hotnews zhihu --json  # experimental，失败时改用 site:zhihu.com 搜索
 guanlan hotnews list
+
+# 助理视角：用户要建议、影响、下一步、或“可能为什么搜这个”时使用
+guanlan research "query" --profile china --advisor
 
 # Twitter 搜索
 twitter search "query" --limit 50

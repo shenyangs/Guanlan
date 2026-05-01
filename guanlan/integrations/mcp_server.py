@@ -93,7 +93,11 @@ def _tool_definitions() -> list[dict]:
         },
         {
             "name": "guanlan_research",
-            "description": "Build an agent-ready research evidence packet.",
+            "description": (
+                "Build an agent-ready research evidence packet. Set advisor=true when the user wants "
+                "advice, next steps, implications, risk reminders, or cautious hypotheses about why "
+                "they may be searching; the advisor block is evidence-bound and not the user's true intent."
+            ),
             "inputSchema": {
                 "type": "object",
                 "required": ["query"],
@@ -115,7 +119,14 @@ def _tool_definitions() -> list[dict]:
                     "max_read_chars": {"type": "integer", "minimum": 1},
                     "profile": {"type": "string", "enum": ["global", "china", "hybrid"]},
                     "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "markdown"},
-                    "advisor": {"type": "boolean", "default": False},
+                    "advisor": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "Append 助理视角: cautious intent hypotheses, evidence limits, and next steps. "
+                            "Use for advice/implications; keep it bounded and non-authoritative."
+                        ),
+                    },
                 },
             },
         },

@@ -28,6 +28,9 @@ guanlan search "跨境电商 AI" --profile china --scope ecommerce
 # 直接生成 Agent 回答前可用的证据上下文
 guanlan research "关键词" --profile china --limit 50 --read-top 2
 
+# 需要建议、下一步、影响判断或“用户可能为什么搜这个”时
+guanlan research "关键词" --profile china --limit 50 --read-top 2 --advisor
+
 # 只要搜索证据，不读取原文
 guanlan research "关键词" --profile china --read-top 0
 
@@ -44,6 +47,8 @@ guanlan research --list-presets
 ```
 
 **适用场景**: 用户要你“查清楚”“给依据”“做一个判断”。`research` 会整合搜索质量层、同题聚类、信源多样性和代表结果摘读。输出不是最终答案，你仍需要基于证据包组织结论、依据和不确定性。
+
+**助理视角**: 当用户希望你给建议、下一步、风险提醒、可能意图或“这意味着什么”时，使用 `--advisor`。它输出的是基于当前检索材料的谨慎假设，必须保留“仅供参考”的边界；不要把它写成用户真实目的，也不要把搜索样本写成总体结论。
 
 常用模板：`policy` 政策监管、`official` 官方表述、`industry` 产业研究、`ecommerce` 电商零售、`reputation` 产品口碑、`tech` 技术选型、`finance` 财经研究、`local` 地方研究。
 
