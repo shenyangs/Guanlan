@@ -8,6 +8,27 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.1.8 - 2026-05-02
+
+### Added
+
+- 增加搜索质量画像 `query_quality`，识别政策、地方、电商、财经、技术和口碑等查询意图。
+- 搜索排序增加 `intent_fit` 与 `source_quality` 因子，不同查询意图会偏好不同信源类型。
+- `guanlan search --trace` 增加 query quality、命中数和质量警告，帮助 Agent 解释排序原因。
+- 时效性识别补充“今年”“近24小时”“近48小时”等时间窗口。
+- 增加 `tests/fixtures/search_quality/scenarios.json`，用固定样例回归搜索排序质量。
+- 新增 `docs/roadmap.md`，记录后续版本路线、验收标准和暂不做事项。
+
+### Changed
+
+- README 的 trace 说明补充 `query_quality`，文档区新增路线图入口。
+- 版本同步到 `0.1.8`。
+
+### Verified
+
+- 搜索质量 fixtures 覆盖政策类和电商类排序。
+- 针对性测试覆盖质量画像、trace、时效性窗口和搜索排序。
+
 ## v0.1.7 - 2026-05-01
 
 ### Added

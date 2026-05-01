@@ -80,7 +80,7 @@ guanlan search "最近 query 热点" --profile china --trace
 guanlan search "最新 query 进展" --profile china --format context
 ```
 
-当用户说 `近期`、`最近`、`热点`、`热搜`、`最新`、`快讯` 等词时，观澜会自动补当前年月做搜索收束，并在排序里给近期结果加权、给明显陈旧结果降权。需要解释时使用 `--trace` 查看 `recency_boost`、`stale_penalty`、结果日期和时间窗口。
+当用户说 `近期`、`最近`、`热点`、`热搜`、`最新`、`快讯`、`今年`、`近24小时` 等词时，观澜会自动补时间线索做搜索收束，并在排序里给近期结果加权、给明显陈旧结果降权。需要解释时使用 `--trace` 查看 `recency_boost`、`stale_penalty`、结果日期和时间窗口。
 
 中文信源白名单：
 
@@ -128,6 +128,8 @@ guanlan search "query" --source-chart
 guanlan search "query" --trace
 guanlan search "query" --cluster-threshold conservative
 ```
+
+`--trace` 会输出 `query_quality`：观澜会识别政策、电商、财经、技术、口碑等搜索意图，并在排序里用 `intent_fit` 和 `source_quality` 解释为什么某类信源排得更靠前。
 
 `--source-chart` 会追加 ASCII 来源类型和域名分布，用来快速判断这轮信息是否偏官方、偏社交、偏商业媒体或偏单一域名。它只解释来源结构，不替代事实核验。
 

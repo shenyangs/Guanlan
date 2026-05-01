@@ -117,7 +117,6 @@ uv tool install guanlan
 安装完成后请运行：
 guanlan version
 guanlan doctor
-guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 5
 
 安全要求：不要读取浏览器 Cookie，不要触发登录授权，不要请求钥匙串权限。
 ```
@@ -167,10 +166,9 @@ pipx install guanlan
 ```bash
 guanlan version
 guanlan doctor
-guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 5
 ```
 
-看到 `观澜 / Guanlan v0.1.7`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.1.8`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -513,7 +511,7 @@ guanlan search "跨境电商 AI" --profile china --scope ecommerce --trace
 guanlan search "最新 人工智能 政策" --profile china --cluster-threshold conservative --trace
 ```
 
-`--trace` 会展示后端顺序、缓存命中、评分因子、topic 聚类、来源分类和时效性判断，方便 Agent 把检索过程讲清楚。
+`--trace` 会展示后端顺序、缓存命中、评分因子、query_quality、topic 聚类、来源分类和时效性判断，方便 Agent 把检索过程讲清楚。
 
 ### 13. 给 AI Agent 的最短工作流
 
@@ -599,7 +597,7 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 - 热榜、网页阅读与公开搜索之间的降级链路。
 - 默认只读、低扰、显式授权的安全边界。
 
-更完整的设计与阶段路线见 [中文互联网设计](docs/chinese-web-design.md)。
+更完整的设计与阶段路线见 [路线图](docs/roadmap.md) 和 [中文互联网设计](docs/chinese-web-design.md)。
 
 ## 给 Agent 的使用方式
 
@@ -621,6 +619,7 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 | --- | --- |
 | [中文入口](docs/README_zh.md) | 中文文档导航。 |
 | [更新日志](CHANGELOG.md) | 记录每个版本的能力变化、边界调整和下一步收口。 |
+| [路线图](docs/roadmap.md) | 后续迭代主线、验收标准和暂不做事项。 |
 | [Agent 使用说明](docs/agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜和安全路由规则。 |
 | [安装指南](docs/install.md) | 给 Agent 执行的安装流程与边界。 |
 | [更新指南](docs/update.md) | 更新观澜与依赖工具。 |

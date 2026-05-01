@@ -130,6 +130,7 @@ guanlan search --list-scopes
 - 多后端聚合，不把结论押在单一搜索引擎上。
 - URL 去重，合并来自多个后端的重复结果。
 - 标注 `source_type`、`matched_scope`、`trust_level` 和 `score`。
+- 标注 `query_quality`，按政策、电商、财经、技术、口碑等意图调整信源偏好。
 - 标注 `topic_key`、`topic_size` 和 `topic_role`，帮助识别同题转载、镜像和重复报道。
 - 按 `source_type` 交错展示同题代表结果，优先形成多侧面证据组合。
 - 当用户指定 `--scope` 时，优先按该研究语境解释重叠域名。
@@ -303,7 +304,7 @@ guanlan doctor --profile china --trace
 guanlan doctor --check-config
 ```
 
-需要解释搜索排序时，使用 `--trace`。它会展示评分因子、topic 信息、缓存状态、后端顺序和时效性判断，适合排查“为什么 A 在 B 前面”。
+需要解释搜索排序时，使用 `--trace`。它会展示评分因子、query_quality、topic 信息、缓存状态、后端顺序和时效性判断，适合排查“为什么 A 在 B 前面”。
 
 ```bash
 guanlan search "最新 AI 政策" --profile china --trace

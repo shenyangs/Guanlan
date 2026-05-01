@@ -3,6 +3,7 @@
 
 import builtins
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -67,6 +68,55 @@ def test_search_web_trace_keeps_score_parts(monkeypatch):
     assert results[0]["trace"]["cache"] == "disabled"
 
 
+def test_search_quality_profile_detects_policy_intent():
+    quality = webtools.detect_search_quality_profile("人工智能 政策 最新", profile="china")
+
+    assert quality["intent"] == "policy"
+    assert "gov" in quality["preferred_scopes"]
+    assert "政府/部委" in quality["preferred_source_types"]
+
+
+def test_search_web_trace_includes_quality_profile(monkeypatch):
+    monkeypatch.setattr(
+        webtools,
+        "_search_duckduckgo",
+        lambda query, limit=10: [
+            webtools.SearchResult(
+                title="国务院发布人工智能政策通知",
+                url="https://gov.cn/zhengce/ai.htm",
+                snippet="2026年5月2日 最新政策",
+            )
+        ],
+    )
+
+    results = webtools.search_web("人工智能 政策 最新", backend="duckduckgo", trace=True)
+
+    assert results[0]["trace"]["query_quality"]["intent"] == "policy"
+    assert results[0]["trace"]["quality"]["fit"] is True
+    assert results[0]["trace"]["quality_summary"]["preferred_hit_count"] == 1
+    assert results[0]["score_parts"]["intent_fit"] > 0
+
+
+def test_format_search_trace_shows_query_quality(monkeypatch):
+    monkeypatch.setattr(
+        webtools,
+        "_search_duckduckgo",
+        lambda query, limit=10: [
+            webtools.SearchResult(
+                title="国务院发布人工智能政策通知",
+                url="https://gov.cn/zhengce/ai.htm",
+                snippet="最新政策",
+            )
+        ],
+    )
+
+    results = webtools.search_web("人工智能 政策 最新", backend="duckduckgo", trace=True)
+    trace = webtools.format_search_trace(results)
+
+    assert "query_quality: intent=policy" in trace
+    assert "quality_fit=True" in trace
+
+
 def test_search_web_detects_recency_intent():
     intent = webtools.detect_recency_intent("最近 AI 热点")
 
@@ -75,6 +125,14 @@ def test_search_web_detects_recency_intent():
     assert set(intent["matched_terms"]) & {"最近", "热点"}
     assert intent["start_date"]
     assert intent["end_date"]
+
+
+def test_search_web_detects_year_to_date_recency():
+    intent = webtools.detect_recency_intent("今年 跨境电商 趋势")
+
+    assert intent["enabled"] is True
+    assert intent["label"] == "year_to_date"
+    assert intent["start_date"].endswith("-01-01")
 
 
 def test_search_web_recency_intent_does_not_match_english_substrings():
@@ -137,6 +195,54 @@ def test_rank_results_penalizes_stale_results_for_recent_query():
     assert results[0].score_parts["recency_boost"] > 0
     assert results[1].score_parts["stale_penalty"] < 0
     assert results[1].trace["recency"]["in_window"] is False
+
+
+def test_rank_results_promotes_quality_fit_for_policy_query():
+    results = webtools.rank_results(
+        [
+            webtools.SearchResult(
+                title="知乎热议人工智能政策",
+                url="https://zhihu.com/question/ai-policy",
+                snippet="网友讨论人工智能政策最新影响",
+                source="duckduckgo",
+                rank=1,
+            ),
+            webtools.SearchResult(
+                title="国务院发布人工智能政策通知",
+                url="https://www.gov.cn/zhengce/ai.htm",
+                snippet="国务院发布人工智能相关政策通知",
+                source="bing",
+                rank=2,
+            ),
+        ],
+        query="人工智能 政策 最新",
+        backend_order=["duckduckgo", "bing"],
+    )
+
+    assert results[0].domain == "gov.cn"
+    assert results[0].score_parts["intent_fit"] > 0
+    assert results[0].trace["quality"]["matched_reason"] == "scope:gov"
+
+
+def test_search_quality_fixture_rankings():
+    fixture_path = Path(__file__).parent / "fixtures" / "search_quality" / "scenarios.json"
+    scenarios = json.loads(fixture_path.read_text(encoding="utf-8"))
+
+    for scenario in scenarios:
+        ranked = webtools.rank_results(
+            [
+                webtools.SearchResult(
+                    title=row["title"],
+                    url=row["url"],
+                    snippet=row.get("snippet", ""),
+                    source=row.get("source", "fixture"),
+                    rank=row.get("rank", idx),
+                )
+                for idx, row in enumerate(scenario["results"], start=1)
+            ],
+            query=scenario["query"],
+        )
+        assert ranked[0].domain == scenario["expected_first_domain"], scenario["name"]
 
 
 def test_search_web_cache_ttl_reuses_results(monkeypatch, tmp_path):

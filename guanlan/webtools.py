@@ -27,7 +27,7 @@ from typing import Any
 
 _UA = "Mozilla/5.0 (compatible; Guanlan/1.4)"
 _TIMEOUT = 20
-_CACHE_VERSION = 1
+_CACHE_VERSION = 2
 _MIN_USEFUL_READ_CHARS = 180
 _RECENCY_DEFAULT_WINDOW_DAYS = 30
 _WEAK_READ_MARKERS = (
@@ -42,6 +42,57 @@ _WEAK_READ_MARKERS = (
     "登录后查看",
     "请先登录",
 )
+
+_QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
+    "policy": {
+        "name": "政策/官方口径",
+        "terms": ("政策", "监管", "法规", "通知", "意见", "办法", "国务院", "部委", "主管部门", "官方", "解读"),
+        "preferred_scopes": ("gov", "party_central"),
+        "preferred_source_types": ("政府/部委", "党央媒"),
+        "caution_source_types": ("社交/内容平台",),
+        "guidance": "优先政府/部委原文和党央媒权威报道，媒体解读只能作为背景。",
+    },
+    "local": {
+        "name": "地方政策/区域研究",
+        "terms": ("地方", "城市", "区域", "省", "市", "区县", "产业园", "广东", "上海", "北京", "深圳", "杭州", "成都"),
+        "preferred_scopes": ("local_official", "gov", "party_central"),
+        "preferred_source_types": ("地方官媒", "政府/部委", "党央媒"),
+        "caution_source_types": (),
+        "guidance": "优先地方官媒、地方政府和中央口径交叉核验。",
+    },
+    "ecommerce": {
+        "name": "电商/零售/跨境",
+        "terms": ("电商", "零售", "跨境", "出海", "品牌", "渠道", "供应链", "产业带", "平台", "新消费"),
+        "preferred_scopes": ("ecommerce", "business"),
+        "preferred_source_types": ("电商/零售垂类", "商业/产业媒体"),
+        "caution_source_types": (),
+        "guidance": "优先垂类媒体和产业媒体，注意区分新闻、观点和软文。",
+    },
+    "finance": {
+        "name": "财经/资本市场",
+        "terms": ("财经", "股票", "股价", "财报", "融资", "上市", "投资", "基金", "债券", "宏观", "资本市场"),
+        "preferred_scopes": ("finance", "business"),
+        "preferred_source_types": ("财经/资本市场", "商业/产业媒体"),
+        "caution_source_types": ("社交/内容平台",),
+        "guidance": "优先公告、财报、财经快讯和权威财经媒体，市场观点不等于建议。",
+    },
+    "tech": {
+        "name": "技术/开发者",
+        "terms": ("技术", "开源", "框架", "模型", "api", "sdk", "github", "开发者", "部署", "bug", "benchmark"),
+        "preferred_scopes": ("tech_dev",),
+        "preferred_source_types": ("科技/开发者社区",),
+        "caution_source_types": (),
+        "guidance": "优先官方文档、代码仓库、开发者社区和可复现反馈。",
+    },
+    "reputation": {
+        "name": "口碑/公开讨论",
+        "terms": ("口碑", "评价", "体验", "吐槽", "避雷", "测评", "推荐", "小红书", "微博", "知乎", "b站", "bilibili"),
+        "preferred_scopes": ("social_web", "tech_dev", "business"),
+        "preferred_source_types": ("社交/内容平台", "科技/开发者社区", "商业/产业媒体"),
+        "caution_source_types": (),
+        "guidance": "社交结果适合发现样本线索，不能直接代表总体比例。",
+    },
+}
 
 
 RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
@@ -328,6 +379,7 @@ def search_web(
     if not original_query:
         raise ValueError("query is required")
     recency = detect_recency_intent(original_query)
+    quality = detect_search_quality_profile(original_query, scope=scope, site=site, profile=profile)
     if scope:
         from guanlan.search_sources import resolve_scope, scoped_query
 
@@ -363,6 +415,7 @@ def search_web(
                     "start_date": recency["start_date"],
                     "end_date": recency["end_date"],
                 },
+                "quality_intent": quality["intent"],
             },
         )
         cached = _cache_get("search", cache_key, ttl=cache_ttl)
@@ -415,8 +468,10 @@ def search_web(
         preferred_scope=scope,
         cluster_threshold=cluster_threshold,
         recency=recency,
+        quality=quality,
     )
     output_full = [r.to_dict() for r in ranked[:limit]]
+    quality_summary = search_quality_summary(output_full, quality=quality)
     for item in output_full:
         item.setdefault("trace", {})
         item["trace"].update(
@@ -427,6 +482,8 @@ def search_web(
                 "cache_key": cache_key,
                 "cluster_threshold": cluster_threshold,
                 "query_recency": recency,
+                "query_quality": quality,
+                "quality_summary": quality_summary,
                 "errors": list(errors),
             }
         )
@@ -446,9 +503,11 @@ def rank_results(
     preferred_scope: str | None = None,
     cluster_threshold: str = "conservative",
     recency: dict[str, Any] | None = None,
+    quality: dict[str, Any] | None = None,
 ) -> list[SearchResult]:
     """Normalize, dedupe, classify, and score search results."""
     backend_order = backend_order or []
+    quality = quality or detect_search_quality_profile(query, scope=preferred_scope)
     deduped = _dedupe_results(results)
     for item in deduped:
         item.domain = _domain(item.url)
@@ -466,9 +525,11 @@ def rank_results(
             query=query,
             backend_order=backend_order,
             recency=recency,
+            quality=quality,
         )
         item.score = item.score_parts["total"]
         item.trace["recency"] = _result_recency_trace(item, recency)
+        item.trace["quality"] = _result_quality_trace(item, quality)
     ranked = sorted(deduped, key=lambda r: (-r.score, r.rank))
     _assign_topic_clusters(ranked, threshold=cluster_threshold)
     ranked = _order_topic_representatives_first(ranked)
@@ -1591,11 +1652,24 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
     if not results:
         lines.append("- 无结果。")
         return "\n".join(lines)
+    query_quality = (results[0].get("trace") or {}).get("query_quality") or {}
+    quality_summary = (results[0].get("trace") or {}).get("quality_summary") or {}
+    if query_quality:
+        preferred = ",".join(query_quality.get("preferred_source_types") or []) or "none"
+        lines.append(
+            "- query_quality: "
+            f"intent={query_quality.get('intent', 'general')} "
+            f"preferred={preferred} "
+            f"hits={quality_summary.get('preferred_hit_count', 0)}/{quality_summary.get('result_count', 0)}"
+        )
+        for warning in quality_summary.get("warnings", []):
+            lines.append(f"  warning: {warning}")
     for idx, item in enumerate(results, start=1):
         title = _collapse_ws(str(item.get("title", "")))
         parts = item.get("score_parts") or {}
         trace = item.get("trace") or {}
         recency = trace.get("recency") or {}
+        quality = trace.get("quality") or {}
         part_text = ", ".join(
             f"{key}={value}" for key, value in parts.items() if key != "total"
         )
@@ -1608,10 +1682,16 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
                 f"; recency={recency.get('window_days')}d "
                 f"date={result_date} age={age_days} in_window={in_window}"
             )
+        quality_text = ""
+        if quality:
+            quality_text = (
+                f"; quality_fit={quality.get('fit')} "
+                f"matched={quality.get('matched_reason', '')}"
+            )
         lines.append(
             f"- result {idx}: score={item.get('score', 0)} ({part_text}); "
             f"topic={item.get('topic_key', '')}/{item.get('topic_role', '')}; "
-            f"cache={trace.get('cache', 'disabled')}{recency_text}; title={title}"
+            f"cache={trace.get('cache', 'disabled')}{recency_text}{quality_text}; title={title}"
         )
     return "\n".join(lines)
 
@@ -1649,6 +1729,120 @@ def _pipe_safe(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ").strip()
 
 
+def detect_search_quality_profile(
+    query: str,
+    scope: str | None = None,
+    site: str | None = None,
+    profile: str | None = None,
+) -> dict[str, Any]:
+    """Detect source-quality preferences for a search query.
+
+    This is intentionally advisory: it changes ranking weights and trace output,
+    but it does not silently narrow the query to a scope unless the caller asked
+    for one.
+    """
+    text = _collapse_ws(query).lower()
+    reasons: list[str] = []
+    intent = "general"
+    matched_terms: list[str] = []
+
+    explicit_scope = (scope or "").strip()
+    if explicit_scope:
+        try:
+            from guanlan.search_sources import resolve_scope
+
+            resolved = resolve_scope(explicit_scope)
+            return {
+                "intent": f"scope:{resolved.id}",
+                "name": f"显式 scope / {resolved.name}",
+                "matched_terms": [],
+                "preferred_scopes": [resolved.id],
+                "preferred_source_types": [resolved.source_type],
+                "caution_source_types": [],
+                "profile": profile or "",
+                "site": site or "",
+                "requested_scope": resolved.id,
+                "guidance": "用户已指定 scope，优先尊重该信源池。",
+                "reasons": [f"requested_scope:{resolved.id}"],
+            }
+        except Exception:
+            reasons.append(f"unknown_scope:{explicit_scope}")
+
+    for candidate, data in _QUALITY_INTENT_PROFILES.items():
+        terms = [term for term in data["terms"] if _quality_term_matches(text, str(term))]
+        if terms:
+            intent = candidate
+            matched_terms = terms
+            reasons.append(f"matched_terms:{','.join(terms[:4])}")
+            break
+
+    data = _QUALITY_INTENT_PROFILES.get(intent, {})
+    preferred_scopes = list(data.get("preferred_scopes", []))
+    preferred_source_types = list(data.get("preferred_source_types", []))
+    if profile == "china" and intent == "general":
+        reasons.append("profile:china")
+    if site:
+        reasons.append(f"site:{site}")
+
+    return {
+        "intent": intent,
+        "name": data.get("name", "通用网页研究"),
+        "matched_terms": matched_terms,
+        "preferred_scopes": preferred_scopes,
+        "preferred_source_types": preferred_source_types,
+        "caution_source_types": list(data.get("caution_source_types", [])),
+        "profile": profile or "",
+        "site": site or "",
+        "requested_scope": explicit_scope,
+        "guidance": data.get("guidance", "先看来源类型、topic 和时效性，再决定是否扩大搜索。"),
+        "reasons": reasons,
+    }
+
+
+def search_quality_summary(
+    results: list[dict[str, Any]],
+    quality: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Summarize whether a result set matches the query quality profile."""
+    quality = quality or {}
+    preferred_types = set(quality.get("preferred_source_types") or [])
+    preferred_scopes = set(quality.get("preferred_scopes") or [])
+    source_mix = _source_mix(results)
+    preferred_hits = [
+        item
+        for item in results
+        if item.get("source_type") in preferred_types or item.get("matched_scope") in preferred_scopes
+    ]
+    domains = {
+        str(item.get("domain") or _domain(str(item.get("url", ""))))
+        for item in results
+        if item.get("url")
+    }
+    warnings: list[str] = []
+    if preferred_types and not preferred_hits:
+        warnings.append("未命中当前意图偏好的信源类型，建议补充 scope 或站点定向搜索。")
+    if len(source_mix) <= 1 and len(results) >= 4:
+        warnings.append("来源类型较单一，可能需要扩大信源面。")
+    if len(domains) <= 1 and len(results) >= 3:
+        warnings.append("域名集中度较高，注意同源转载或单站偏差。")
+
+    return {
+        "intent": quality.get("intent", "general"),
+        "preferred_hit_count": len(preferred_hits),
+        "result_count": len(results),
+        "source_type_count": len(source_mix),
+        "domain_count": len(domains),
+        "source_mix": source_mix,
+        "warnings": warnings,
+    }
+
+
+def _quality_term_matches(text: str, term: str) -> bool:
+    if re.fullmatch(r"[a-z0-9_+-]+", term):
+        return bool(re.search(rf"\b{re.escape(term)}\b", text, flags=re.I))
+    return term.lower() in text
+
+
 def detect_recency_intent(query: str) -> dict[str, Any]:
     """Detect whether a query needs tighter time bounds."""
     text = _collapse_ws(query).lower()
@@ -1658,7 +1852,8 @@ def detect_recency_intent(query: str) -> dict[str, Any]:
     label = ""
 
     explicit_windows: tuple[tuple[str, int, tuple[str, ...]], ...] = (
-        ("today", 1, ("今天", "今日", "当天", "当日", "刚刚", "实时", "now", "today")),
+        ("today", 1, ("今天", "今日", "当天", "当日", "刚刚", "实时", "24小时", "近24小时", "now", "today")),
+        ("yesterday", 2, ("昨天", "昨日", "48小时", "近48小时")),
         ("week", 7, ("近一周", "最近一周", "过去一周", "一周内", "本周", "这周", "7天", "7日", "七天")),
         (
             "month",
@@ -1674,6 +1869,12 @@ def detect_recency_intent(query: str) -> dict[str, Any]:
             window_days = days
             matched_terms.extend(found)
             break
+
+    if not window_days and _recency_term_matches(text, "今年"):
+        label = "year_to_date"
+        year_start = dt.date(today.year, 1, 1)
+        window_days = max((today - year_start).days + 1, 1)
+        matched_terms.append("今年")
 
     if not window_days:
         hot_terms = ("热点", "热搜", "快讯", "突发", "爆发", "热议", "刷屏")
@@ -1733,9 +1934,14 @@ def _apply_recency_query(query: str, recency: dict[str, Any]) -> str:
     if _query_already_has_absolute_date(query):
         return query
     today = _recency_today(recency)
+    window_days = int(recency.get("window_days") or 0)
     suffix = f"{today.year}年{today.month}月 最新"
-    if int(recency.get("window_days") or 0) <= 1:
+    if window_days <= 1:
         suffix = f"{today.year}年{today.month}月{today.day}日 最新"
+    elif window_days <= 7:
+        suffix = f"{today.year}年{today.month}月 近{window_days}天 最新"
+    elif recency.get("label") == "year_to_date":
+        suffix = f"{today.year}年 最新"
     if suffix in query:
         return query
     return f"{query} {suffix}".strip()
@@ -1800,6 +2006,28 @@ def _result_recency_trace(item: SearchResult, recency: dict[str, Any] | None = N
         "result_date": result_date.isoformat() if isinstance(result_date, dt.date) else "",
         "age_days": metrics.get("age_days"),
         "in_window": metrics["in_window"],
+    }
+
+
+def _result_quality_trace(item: SearchResult, quality: dict[str, Any] | None = None) -> dict[str, Any]:
+    quality = quality or {}
+    preferred_types = set(quality.get("preferred_source_types") or [])
+    preferred_scopes = set(quality.get("preferred_scopes") or [])
+    matched_reason = ""
+    if item.matched_scope and item.matched_scope in preferred_scopes:
+        matched_reason = f"scope:{item.matched_scope}"
+    elif item.source_type and item.source_type in preferred_types:
+        matched_reason = f"source_type:{item.source_type}"
+    elif quality.get("requested_scope") and item.matched_scope == quality.get("requested_scope"):
+        matched_reason = f"requested_scope:{item.matched_scope}"
+    return {
+        "intent": quality.get("intent", "general"),
+        "name": quality.get("name", ""),
+        "fit": bool(matched_reason),
+        "matched_reason": matched_reason,
+        "preferred_scopes": list(preferred_scopes),
+        "preferred_source_types": list(preferred_types),
+        "guidance": quality.get("guidance", ""),
     }
 
 
@@ -1914,16 +2142,21 @@ def _score_result_parts(
     query: str = "",
     backend_order: list[str] | None = None,
     recency: dict[str, Any] | None = None,
+    quality: dict[str, Any] | None = None,
 ) -> dict[str, float]:
     backend_order = backend_order or []
+    quality = quality or {}
     parts: dict[str, float] = {
         "base": 1.0,
         "source_credibility": min(item.trust_level, 5) * 0.25,
+        "intent_fit": 0.0,
+        "source_quality": _source_quality_weight(item.source_type),
         "content_length": 0.2 if item.snippet else 0.0,
         "keyword_match": 0.0,
         "backend_priority": 0.0,
         "recency_boost": 0.0,
         "ad_penalty": 0.0,
+        "intent_mismatch_penalty": 0.0,
         "stale_penalty": 0.0,
     }
     title_text = (item.title + " " + item.snippet).lower()
@@ -1934,6 +2167,15 @@ def _score_result_parts(
     first_backend = (item.source.split("+")[0] or "").strip()
     if first_backend in backend_order:
         parts["backend_priority"] = max(0, len(backend_order) - backend_order.index(first_backend)) * 0.05
+    preferred_scopes = set(quality.get("preferred_scopes") or [])
+    preferred_source_types = set(quality.get("preferred_source_types") or [])
+    caution_source_types = set(quality.get("caution_source_types") or [])
+    if item.matched_scope and item.matched_scope in preferred_scopes:
+        parts["intent_fit"] = 0.65
+    elif item.source_type and item.source_type in preferred_source_types:
+        parts["intent_fit"] = 0.48
+    if item.source_type and item.source_type in caution_source_types:
+        parts["intent_mismatch_penalty"] = -0.35
     if recency and recency.get("enabled"):
         metrics = _result_recency_metrics(item, recency)
         if metrics["result_date"] and metrics["age_days"] is not None:
@@ -1954,6 +2196,21 @@ def _score_result_parts(
     total = sum(parts.values())
     parts["total"] = round(max(total, 0.1), 3)
     return {key: round(value, 3) for key, value in parts.items()}
+
+
+def _source_quality_weight(source_type: str) -> float:
+    weights = {
+        "政府/部委": 0.35,
+        "党央媒": 0.35,
+        "地方官媒": 0.24,
+        "财经/资本市场": 0.2,
+        "电商/零售垂类": 0.16,
+        "商业/产业媒体": 0.14,
+        "科技/开发者社区": 0.12,
+        "社交/内容平台": 0.04,
+        "通用网页": 0.0,
+    }
+    return weights.get(source_type or "通用网页", 0.0)
 
 
 def _assign_topic_clusters(results: list[SearchResult], threshold: str = "conservative") -> None:

@@ -1,0 +1,51 @@
+[
+  {
+    "name": "policy_query_promotes_official_source",
+    "query": "人工智能 政策 最新",
+    "expected_first_domain": "gov.cn",
+    "results": [
+      {
+        "title": "知乎热议人工智能政策",
+        "url": "https://zhihu.com/question/ai-policy",
+        "snippet": "网友讨论人工智能政策最新影响",
+        "source": "duckduckgo",
+        "rank": 1
+      },
+      {
+        "title": "国务院发布人工智能政策通知",
+        "url": "https://www.gov.cn/zhengce/ai.htm",
+        "snippet": "2026年5月2日 国务院发布人工智能相关政策通知",
+        "source": "bing",
+        "rank": 2
+      },
+      {
+        "title": "商业媒体解读人工智能政策",
+        "url": "https://36kr.com/p/ai-policy",
+        "snippet": "产业视角解读人工智能政策",
+        "source": "baidu",
+        "rank": 3
+      }
+    ]
+  },
+  {
+    "name": "ecommerce_query_promotes_vertical_source",
+    "query": "跨境电商 AI 工具 趋势",
+    "expected_first_domain": "ebrun.com",
+    "results": [
+      {
+        "title": "跨境电商 AI 工具趋势观察",
+        "url": "https://example.com/cross-border-ai",
+        "snippet": "通用网页整理跨境电商 AI 工具",
+        "source": "duckduckgo",
+        "rank": 1
+      },
+      {
+        "title": "跨境电商 AI 工具产业趋势",
+        "url": "https://www.ebrun.com/2026/0502/ai-tools.html",
+        "snippet": "亿邦动力报道跨境电商平台与品牌使用 AI 工具的趋势",
+        "source": "bing",
+        "rank": 2
+      }
+    ]
+  }
+]
