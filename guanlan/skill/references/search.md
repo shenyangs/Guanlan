@@ -4,7 +4,7 @@
 
 ## 中文热榜 / Hotnews
 
-第一批原生公开源不需要 Cookie、登录态或钥匙串。当前稳定源是 `baidu`、`v2ex`；`zhihu` 暂列实验源，部分环境会返回 401/403。
+第一批原生公开源不需要 Cookie、登录态或钥匙串。当前稳定源是 `baidu`、`v2ex`；`zhihu` 是 experimental 源，部分环境会返回 401/403，不作为稳定入口承诺。
 
 ```bash
 # 查看支持的热榜源
@@ -16,8 +16,9 @@ guanlan hotnews baidu --limit 10
 # V2EX 热门
 guanlan hotnews v2ex --limit 10
 
-# 知乎热榜（实验源，失败时用搜索 fallback）
+# 知乎热榜（experimental，失败时用搜索 fallback）
 guanlan hotnews zhihu --limit 10 --json
+guanlan search "热点关键词" --site zhihu.com --profile china --limit 8
 ```
 
 统一字段包括：
@@ -44,7 +45,7 @@ cat /tmp/hotnews.json | guanlan format hotnews
 
 - 用户问“今天国内有什么热点”：先 `guanlan hotnews baidu`，再按主题补搜索。
 - 用户问“技术社区在讨论什么”：优先 `guanlan hotnews v2ex`。
-- 用户问“知乎上怎么看”：可尝试 `guanlan hotnews zhihu`；如果返回 401/403，改用搜索 fallback。
+- 用户问“知乎上怎么看”：优先用 `guanlan search "关键词" --site zhihu.com`；`guanlan hotnews zhihu` 只能作为 experimental 尝试。
 - 不要为了热榜读取浏览器 Cookie；需要登录的深度平台应单独确认。
 
 ## 观澜统一搜索

@@ -103,7 +103,7 @@ def main():
     p_conf.add_argument("key", nargs="?", default=None,
                         choices=["proxy", "github-token", "groq-key",
                                  "twitter-cookies", "youtube-cookies",
-                                 "xhs-cookies"],
+                                 "xhs-cookies", "newsnow-base-url"],
                         help="What to configure (omit if using --from-browser)")
     p_conf.add_argument("value", nargs="*", help="The value(s) to set")
     p_conf.add_argument("--from-browser", metavar="BROWSER",
@@ -158,7 +158,11 @@ def main():
     # ── hotnews ──
     p_hotnews = sub.add_parser("hotnews", help="Fetch Chinese hotnews from native sources")
     p_hotnews.add_argument("source", nargs="?", default="baidu",
-                           help="Source id: baidu, zhihu, v2ex, or list")
+                           help="Source id: baidu, zhihu, v2ex, newsnow:<id>, or list")
+    p_hotnews.add_argument("--backend", choices=["auto", "native", "newsnow"], default="auto",
+                           help="Hotnews backend; auto uses native first, unknown sources as NewsNow")
+    p_hotnews.add_argument("--newsnow-base-url", default="",
+                           help="Override NewsNow BASE_URL, e.g. https://newsnow.example.com")
     p_hotnews.add_argument("--limit", type=int, default=10,
                            help="Maximum number of items to fetch")
     p_hotnews.add_argument("--json", action="store_true",
@@ -225,6 +229,8 @@ def main():
                             help="Print normalized JSON instead of Markdown")
     p_research.add_argument("--source-chart", action="store_true",
                             help="Append an ASCII source/domain distribution chart")
+    p_research.add_argument("--advisor", action="store_true",
+                            help="Append a cautious assistant view with intent hypotheses and next steps")
 
     # ── pulse ──
     p_pulse = sub.add_parser("pulse", help="Analyze topic echo from public samples with clear caveats")
@@ -339,7 +345,7 @@ def main():
     sub.add_parser("watch", help="Quick health check + update check (for scheduled tasks)")
 
     # ── status ──
-    sub.add_parser("status", help="Show channel stability, health, and local cache summary")
+    sub.add_parser("status", help="Show channel readiness, verification, stability, and local cache summary")
 
     # ── version ──
     sub.add_parser("version", help="Show version")
@@ -726,15 +732,41 @@ def _cmd_hotnews(args):
     """Fetch Chinese hotnews from native public sources."""
 
     from guanlan.hotnews import fetch_hotnews, format_hotnews_markdown, list_sources
+    from guanlan.config import Config
 
     source = (args.source or "baidu").lower()
     if source == "list":
         print(json.dumps(list_sources(), ensure_ascii=False, indent=2))
         return
 
+    if source == "zhihu":
+        print(
+            "[!] zhihu 热榜是 experimental 源，部分环境会 401/403；失败时请用 "
+            '`guanlan search "知乎 热榜 关键词" --site zhihu.com --profile china` 兜底。',
+            file=sys.stderr,
+        )
+
     try:
-        items = fetch_hotnews(source=source, limit=max(args.limit, 1))
+        config = Config()
+        newsnow_base_url = args.newsnow_base_url or config.get("newsnow_base_url")
+        items = fetch_hotnews(
+            source=source,
+            limit=max(args.limit, 1),
+            backend=args.backend,
+            newsnow_base_url=newsnow_base_url,
+        )
     except Exception as e:
+        if source == "zhihu":
+            print(
+                "Fallback: guanlan search \"知乎 热榜 关键词\" --site zhihu.com --profile china",
+                file=sys.stderr,
+            )
+        if source.startswith("newsnow:") or args.backend == "newsnow":
+            print(
+                "NewsNow fallback: try another BASE_URL with "
+                "`guanlan configure newsnow-base-url https://your-newsnow.example`.",
+                file=sys.stderr,
+            )
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -802,6 +834,7 @@ def _cmd_research(args):
 
     from guanlan.webtools import (
         build_research_packet,
+        format_advisor_context,
         format_research_markdown,
         format_search_context,
         format_source_chart,
@@ -828,6 +861,7 @@ def _cmd_research(args):
             read_top=max(args.read_top, 0) if args.read_top is not None else None,
             read_backend=args.read_backend,
             max_read_chars=max(args.max_read_chars, 1) if args.max_read_chars is not None else None,
+            advisor=args.advisor,
         )
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -838,6 +872,9 @@ def _cmd_research(args):
         print(json.dumps(packet, ensure_ascii=False, indent=2))
     elif output_format == "context":
         print(format_search_context(packet.get("results", []), title=f"观澜研究上下文 / {args.query}"))
+        if args.advisor and isinstance(packet.get("advisor"), dict):
+            print()
+            print(format_advisor_context(packet["advisor"]))
         if args.source_chart:
             print(format_source_chart(packet.get("results", [])))
     else:
@@ -1650,6 +1687,11 @@ def _cmd_configure(args):
         print("✅ Proxy configured for Bilibili!")
         print("  Note: Reddit 已改为通过 rdt-cli 访问，无需代理。")
 
+    elif args.key == "newsnow-base-url":
+        config.set("newsnow_base_url", value.rstrip("/"))
+        print("✅ NewsNow BASE_URL configured!")
+        print("  Example: guanlan hotnews newsnow:36kr-quick --limit 10")
+
     elif args.key == "twitter-cookies":
         # Accept two formats:
         # 1. auth_token ct0 (two separate values)
@@ -2386,23 +2428,31 @@ def _cmd_status():
     ok = sum(1 for r in results.values() if r["status"] == "ok")
     total = len(results)
     stability_counts: dict[str, int] = {}
+    readiness_counts: dict[str, int] = {}
     for item in results.values():
-        key = str(item.get("stability", "best-effort"))
-        stability_counts[key] = stability_counts.get(key, 0) + 1
+        stability_key = str(item.get("stability", "best-effort"))
+        readiness_key = str(item.get("readiness", "unknown"))
+        stability_counts[stability_key] = stability_counts.get(stability_key, 0) + 1
+        readiness_counts[readiness_key] = readiness_counts.get(readiness_key, 0) + 1
 
     print("观澜 / Guanlan 状态面板")
     print("=" * 40)
     print(f"渠道健康: {ok}/{total}")
     print(
+        "就绪状态: "
+        + "，".join(f"{key}={value}" for key, value in sorted(readiness_counts.items()))
+    )
+    print(
         "稳定性: "
         + "，".join(f"{key}={value}" for key, value in sorted(stability_counts.items()))
     )
     print()
-    print("渠道 | 运行 | 稳定性 | 风险 | 授权 | 批量")
-    print("--- | --- | --- | --- | --- | ---")
+    print("渠道 | 运行 | 就绪 | 验证 | 稳定性 | 风险 | 授权 | 批量")
+    print("--- | --- | --- | --- | --- | --- | --- | ---")
     for name, item in results.items():
         print(
-            f"{name} | {item.get('status')} | {item.get('stability')} | "
+            f"{name} | {item.get('status')} | {item.get('readiness')} | "
+            f"{item.get('verification')} | {item.get('stability')} | "
             f"{item.get('risk_level')} | {item.get('auth')} | {item.get('batch')}"
         )
 

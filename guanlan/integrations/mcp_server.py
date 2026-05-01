@@ -86,6 +86,7 @@ def _tool_definitions() -> list[dict]:
                     "max_read_chars": {"type": "integer", "minimum": 1},
                     "profile": {"type": "string", "enum": ["global", "china", "hybrid"]},
                     "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "markdown"},
+                    "advisor": {"type": "boolean", "default": False},
                 },
             },
         },
@@ -97,6 +98,8 @@ def _tool_definitions() -> list[dict]:
                 "properties": {
                     "source": {"type": "string", "default": "baidu"},
                     "limit": {"type": "integer", "default": 10, "minimum": 1, "maximum": 50},
+                    "backend": {"type": "string", "enum": ["auto", "native", "newsnow"], "default": "auto"},
+                    "newsnow_base_url": {"type": "string"},
                     "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
                 },
             },
@@ -188,6 +191,7 @@ def _run_tool(name: str, arguments: dict | None = None):
     if name == "guanlan_research":
         from guanlan.webtools import (
             build_research_packet,
+            format_advisor_context,
             format_research_markdown,
             format_search_context,
         )
@@ -204,18 +208,27 @@ def _run_tool(name: str, arguments: dict | None = None):
             read_top=int(args["read_top"]) if args.get("read_top") is not None else None,
             read_backend=str(args.get("read_backend") or "auto"),
             max_read_chars=int(args["max_read_chars"]) if args.get("max_read_chars") is not None else None,
+            advisor=bool(args.get("advisor", False)),
         )
         output_format = str(args.get("format") or "markdown")
         if output_format == "json":
             return packet
         if output_format == "context":
-            return format_search_context(packet.get("results", []), title=f"观澜研究上下文 / {args.get('query', '')}")
+            text = format_search_context(packet.get("results", []), title=f"观澜研究上下文 / {args.get('query', '')}")
+            if isinstance(packet.get("advisor"), dict):
+                text += "\n\n" + format_advisor_context(packet["advisor"])
+            return text
         return format_research_markdown(packet)
 
     if name == "guanlan_hotnews":
         from guanlan.hotnews import fetch_hotnews, format_hotnews_markdown
 
-        items = fetch_hotnews(str(args.get("source") or "baidu"), limit=int(args.get("limit") or 10))
+        items = fetch_hotnews(
+            str(args.get("source") or "baidu"),
+            limit=int(args.get("limit") or 10),
+            backend=str(args.get("backend") or "auto"),
+            newsnow_base_url=args.get("newsnow_base_url") or None,
+        )
         if str(args.get("format") or "markdown") == "json":
             return items
         return format_hotnews_markdown(items, title=f"观澜热榜 / {args.get('source') or 'baidu'}")

@@ -77,7 +77,7 @@ gh search repos "query" --sort stars --limit 10
 
 # 中文热榜（原生公开源，不需要 Cookie）
 guanlan hotnews baidu --limit 10
-guanlan hotnews zhihu --json
+guanlan hotnews zhihu --json  # experimental，失败时改用 site:zhihu.com 搜索
 guanlan hotnews list
 
 # Twitter 搜索

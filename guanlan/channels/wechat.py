@@ -37,7 +37,7 @@ def _wechat_sogou_available() -> bool:
 class WeChatChannel(Channel):
     name = "wechat"
     description = "微信公众号文章"
-    backends = ["Exa via mcporter (搜索+阅读)", "WechatSogou (可选搜索备份)", "Camoufox (可选阅读)"]
+    backends = ["Exa via mcporter (backend-ready)", "WechatSogou (optional)", "Camoufox (optional)"]
     tier = 0
 
     def can_handle(self, url: str) -> bool:
@@ -55,30 +55,20 @@ class WeChatChannel(Channel):
         except ImportError:
             pass
 
-        if has_exa and has_wechat_sogou and has_camoufox:
-            return "ok", "完整可用（Exa 搜索+阅读，WechatSogou 搜索备份，Camoufox 可选阅读）"
-        elif has_exa and has_wechat_sogou:
-            return "ok", (
-                "通过 Exa 搜索和阅读微信公众号文章；WechatSogou 可作为公众号定向搜索备份。"
-                "可选安装 Camoufox 获得更好的全文阅读效果。"
-            )
-        elif has_exa:
-            return "ok", (
-                "通过 Exa 搜索和阅读微信公众号文章（免费，无需额外配置）。"
-                "可选安装 WechatSogou 获得公众号定向搜索备份，安装 Camoufox 获得更好的全文阅读效果。"
-            )
-        elif has_wechat_sogou:
+        if has_exa or has_wechat_sogou or has_camoufox:
+            ready = []
+            if has_exa:
+                ready.append("Exa")
+            if has_wechat_sogou:
+                ready.append("WechatSogou")
+            if has_camoufox:
+                ready.append("Camoufox")
             return "warn", (
-                "WechatSogou 可作为公众号定向搜索备份，但搜狗反爬较强；"
-                "阅读和稳定搜索仍建议安装 Exa。"
+                f"backend-ready / unverified / best-effort：已检测到 {'、'.join(ready)}。"
+                "这只代表公众号搜索/阅读路径已具备后端，不代表端到端稳定可用；"
+                "遇到验证码、登录墙、反爬或正文缺失时，请降级为普通网页搜索、同题转载页或手动授权路径。"
             )
-        elif has_camoufox:
-            return "warn", (
-                "Camoufox 可阅读公众号文章，但搜索功能需要 Exa。"
-                "运行 `guanlan install --env=auto` 安装 Exa。"
-            )
-        else:
-            return "off", (
-                "需要 mcporter + Exa MCP 来搜索和阅读微信公众号文章。\n"
-                "运行 `guanlan install --env=auto` 安装。"
-            )
+        return "off", (
+            "未检测到公众号后端。可选安装 mcporter + Exa、WechatSogou 或 Camoufox；"
+            "安装后也只会标记为 backend-ready，端到端可用性仍需按具体文章验证。"
+        )

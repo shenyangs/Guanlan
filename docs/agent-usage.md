@@ -27,7 +27,7 @@
 | “查中文互联网/国内资料” | `guanlan search "关键词" --profile china --limit 8` |
 | “查近期/最近/热点/最新进展” | `guanlan search "最近 关键词 热点" --profile china --trace` |
 | “只搜某个网站” | `guanlan search "关键词" --site zhihu.com --limit 8` |
-| “搜微信公众号文章” | `guanlan search "关键词" --site mp.weixin.qq.com --profile china --limit 8` |
+| “搜微信公众号文章” | `guanlan search "关键词" --site mp.weixin.qq.com --profile china --limit 8`，结果按 best-effort 处理 |
 | “查官方/央媒表述” | `guanlan search "关键词" --profile china --scope party_central` |
 | “查地方官媒/区域政策” | `guanlan search "关键词" --profile china --scope local_official` |
 | “查电商/零售/产业带” | `guanlan search "关键词" --profile china --scope ecommerce` |
@@ -45,7 +45,7 @@
 | “技术社区在讨论什么” | `guanlan hotnews v2ex --limit 10` |
 | “输出结构化结果” | 给命令加 `--json` |
 | “检查哪些渠道可用” | `guanlan doctor --trace` |
-| “看渠道稳定性/授权边界/缓存概况” | `guanlan status` |
+| “看渠道稳定性/授权边界/缓存概况” | `guanlan status`，重点看 `就绪` 和 `验证` 列 |
 | “解释为什么这条排第一” | `guanlan search "关键词" --trace` |
 | “重复查同一题，减少请求” | `guanlan search "关键词" --cache-ttl 3600` |
 | “把搜索结果直接塞进 prompt” | `guanlan search "关键词" --format context` |
@@ -57,7 +57,7 @@
 | “搜索本地知识库” | `guanlan archive search "关键词" --format context` |
 | “导出给 RAG 系统” | `guanlan archive export --format jsonl` |
 
-如果当前 Agent 支持 MCP，可以优先使用观澜 MCP 工具面：`guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
+CLI 是默认主路径；如果当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
 
 MCP 客户端安装入口：
 
@@ -243,6 +243,13 @@ guanlan read "https://example.com/article" --no-fallback-search
 ```bash
 guanlan hotnews baidu --limit 10
 guanlan hotnews v2ex --limit 10
+```
+
+`zhihu` 热榜是 experimental 源，不要当作稳定热榜入口。需要知乎视角时可尝试：
+
+```bash
+guanlan hotnews zhihu --limit 10
+guanlan search "热点关键词" --site zhihu.com --profile china --limit 8
 ```
 
 如果需要更深入，再对热点关键词做搜索：

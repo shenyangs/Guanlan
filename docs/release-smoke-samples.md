@@ -13,6 +13,7 @@ guanlan version
 guanlan doctor --trace
 guanlan search --list-scopes
 guanlan research --list-presets
+scripts/release_smoke.sh
 ```
 
 ## 样本矩阵
@@ -28,6 +29,7 @@ guanlan research --list-presets
 | S7 | URL 阅读降级 | `guanlan read "https://www.gov.cn/" --max-chars 1200 --fallback-search` | 能返回正文、首页文本，或给出清晰的搜索兜底上下文。 |
 | S8 | 热榜 | `guanlan hotnews baidu --limit 10` | 输出 `观澜热榜` Markdown，单条异常不应导致整个 CLI 崩溃。 |
 | S9 | MCP 工具面 | `uv run python -c "from guanlan.integrations.mcp_server import _tool_definitions; print([t['name'] for t in _tool_definitions()])"` | 输出包含 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_hotnews`、`guanlan_status`。 |
+| S10 | 安装与发布 smoke | `scripts/release_smoke.sh` | `pip install .`、可用时的 `pipx install .`、`guanlan --version`、`guanlan install --env=auto` 安全预演和 `guanlan status` 均通过。 |
 
 ## 记录格式
 

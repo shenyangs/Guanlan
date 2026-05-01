@@ -46,6 +46,8 @@ class TestCLI:
         captured = capsys.readouterr()
         assert "诊断追踪" in captured.out
         assert "敏感探测: skipped" in captured.out
+        assert "readiness=" in captured.out
+        assert "verification=" in captured.out
 
     def test_doctor_accepts_check_config(self, capsys, tmp_path, monkeypatch):
         from guanlan.config import Config
@@ -73,6 +75,8 @@ class TestCLI:
                     "message": "ok",
                     "tier": 0,
                     "backends": ["requests"],
+                    "readiness": "verified",
+                    "verification": "verified",
                     "stability": "stable",
                     "risk_level": "low",
                     "auth": "none",
@@ -92,6 +96,7 @@ class TestCLI:
 
         captured = capsys.readouterr()
         assert "状态面板" in captured.out
+        assert "verified" in captured.out
         assert "stable" in captured.out
         assert "search: 2" in captured.out
 

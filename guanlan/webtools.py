@@ -955,6 +955,7 @@ def build_research_packet(
     read_backend: str = "auto",
     max_read_chars: int | None = None,
     preset: str | None = "general",
+    advisor: bool = False,
 ) -> dict[str, Any]:
     """Build an agent-ready evidence packet from search + selected reads."""
     preset_config = resolve_research_preset(preset)
@@ -997,7 +998,7 @@ def build_research_packet(
         except Exception as e:
             readings.append(_reading_record(item, status="error", error=str(e)))
 
-    return {
+    packet = {
         "query": query,
         "preset": preset_config["id"],
         "preset_name": preset_config["name"],
@@ -1023,6 +1024,9 @@ def build_research_packet(
             "阅读兜底内容只代表公开搜索线索，不等同于原文全文。",
         ],
     }
+    if advisor:
+        packet["advisor"] = build_advisor_view(packet)
+    return packet
 
 
 def format_research_markdown(packet: dict[str, Any]) -> str:
@@ -1052,6 +1056,10 @@ def format_research_markdown(packet: dict[str, Any]) -> str:
         lines.append(f"- Preset: {packet.get('preset')} / {packet.get('preset_name', '')}")
     if packet.get("search_errors"):
         lines.append(f"- 部分搜索失败: {'；'.join(packet['search_errors'])}")
+
+    advisor = packet.get("advisor")
+    if isinstance(advisor, dict):
+        lines.extend(["", format_advisor_markdown(advisor)])
 
     groups = packet.get("result_groups", [])
     if groups:
@@ -1234,6 +1242,230 @@ def _reading_record(
         "content": content,
         "error": error,
     }
+
+
+def build_advisor_view(packet: dict[str, Any]) -> dict[str, Any]:
+    """Build a cautious assistant view from a research packet."""
+    query = str(packet.get("query", "")).strip()
+    preset = str(packet.get("preset", "general")).strip() or "general"
+    results = list(packet.get("results") or [])
+    readings = list(packet.get("readings") or [])
+    source_mix = dict(packet.get("source_mix") or _source_mix(results))
+    topic_count = int(packet.get("topic_count") or 0)
+    result_count = int(packet.get("result_count") or len(results))
+    read_top = int(packet.get("read_top") or 0)
+
+    intents = _advisor_intents(query, preset, packet, source_mix)
+    supports = _advisor_supports(source_mix, topic_count, result_count, readings)
+    limits = _advisor_limits(packet, source_mix, topic_count, result_count, readings, read_top)
+    next_steps = _advisor_next_steps(query, preset, source_mix, limits)
+
+    return {
+        "title": "助理视角",
+        "stance": "以下是基于当前检索材料的意图假设和下一步建议，不代表用户真实目的，也不构成最终结论。",
+        "possible_intents": intents,
+        "evidence_supports": supports,
+        "evidence_limits": limits,
+        "scenario_advice": _advisor_scenario_advice(preset, query, source_mix),
+        "next_steps": next_steps,
+    }
+
+
+def format_advisor_markdown(advisor: dict[str, Any]) -> str:
+    """Render advisor output as a compact, caveated Markdown block."""
+    lines = [f"## {advisor.get('title') or '助理视角'}"]
+    stance = str(advisor.get("stance") or "").strip()
+    if stance:
+        lines.extend(["", stance])
+    sections = [
+        ("可能的搜索目的", advisor.get("possible_intents") or []),
+        ("当前材料更适合支持", advisor.get("evidence_supports") or []),
+        ("当前材料暂时不适合支持", advisor.get("evidence_limits") or []),
+        ("按不同目的看下一步", advisor.get("scenario_advice") or []),
+        ("建议补充", advisor.get("next_steps") or []),
+    ]
+    for title, items in sections:
+        if not items:
+            continue
+        lines.extend(["", f"### {title}"])
+        for item in items:
+            lines.append(f"- {item}")
+    return "\n".join(lines)
+
+
+def format_advisor_context(advisor: dict[str, Any]) -> str:
+    """Render advisor output for compact LLM context mode."""
+    lines = [f"# {advisor.get('title') or '助理视角'}"]
+    stance = str(advisor.get("stance") or "").strip()
+    if stance:
+        lines.append(stance)
+    for key, title in (
+        ("possible_intents", "可能目的"),
+        ("evidence_supports", "适合支持"),
+        ("evidence_limits", "不适合支持"),
+        ("scenario_advice", "下一步"),
+    ):
+        items = [str(item) for item in advisor.get(key, []) if str(item).strip()]
+        if items:
+            lines.append(f"{title}: " + "；".join(items[:3]))
+    return "\n".join(lines)
+
+
+def _advisor_intents(
+    query: str,
+    preset: str,
+    packet: dict[str, Any],
+    source_mix: dict[str, int],
+) -> list[str]:
+    text = query.lower()
+    sites = " ".join(str(site).lower() for site in packet.get("sites", []) or [])
+    site = str(packet.get("site", "")).lower()
+    scope = str(packet.get("scope", "")).lower()
+    haystack = " ".join([text, sites, site, scope, preset])
+    intents: list[str] = []
+
+    if preset in {"policy", "official", "local"} or _contains_any(haystack, ["政策", "监管", "通知", "法规", "官方", "gov", "party_central"]):
+        intents.extend(["寻找可引用的官方依据或政策口径", "判断某项政策、监管或公共议题对业务/研究的影响"])
+    if preset in {"reputation", "ecommerce"} or _contains_any(haystack, ["评价", "口碑", "吐槽", "小红书", "知乎", "微博", "购买", "产品"]):
+        intents.extend(["判断产品、品牌或服务的真实口碑线索", "为购买、选型、运营或竞品分析寻找用户语言"])
+    if preset in {"industry", "finance"} or _contains_any(haystack, ["融资", "裁员", "财报", "股价", "行业", "商业化", "公司"]):
+        intents.extend(["评估公司、行业或商业趋势是否值得继续关注", "识别合作、求职、投资或供应链相关风险"])
+    if preset == "tech" or _contains_any(haystack, ["框架", "开源", "github", "技术", "开发者", "选型", "api"]):
+        intents.extend(["做技术选型或工程调研", "寻找真实使用反馈、限制和可复现线索"])
+    if any("社交" in key or "内容平台" in key for key in source_mix):
+        intents.append("观察公开讨论中的情绪、痛点和高频表达")
+
+    intents.append("快速判断这个主题是否值得进入更深一轮核验")
+    return _unique_keep_order(intents)[:4]
+
+
+def _advisor_supports(
+    source_mix: dict[str, int],
+    topic_count: int,
+    result_count: int,
+    readings: list[dict[str, Any]],
+) -> list[str]:
+    supports: list[str] = []
+    source_keys = list(source_mix)
+    if any(_source_has(key, ["政府", "部委", "党央媒", "官方"]) for key in source_keys):
+        supports.append("判断官方口径、政策表述或权威报道中的主要说法")
+    if any(_source_has(key, ["商业", "产业", "财经", "电商"]) for key in source_keys):
+        supports.append("梳理商业媒体、产业媒体或财经来源中的趋势线索")
+    if any(_source_has(key, ["社交", "内容平台", "开发者", "社区"]) for key in source_keys):
+        supports.append("发现公开讨论里的用户语言、痛点、情绪和使用场景")
+    if topic_count >= 3:
+        supports.append("从多个 topic 中挑出不同角度，避免只围绕同一篇转载反复计数")
+    elif result_count > 0:
+        supports.append("形成初步线索清单，适合决定下一步读哪些原文")
+    if any(item.get("status") == "ok" and str(item.get("content", "")).strip() for item in readings):
+        supports.append("基于已读取原文片段做更稳的摘要和引用")
+    return supports or ["形成初步搜索线索，但更适合继续核验而不是直接下结论"]
+
+
+def _advisor_limits(
+    packet: dict[str, Any],
+    source_mix: dict[str, int],
+    topic_count: int,
+    result_count: int,
+    readings: list[dict[str, Any]],
+    read_top: int,
+) -> list[str]:
+    limits: list[str] = []
+    source_keys = list(source_mix)
+    successful_reads = [
+        item for item in readings if item.get("status") == "ok" and str(item.get("content", "")).strip()
+    ]
+    if result_count < 3:
+        limits.append("结果数量偏少，暂时不适合做强结论")
+    if len(source_mix) <= 1 and result_count >= 3:
+        limits.append("来源类型较单一，容易放大单一圈层或单一媒体视角")
+    if topic_count <= 1 and result_count >= 3:
+        limits.append("同题聚类较集中，可能存在转载或同源重复")
+    if read_top == 0 or not successful_reads:
+        limits.append("目前主要依赖搜索摘要，缺少原文级核验")
+    if any(_source_has(key, ["社交", "内容平台"]) for key in source_keys):
+        limits.append("社交平台材料适合发现样本线索，不适合直接代表总体口碑")
+    if packet.get("search_errors"):
+        limits.append("部分搜索后端失败，结果覆盖面可能不完整")
+    if _high_stakes_query(str(packet.get("query", ""))):
+        limits.append("这个查询可能涉及高影响决策，建议把当前输出只当作研究线索")
+    return _unique_keep_order(limits)
+
+
+def _advisor_scenario_advice(
+    preset: str,
+    query: str,
+    source_mix: dict[str, int],
+) -> list[str]:
+    advice: list[str] = []
+    text = query.lower()
+    if preset in {"policy", "official", "local"}:
+        advice.append("如果你是为了写材料或引用依据：优先读取政府/部委原文，再用媒体解读补背景")
+        advice.append("如果你是为了判断影响：把政策原文、实施地区、适用对象和时间节点分开核对")
+    if preset in {"reputation", "ecommerce"} or _contains_any(text, ["评价", "口碑", "购买", "产品"]):
+        advice.append("如果你是为了购买或采用：先看负面反馈是否集中在同一版本、渠道或使用场景")
+        advice.append("如果你是为了竞品/运营：提取用户原话和高频痛点，但不要用热门样本估算总体比例")
+    if preset in {"industry", "finance"}:
+        advice.append("如果你是为了商业判断：把事实报道、市场观点和公司宣传分开看")
+        advice.append("如果你是为了风险判断：优先补官方公告、财报或一手披露材料")
+    if preset == "tech":
+        advice.append("如果你是为了技术选型：优先补版本、维护活跃度、真实限制和失败案例")
+        advice.append("如果你是为了写方案：把社区反馈和官方文档分别引用")
+    if any(_source_has(key, ["社交", "内容平台"]) for key in source_mix):
+        advice.append("如果你是为了舆情观察：关注重复出现的表达和场景，不要只看单条高互动内容")
+    if not advice:
+        advice.append("如果你是为了快速了解：先读不同 source_type 的代表结果，再决定是否扩大搜索范围")
+        advice.append("如果你是为了做判断：先补一手来源或原文摘读，再把当前结果当作辅助材料")
+    return _unique_keep_order(advice)[:4]
+
+
+def _advisor_next_steps(
+    query: str,
+    preset: str,
+    source_mix: dict[str, int],
+    limits: list[str],
+) -> list[str]:
+    steps: list[str] = []
+    if any("原文" in item or "摘要" in item for item in limits):
+        steps.append("读取 2-3 条不同 topic、不同 source_type 的代表原文")
+    if any("来源类型较单一" in item for item in limits):
+        steps.append("补一个不同信源池，例如官方、产业媒体或社交公开页")
+    if any("社交平台" in item for item in limits):
+        steps.append("把社交样本当作痛点池，再用官方说明或第三方评测交叉验证")
+    if preset in {"policy", "official", "local"} and not any(_source_has(key, ["政府", "部委"]) for key in source_mix):
+        steps.append("增加 gov 或 party_central scope，优先找原文")
+    if preset in {"reputation", "ecommerce"} and not any(_source_has(key, ["社交", "内容平台"]) for key in source_mix):
+        steps.append("补充知乎、微博、小红书、B站等公开页搜索，但注意登录态和样本偏差")
+    if _high_stakes_query(query):
+        steps.append("涉及重大决策时，补充权威来源或专业意见后再行动")
+    steps.append("把当前建议视为下一步研究路线，而不是最终判断")
+    return _unique_keep_order(steps)[:4]
+
+
+def _contains_any(text: str, needles: list[str]) -> bool:
+    return any(needle.lower() in text for needle in needles)
+
+
+def _source_has(source_type: str, needles: list[str]) -> bool:
+    return any(needle in source_type for needle in needles)
+
+
+def _unique_keep_order(items: list[str]) -> list[str]:
+    output: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        clean = _collapse_ws(str(item))
+        if clean and clean not in seen:
+            seen.add(clean)
+            output.append(clean)
+    return output
+
+
+def _high_stakes_query(query: str) -> bool:
+    return _contains_any(
+        query.lower(),
+        ["投资", "股票", "股价", "医疗", "诊断", "药", "法律", "诉讼", "裁员", "offer", "入职", "合规"],
+    )
 
 
 def _source_mix(results: list[dict[str, Any]]) -> dict[str, int]:
@@ -1925,9 +2157,7 @@ def _read_direct(url: str) -> str:
 def _html_to_markdownish(raw: str, url: str = "") -> str:
     title_match = re.search(r"<title[^>]*>(.*?)</title>", raw, re.S | re.I)
     title = _strip_tags(title_match.group(1)) if title_match else ""
-    body = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", " ", raw, flags=re.S | re.I)
-    body = re.sub(r"<!--.*?-->", " ", body, flags=re.S)
-    text = _strip_tags(body)
+    text = _extract_article_text(raw)
     lines = []
     if title:
         lines.extend([f"Title: {title}", ""])
@@ -1936,6 +2166,118 @@ def _html_to_markdownish(raw: str, url: str = "") -> str:
     lines.append("Markdown Content:")
     lines.append(text)
     return "\n".join(lines)
+
+
+def _extract_article_text(raw: str) -> str:
+    """Extract readable article text while filtering common page chrome."""
+    body = re.sub(r"<!--.*?-->", " ", raw or "", flags=re.S)
+    body = re.sub(r"<(script|style|noscript|svg|canvas|iframe)[^>]*>.*?</\1>", " ", body, flags=re.S | re.I)
+    body = re.sub(
+        r"<(header|footer|nav|aside|form|button|select|option)[^>]*>.*?</\1>",
+        " ",
+        body,
+        flags=re.S | re.I,
+    )
+    body = _prefer_main_content(body)
+    body = re.sub(r"</?(?:p|div|section|article|main|h[1-6]|li|blockquote|tr|br)[^>]*>", "\n", body, flags=re.I)
+    text = html.unescape(re.sub(r"<[^>]+>", " ", body or ""))
+    raw_lines = [line.strip(" \t\r\n-•·|") for line in text.splitlines()]
+    lines: list[str] = []
+    seen: set[str] = set()
+    for line in raw_lines:
+        line = _collapse_ws(line)
+        if _is_noise_content_line(line):
+            continue
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(line)
+    if not lines:
+        return _strip_tags(raw)
+    return "\n\n".join(lines)
+
+
+def _prefer_main_content(body: str) -> str:
+    candidates = _content_candidates(body)
+    if not candidates:
+        return body
+    best = max(candidates, key=_content_score)
+    return best if _content_score(best) >= 120 else body
+
+
+def _content_candidates(body: str) -> list[str]:
+    candidates: list[str] = []
+    attr_pattern = (
+        r"(?:article|content|main|正文|post|entry|detail|news|rich_media_content|"
+        r"article-content|article_body|articleBody)"
+    )
+    for pattern in (
+        r"<article\b[^>]*>(.*?)</article>",
+        r"<main\b[^>]*>(.*?)</main>",
+        rf"<div\b[^>]*(?:id|class)=['\"][^'\"]*{attr_pattern}[^'\"]*['\"][^>]*>(.*?)</div>",
+        rf"<section\b[^>]*(?:id|class)=['\"][^'\"]*{attr_pattern}[^'\"]*['\"][^>]*>(.*?)</section>",
+    ):
+        candidates.extend(match.group(1) for match in re.finditer(pattern, body, flags=re.S | re.I))
+    return candidates
+
+
+def _content_score(html_fragment: str) -> int:
+    text = _strip_tags(html_fragment)
+    if not text:
+        return 0
+    cjk = len(re.findall(r"[\u4e00-\u9fff]", text))
+    paragraphs = len(re.findall(r"</p>|<br\b|</h[1-6]>", html_fragment, flags=re.I))
+    link_text = "".join(re.findall(r"<a\b[^>]*>(.*?)</a>", html_fragment, flags=re.S | re.I))
+    link_len = len(_strip_tags(link_text))
+    return len(text) + cjk * 2 + paragraphs * 40 - link_len * 2
+
+
+def _is_noise_content_line(line: str) -> bool:
+    if not line:
+        return True
+    if len(line) <= 1:
+        return True
+    lowered = line.lower()
+    noise_markers = (
+        "登录",
+        "注册",
+        "分享",
+        "收藏",
+        "点赞",
+        "评论",
+        "发表评论",
+        "下载app",
+        "下载 app",
+        "客户端",
+        "扫码",
+        "二维码",
+        "广告",
+        "推荐阅读",
+        "相关阅读",
+        "热门推荐",
+        "返回首页",
+        "首页",
+        "导航",
+        "菜单",
+        "上一页",
+        "下一页",
+        "上一篇",
+        "下一篇",
+        "版权所有",
+        "copyright",
+        "icp",
+        "京公网安备",
+        "联系我们",
+        "关于我们",
+    )
+    if len(line) <= 28 and any(marker in lowered for marker in noise_markers):
+        return True
+    if re.fullmatch(r"[\W_]+", line):
+        return True
+    if len(line) <= 18 and re.search(r"(首页|新闻|财经|科技|娱乐|体育|视频|图片|专题|登录|注册)", line):
+        return True
+    return False
 
 
 def _collapse_ws(text: str) -> str:

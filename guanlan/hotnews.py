@@ -16,6 +16,7 @@ from typing import Any
 
 _UA = "guanlan/1.4"
 _TIMEOUT = 12
+DEFAULT_NEWSNOW_BASE_URL = "https://newsnow.busiyi.world"
 
 
 @dataclass
@@ -55,7 +56,9 @@ SOURCE_CATALOG: dict[str, dict[str, Any]] = {
         "risk": "low",
         "backend": "native",
         "status": "experimental",
-        "notes": "公开接口在部分环境会返回 401/403，后续需要更稳的 fallback。",
+        "verified": False,
+        "notes": "实验源：公开接口在部分环境会返回 401/403，不承诺稳定可用。",
+        "fallback": 'guanlan search "知乎 热榜 关键词" --site zhihu.com --profile china',
     },
     "v2ex": {
         "name": "V2EX 热门",
@@ -68,9 +71,35 @@ SOURCE_CATALOG: dict[str, dict[str, Any]] = {
 }
 
 
+NEWSNOW_RECOMMENDED_SOURCES: dict[str, dict[str, Any]] = {
+    "weibo": {"name": "微博热搜", "column": "china", "type": "hottest"},
+    "bilibili-hot-search": {"name": "B站热搜", "column": "china", "type": "hottest"},
+    "36kr-quick": {"name": "36氪快讯", "column": "tech", "type": "realtime"},
+    "ithome": {"name": "IT之家", "column": "tech", "type": "realtime"},
+    "juejin": {"name": "掘金热榜", "column": "tech", "type": "hottest"},
+    "sspai": {"name": "少数派热榜", "column": "tech", "type": "hottest"},
+    "cls-telegraph": {"name": "财联社电报", "column": "finance", "type": "realtime"},
+    "wallstreetcn-quick": {"name": "华尔街见闻快讯", "column": "finance", "type": "realtime"},
+    "github-trending-today": {"name": "GitHub Trending", "column": "tech", "type": "hottest"},
+    "hackernews": {"name": "Hacker News", "column": "tech", "type": "hottest"},
+}
+
+
 def list_sources() -> dict[str, dict[str, Any]]:
     """Return supported native hotnews source metadata."""
-    return SOURCE_CATALOG.copy()
+    sources = SOURCE_CATALOG.copy()
+    for source_id, meta in NEWSNOW_RECOMMENDED_SOURCES.items():
+        sources[f"newsnow:{source_id}"] = {
+            "name": meta["name"],
+            "platform": source_id,
+            "category": meta.get("column", "hotnews"),
+            "risk": "low",
+            "backend": "newsnow",
+            "status": "best-effort",
+            "verified": False,
+            "notes": "可选增强源：稳定性取决于 NewsNow BASE_URL、Cloudflare 和上游抓取状态。",
+        }
+    return sources
 
 
 def _now_iso() -> str:
@@ -247,16 +276,46 @@ def fetch_v2ex(limit: int = 20) -> list[HotNewsItem]:
     return [item for item in results if item.title]
 
 
-def fetch_hotnews(source: str = "baidu", limit: int = 20) -> list[dict[str, Any]]:
-    """Fetch native hotnews and return unified dictionaries."""
+def fetch_newsnow(
+    source: str,
+    limit: int = 20,
+    base_url: str | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch NewsNow API source and normalize it into Guanlan hotnews rows."""
+    source = source.strip()
+    if not source:
+        raise ValueError("NewsNow source id is required")
+    base = (base_url or DEFAULT_NEWSNOW_BASE_URL).strip().rstrip("/")
+    url = f"{base}/api/s?id={urllib.parse.quote(source)}"
+    payload = _read_json(url)
+    items = normalize_hotnews_payload(payload, source_id=f"newsnow:{source}", platform=source)
+    return items[: max(limit, 1)]
+
+
+def fetch_hotnews(
+    source: str = "baidu",
+    limit: int = 20,
+    backend: str = "auto",
+    newsnow_base_url: str | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch hotnews and return unified dictionaries."""
     source = source.lower().strip()
+    backend = (backend or "auto").lower().strip()
     fetchers = {
         "baidu": fetch_baidu,
         "zhihu": fetch_zhihu,
         "v2ex": fetch_v2ex,
     }
+    if source.startswith("newsnow:"):
+        return fetch_newsnow(source.split(":", 1)[1], limit=limit, base_url=newsnow_base_url)
+    if backend == "newsnow":
+        return fetch_newsnow(source, limit=limit, base_url=newsnow_base_url)
+    if backend not in {"auto", "native"}:
+        raise ValueError("backend must be one of: auto, native, newsnow")
     if source not in fetchers:
-        available = ", ".join(sorted(fetchers))
+        if backend == "auto":
+            return fetch_newsnow(source, limit=limit, base_url=newsnow_base_url)
+        available = ", ".join(sorted(fetchers) + [f"newsnow:{name}" for name in sorted(NEWSNOW_RECOMMENDED_SOURCES)])
         raise ValueError(f"Unknown hotnews source: {source}. Available: {available}")
     return [item.to_dict() for item in fetchers[source](limit=limit)]
 

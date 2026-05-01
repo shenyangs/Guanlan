@@ -1,6 +1,6 @@
 # 观澜安装指南
 
-本文档写给正在执行安装任务的 Agent。目标是把观澜 CLI 装到当前机器上，完成基础自检，并在用户明确需要时再安装可选渠道。
+本文档写给正在执行安装任务的 Agent。目标是先把观澜 CLI 装到当前机器上，完成基础自检，并在用户明确需要时再安装可选渠道。MCP 是给 Agent/平台集成用的可选路径，不是普通用户的默认入口。
 
 观澜第一版优先以 GitHub 源码发布。请先克隆可信仓库，再在仓库根目录执行本地安装；不要从来历不明的远程脚本直接安装。
 
@@ -105,7 +105,7 @@ guanlan doctor --auth-check
 | --- | --- | --- |
 | Twitter/X | `guanlan install --env=auto --channels=twitter` | 需要 Cookie 或外部 CLI 配置。 |
 | 微博 | `guanlan install --env=auto --channels=weibo` | 用于热搜、搜索和公开内容读取。 |
-| 微信公众号 | `guanlan install --env=auto --channels=wechat` | 搜索和文章阅读路径仍需持续增强。 |
+| 微信公众号 | `guanlan install --env=auto --channels=wechat` | 安装后只代表 backend-ready，端到端稳定性仍需按文章验证。 |
 | 小红书 | `guanlan install --env=auto --channels=xiaohongshu` | 通常需要登录态。 |
 | Reddit | `guanlan install --env=auto --channels=reddit` | 部分网络环境需要认证或代理。 |
 | B站增强 | `guanlan install --env=auto --channels=bilibili` | 在基础视频能力上补热门、排行、搜索。 |
@@ -158,9 +158,9 @@ guanlan configure groq-key gsk_xxxxx
 guanlan skill --install
 ```
 
-## MCP 安装
+## MCP 安装（可选）
 
-观澜提供 `guanlan-mcp` console script。支持 JSON 配置的 MCP 客户端可以使用：
+优先保证 CLI 可用；只有当用户使用的 Agent、IDE 或平台支持 MCP 时，再配置这一节。观澜提供 `guanlan-mcp` console script。支持 JSON 配置的 MCP 客户端可以使用：
 
 ```json
 {
@@ -192,6 +192,12 @@ guanlan skill --install
 
 ```bash
 guanlan doctor --trace
+```
+
+发布前或维护者环境可以运行安装 smoke：
+
+```bash
+scripts/release_smoke.sh
 ```
 
 向用户报告：

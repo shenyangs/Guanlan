@@ -29,6 +29,22 @@ def test_channel_check_contract_with_minimal_runtime(monkeypatch, tmp_path):
         assert isinstance(message, str) and message.strip()
 
 
+def test_doctor_result_includes_readiness_and_verification(monkeypatch, tmp_path):
+    from guanlan.doctor import check_all
+
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    config = Config(config_path=tmp_path / "config.yaml")
+
+    results = check_all(config)
+
+    assert "web" in results
+    assert results["web"]["readiness"] == "verified"
+    assert results["web"]["verification"] == "verified"
+    assert "wechat" in results
+    assert results["wechat"]["readiness"] in {"backend-ready", "unavailable"}
+    assert results["wechat"]["verification"] == "unverified"
+
+
 def test_youtube_warns_when_node_only_and_no_config(monkeypatch, tmp_path):
     """YouTube should warn when only Node.js is installed but no yt-dlp config exists."""
     from guanlan.channels.youtube import YouTubeChannel

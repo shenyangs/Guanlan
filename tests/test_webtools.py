@@ -428,6 +428,33 @@ def test_read_url_falls_back_to_direct_when_jina_fails(monkeypatch):
     assert "script" not in text
 
 
+def test_direct_html_reader_filters_navigation_and_footer_noise(monkeypatch):
+    html = """
+    <html>
+      <head><title>测试新闻</title></head>
+      <body>
+        <nav>首页 新闻 财经 科技 登录 注册</nav>
+        <header>下载APP 分享 收藏</header>
+        <main class="article-content">
+          <h1>测试新闻标题</h1>
+          <p>这是第一段正文，包含足够多的中文内容，用来验证正文抽取是否保留核心信息。</p>
+          <p>这是第二段正文，继续说明事件背景、公开资料和可验证线索。</p>
+        </main>
+        <footer>版权所有 ICP 备案 联系我们</footer>
+      </body>
+    </html>
+    """
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: _FakeResponse(html))
+
+    text = webtools.read_url("https://example.cn/article", backend="direct")
+
+    assert "这是第一段正文" in text
+    assert "这是第二段正文" in text
+    assert "首页 新闻 财经" not in text
+    assert "版权所有" not in text
+    assert "登录 注册" not in text
+
+
 def test_read_url_uses_search_context_when_reading_is_blocked(monkeypatch):
     monkeypatch.setattr(webtools, "_read_with_jina", lambda url: "请先登录后查看")
     monkeypatch.setattr(webtools, "_read_direct", lambda url: "访问受限，请完成安全验证")
@@ -921,6 +948,44 @@ def test_build_research_packet_preset_adds_site_evidence_groups(monkeypatch):
     assert {group["type"] for group in packet["result_groups"]} == {"scope", "site"}
 
 
+def test_build_research_packet_adds_cautious_advisor_when_requested(monkeypatch):
+    search_results = [
+        {
+            "rank": 1,
+            "title": "产品口碑讨论",
+            "url": "https://zhihu.com/a",
+            "source_type": "社交/内容平台",
+            "topic_key": "topic-1",
+            "topic_role": "representative",
+        },
+        {
+            "rank": 2,
+            "title": "产品发布报道",
+            "url": "https://example.com/b",
+            "source_type": "商业/产业媒体",
+            "topic_key": "topic-2",
+            "topic_role": "single",
+        },
+    ]
+
+    monkeypatch.setattr(webtools, "search_web", lambda *args, **kwargs: search_results)
+    monkeypatch.setattr(webtools, "read_url", lambda url, **kwargs: f"READ {url}")
+
+    plain_packet = webtools.build_research_packet("某产品 用户评价", preset="reputation", read_top=0)
+    advisor_packet = webtools.build_research_packet(
+        "某产品 用户评价",
+        preset="reputation",
+        read_top=0,
+        advisor=True,
+    )
+
+    assert "advisor" not in plain_packet
+    assert advisor_packet["advisor"]["title"] == "助理视角"
+    assert "不代表用户真实目的" in advisor_packet["advisor"]["stance"]
+    assert any("口碑" in item for item in advisor_packet["advisor"]["possible_intents"])
+    assert any("搜索摘要" in item for item in advisor_packet["advisor"]["evidence_limits"])
+
+
 def test_format_research_markdown():
     md = webtools.format_research_markdown(
         {
@@ -954,6 +1019,37 @@ def test_format_research_markdown():
     assert "## 信源概览" in md
     assert "党央媒: 1" in md
     assert "正文摘录" in md
+
+
+def test_format_research_markdown_includes_advisor_block():
+    advisor = webtools.build_advisor_view(
+        {
+            "query": "人工智能 政策",
+            "preset": "policy",
+            "result_count": 1,
+            "topic_count": 1,
+            "source_mix": {"政府/部委": 1},
+            "results": [{"source_type": "政府/部委", "title": "通知"}],
+            "readings": [],
+            "read_top": 0,
+        }
+    )
+    md = webtools.format_research_markdown(
+        {
+            "query": "人工智能 政策",
+            "result_count": 1,
+            "topic_count": 1,
+            "source_mix": {"政府/部委": 1},
+            "guidance": [],
+            "results": [],
+            "readings": [],
+            "advisor": advisor,
+        }
+    )
+
+    assert "## 助理视角" in md
+    assert "可能的搜索目的" in md
+    assert "当前材料暂时不适合支持" in md
 
 
 def test_read_watch_outputs_diff(monkeypatch, tmp_path):

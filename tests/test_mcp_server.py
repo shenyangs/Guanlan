@@ -5,7 +5,8 @@ from guanlan.integrations import mcp_server
 
 
 def test_mcp_tool_definitions_include_agent_search_tools():
-    names = {tool["name"] for tool in mcp_server._tool_definitions()}
+    tools = mcp_server._tool_definitions()
+    names = {tool["name"] for tool in tools}
 
     assert "guanlan_status" in names
     assert "guanlan_search" in names
@@ -14,6 +15,11 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "guanlan_hotnews" in names
     assert "guanlan_pulse" in names
     assert "guanlan_archive_search" in names
+    research_tool = next(tool for tool in tools if tool["name"] == "guanlan_research")
+    hotnews_tool = next(tool for tool in tools if tool["name"] == "guanlan_hotnews")
+    assert "advisor" in research_tool["inputSchema"]["properties"]
+    assert "backend" in hotnews_tool["inputSchema"]["properties"]
+    assert "newsnow_base_url" in hotnews_tool["inputSchema"]["properties"]
 
 
 def test_mcp_search_context_uses_webtools(monkeypatch):

@@ -34,21 +34,24 @@ GitHub 侧 workflow 已使用 OIDC（`id-token: write`），无需保存 PyPI AP
 
 - 默认每次发布/推送功能改动时递增 patch 版本，即 `+0.0.1`。
 - 版本号需要同时更新 `pyproject.toml` 和 `guanlan/__init__.py`。
+- 每次发版前同步更新 `CHANGELOG.md`，把已完成内容放入对应版本，把下一版计划保留在 `Unreleased`。
 - 默认直接推送到 `main`，不走长期 release 分支。
 
 流程：
 
-1. 更新版本号，例如 `0.1.3 -> 0.1.4`。
-2. 提交代码并推送到 `main`。
-3. 打 tag 并推送，例如：
+1. 更新版本号，例如 `0.1.4 -> 0.1.5`。
+2. 更新 `CHANGELOG.md`。
+3. 运行基础质量检查和安装 smoke，例如 `ruff`、`pytest`、`uv build`、`scripts/release_smoke.sh`。
+4. 提交代码并推送到 `main`。
+5. 打 tag 并推送，例如：
 
 ```bash
-git tag v0.1.4
+git tag v0.1.5
 git push origin main
-git push origin v0.1.4
+git push origin v0.1.5
 ```
 
-4. 等待 `release` workflow 完成：
+6. 等待 `release` workflow 完成：
    - Job `publish-pypi`：发布到 PyPI。
    - Job `update-homebrew-tap`：更新 tap 仓库公式。
 

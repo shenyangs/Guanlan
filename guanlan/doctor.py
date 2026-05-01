@@ -42,19 +42,36 @@ def check_all(
         for ch in get_all_channels(active_profile):
             status, message = ch.check(config)
             metadata = get_channel_metadata(ch.name)
+            readiness = _readiness(status, metadata)
             results[ch.name] = {
                 "status": status,
                 "name": ch.description,
                 "message": message,
                 "tier": ch.tier,
                 "backends": ch.backends,
+                "readiness": readiness,
+                "verification": metadata["verification"],
                 "stability": metadata["stability"],
                 "risk_level": metadata["risk_level"],
                 "auth": metadata["auth"],
                 "batch": metadata["batch"],
                 "category": metadata["category"],
+                "expectation": metadata.get("expectation", ""),
             }
     return results
+
+
+def _readiness(status: str, metadata: dict[str, Any]) -> str:
+    """Separate backend presence from end-to-end verification."""
+    if status in {"off", "error"}:
+        return "unavailable"
+    if status == "ok" and metadata.get("verification") == "verified":
+        return "verified"
+    if status in {"ok", "warn"} and metadata.get("verification") == "unverified":
+        return "backend-ready"
+    if status in {"ok", "warn"}:
+        return "best-effort"
+    return "unknown"
 
 
 _SENSITIVE_KEY_SEGMENTS = {
@@ -207,7 +224,10 @@ def format_report(results: Dict[str, dict], profile: str | None = None) -> str:
     lines.append("[bold]✅ 装好即用：[/bold]")
     for key, r in results.items():
         if r["tier"] == 0:
-            name_msg = f"[bold]{escape(r['name'])}[/bold] — {escape(r['message'])}"
+            name_msg = (
+                f"[bold]{escape(r['name'])}[/bold] "
+                f"[dim]{escape(_status_label(r))}[/dim] — {escape(r['message'])}"
+            )
             if r["status"] == "ok":
                 lines.append(f"  [green]✅[/green] {name_msg}")
             elif r["status"] == "warn":
@@ -223,7 +243,10 @@ def format_report(results: Dict[str, dict], profile: str | None = None) -> str:
         lines.append("")
         lines.append("[bold]可选渠道（已安装）：[/bold]")
         for key, r in tier1_active.items():
-            name_msg = f"[bold]{escape(r['name'])}[/bold] — {escape(r['message'])}"
+            name_msg = (
+                f"[bold]{escape(r['name'])}[/bold] "
+                f"[dim]{escape(_status_label(r))}[/dim] — {escape(r['message'])}"
+            )
             lines.append(f"  [green]✅[/green] {name_msg}")
 
     # Tier 2 — optional complex setup
@@ -235,7 +258,10 @@ def format_report(results: Dict[str, dict], profile: str | None = None) -> str:
             lines.append("")
             lines.append("[bold]可选渠道（已安装）：[/bold]")
         for key, r in tier2_active.items():
-            name_msg = f"[bold]{escape(r['name'])}[/bold] — {escape(r['message'])}"
+            name_msg = (
+                f"[bold]{escape(r['name'])}[/bold] "
+                f"[dim]{escape(_status_label(r))}[/dim] — {escape(r['message'])}"
+            )
             lines.append(f"  [green]✅[/green] {name_msg}")
 
     lines.append("")
@@ -271,6 +297,14 @@ def format_report(results: Dict[str, dict], profile: str | None = None) -> str:
     return "\n".join(lines)
 
 
+def _status_label(result: dict[str, Any]) -> str:
+    return (
+        f"{result.get('readiness', 'unknown')}/"
+        f"{result.get('verification', 'unverified')}/"
+        f"{result.get('stability', 'best-effort')}"
+    )
+
+
 def format_trace(results: Dict[str, dict], skip_sensitive: bool = True) -> str:
     """Format a compact diagnostic trace for channel checks."""
     try:
@@ -293,6 +327,8 @@ def format_trace(results: Dict[str, dict], skip_sensitive: bool = True) -> str:
             "- "
             f"{escape(key)}: "
             f"status={escape(str(r.get('status', 'unknown')))}, "
+            f"readiness={escape(str(r.get('readiness', 'unknown')))}, "
+            f"verification={escape(str(r.get('verification', 'unverified')))}, "
             f"stability={escape(str(r.get('stability', 'best-effort')))}, "
             f"risk={escape(str(r.get('risk_level', 'medium')))}, "
             f"auth={escape(str(r.get('auth', 'unknown')))}, "

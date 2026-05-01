@@ -7,6 +7,7 @@
 | 文档 | 适合什么时候看 |
 | --- | --- |
 | [README.md](../README.md) | 第一次了解观澜：它是什么、为什么存在、默认边界是什么。 |
+| [更新日志](../CHANGELOG.md) | 查看每个版本的能力变化、边界调整和下一步收口。 |
 | [Agent 使用说明](agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜、社交平台和安全降级规则。 |
 | [安装指南](install.md) | 让 Agent 按步骤安装、配置和自检。 |
 | [发布自动化](release-automation.md) | 维护者用：PyPI 自动发布与 Homebrew tap 自动更新。 |
@@ -21,11 +22,12 @@
 - 默认 `guanlan doctor` 不读取浏览器 Cookie，不主动触碰 macOS 钥匙串。
 - 如需定位诊断路径，使用 `guanlan doctor --trace`。
 - 如需深度检查登录态，才使用 `guanlan doctor --auth-check`。
+- `guanlan status` 已区分 `verified`、`backend-ready`、`best-effort`，避免把后端存在误读为端到端稳定。
 - Agent 基础搜索/阅读命令已经可用：`guanlan search "关键词"`、`guanlan search "关键词" --profile china`、`guanlan search "关键词" --scope party_central`、`guanlan read "URL"`。
 - 搜索质量层已经可用：多后端聚合、URL 去重、中文信源分类、可信度评分、scope 语境优先和近期/热点类查询的时间收束。
 - 来源分布诊断已经可用：`guanlan search "关键词" --source-chart`、`guanlan research "关键词" --source-chart`。
 - 安全版话题回响已经可用：`guanlan pulse "关键词" --format context`，默认只基于公开搜索样本输出倾向、置信度和边界提醒。
 - Jina Reader 已作为第一读取入口，但不是唯一依赖；读取不稳时可用 `guanlan read "URL" --backend direct` 直连原网页。
 - 本地知识库雏形已经可用：`guanlan archive add "URL"`、`guanlan archive search "关键词" --format context`、`guanlan archive export --format jsonl`。
-- 第一批原生热榜命令已经可用：`guanlan hotnews list`、`guanlan hotnews baidu --limit 10`、`guanlan hotnews v2ex --json`。
+- 第一批原生热榜命令已经可用：`guanlan hotnews list`、`guanlan hotnews baidu --limit 10`、`guanlan hotnews v2ex --json`；`zhihu` 是 experimental 源，失败时使用搜索 fallback。
 - 观澜当前优先强化中文搜索、热榜聚合、社交口碑、视频、财经和开发者社区。

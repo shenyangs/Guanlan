@@ -122,21 +122,20 @@ mcporter call 'web-reader.webReader(url: "https://example.com", return_format: "
 
 ## 微信公众号 / WeChat Articles
 
-### 搜索公众号文章（通过 Exa）
+### 搜索公众号文章（backend-ready，不等于 verified）
 
 ```bash
 # 搜索微信公众号文章
 mcporter call 'exa.web_search_exa(query: "搜索关键词", numResults: 5, includeDomains: ["mp.weixin.qq.com"])'
 
-# 观澜统一搜索：公开搜索优先，必要时把 WechatSogou 作为备份
+# 观澜统一搜索：公开搜索优先，必要时把 WechatSogou 作为 best-effort 备份
 guanlan search "搜索关键词" --site mp.weixin.qq.com --profile china --limit 8
 
 # 显式使用实验性搜狗微信后端（需安装可选依赖）
 guanlan search "搜索关键词" --backend wechat-sogou --limit 8
 ```
 
-`wechat-sogou` 是高增益但不稳定的可选备份。遇到搜狗验证码、反爬或超时时应降级，不要自动打码、
-不要读取浏览器 Cookie。
+公众号能力口径必须诚实：Exa、WechatSogou 或 Camoufox 安装成功只代表 `backend-ready`，不代表端到端 `verified`。遇到搜狗验证码、反爬、登录墙、正文缺失或超时时应降级，不要自动打码、不要读取浏览器 Cookie。
 
 ### 阅读公众号文章全文（通过 Exa）
 

@@ -9,6 +9,7 @@ from urllib.error import URLError
 from guanlan.channels import get_all_channels, get_channel
 from guanlan.channels.hotnews import HotNewsChannel
 from guanlan.channels.v2ex import V2EXChannel
+from guanlan.channels.wechat import WeChatChannel
 from guanlan.channels.xiaohongshu import XiaoHongShuChannel
 
 
@@ -39,6 +40,19 @@ class TestHotNewsChannel:
         assert status == "ok"
         assert "原生热榜源可用" in message
         assert "baidu" in message
+
+
+class TestWeChatChannel:
+    def test_reports_backend_ready_not_verified_when_exa_exists(self, monkeypatch):
+        monkeypatch.setattr("guanlan.channels.wechat._exa_available", lambda: True)
+        monkeypatch.setattr("guanlan.channels.wechat._wechat_sogou_available", lambda: False)
+
+        status, message = WeChatChannel().check()
+
+        assert status == "warn"
+        assert "backend-ready" in message
+        assert "unverified" in message
+        assert "不代表端到端稳定可用" in message
 
 
 class TestV2EXChannel:

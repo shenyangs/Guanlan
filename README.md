@@ -23,7 +23,7 @@
   <a href="#设计原则">设计原则</a>
 </p>
 
-观澜是一个面向 AI Agent 的中文互联网 CLI，用来组织搜索、阅读与信源路由。它把公开搜索、网页阅读、热榜观察、来源分类和显式授权边界放进同一条工作流。
+观澜当前是一个 CLI-first 的中文互联网研究工具。公开搜索、网页阅读、热榜观察和研究证据包已经可用；部分平台能力仍处于 best-effort 或实验阶段，按需依赖外部后端、授权或额外配置。
 
 它首先想把这几件事做好：
 
@@ -32,6 +32,17 @@
 - **边界更清楚**：默认只读、低扰，Cookie、Keychain 和登录态访问都走显式授权。
 
 中文互联网的信息分布并不均匀。公众号、微博、知乎、B站、小红书、抖音、雪球、V2EX、RSS、开发者社区和新闻热榜各自带着不同的语气、圈层与偏见。观澜做的事情，是让 Agent 看见这些波纹，也看见它们各自从哪里来。
+
+## 当前最稳能力
+
+这些是当前最敢承诺、最适合作为默认工作流的能力：
+
+- **公开网页搜索**：`guanlan search "关键词" --profile china`
+- **中文信源白名单**：`--scope party_central/gov/local_official/ecommerce`
+- **网页阅读与降级**：`guanlan read "URL"`，Jina Reader、直连 HTML、搜索兜底组合使用。
+- **稳定热榜观察**：`guanlan hotnews baidu`、`guanlan hotnews v2ex`
+- **研究证据包**：`guanlan research "关键词" --format context`
+- **本地知识库**：`guanlan archive add/search/export`
 
 ## 为什么是“观澜”
 
@@ -71,9 +82,9 @@
 | 搜索 | Baidu/Bing/DuckDuckGo 多后端聚合、去重、信源分类、可信度评分、中文白名单 scope | 可用，持续优化 |
 | 视频 | YouTube、B站字幕与元信息读取 | 可用 |
 | 开发者社区 | V2EX 热门、节点、帖子与回复 | 可用 |
-| 微博 | 热搜、搜索、用户与话题读取 | 可用 |
-| 微信公众号 | 搜索与文章阅读的轻量路径 | 可用，需继续增强稳定性 |
-| 小红书 | 搜索、笔记读取等能力，依赖外部后端和登录态 | 可选 |
+| 微博 | 热搜、搜索、用户与话题读取 | best-effort，按环境和授权波动 |
+| 微信公众号 | 搜索与文章阅读的轻量路径 | backend-ready / unverified / best-effort，不承诺端到端稳定 |
+| 小红书 | 搜索、笔记读取等能力，依赖外部后端和登录态 | opt-in，现实可用性取决于登录态和后端 |
 | 抖音 | 视频解析与内容提取路径 | 可选 |
 | Twitter/X | 推文、搜索、时间线等能力，依赖 Cookie 或外部 CLI | 可选 |
 | Reddit | 帖子与评论读取，部分环境需要认证或网络配置 | 可选 |
@@ -137,7 +148,7 @@ guanlan doctor
 guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 5
 ```
 
-看到 `观澜 / Guanlan v0.1.4`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.1.5`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -270,7 +281,7 @@ guanlan configure --from-browser chrome
 | `guanlan doctor` | 健康检查，默认跳过敏感登录态探测。 |
 | `guanlan doctor --trace` | 展示诊断路径，帮助定位是否存在敏感探测风险。 |
 | `guanlan doctor --check-config` | 扫描本地配置中可能误存的明文 Cookie、Token、Key 或代理凭据。 |
-| `guanlan status` | 显示渠道运行状态、稳定性标签、授权边界和本地缓存概览。 |
+| `guanlan status` | 显示渠道运行、就绪、验证、稳定性、授权边界和本地缓存概览。 |
 | `guanlan search "关键词"` | 搜索网页，输出适合 Agent 阅读的结果列表。 |
 | `guanlan search "关键词" --trace` | 展示评分因子、后端顺序、聚类阈值和缓存命中状态。 |
 | `guanlan search "最近 关键词 热点" --trace` | 自动识别时效性意图，收束到近期窗口，并在 trace 中解释结果日期。 |
@@ -442,8 +453,14 @@ guanlan read "https://github.com/shenyangs/Guanlan" --watch
 ```bash
 guanlan hotnews list
 guanlan hotnews baidu --limit 10
-guanlan hotnews zhihu --limit 10
 guanlan hotnews v2ex --limit 10
+```
+
+`zhihu` 热榜是实验源，部分环境会返回 401/403。需要知乎视角时，优先把它当作可选尝试；失败后用站内搜索兜底：
+
+```bash
+guanlan hotnews zhihu --limit 10
+guanlan search "热点关键词" --site zhihu.com --profile china --limit 8
 ```
 
 看到关键词后，可以继续交给 `search` 或 `research` 追原文：
@@ -477,7 +494,7 @@ guanlan read batch urls.txt --format context --cache-ttl 3600
 guanlan archive search "问题" --format context
 ```
 
-如果当前 Agent 支持 MCP，可以把 `guanlan-mcp` 接进去，让 Agent 直接调用 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search` 和 `guanlan_status`。
+CLI 是默认主路径；如果当前 Agent 或平台支持 MCP，可以把 `guanlan-mcp` 作为可选集成接进去，让 Agent 直接调用 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search` 和 `guanlan_status`。
 
 ### 14. 把读过的网页沉淀成本地知识库
 
@@ -568,6 +585,7 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 | 文档 | 内容 |
 | --- | --- |
 | [中文入口](docs/README_zh.md) | 中文文档导航。 |
+| [更新日志](CHANGELOG.md) | 记录每个版本的能力变化、边界调整和下一步收口。 |
 | [Agent 使用说明](docs/agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜和安全路由规则。 |
 | [安装指南](docs/install.md) | 给 Agent 执行的安装流程与边界。 |
 | [更新指南](docs/update.md) | 更新观澜与依赖工具。 |
