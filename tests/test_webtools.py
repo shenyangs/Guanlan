@@ -526,6 +526,56 @@ def test_format_search_context_is_compact_table():
     assert "[结果](https://example.com/a)" in context
 
 
+def test_format_source_chart_shows_type_and_domain_distribution():
+    chart = webtools.format_source_chart(
+        [
+            {
+                "source_type": "党央媒",
+                "domain": "people.com.cn",
+                "url": "https://people.com.cn/a",
+            },
+            {
+                "source_type": "党央媒",
+                "domain": "xinhuanet.com",
+                "url": "https://xinhuanet.com/b",
+            },
+            {
+                "source_type": "社交/内容平台",
+                "domain": "zhihu.com",
+                "url": "https://zhihu.com/c",
+            },
+        ]
+    )
+
+    assert "## 来源分布" in chart
+    assert "党央媒" in chart
+    assert "66.7%" in chart
+    assert "people.com.cn" in chart
+    assert "#" in chart
+
+
+def test_search_cli_outputs_source_chart(capsys):
+    from guanlan.cli import main
+
+    with patch(
+        "guanlan.webtools.search_web",
+        return_value=[
+            {
+                "title": "A",
+                "url": "https://people.com.cn/a",
+                "domain": "people.com.cn",
+                "source_type": "党央媒",
+            }
+        ],
+    ):
+        with patch("sys.argv", ["guanlan", "search", "query", "--source-chart"]):
+            main()
+    captured = capsys.readouterr()
+    assert "观澜搜索" in captured.out
+    assert "来源分布" in captured.out
+    assert "people.com.cn" in captured.out
+
+
 def test_build_research_packet_reads_representative_results(monkeypatch):
     search_results = [
         {

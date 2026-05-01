@@ -185,6 +185,8 @@ def main():
                           help="Print normalized JSON instead of Markdown")
     p_search.add_argument("--trace", action="store_true",
                           help="Show score factors, cache status, backend order, and clustering trace")
+    p_search.add_argument("--source-chart", action="store_true",
+                          help="Append an ASCII source/domain distribution chart")
     p_search.add_argument("--cluster-threshold", choices=["conservative", "balanced", "loose"],
                           default="conservative", help="Topic clustering strictness")
     p_search.add_argument("--cache-ttl", type=int, default=0,
@@ -221,6 +223,8 @@ def main():
                             help="Output format")
     p_research.add_argument("--json", action="store_true",
                             help="Print normalized JSON instead of Markdown")
+    p_research.add_argument("--source-chart", action="store_true",
+                            help="Append an ASCII source/domain distribution chart")
 
     # ── read ──
     p_read = sub.add_parser("read", help="Read a URL as Markdown for agent context")
@@ -248,6 +252,55 @@ def main():
                         help="Compare this read with the saved local snapshot and output a diff")
     p_read.add_argument("--interval", default="",
                         help="Accepted for watch workflows; this CLI stores one snapshot per run")
+
+    # ── archive ──
+    p_archive = sub.add_parser("archive", help="Manage the local Markdown knowledge archive")
+    archive_sub = p_archive.add_subparsers(dest="archive_command", help="Archive commands")
+
+    p_archive_add = archive_sub.add_parser("add", help="Read URL(s) into the local archive")
+    p_archive_add.add_argument("target", help="URL to archive, or 'batch' for URL-list mode")
+    p_archive_add.add_argument("batch_file", nargs="?",
+                               help="File containing one URL per line when target is 'batch'")
+    p_archive_add.add_argument("--max-chars", type=int, default=0,
+                               help="Truncate each read to this many characters before archiving")
+    p_archive_add.add_argument("--backend", choices=["auto", "jina", "direct"], default="auto",
+                               help="Read backend used before archiving")
+    p_archive_add.add_argument("--fallback-search", action=argparse.BooleanOptionalAction, default=True,
+                               help="Use public search context when direct reading fails")
+    p_archive_add.add_argument("--fallback-limit", type=int, default=5,
+                               help="Maximum fallback search results")
+    p_archive_add.add_argument("--profile", choices=VALID_PROFILES, default="china",
+                               help="Region profile for fallback search")
+    p_archive_add.add_argument("--format", choices=["markdown", "json"], default="markdown",
+                               help="Output format")
+    p_archive_add.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_search = archive_sub.add_parser("search", help="Search the local archive")
+    p_archive_search.add_argument("query", help="Archive search query")
+    p_archive_search.add_argument("--limit", type=int, default=8, help="Maximum number of results")
+    p_archive_search.add_argument("--format", choices=["markdown", "json", "context"], default="markdown",
+                                  help="Output format")
+    p_archive_search.add_argument("--json", action="store_true",
+                                  help="Print normalized JSON instead of Markdown")
+    p_archive_search.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_list = archive_sub.add_parser("list", help="List recently archived documents")
+    p_archive_list.add_argument("--limit", type=int, default=20, help="Maximum number of records")
+    p_archive_list.add_argument("--format", choices=["markdown", "json", "context"], default="markdown",
+                                help="Output format")
+    p_archive_list.add_argument("--json", action="store_true",
+                                help="Print normalized JSON instead of Markdown")
+    p_archive_list.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_stats = archive_sub.add_parser("stats", help="Show archive counts and domain distribution")
+    p_archive_stats.add_argument("--json", action="store_true",
+                                 help="Print normalized JSON instead of Markdown")
+    p_archive_stats.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_export = archive_sub.add_parser("export", help="Export archive records")
+    p_archive_export.add_argument("--format", choices=["jsonl", "markdown"], default="jsonl",
+                                  help="Export format")
+    p_archive_export.add_argument("--db", default="", help="Optional archive database path")
 
     # ── check-update ──
     sub.add_parser("check-update", help="Check for new versions and changes")
@@ -304,6 +357,8 @@ def main():
         _cmd_research(args)
     elif args.command == "read":
         _cmd_read(args)
+    elif args.command == "archive":
+        _cmd_archive(args)
 
 
 # ── Command handlers ────────────────────────────────
@@ -665,6 +720,7 @@ def _cmd_search(args):
         format_search_context,
         format_search_markdown,
         format_search_trace,
+        format_source_chart,
         search_web,
     )
 
@@ -698,11 +754,15 @@ def _cmd_search(args):
     elif output_format == "context":
         suffix = f" / {args.scope}" if args.scope else ""
         print(format_search_context(results, title=f"观澜搜索上下文{suffix} / {args.query}"))
+        if args.source_chart:
+            print(format_source_chart(results))
     else:
         suffix = f" / {args.scope}" if args.scope else ""
         print(format_search_markdown(results, title=f"观澜搜索{suffix} / {args.query}"))
         if args.trace:
             print(format_search_trace(results))
+        if args.source_chart:
+            print(format_source_chart(results))
 
 
 def _cmd_research(args):
@@ -712,6 +772,7 @@ def _cmd_research(args):
         build_research_packet,
         format_research_markdown,
         format_search_context,
+        format_source_chart,
         list_research_presets,
     )
 
@@ -745,8 +806,12 @@ def _cmd_research(args):
         print(json.dumps(packet, ensure_ascii=False, indent=2))
     elif output_format == "context":
         print(format_search_context(packet.get("results", []), title=f"观澜研究上下文 / {args.query}"))
+        if args.source_chart:
+            print(format_source_chart(packet.get("results", [])))
     else:
         print(format_research_markdown(packet))
+        if args.source_chart:
+            print(format_source_chart(packet.get("results", [])))
 
 
 def _cmd_read(args):
@@ -801,6 +866,131 @@ def _cmd_read(args):
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+
+
+def _cmd_archive(args):
+    """Manage the local Markdown archive."""
+
+    from guanlan.archive import (
+        add_url,
+        add_urls,
+        archive_stats,
+        export_documents,
+        format_archive_context,
+        format_archive_markdown,
+        format_archive_stats,
+        list_documents,
+        search_documents,
+    )
+
+    command = getattr(args, "archive_command", None)
+    if not command:
+        print("Error: archive command is required: add, search, list, stats, export", file=sys.stderr)
+        sys.exit(2)
+    db_path = args.db or None
+
+    try:
+        if command == "add":
+            if args.target == "batch":
+                if not args.batch_file:
+                    print("Error: archive add batch requires a URL list file", file=sys.stderr)
+                    sys.exit(2)
+                with open(args.batch_file, "r", encoding="utf-8") as f:
+                    urls = [line.strip() for line in f if line.strip() and not line.lstrip().startswith("#")]
+                records = add_urls(
+                    urls,
+                    max_chars=args.max_chars or None,
+                    backend=args.backend,
+                    fallback_search=args.fallback_search,
+                    fallback_limit=max(args.fallback_limit, 1),
+                    profile=args.profile or None,
+                    db_path=db_path,
+                )
+            else:
+                records = [
+                    add_url(
+                        args.target,
+                        max_chars=args.max_chars or None,
+                        backend=args.backend,
+                        fallback_search=args.fallback_search,
+                        fallback_limit=max(args.fallback_limit, 1),
+                        profile=args.profile or None,
+                        db_path=db_path,
+                    )
+                ]
+            if args.format == "json":
+                print(json.dumps(records, ensure_ascii=False, indent=2))
+            else:
+                print(_format_archive_add_summary(records))
+            return
+
+        if command == "search":
+            records = search_documents(args.query, limit=max(args.limit, 1), db_path=db_path)
+            output_format = "json" if args.json else args.format
+            if output_format == "json":
+                print(json.dumps(records, ensure_ascii=False, indent=2))
+            elif output_format == "context":
+                print(format_archive_context(records, title=f"观澜本地知识库上下文 / {args.query}"))
+            else:
+                print(format_archive_markdown(records, title=f"观澜本地知识库 / {args.query}"))
+            return
+
+        if command == "list":
+            records = list_documents(limit=max(args.limit, 1), db_path=db_path)
+            output_format = "json" if args.json else args.format
+            if output_format == "json":
+                print(json.dumps(records, ensure_ascii=False, indent=2))
+            elif output_format == "context":
+                print(format_archive_context(records))
+            else:
+                print(format_archive_markdown(records))
+            return
+
+        if command == "stats":
+            stats = archive_stats(db_path=db_path)
+            if args.json:
+                print(json.dumps(stats, ensure_ascii=False, indent=2))
+            else:
+                print(format_archive_stats(stats))
+            return
+
+        if command == "export":
+            records = export_documents(db_path=db_path)
+            if args.format == "markdown":
+                for item in records:
+                    print(f"# {item.get('title', '')}")
+                    print()
+                    print(f"URL: {item.get('url', '')}")
+                    print(f"Domain: {item.get('domain', '')}")
+                    print()
+                    print(str(item.get("content", "")).strip())
+                    print("\n---\n")
+            else:
+                for item in records:
+                    print(json.dumps(item, ensure_ascii=False, sort_keys=True))
+            return
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Error: unknown archive command: {command}", file=sys.stderr)
+    sys.exit(2)
+
+
+def _format_archive_add_summary(records: list[dict]) -> str:
+    lines = ["# 观澜本地知识库归档", ""]
+    if not records:
+        lines.append("暂无 URL。")
+        return "\n".join(lines)
+    for item in records:
+        status = item.get("status", "unknown")
+        title = item.get("title") or item.get("url") or "untitled"
+        lines.append(f"- [{status}] {title}")
+        if item.get("url"):
+            lines.append(f"  {item['url']}")
+        if item.get("error"):
+            lines.append(f"  错误: {item['error']}")
+    return "\n".join(lines)
 
 
 def _install_system_deps():
@@ -2113,6 +2303,7 @@ def _cmd_watch():
 
 def _cmd_status():
     """Show health, stability metadata, and local cache summary."""
+    from guanlan.archive import archive_stats
     from guanlan.config import Config
     from guanlan.doctor import check_all
     from guanlan.webtools import cache_summary
@@ -2152,6 +2343,12 @@ def _cmd_status():
     print(f"文件数: {cache['total_files']}")
     for kind, count in cache.get("kinds", {}).items():
         print(f"- {kind}: {count}")
+
+    archive = archive_stats()
+    print()
+    print("本地知识库")
+    print(f"路径: {archive['path']}")
+    print(f"文档数: {archive['documents']}")
 
 
 if __name__ == "__main__":

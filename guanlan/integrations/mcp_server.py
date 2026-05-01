@@ -101,6 +101,19 @@ def _tool_definitions() -> list[dict]:
                 },
             },
         },
+        {
+            "name": "guanlan_archive_search",
+            "description": "Search Guanlan's local Markdown archive.",
+            "inputSchema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer", "default": 8, "minimum": 1, "maximum": 20},
+                    "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "context"},
+                },
+            },
+        },
     ]
 
 
@@ -187,6 +200,24 @@ def _run_tool(name: str, arguments: dict | None = None):
         if str(args.get("format") or "markdown") == "json":
             return items
         return format_hotnews_markdown(items, title=f"观澜热榜 / {args.get('source') or 'baidu'}")
+
+    if name == "guanlan_archive_search":
+        from guanlan.archive import (
+            format_archive_context,
+            format_archive_markdown,
+            search_documents,
+        )
+
+        records = search_documents(
+            str(args.get("query", "")).strip(),
+            limit=int(args.get("limit") or 8),
+        )
+        output_format = str(args.get("format") or "context")
+        if output_format == "json":
+            return records
+        if output_format == "markdown":
+            return format_archive_markdown(records, title=f"观澜本地知识库 / {args.get('query', '')}")
+        return format_archive_context(records, title=f"观澜本地知识库上下文 / {args.get('query', '')}")
 
     raise ValueError(f"Unknown tool: {name}")
 

@@ -12,6 +12,7 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "guanlan_read" in names
     assert "guanlan_research" in names
     assert "guanlan_hotnews" in names
+    assert "guanlan_archive_search" in names
 
 
 def test_mcp_search_context_uses_webtools(monkeypatch):
@@ -45,3 +46,22 @@ def test_mcp_read_uses_webtools(monkeypatch):
     text = mcp_server._run_tool("guanlan_read", {"url": "https://example.com"})
 
     assert text == "# Article"
+
+
+def test_mcp_archive_search_uses_archive(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.archive.search_documents",
+        lambda *_args, **_kwargs: [
+            {
+                "title": "本地材料",
+                "url": "https://example.com/a",
+                "domain": "example.com",
+                "excerpt": "归档正文",
+            }
+        ],
+    )
+
+    text = mcp_server._run_tool("guanlan_archive_search", {"query": "材料", "format": "context"})
+
+    assert "观澜本地知识库上下文" in text
+    assert "本地材料" in text

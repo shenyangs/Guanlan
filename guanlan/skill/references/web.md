@@ -72,6 +72,27 @@ guanlan read "https://example.com/article" --watch
 
 批量读取只适合普通网页、公开文章、文档和 RSS 链接。对小红书、微博、Twitter/X、LinkedIn、抖音等高风险或登录态平台，批量模式会拒绝读取；需要时应让用户明确授权，再使用对应平台工具或单条读取路径。
 
+## 本地知识库 (Guanlan Archive)
+
+```bash
+# 读取 URL 并保存为本地 Markdown 归档
+guanlan archive add "https://example.com/article"
+
+# 批量归档普通网页
+guanlan archive add batch urls.txt
+
+# 检索本地归档，输出适合 prompt 的上下文
+guanlan archive search "关键词" --format context
+
+# 查看本地知识库状态
+guanlan archive stats
+
+# 导出给 RAG、向量库或其他本地系统
+guanlan archive export --format jsonl
+```
+
+**适用场景**: 用户希望把查过、读过、核验过的中文材料沉淀下来，后续快速复用。Archive 默认保存在 `~/.guanlan/archive.db`，使用 SQLite + FTS/LIKE 检索，不自动上传。批量归档仍遵守高风险社交域名保护。
+
 ## 直接 Jina Reader
 
 ```bash

@@ -245,6 +245,7 @@ guanlan configure --from-browser chrome
 | `guanlan search "关键词" --trace` | 展示评分因子、后端顺序、聚类阈值和缓存命中状态。 |
 | `guanlan search "关键词" --cache-ttl 3600` | 一小时内复用同条件搜索结果，降低上游扰动。 |
 | `guanlan search "关键词" --format context` | 输出紧凑的 LLM-friendly 证据表格。 |
+| `guanlan search "关键词" --source-chart` | 追加 ASCII 来源/域名分布图，快速判断信息面是否偏斜。 |
 | `guanlan search "关键词" --backend plugin:my_company_api` | 显式调用本地自定义只读搜索 backend。 |
 | `guanlan search "关键词" --scope party_central` | 在党央媒与中央重点媒体白名单内搜索。 |
 | `guanlan search "关键词" --scope ecommerce` | 在电商/零售垂类媒体白名单内搜索。 |
@@ -256,6 +257,9 @@ guanlan configure --from-browser chrome
 | `guanlan read batch urls.txt --format context` | 批量读取 URL 列表并输出紧凑上下文。 |
 | `guanlan read "URL" --watch` | 保存/比较本地快照，输出内容变化 diff。 |
 | `guanlan read "URL" --backend direct` | 绕过 Jina Reader，直接读取原网页。 |
+| `guanlan archive add "URL"` | 将网页读取为 Markdown 后沉淀进本地知识库。 |
+| `guanlan archive search "关键词"` | 在本地知识库中检索已归档材料。 |
+| `guanlan archive export --format jsonl` | 导出本地知识库，方便接入 RAG 或其他系统。 |
 | `guanlan hotnews baidu --limit 10` | 拉取原生中文热榜。 |
 | `guanlan profile set china` | 切换到中文场景画像。 |
 | `guanlan configure --from-browser chrome` | 显式从浏览器提取支持平台的 Cookie。 |
@@ -272,9 +276,11 @@ guanlan configure --from-browser chrome
 ```bash
 guanlan search "AI 眼镜 产业链" --profile china --limit 8
 guanlan search "AI 眼镜 产业链" --profile china --format context
+guanlan search "AI 眼镜 产业链" --profile china --source-chart
 ```
 
 `--format context` 会输出更紧凑的证据表格，适合直接放进 Agent prompt。
+`--source-chart` 会追加来源类型和域名分布，帮助判断这轮结果是偏官方、偏社交、偏商业媒体，还是来源比较均衡。
 
 ### 2. 查政策、部委通知和官方原文
 
@@ -416,14 +422,29 @@ guanlan search "人工智能 政策" --profile china --cluster-threshold conserv
 
 ```bash
 guanlan search "问题" --profile china --format context
-guanlan research "问题" --preset policy --format context
+guanlan research "问题" --preset policy --format context --source-chart
 guanlan research "产品 用户评价" --preset reputation --read-top 0 --format context
 guanlan read batch urls.txt --format context --cache-ttl 3600
+guanlan archive search "问题" --format context
 ```
 
-如果当前 Agent 支持 MCP，可以把 `guanlan-mcp` 接进去，让 Agent 直接调用 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_hotnews` 和 `guanlan_status`。
+如果当前 Agent 支持 MCP，可以把 `guanlan-mcp` 接进去，让 Agent 直接调用 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_hotnews`、`guanlan_archive_search` 和 `guanlan_status`。
 
-### 13. 安全检查和授权边界
+### 13. 把读过的网页沉淀成本地知识库
+
+适合把 Agent 搜过、读过、核验过的材料保存下来，后续不用重复请求上游，也能导出给 RAG 系统。
+
+```bash
+guanlan archive add "https://example.com/article"
+guanlan archive add batch urls.txt
+guanlan archive search "人工智能 政策" --format context
+guanlan archive stats
+guanlan archive export --format jsonl > guanlan-archive.jsonl
+```
+
+本地知识库默认保存在 `~/.guanlan/archive.db`。第一版使用 SQLite + FTS/LIKE 检索，保存 URL、标题、域名、Markdown 正文、摘要、更新时间和元数据。它不是云同步，也不会自动上传内容。
+
+### 14. 安全检查和授权边界
 
 如果你担心配置里误存了 Cookie、Token、API key 或代理凭据，先跑：
 
@@ -501,6 +522,7 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 | [Agent 使用说明](docs/agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜和安全路由规则。 |
 | [安装指南](docs/install.md) | 给 Agent 执行的安装流程与边界。 |
 | [更新指南](docs/update.md) | 更新观澜与依赖工具。 |
+| [发布自动化](docs/release-automation.md) | 维护者用：PyPI 自动发布与 Homebrew tap 自动更新。 |
 | [排障手册](docs/troubleshooting.md) | 网络、Cookie、钥匙串、平台异常排查。 |
 | [中文互联网设计](docs/chinese-web-design.md) | 产品方案、平台矩阵与阶段路线。 |
 | [发布冒烟样本](docs/release-smoke-samples.md) | 第一版发布前的真实中文查询样本和通过标准。 |

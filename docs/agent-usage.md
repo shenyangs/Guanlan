@@ -49,8 +49,12 @@
 | “查企业内部只读搜索后端” | `guanlan search "关键词" --backend plugin:my_company_api` |
 | “批量读一组链接” | `guanlan read batch urls.txt --format context` |
 | “追踪网页内容变化” | `guanlan read "URL" --watch` |
+| “看来源是否偏斜” | `guanlan search "关键词" --source-chart` |
+| “把链接存入本地知识库” | `guanlan archive add "URL"` |
+| “搜索本地知识库” | `guanlan archive search "关键词" --format context` |
+| “导出给 RAG 系统” | `guanlan archive export --format jsonl` |
 
-如果当前 Agent 支持 MCP，可以优先使用观澜 MCP 工具面：`guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_hotnews`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
+如果当前 Agent 支持 MCP，可以优先使用观澜 MCP 工具面：`guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_hotnews`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
 
 MCP 客户端安装入口：
 
@@ -121,6 +125,15 @@ guanlan search --list-scopes
 如果 Markdown 中出现 `topic=representative/2`，表示这条是同题簇代表结果，该 topic 共有 2 条相关结果。回答用户时优先选不同 topic 的代表结果做依据，不要把同题转载当成多个独立证据。
 
 如果前几条结果来自不同 `source_type`，这是观澜为了交叉验证刻意做的排序。回答时优先混合使用官方、垂类、社区、财经等不同类型信源；不要只拿同一种信源类型的高分结果。
+
+如果用户需要直观看到这轮信息是否偏斜，追加来源分布图：
+
+```bash
+guanlan search "某主题" --profile china --source-chart
+guanlan research "某主题" --preset industry --source-chart
+```
+
+`--source-chart` 会输出 ASCII 来源类型和域名分布。它不代表结论真假，只用于提醒 Agent：这轮证据主要来自哪里，是否需要补官方、垂类、社交或开发者社区视角。
 
 如果用户希望你直接形成回答依据，而不是只列链接，优先使用研究证据包：
 
@@ -240,6 +253,40 @@ guanlan search "AI 政策" --cache-ttl 3600
 ```bash
 guanlan read batch urls.txt --format context
 ```
+
+### 本地知识库
+
+用户说：
+
+```text
+把这篇文章存起来，以后查资料时能用。
+```
+
+执行：
+
+```bash
+guanlan archive add "https://example.com/article"
+```
+
+已有 URL 列表时：
+
+```bash
+guanlan archive add batch urls.txt
+```
+
+查询本地沉淀材料：
+
+```bash
+guanlan archive search "人工智能 政策" --format context
+```
+
+导出给 RAG、向量库或其他本地系统：
+
+```bash
+guanlan archive export --format jsonl
+```
+
+Archive 默认保存在 `~/.guanlan/archive.db`。它只保存本机归档内容，不自动上传。批量归档仍遵守高风险社交域名保护；遇到微博、小红书、抖音、Twitter/X、LinkedIn 等平台时，不要绕过授权边界批量读取。
 
 自定义 backend 只在显式调用时启用。配置示例：
 

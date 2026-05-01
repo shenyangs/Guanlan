@@ -58,11 +58,17 @@ guanlan search "query" --site zhihu.com --limit 8
 guanlan search "query" --trace
 guanlan search "query" --cache-ttl 3600
 guanlan search "query" --format context
+guanlan search "query" --source-chart
 
 # 通用网页阅读
 guanlan read "URL" --max-chars 12000
 guanlan read batch urls.txt --format context
 guanlan read "URL" --watch
+
+# 本地知识库
+guanlan archive add "URL"
+guanlan archive search "query" --format context
+guanlan archive export --format jsonl
 
 # GitHub 搜索
 gh search repos "query" --sort stars --limit 10

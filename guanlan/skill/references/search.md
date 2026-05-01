@@ -98,6 +98,7 @@ guanlan search "query" --site mp.weixin.qq.com --limit 8
 ```bash
 guanlan search "query" --json
 guanlan search "query" --format context
+guanlan search "query" --source-chart
 ```
 
 解释排序与聚类：
@@ -106,6 +107,8 @@ guanlan search "query" --format context
 guanlan search "query" --trace
 guanlan search "query" --cluster-threshold conservative
 ```
+
+`--source-chart` 会追加 ASCII 来源类型和域名分布，用来快速判断这轮信息是否偏官方、偏社交、偏商业媒体或偏单一域名。它只解释来源结构，不替代事实核验。
 
 重复查询时使用本地 TTL 缓存，减少对上游搜索页的扰动：
 

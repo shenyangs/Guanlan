@@ -1,0 +1,223 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+          python -m build
+          twine check dist/*
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/*
+
+  publish-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+
+      - name: Publish to PyPI (Trusted Publisher)
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  update-homebrew-tap:
+    needs: publish-pypi
+    if: ${{ needs.publish-pypi.result == 'success' }}
+    runs-on: macos-latest
+    env:
+      HOMEBREW_TAP_REPO: shenyangs/homebrew-tap
+      FORMULA_PATH: Formula/guanlan.rb
+      PACKAGE_NAME: guanlan
+      FORMULA_CLASS: Guanlan
+      PACKAGE_HOMEPAGE: https://github.com/shenyangs/Guanlan
+      PACKAGE_DESC: China-aware source and platform router for AI agents
+    steps:
+      - name: Validate required secret
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          if [ -z "${HOMEBREW_TAP_GITHUB_TOKEN}" ]; then
+            echo "Missing secret: HOMEBREW_TAP_GITHUB_TOKEN"
+            exit 1
+          fi
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+
+      - name: Generate Homebrew formula
+        env:
+          RAW_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install dist/*.whl
+
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          import time
+          import urllib.request
+          from pathlib import Path
+
+          package_name = os.environ["PACKAGE_NAME"]
+          version = os.environ["RAW_TAG"][1:] if os.environ["RAW_TAG"].startswith("v") else os.environ["RAW_TAG"]
+          formula_path = Path(os.environ["FORMULA_PATH"])
+          formula_class = os.environ["FORMULA_CLASS"]
+          homepage = os.environ["PACKAGE_HOMEPAGE"]
+          desc = os.environ["PACKAGE_DESC"]
+
+          def normalize(name: str) -> str:
+              return name.lower().replace("_", "-")
+
+          def pick_release_file(pkg: str, ver: str) -> tuple[str, str]:
+              url = f"https://pypi.org/pypi/{pkg}/{ver}/json"
+              last_error = None
+              for _ in range(20):
+                  try:
+                      with urllib.request.urlopen(url, timeout=30) as resp:
+                          data = json.load(resp)
+                      break
+                  except Exception as err:
+                      last_error = err
+                      time.sleep(6)
+              else:
+                  raise RuntimeError(f"Failed to fetch {url}: {last_error}")
+
+              files = data.get("urls", [])
+              sdist = next((f for f in files if f.get("packagetype") == "sdist"), None)
+              if sdist:
+                  return sdist["url"], sdist["digests"]["sha256"]
+              wheel = next((f for f in files if f.get("packagetype") == "bdist_wheel"), None)
+              if wheel:
+                  return wheel["url"], wheel["digests"]["sha256"]
+              raise RuntimeError(f"No release file found for {pkg}=={ver}")
+
+          main_url, main_sha = pick_release_file(package_name, version)
+
+          freeze_output = subprocess.check_output(
+              [sys.executable, "-m", "pip", "freeze", "--exclude-editable"],
+              text=True,
+          )
+          dependencies: list[tuple[str, str]] = []
+          for line in freeze_output.splitlines():
+              if "==" not in line:
+                  continue
+              name, ver = line.split("==", 1)
+              if normalize(name) == normalize(package_name):
+                  continue
+              if normalize(name) in {"pip", "setuptools", "wheel"}:
+                  continue
+              dependencies.append((name, ver))
+
+          # De-duplicate and sort for stable formula output.
+          dedup = {(normalize(n), n, v) for n, v in dependencies}
+          sorted_deps = sorted(dedup, key=lambda item: item[0])
+
+          resources: list[str] = []
+          for _, dep_name, dep_ver in sorted_deps:
+              dep_url, dep_sha = pick_release_file(dep_name, dep_ver)
+              resources.append(
+                  "\n".join(
+                      [
+                          f'  resource "{dep_name}" do',
+                          f'    url "{dep_url}"',
+                          f'    sha256 "{dep_sha}"',
+                          "  end",
+                      ]
+                  )
+              )
+
+          resources_block = "\n\n".join(resources)
+          lines = [
+              f"class {formula_class} < Formula",
+              "  include Language::Python::Virtualenv",
+              "",
+              f'  desc "{desc}"',
+              f'  homepage "{homepage}"',
+              f'  url "{main_url}"',
+              f'  sha256 "{main_sha}"',
+              '  license "MIT"',
+          ]
+
+          if resources_block:
+              lines.append("")
+              lines.extend(resources_block.splitlines())
+
+          lines.extend(
+              [
+                  "",
+                  '  depends_on "python@3.12"',
+                  "",
+                  "  def install",
+                  "    virtualenv_install_with_resources",
+                  "  end",
+                  "",
+                  "  test do",
+                  '    output = shell_output("#{bin}/guanlan --version")',
+                  "    assert_match version.to_s, output",
+                  "  end",
+                  "end",
+              ]
+          )
+          formula = "\n".join(lines)
+
+          formula_path.parent.mkdir(parents=True, exist_ok=True)
+          formula_path.write_text(formula + "\n", encoding="utf-8")
+          PY
+
+      - name: Push formula to tap
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${HOMEBREW_TAP_GITHUB_TOKEN}@github.com/${HOMEBREW_TAP_REPO}.git" tap
+          mkdir -p "tap/$(dirname "${FORMULA_PATH}")"
+          cp "${FORMULA_PATH}" "tap/${FORMULA_PATH}"
+
+          cd tap
+          if git diff --quiet -- "${FORMULA_PATH}"; then
+            echo "No formula changes detected."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${FORMULA_PATH}"
+          git commit -m "guanlan ${GITHUB_REF_NAME#v}"
+          git push

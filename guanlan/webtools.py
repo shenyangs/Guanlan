@@ -1112,6 +1112,67 @@ def _source_mix(results: list[dict[str, Any]]) -> dict[str, int]:
     return dict(sorted(mix.items(), key=lambda item: (-item[1], item[0])))
 
 
+def source_distribution(results: list[dict[str, Any]], field: str = "source_type") -> list[dict[str, Any]]:
+    """Return count/percent rows for source diagnostics."""
+    counts: dict[str, int] = {}
+    for item in results:
+        if field == "domain":
+            key = str(item.get("domain") or _domain(str(item.get("url", ""))) or "unknown")
+        elif field == "source":
+            key = str(item.get("source") or "search")
+        else:
+            key = str(item.get("source_type") or "通用网页")
+        counts[key] = counts.get(key, 0) + 1
+    total = sum(counts.values())
+    rows = []
+    for label, count in sorted(counts.items(), key=lambda item: (-item[1], item[0])):
+        rows.append(
+            {
+                "label": label,
+                "count": count,
+                "percent": (count / total * 100) if total else 0.0,
+            }
+        )
+    return rows
+
+
+def format_source_chart(
+    results: list[dict[str, Any]],
+    title: str = "来源分布",
+    width: int = 24,
+) -> str:
+    """Render an ASCII source distribution chart for CLI diagnostics."""
+    lines = ["", f"## {title}"]
+    if not results:
+        lines.append("- 暂无可统计结果。")
+        return "\n".join(lines)
+
+    sections = [
+        ("信源类型", source_distribution(results, "source_type")),
+        ("域名/平台", source_distribution(results, "domain")),
+    ]
+    for section_title, rows in sections:
+        lines.extend(["", f"### {section_title}"])
+        lines.extend(_format_chart_rows(rows, width=width))
+    return "\n".join(lines)
+
+
+def _format_chart_rows(rows: list[dict[str, Any]], width: int = 24) -> list[str]:
+    if not rows:
+        return ["- 暂无数据。"]
+    max_count = max(int(row.get("count", 0)) for row in rows) or 1
+    max_label = max(len(str(row.get("label", ""))) for row in rows)
+    lines = []
+    for row in rows:
+        label = str(row.get("label", "unknown"))
+        count = int(row.get("count", 0))
+        percent = float(row.get("percent", 0.0))
+        bar_len = max(1, round(count / max_count * width)) if count else 0
+        bar = "#" * bar_len
+        lines.append(f"- {label.ljust(max_label)} {bar.ljust(width)} {percent:5.1f}% ({count})")
+    return lines
+
+
 def format_search_markdown(results: list[dict[str, Any]], title: str = "观澜搜索") -> str:
     """Render search results as compact Markdown for agent context."""
     lines = [f"# {title}", ""]
