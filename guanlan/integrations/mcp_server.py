@@ -102,6 +102,25 @@ def _tool_definitions() -> list[dict]:
             },
         },
         {
+            "name": "guanlan_pulse",
+            "description": "Analyze topic echo from public samples with explicit caveats.",
+            "inputSchema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer", "default": 12, "minimum": 1, "maximum": 30},
+                    "site": {"type": "string"},
+                    "sites": {"type": "array", "items": {"type": "string"}},
+                    "scope": {"type": "string"},
+                    "backend": {"type": "string", "default": "auto"},
+                    "profile": {"type": "string", "enum": ["global", "china", "hybrid"], "default": "china"},
+                    "read_top": {"type": "integer", "default": 0, "minimum": 0, "maximum": 5},
+                    "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "context"},
+                },
+            },
+        },
+        {
             "name": "guanlan_archive_search",
             "description": "Search Guanlan's local Markdown archive.",
             "inputSchema": {
@@ -200,6 +219,30 @@ def _run_tool(name: str, arguments: dict | None = None):
         if str(args.get("format") or "markdown") == "json":
             return items
         return format_hotnews_markdown(items, title=f"观澜热榜 / {args.get('source') or 'baidu'}")
+
+    if name == "guanlan_pulse":
+        from guanlan.pulse import (
+            build_pulse_report,
+            format_pulse_context,
+            format_pulse_markdown,
+        )
+
+        report = build_pulse_report(
+            str(args.get("query", "")).strip(),
+            limit=int(args.get("limit") or 12),
+            site=args.get("site") or None,
+            sites=args.get("sites") or None,
+            scope=args.get("scope") or None,
+            backend=str(args.get("backend") or "auto"),
+            profile=args.get("profile") or "china",
+            read_top=int(args.get("read_top") or 0),
+        )
+        output_format = str(args.get("format") or "context")
+        if output_format == "json":
+            return report
+        if output_format == "markdown":
+            return format_pulse_markdown(report)
+        return format_pulse_context(report)
 
     if name == "guanlan_archive_search":
         from guanlan.archive import (

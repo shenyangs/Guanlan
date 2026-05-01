@@ -24,6 +24,7 @@
 - Agent 基础搜索/阅读命令已经可用：`guanlan search "关键词"`、`guanlan search "关键词" --profile china`、`guanlan search "关键词" --scope party_central`、`guanlan read "URL"`。
 - 搜索质量层已经可用：多后端聚合、URL 去重、中文信源分类、可信度评分和 scope 语境优先。
 - 来源分布诊断已经可用：`guanlan search "关键词" --source-chart`、`guanlan research "关键词" --source-chart`。
+- 安全版话题回响已经可用：`guanlan pulse "关键词" --format context`，默认只基于公开搜索样本输出倾向、置信度和边界提醒。
 - Jina Reader 已作为第一读取入口，但不是唯一依赖；读取不稳时可用 `guanlan read "URL" --backend direct` 直连原网页。
 - 本地知识库雏形已经可用：`guanlan archive add "URL"`、`guanlan archive search "关键词" --format context`、`guanlan archive export --format jsonl`。
 - 第一批原生热榜命令已经可用：`guanlan hotnews list`、`guanlan hotnews baidu --limit 10`、`guanlan hotnews v2ex --json`。

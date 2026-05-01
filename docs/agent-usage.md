@@ -34,6 +34,7 @@
 | “查政策/监管/官方通知” | `guanlan research "关键词" --preset policy` |
 | “查产品口碑/用户评价” | `guanlan research "关键词" --preset reputation` |
 | “指定多个平台查口碑” | `guanlan research "关键词" --preset reputation --sites zhihu.com,weibo.com,xiaohongshu.com` |
+| “看话题是被夸还是被骂” | `guanlan pulse "关键词" --format context` |
 | “查技术选型/开发者反馈” | `guanlan research "关键词" --preset tech` |
 | “只要证据包，不读原文” | `guanlan research "关键词" --read-top 0` |
 | “读这个链接” | `guanlan read "URL"` |
@@ -55,7 +56,7 @@
 | “搜索本地知识库” | `guanlan archive search "关键词" --format context` |
 | “导出给 RAG 系统” | `guanlan archive export --format jsonl` |
 
-如果当前 Agent 支持 MCP，可以优先使用观澜 MCP 工具面：`guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_hotnews`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
+如果当前 Agent 支持 MCP，可以优先使用观澜 MCP 工具面：`guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
 
 MCP 客户端安装入口：
 
@@ -144,6 +145,34 @@ guanlan research "某主题" --preset industry --source-chart
 ```
 
 `--source-chart` 会输出 ASCII 来源类型和域名分布。它不代表结论真假，只用于提醒 Agent：这轮证据主要来自哪里，是否需要补官方、垂类、社交或开发者社区视角。
+
+### 话题回响
+
+用户说：
+
+```text
+看看这个产品现在是被骂还是被夸。
+```
+
+优先使用安全版回响分析：
+
+```bash
+guanlan pulse "产品名 用户评价" --format context
+```
+
+指定公开平台样本：
+
+```bash
+guanlan pulse "产品名 用户评价" --sites zhihu.com,weibo.com,xiaohongshu.com --format context
+```
+
+需要少量原文增强时，才显式开启摘读：
+
+```bash
+guanlan pulse "产品名 用户评价" --read-top 2 --format context
+```
+
+`pulse` 只输出“基于当前公开样本的讨论倾向”，不是全网舆情结论。回答用户时必须保留置信度、样本来源、关键词信号和边界提醒。不要把 `偏正向` / `偏负向` 写成绝对事实。
 
 如果用户希望你直接形成回答依据，而不是只列链接，优先使用研究证据包：
 

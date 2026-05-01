@@ -12,6 +12,7 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "guanlan_read" in names
     assert "guanlan_research" in names
     assert "guanlan_hotnews" in names
+    assert "guanlan_pulse" in names
     assert "guanlan_archive_search" in names
 
 
@@ -65,3 +66,33 @@ def test_mcp_archive_search_uses_archive(monkeypatch):
 
     assert "观澜本地知识库上下文" in text
     assert "本地材料" in text
+
+
+def test_mcp_pulse_uses_pulse(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.pulse.build_pulse_report",
+        lambda *_args, **_kwargs: {
+            "query": "某产品",
+            "tendency": "偏负向",
+            "confidence": "低",
+            "sample_count": 1,
+            "read_success": 0,
+            "positive_terms": [],
+            "negative_terms": [{"term": "吐槽", "count": 1}],
+            "controversy_terms": [{"term": "争议", "count": 1}],
+            "samples": [
+                {
+                    "source_type": "社交/内容平台",
+                    "title": "用户吐槽",
+                    "url": "https://example.com/a",
+                    "snippet": "争议",
+                    "stance": "negative",
+                }
+            ],
+        },
+    )
+
+    text = mcp_server._run_tool("guanlan_pulse", {"query": "某产品", "format": "context"})
+
+    assert "观澜回响上下文" in text
+    assert "偏负向" in text

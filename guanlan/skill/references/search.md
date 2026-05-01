@@ -110,6 +110,21 @@ guanlan search "query" --cluster-threshold conservative
 
 `--source-chart` 会追加 ASCII 来源类型和域名分布，用来快速判断这轮信息是否偏官方、偏社交、偏商业媒体或偏单一域名。它只解释来源结构，不替代事实核验。
 
+## 话题回响 / Pulse
+
+```bash
+# 安全版讨论倾向，默认只基于公开搜索摘要
+guanlan pulse "query" --format context
+
+# 指定公开平台样本
+guanlan pulse "query" --sites zhihu.com,weibo.com,xiaohongshu.com --format context
+
+# 显式读取少量代表结果增强证据
+guanlan pulse "query" --read-top 2 --format context
+```
+
+`pulse` 会输出讨论倾向、置信度、正负向关键词、争议点、来源分布和证据样本。它不代表全网舆情；回答用户时必须保留“基于当前公开样本”的边界提醒。
+
 重复查询时使用本地 TTL 缓存，减少对上游搜索页的扰动：
 
 ```bash

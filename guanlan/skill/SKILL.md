@@ -59,6 +59,7 @@ guanlan search "query" --trace
 guanlan search "query" --cache-ttl 3600
 guanlan search "query" --format context
 guanlan search "query" --source-chart
+guanlan pulse "query" --format context
 
 # 通用网页阅读
 guanlan read "URL" --max-chars 12000

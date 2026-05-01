@@ -226,6 +226,36 @@ def main():
     p_research.add_argument("--source-chart", action="store_true",
                             help="Append an ASCII source/domain distribution chart")
 
+    # ── pulse ──
+    p_pulse = sub.add_parser("pulse", help="Analyze topic echo from public samples with clear caveats")
+    p_pulse.add_argument("query", nargs="?", default="", help="Topic or query to analyze")
+    p_pulse.add_argument("--limit", type=int, default=12,
+                         help="Maximum number of search samples")
+    p_pulse.add_argument("--site", default="",
+                         help="Restrict search to a domain, e.g. zhihu.com")
+    p_pulse.add_argument("--sites", default="",
+                         help="Comma-separated domains for platform-directed pulse")
+    p_pulse.add_argument("--scope", default="",
+                         help="Curated China source scope")
+    p_pulse.add_argument("--backend", default="auto",
+                         help="Search backend: auto, duckduckgo, bing, baidu, wechat-sogou, or plugin:name")
+    p_pulse.add_argument("--profile", choices=VALID_PROFILES, default="china",
+                         help="Region profile")
+    p_pulse.add_argument("--read-top", type=int, default=0,
+                         help="Optional representative URLs to read; default 0 keeps pulse search-only")
+    p_pulse.add_argument("--read-backend", choices=["auto", "jina", "direct"],
+                         default="auto", help="Read backend for optional evidence reads")
+    p_pulse.add_argument("--max-read-chars", type=int, default=1600,
+                         help="Maximum characters per optional read")
+    p_pulse.add_argument("--cache-ttl", type=int, default=0,
+                         help="Reuse identical search results for this many seconds")
+    p_pulse.add_argument("--no-cache", action="store_true",
+                         help="Bypass local cache even when --cache-ttl is set")
+    p_pulse.add_argument("--format", choices=["markdown", "json", "context"], default="markdown",
+                         help="Output format")
+    p_pulse.add_argument("--json", action="store_true",
+                         help="Print normalized JSON instead of Markdown")
+
     # ── read ──
     p_read = sub.add_parser("read", help="Read a URL as Markdown for agent context")
     p_read.add_argument("url", nargs="?", default="",
@@ -355,6 +385,8 @@ def main():
         _cmd_search(args)
     elif args.command == "research":
         _cmd_research(args)
+    elif args.command == "pulse":
+        _cmd_pulse(args)
     elif args.command == "read":
         _cmd_read(args)
     elif args.command == "archive":
@@ -812,6 +844,47 @@ def _cmd_research(args):
         print(format_research_markdown(packet))
         if args.source_chart:
             print(format_source_chart(packet.get("results", [])))
+
+
+def _cmd_pulse(args):
+    """Analyze public topic echo with explicit caveats."""
+
+    from guanlan.pulse import (
+        build_pulse_report,
+        format_pulse_context,
+        format_pulse_markdown,
+    )
+
+    if not args.query:
+        print("Error: query is required", file=sys.stderr)
+        sys.exit(2)
+
+    try:
+        report = build_pulse_report(
+            args.query,
+            limit=max(args.limit, 1),
+            site=args.site or None,
+            sites=[s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
+            scope=args.scope or None,
+            backend=args.backend,
+            profile=args.profile or None,
+            read_top=max(args.read_top, 0),
+            read_backend=args.read_backend,
+            max_read_chars=max(args.max_read_chars, 1),
+            cache_ttl=max(args.cache_ttl, 0),
+            use_cache=not args.no_cache,
+        )
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    output_format = "json" if args.json else args.format
+    if output_format == "json":
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    elif output_format == "context":
+        print(format_pulse_context(report))
+    else:
+        print(format_pulse_markdown(report))
 
 
 def _cmd_read(args):

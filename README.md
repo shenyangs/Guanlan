@@ -89,7 +89,10 @@
 
 如果你只是想先用起来，不想理解 Python、虚拟环境或 MCP，按下面三步走就可以。
 
-**第一步：安装 `uv`**
+**第一步：选择安装路线**
+
+- 如果你用 `Homebrew`，可以直接跳到第二步，不需要安装 `uv`。
+- 如果你用 PyPI + `uv`，先安装 `uv`：
 
 macOS / Linux：
 
@@ -104,6 +107,8 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 ```
 
 安装后如果终端提示找不到 `uv`，关掉当前终端，重新打开一次。
+
+- 如果你用 PyPI + `pipx`，请先确保本机已安装 `pipx`。
 
 **第二步：安装观澜（任选一种）**
 
@@ -132,7 +137,7 @@ guanlan doctor
 guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 5
 ```
 
-看到 `观澜 / Guanlan v0.1.2`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.1.3`，并且 `search` 能返回中文搜索结果，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -142,10 +147,12 @@ uv tool upgrade guanlan
 pipx upgrade guanlan
 ```
 
-如果更新失败，也可以直接重装（`uv`）：
+如果更新失败，也可以直接重装：
 
 ```bash
+brew reinstall guanlan
 uv tool install --force guanlan
+pipx install --force guanlan
 ```
 
 ### Agent / 开发者安装
@@ -276,6 +283,7 @@ guanlan configure --from-browser chrome
 | `guanlan research --list-presets` | 查看研究模板和默认 scope/site 策略。 |
 | `guanlan research "关键词" --format context` | 输出适合直接放进 prompt 的研究上下文。 |
 | `guanlan research "关键词" --sites zhihu.com,weibo.com` | 按多个指定站点生成平台定向证据块。 |
+| `guanlan pulse "关键词"` | 安全版话题回响分析，输出讨论倾向、关键词信号和明确边界。 |
 | `guanlan read "URL"` | 读取网页并转成 Markdown。 |
 | `guanlan read batch urls.txt --format context` | 批量读取 URL 列表并输出紧凑上下文。 |
 | `guanlan read "URL" --watch` | 保存/比较本地快照，输出内容变化 diff。 |
@@ -352,6 +360,7 @@ guanlan research "AI Agent 商业化 国内公司" --preset industry --read-top 
 ```bash
 guanlan research "某产品 用户评价" --preset reputation --read-top 0 --format context
 guanlan research "某产品 用户评价" --preset reputation --sites zhihu.com,weibo.com,xiaohongshu.com --read-top 0
+guanlan pulse "某产品 用户评价" --sites zhihu.com,weibo.com,xiaohongshu.com --format context
 ```
 
 如果你只想看某个平台的公开网页结果：
@@ -360,6 +369,8 @@ guanlan research "某产品 用户评价" --preset reputation --sites zhihu.com,
 guanlan search "某产品 用户评价" --profile china --site zhihu.com --limit 8
 guanlan search "某产品 使用体验" --profile china --site bilibili.com --limit 8
 ```
+
+`pulse` 只给“基于当前公开样本的讨论倾向”，不是全网舆情结论。默认不读原文；如果需要更强证据，可以显式加 `--read-top 2`。
 
 ### 6. 查技术选型和开发者反馈
 
@@ -447,11 +458,12 @@ guanlan search "人工智能 政策" --profile china --cluster-threshold conserv
 guanlan search "问题" --profile china --format context
 guanlan research "问题" --preset policy --format context --source-chart
 guanlan research "产品 用户评价" --preset reputation --read-top 0 --format context
+guanlan pulse "产品 用户评价" --format context
 guanlan read batch urls.txt --format context --cache-ttl 3600
 guanlan archive search "问题" --format context
 ```
 
-如果当前 Agent 支持 MCP，可以把 `guanlan-mcp` 接进去，让 Agent 直接调用 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_hotnews`、`guanlan_archive_search` 和 `guanlan_status`。
+如果当前 Agent 支持 MCP，可以把 `guanlan-mcp` 接进去，让 Agent 直接调用 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search` 和 `guanlan_status`。
 
 ### 13. 把读过的网页沉淀成本地知识库
 
