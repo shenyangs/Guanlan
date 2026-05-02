@@ -8,6 +8,21 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.2.2 - 2026-05-02
+
+### Added
+
+- 新增 `guanlan quality run`，把搜索排序、中文错配、阅读质量、趋势归并和 advisor 自然度纳入一键质量闸门；默认 `quick` 稳定可复跑，`--mode live` 可做网络探测。
+- `read` 增加 `--trace`，输出 Jina/direct/search fallback 尝试、选中后端和正文质量评分。
+- `hotnews` 增加 `--brief`，生成“今日水势简报”、来源分布、边界提醒和后续 research 查询建议。
+- `research` 和 `prompt` 增加 `--advisor-style brief|decision|risk|strategy`，让 Agent 按不同任务组织建议骨架。
+
+### Changed
+
+- 搜索排序增加中文语境错配降权，减少中文口碑/产品查询混入无关英文结果。
+- README 新增“本地大模型联网”专节，说明 Ollama、LM Studio、Open WebUI、MCP 和只读 HTTP 的接入方式。
+- 官网展示版本号同步到 `0.2.2`。
+
 ## v0.2.1 - 2026-05-02
 
 ### Added

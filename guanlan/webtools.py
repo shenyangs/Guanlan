@@ -810,6 +810,33 @@ def read_url(
     watch: bool = False,
 ) -> str:
     """Read a URL with Jina/direct fallbacks and optional search context."""
+    return str(
+        read_url_with_trace(
+            url,
+            max_chars=max_chars,
+            backend=backend,
+            fallback_search=fallback_search,
+            fallback_limit=fallback_limit,
+            profile=profile,
+            cache_ttl=cache_ttl,
+            use_cache=use_cache,
+            watch=watch,
+        )["content"]
+    )
+
+
+def read_url_with_trace(
+    url: str,
+    max_chars: int | None = None,
+    backend: str = "auto",
+    fallback_search: bool = False,
+    fallback_limit: int = DEFAULT_READ_FALLBACK_LIMIT,
+    profile: str | None = "china",
+    cache_ttl: int = 0,
+    use_cache: bool = True,
+    watch: bool = False,
+) -> dict[str, Any]:
+    """Read a URL and return content plus backend/quality trace."""
     url = url.strip()
     if not url:
         raise ValueError("url is required")
@@ -831,52 +858,154 @@ def read_url(
         )
         cached = _cache_get("read", cache_key, ttl=cache_ttl)
         if cached is not None:
-            return str(cached.get("text", ""))
+            text = str(cached.get("text", ""))
+            return {
+                "url": url,
+                "content": text,
+                "quality": assess_read_quality(text),
+                "trace": {
+                    "backend": backend,
+                    "selected_backend": str(cached.get("selected_backend") or "cache"),
+                    "cache": "hit",
+                    "cache_key": cache_key,
+                    "attempts": list(cached.get("attempts") or []),
+                    "fallback_search": False,
+                },
+            }
 
     backend = (backend or "auto").lower()
     errors: list[str] = []
+    attempts: list[dict[str, Any]] = []
     text = ""
     weak_text = ""
+    selected_backend = ""
     if backend in ("auto", "jina"):
         try:
             candidate = _read_with_jina(url)
+            candidate_quality = assess_read_quality(candidate)
             if backend == "auto" and _is_weak_read(candidate):
                 errors.append("jina: weak or blocked content")
                 weak_text = weak_text or candidate
+                attempts.append({"backend": "jina", "status": "weak", "chars": len(candidate), "quality": candidate_quality})
             else:
                 text = candidate
+                selected_backend = "jina"
+                attempts.append({"backend": "jina", "status": "ok", "chars": len(candidate), "quality": candidate_quality})
         except Exception as e:
             errors.append(f"jina: {e}")
+            attempts.append({"backend": "jina", "status": "error", "error": str(e)})
             if backend == "jina":
                 raise
     if not text and backend in ("auto", "direct"):
         try:
             candidate = _read_direct(url)
+            candidate_quality = assess_read_quality(candidate)
             if backend == "auto" and _is_weak_read(candidate):
                 errors.append("direct: weak or blocked content")
                 weak_text = weak_text or candidate
+                attempts.append({"backend": "direct", "status": "weak", "chars": len(candidate), "quality": candidate_quality})
             else:
                 text = candidate
+                selected_backend = "direct"
+                attempts.append({"backend": "direct", "status": "ok", "chars": len(candidate), "quality": candidate_quality})
         except Exception as e:
             errors.append(f"direct: {e}")
+            attempts.append({"backend": "direct", "status": "error", "error": str(e)})
             if backend == "direct":
                 raise
+    fallback_used = False
     if not text and fallback_search and backend == "auto":
         try:
             text = _read_search_context(url, errors=errors, limit=fallback_limit, profile=profile)
+            selected_backend = "search_fallback"
+            fallback_used = True
+            attempts.append({"backend": "search_fallback", "status": "ok", "chars": len(text), "quality": assess_read_quality(text)})
         except Exception as e:
             errors.append(f"search_context: {e}")
+            attempts.append({"backend": "search_fallback", "status": "error", "error": str(e)})
     if not text and weak_text:
         text = weak_text
+        selected_backend = selected_backend or "weak_fallback"
     if not text and errors:
         raise RuntimeError("; ".join(errors))
     if max_chars and max_chars > 0:
         text = text[:max_chars]
     if watch:
-        return _format_read_watch(url, text)
+        text = _format_read_watch(url, text)
+        selected_backend = "watch"
+    quality = assess_read_quality(text)
+    trace_payload = {
+        "backend": backend,
+        "selected_backend": selected_backend or backend,
+        "cache": "miss" if cache_key else "disabled",
+        "cache_key": cache_key,
+        "attempts": attempts,
+        "errors": errors,
+        "fallback_search": fallback_used,
+    }
     if cache_key:
-        _cache_set("read", cache_key, {"text": text})
-    return text
+        _cache_set(
+            "read",
+            cache_key,
+            {"text": text, "selected_backend": selected_backend or backend, "attempts": attempts},
+        )
+    return {"url": url, "content": text, "quality": quality, "trace": trace_payload}
+
+
+def assess_read_quality(text: str) -> dict[str, Any]:
+    """Return a lightweight readability/noise score for extracted content."""
+    normalized = _collapse_ws(text or "")
+    noise_terms = (
+        "登录",
+        "注册",
+        "广告",
+        "客户端下载",
+        "打开APP",
+        "推荐阅读",
+        "相关阅读",
+        "上一篇",
+        "下一篇",
+        "发表评论",
+        "版权声明",
+    )
+    noise_hits = [term for term in noise_terms if term.lower() in normalized.lower()]
+    cjk_chars = sum(1 for char in normalized if "\u4e00" <= char <= "\u9fff")
+    mojibake = _looks_mojibake(normalized)
+    fallback = normalized.startswith("# 观澜阅读兜底")
+    weak = len(normalized) < _MIN_USEFUL_READ_CHARS or mojibake or any(marker in normalized.lower() for marker in _WEAK_READ_MARKERS)
+    score = 100
+    if fallback:
+        score -= 25
+    if weak:
+        score -= 45
+    if mojibake:
+        score -= 35
+    score -= min(len(noise_hits) * 8, 32)
+    if cjk_chars < 80 and _contains_cjk(normalized):
+        score -= 12
+    score = max(score, 0)
+    if fallback:
+        label = "fallback"
+    elif weak:
+        label = "weak"
+    elif noise_hits:
+        label = "noisy"
+    else:
+        label = "clean"
+    return {
+        "label": label,
+        "score": score,
+        "chars": len(normalized),
+        "cjk_chars": cjk_chars,
+        "noise_hits": noise_hits,
+        "mojibake": mojibake,
+        "weak": weak,
+        "fallback": fallback,
+    }
+
+
+def _contains_cjk(text: str) -> bool:
+    return any("\u4e00" <= char <= "\u9fff" for char in text or "")
 
 
 def read_batch(
@@ -1038,6 +1167,7 @@ def build_research_packet(
     max_read_chars: int | None = None,
     preset: str | None = "general",
     advisor: bool = False,
+    advisor_style: str = "brief",
     select_top: int | None = None,
 ) -> dict[str, Any]:
     """Build an agent-ready evidence packet from search + selected reads."""
@@ -1134,7 +1264,7 @@ def build_research_packet(
         ],
     }
     if advisor:
-        packet["advisor"] = build_advisor_view(packet)
+        packet["advisor"] = build_advisor_view(packet, style=advisor_style)
     return packet
 
 
@@ -1331,6 +1461,42 @@ def format_read_context(content: str, url: str = "") -> str:
         lines.append("")
     lines.append(content.strip())
     return "\n".join(lines).strip() + "\n"
+
+
+def format_read_trace(trace_packet: dict[str, Any]) -> str:
+    """Render read backend and quality trace as Markdown."""
+    trace = trace_packet.get("trace") or {}
+    quality = trace_packet.get("quality") or {}
+    lines = [
+        "## 阅读 Trace",
+        f"- selected_backend: {trace.get('selected_backend', '')}",
+        f"- cache: {trace.get('cache', 'disabled')}",
+        (
+            "- quality: "
+            f"{quality.get('label', 'unknown')} "
+            f"score={quality.get('score', 0)} "
+            f"chars={quality.get('chars', 0)} "
+            f"noise={','.join(quality.get('noise_hits') or []) or 'none'}"
+        ),
+    ]
+    attempts = trace.get("attempts") or []
+    if attempts:
+        lines.append("- attempts:")
+        for item in attempts:
+            item_quality = item.get("quality") or {}
+            detail = f"  - {item.get('backend')}: {item.get('status')}"
+            if item.get("chars") is not None:
+                detail += f" chars={item.get('chars')}"
+            if item_quality:
+                detail += f" quality={item_quality.get('label')}/{item_quality.get('score')}"
+            if item.get("error"):
+                detail += f" error={item.get('error')}"
+            lines.append(detail)
+    errors = trace.get("errors") or []
+    if errors:
+        lines.append("- errors:")
+        lines.extend(f"  - {error}" for error in errors)
+    return "\n".join(lines)
 
 
 def format_read_batch_prompt(records: list[dict[str, Any]], query: str = "请综合分析这些网页。") -> str:
@@ -1554,7 +1720,7 @@ def _reading_record(
     }
 
 
-def build_advisor_view(packet: dict[str, Any]) -> dict[str, Any]:
+def build_advisor_view(packet: dict[str, Any], style: str = "brief") -> dict[str, Any]:
     """Build evidence-bound guidance that helps an agent write its own advice."""
     query = str(packet.get("query", "")).strip()
     preset = str(packet.get("preset", "general")).strip() or "general"
@@ -1569,13 +1735,15 @@ def build_advisor_view(packet: dict[str, Any]) -> dict[str, Any]:
     supports = _advisor_supports(source_mix, topic_count, result_count, readings)
     limits = _advisor_limits(packet, source_mix, topic_count, result_count, readings, read_top)
     next_steps = _advisor_next_steps(query, preset, source_mix, limits)
-    answer_frame = _advisor_answer_frame(preset, query, source_mix, supports, limits, next_steps)
+    style = style if style in {"brief", "decision", "risk", "strategy"} else "brief"
+    answer_frame = _advisor_answer_frame(preset, query, source_mix, supports, limits, next_steps, style=style)
 
     return {
         "title": "助理视角规则",
         "mode": "agent_guidance",
+        "style": style,
         "stance": "以下内容用于指导 Agent 生成建议：它只约束如何基于当前证据思考，不代表用户真实目的，也不构成最终结论。",
-        "briefing": _advisor_briefing(query, preset, source_mix, supports, limits, next_steps),
+        "briefing": _advisor_briefing(query, preset, source_mix, supports, limits, next_steps, style=style),
         "answer_frame": answer_frame,
         "synthesis_rules": _advisor_synthesis_rules(preset, query, source_mix),
         "suggested_angles": intents,
@@ -1644,15 +1812,22 @@ def _advisor_briefing(
     supports: list[str],
     limits: list[str],
     next_steps: list[str],
+    style: str = "brief",
 ) -> str:
     """Summarize how an agent should naturally use the advisor block."""
     source_phrase = _advisor_source_phrase(source_mix)
     strength = _advisor_strength_phrase(supports, limits)
     action = next_steps[0] if next_steps else "继续补证后再下结论"
     angle = _advisor_primary_angle(preset, query)
+    style_opening = {
+        "brief": "先给一段短判断",
+        "decision": "先给可选行动和取舍",
+        "risk": "先把风险和不可下结论处说清楚",
+        "strategy": "先把局势、机会和后续打法分层",
+    }.get(style, "先给一段短判断")
     return (
         f"可以把这次检索当作“{angle}”的初步证据包：{source_phrase}。"
-        f"{strength} 面向用户时，先给一个克制判断，再交代证据边界，最后落到下一步：{action}。"
+        f"{strength} 面向用户时，{style_opening}，再交代证据边界，最后落到下一步：{action}。"
     )
 
 
@@ -1663,14 +1838,31 @@ def _advisor_answer_frame(
     supports: list[str],
     limits: list[str],
     next_steps: list[str],
+    style: str = "brief",
 ) -> list[str]:
     """Return a non-template answer scaffold that the calling agent can adapt."""
     angle = _advisor_primary_angle(preset, query)
     source_phrase = _advisor_source_phrase(source_mix)
-    frame = [
-        f"开场先点明这只是围绕“{angle}”的证据判断，不要直接包装成最终结论。",
-        f"第二步交代主要来源结构：{source_phrase}，让用户知道“谁在说”。",
-    ]
+    if style == "decision":
+        frame = [
+            f"先给“可以做/暂缓做/继续核验”的行动分叉，说明这是围绕“{angle}”的证据判断。",
+            f"再交代主要来源结构：{source_phrase}，让用户知道“谁在说”。",
+        ]
+    elif style == "risk":
+        frame = [
+            f"先说当前最容易误判的地方，不要把“{angle}”包装成最终结论。",
+            f"再交代主要来源结构：{source_phrase}，特别标出样本偏差和缺口。",
+        ]
+    elif style == "strategy":
+        frame = [
+            f"先把“{angle}”拆成局势、机会、风险和下一步四层。",
+            f"再交代主要来源结构：{source_phrase}，让用户理解判断基础。",
+        ]
+    else:
+        frame = [
+            f"开场先点明这只是围绕“{angle}”的证据判断，不要直接包装成最终结论。",
+            f"第二步交代主要来源结构：{source_phrase}，让用户知道“谁在说”。",
+        ]
     if supports:
         frame.append(f"第三步只展开证据能支撑的部分，例如：{supports[0]}。")
     if limits:
@@ -2586,6 +2778,7 @@ def _score_result_parts(
         "recency_boost": 0.0,
         "ad_penalty": 0.0,
         "intent_mismatch_penalty": 0.0,
+        "language_mismatch_penalty": 0.0,
         "source_risk_penalty": 0.0,
         "stale_penalty": 0.0,
     }
@@ -2627,6 +2820,8 @@ def _score_result_parts(
         parts["intent_fit"] += 0.48
     if item.source_type and item.source_type in caution_source_types:
         parts["intent_mismatch_penalty"] = -0.35
+    if _is_chinese_context_query(query, quality) and _result_lacks_chinese_context(item):
+        parts["language_mismatch_penalty"] = -0.75
     if recency and recency.get("enabled"):
         metrics = _result_recency_metrics(item, recency)
         if metrics["result_date"] and metrics["age_days"] is not None:
@@ -2647,6 +2842,33 @@ def _score_result_parts(
     total = sum(parts.values())
     parts["total"] = round(max(total, 0.1), 3)
     return {key: round(value, 3) for key, value in parts.items()}
+
+
+def _is_chinese_context_query(query: str, quality: dict[str, Any] | None = None) -> bool:
+    """Return true when a Chinese query expects Chinese-context evidence."""
+    if not _contains_cjk(query):
+        return False
+    text = query.lower()
+    # Technical queries often need English/GitHub evidence even when the user
+    # writes in Chinese, so keep the language penalty off for that route.
+    tech_terms = ("github", "api", "sdk", "python", "issue", "bug", "benchmark", "repo")
+    if any(term in text for term in tech_terms):
+        return False
+    intent = str((quality or {}).get("intent") or "")
+    if "tech" in intent:
+        return False
+    return True
+
+
+def _result_lacks_chinese_context(item: SearchResult) -> bool:
+    text = _collapse_ws(f"{item.title} {item.snippet}")
+    cjk_chars = sum(1 for char in text if "\u4e00" <= char <= "\u9fff")
+    if cjk_chars >= 4:
+        return False
+    domain = item.domain or _domain(item.url)
+    if domain.endswith((".cn", ".com.cn", ".org.cn", ".gov.cn")):
+        return False
+    return True
 
 
 def _source_quality_weight(source_type: str) -> float:

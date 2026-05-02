@@ -170,7 +170,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.2.1`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.2.2`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -320,11 +320,14 @@ guanlan configure --from-browser chrome
 | `guanlan research "关键词" --format context` | 输出适合直接放进 prompt 的研究上下文。 |
 | `guanlan research "关键词" --format prompt` | 输出本地模型联网 Prompt。 |
 | `guanlan research "关键词" --advisor` | 在证据包后追加助理视角规则，帮助 Agent 基于证据生成建议。 |
+| `guanlan research "关键词" --advisor --advisor-style risk` | 按风险/决策/策略等风格生成更自然的 Agent 作答骨架。 |
 | `guanlan prompt "问题"` | 快速生成 Ollama / LM Studio / Open WebUI 可用的联网 Prompt。 |
 | `guanlan research "关键词" --sites zhihu.com,weibo.com` | 按多个指定站点生成平台定向证据块。 |
 | `guanlan pulse "关键词"` | 安全版话题回响分析，输出讨论倾向、关键词信号和明确边界。 |
 | `guanlan hotnews today --trends` | 多源热榜归并成趋势簇，观察中文互联网当日水势。 |
+| `guanlan hotnews today --brief` | 生成今日水势简报、来源分布、边界提醒和后续查询建议。 |
 | `guanlan read "URL"` | 读取网页并转成 Markdown。 |
+| `guanlan read "URL" --trace` | 展示 Jina/direct/fallback 路径和正文质量评分。 |
 | `guanlan read "URL" --format prompt --question "问题"` | 把网页正文包装成本地模型 Prompt。 |
 | `guanlan read batch urls.txt --format context` | 批量读取 URL 列表并输出紧凑上下文。 |
 | `guanlan mcp config --client codex` | 输出可复制的 MCP 客户端配置。 |
@@ -337,6 +340,7 @@ guanlan configure --from-browser chrome
 | `guanlan serve --host 127.0.0.1 --port 8765` | 启动本地只读 HTTP 服务。 |
 | `guanlan plugin template my_company_api` | 生成企业内部只读搜索 connector 模板。 |
 | `guanlan eval scenarios --format jsonl` | 输出中文语境搜索质量评估集。 |
+| `guanlan quality run` | 一键跑搜索/阅读/热榜/advisor 质量闸门。 |
 | `guanlan hotnews today --limit 50` | 拉取原生多源中文热榜。 |
 | `guanlan profile set china` | 切换到中文场景画像。 |
 | `guanlan configure --from-browser chrome` | 显式从浏览器提取支持平台的 Cookie。 |
@@ -456,6 +460,15 @@ guanlan read "https://example.com/article" --format context
 guanlan read "https://example.com/article" --backend direct --max-chars 12000
 ```
 
+如果要排查正文为什么脏、为什么走了某个后端，打开 trace：
+
+```bash
+guanlan read "https://example.com/article" --trace
+guanlan read "https://example.com/article" --format json --trace
+```
+
+`--trace` 会显示 Jina、direct、search fallback 的尝试顺序、最终选中的后端、正文质量标签（`clean/noisy/weak/fallback`）、噪声命中和乱码判断。
+
 ### 9. 批量读取一组链接
 
 适合 Agent 已经搜到一批材料，需要统一读成上下文。
@@ -497,6 +510,15 @@ guanlan hotnews newsnow:36kr-quick --limit 50
 ```
 
 `today` 是默认推荐入口，会把百度热搜、微博热搜、B站热门视频、IT之家 RSS 和 V2EX 热门混合成一个多源快照；其中单个公开端点失败时不会拖垮其它来源。
+
+如果想让 Agent 先看一份更像“今日水势”的简报：
+
+```bash
+guanlan hotnews today --limit 50 --brief
+guanlan hotnews today --limit 50 --trends --brief
+```
+
+`--brief` 会输出来源分布、边界提醒、值得追踪的趋势，以及每个趋势后续可交给 `research` 的查询建议。
 
 `newsnow:<source>` 是可选增强后端，适合补 36氪、B站热搜、财联社、华尔街见闻等更多来源；稳定性取决于 NewsNow BASE_URL、Cloudflare 和上游抓取状态。公共站不稳时可配置自己的 NewsNow：
 
@@ -548,11 +570,46 @@ guanlan hotnews today --trends
 
 CLI 是默认主路径；如果当前 Agent 或平台支持 MCP，可以把 `guanlan-mcp` 作为可选集成接进去，让 Agent 直接调用 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search` 和 `guanlan_status`。
 
-本地模型没有联网能力时，用 `guanlan prompt "问题"` 或给 `search/research/read` 加 `--format prompt`，把观澜证据包直接喂给 Ollama、LM Studio 或 Open WebUI。MCP 客户端配置可用 `guanlan mcp config --client codex` 生成。
+### 14. 本地大模型联网
 
-不支持 MCP 的本地工具可以走只读 HTTP：`guanlan serve --host 127.0.0.1 --port 8765`。服务默认只监听本机，提供搜索、研究、阅读、热榜、路由和本地归档检索接口，不提供发布/评论/点赞/私信等写操作。
+很多本地模型本身没有搜索网页和读取网页的能力，例如通过 Ollama、LM Studio、llama.cpp、Jan、Open WebUI 或本地 Agent 运行的模型。观澜可以作为它们的联网前置器：先由观澜搜索、阅读和整理中文互联网证据，再把证据包交给本地模型回答。
 
-### 14. 把读过的网页沉淀成本地知识库
+最简单的方式是直接生成完整 Prompt：
+
+```bash
+guanlan prompt "最近 AI 眼镜 在中国市场有什么变化？" --profile china > context.md
+ollama run qwen3:latest < context.md
+```
+
+如果你想自己控制证据包，可以用 `--format prompt`：
+
+```bash
+guanlan research "跨境电商 AI 工具 趋势" --preset ecommerce --format prompt > prompt.md
+guanlan search "新质生产力 政策 原文" --profile china --scope party_central --format prompt > prompt.md
+guanlan read "https://example.com/article" --format prompt --question "请提炼这篇文章的关键信息" > prompt.md
+```
+
+如果本地 Agent 支持 MCP，可以生成配置：
+
+```bash
+guanlan mcp config --client codex
+guanlan mcp config --client openwebui
+```
+
+如果工具不支持 MCP，可以启动只读 HTTP 服务：
+
+```bash
+guanlan serve --host 127.0.0.1 --port 8765
+```
+
+服务默认只监听本机，提供 `/search`、`/research`、`/read`、`/hotnews`、`/route` 和 `/archive/search` 等只读接口，不提供发布、评论、点赞、私信等写操作。对本地模型来说，推荐工作流是：
+
+1. 用 `hotnews --brief` 或 `route` 判断该去哪找。
+2. 用 `search/research --format context` 拿证据表。
+3. 用 `read --trace` 检查关键原文质量。
+4. 把 `prompt` 或 `context` 交给本地模型，让它基于来源回答。
+
+### 15. 把读过的网页沉淀成本地知识库
 
 适合把 Agent 搜过、读过、核验过的材料保存下来，后续不用重复请求上游，也能导出给 RAG 系统。
 
@@ -566,7 +623,19 @@ guanlan archive export --format jsonl > guanlan-archive.jsonl
 
 本地知识库默认保存在 `~/.guanlan/archive.db`。第一版使用 SQLite + FTS/LIKE 检索，保存 URL、标题、域名、Markdown 正文、摘要、更新时间和元数据。它不是云同步，也不会自动上传内容。
 
-### 15. 安全检查和授权边界
+### 16. 质量闸门
+
+适合维护者和高级用户在发版前快速检查“观澜是不是真的更好了”。
+
+```bash
+guanlan quality run
+guanlan quality run --format json
+guanlan quality run --mode live --limit 5
+```
+
+默认 `quick` 模式不依赖网络，会检查搜索排序、中文错配、正文质量评分、趋势归并和 advisor 自然度；`live` 模式会额外跑少量真实网络探测。
+
+### 17. 安全检查和授权边界
 
 如果你担心配置里误存了 Cookie、Token、API key 或代理凭据，先跑：
 

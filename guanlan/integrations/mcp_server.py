@@ -159,6 +159,12 @@ def _tool_definitions() -> list[dict]:
                             "Use them to write natural advice; do not mechanically repeat the block."
                         ),
                     },
+                    "advisor_style": {
+                        "type": "string",
+                        "enum": ["brief", "decision", "risk", "strategy"],
+                        "default": "brief",
+                        "description": "Style for advisor guidance when advisor=true.",
+                    },
                 },
             },
         },
@@ -333,6 +339,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             read_backend=str(args.get("read_backend") or "auto"),
             max_read_chars=int(args["max_read_chars"]) if args.get("max_read_chars") is not None else None,
             advisor=bool(args.get("advisor", False)),
+            advisor_style=str(args.get("advisor_style") or "brief"),
         )
         output_format = str(args.get("format") or "markdown")
         if output_format == "json":

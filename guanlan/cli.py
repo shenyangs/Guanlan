@@ -179,6 +179,8 @@ def main():
                            help="Print normalized JSON instead of Markdown")
     p_hotnews.add_argument("--trends", action="store_true",
                            help="For multi-source hotnews, append cross-source trend clusters")
+    p_hotnews.add_argument("--brief", action="store_true",
+                           help="Append a compact daily trend brief with follow-up queries")
 
     # ── route ──
     p_route = sub.add_parser("route", help="Explain Guanlan's source and demand routing plan")
@@ -260,6 +262,8 @@ def main():
                             help="Append an ASCII source/domain distribution chart")
     p_research.add_argument("--advisor", action="store_true",
                             help="Append a cautious assistant view with intent hypotheses and next steps")
+    p_research.add_argument("--advisor-style", choices=["brief", "decision", "risk", "strategy"], default="brief",
+                            help="Advisor guidance style when --advisor is enabled")
     p_research.add_argument("--select-top", type=int, default=None,
                             help="How many representative evidence items to highlight from the broad pool")
 
@@ -284,6 +288,8 @@ def main():
                           help="Region profile")
     p_prompt.add_argument("--advisor", action=argparse.BooleanOptionalAction, default=True,
                           help="Include advisor writing rules in the prompt")
+    p_prompt.add_argument("--advisor-style", choices=["brief", "decision", "risk", "strategy"], default="brief",
+                          help="Advisor guidance style")
     p_prompt.add_argument("--select-top", type=int, default=8,
                           help="Representative evidence items to include")
 
@@ -343,6 +349,8 @@ def main():
                         help="Bypass local cache even when --cache-ttl is set")
     p_read.add_argument("--watch", action="store_true",
                         help="Compare this read with the saved local snapshot and output a diff")
+    p_read.add_argument("--trace", action="store_true",
+                        help="Show read backend attempts and content quality score")
     p_read.add_argument("--interval", default="",
                         help="Accepted for watch workflows; this CLI stores one snapshot per run")
 
@@ -429,6 +437,16 @@ def main():
     p_eval_scenarios = eval_sub.add_parser("scenarios", help="Print built-in evaluation scenarios")
     p_eval_scenarios.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
 
+    # ── quality ──
+    p_quality = sub.add_parser("quality", help="Run Guanlan quality gates")
+    quality_sub = p_quality.add_subparsers(dest="quality_command", help="Quality commands")
+    p_quality_run = quality_sub.add_parser("run", help="Run search/read/hotnews/advisor quality checks")
+    p_quality_run.add_argument("--mode", choices=["quick", "live"], default="quick",
+                               help="quick is deterministic; live performs network probes")
+    p_quality_run.add_argument("--limit", type=int, default=5,
+                               help="Live probe result limit")
+    p_quality_run.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
+
     # ── mcp ──
     p_mcp = sub.add_parser("mcp", help="MCP helpers for agent integration")
     mcp_sub = p_mcp.add_subparsers(dest="mcp_command", help="MCP commands")
@@ -480,6 +498,7 @@ def _telemetry_command_name(args) -> str:
         "archive": "archive_command",
         "mcp": "mcp_command",
         "eval": "eval_command",
+        "quality": "quality_command",
         "profile": "action",
     }
     attr = subcommand_attrs.get(command)
@@ -538,6 +557,8 @@ def _dispatch_command(args):
         _cmd_plugin(args)
     elif args.command == "eval":
         _cmd_eval(args)
+    elif args.command == "quality":
+        _cmd_quality(args)
 
 
 # ── Command handlers ────────────────────────────────
@@ -874,8 +895,10 @@ def _cmd_hotnews(args):
 
     from guanlan.config import Config
     from guanlan.hotnews import (
+        build_hotnews_brief,
         build_trend_report,
         fetch_hotnews,
+        format_hotnews_brief_markdown,
         format_hotnews_markdown,
         format_trend_report_markdown,
         list_sources,
@@ -919,14 +942,21 @@ def _cmd_hotnews(args):
 
     if args.json:
         payload = {"items": items}
+        trend_report = build_trend_report(items) if (args.trends or args.brief) else None
         if args.trends:
-            payload["trend_report"] = build_trend_report(items)
-        print(json.dumps(payload if args.trends else items, ensure_ascii=False, indent=2))
+            payload["trend_report"] = trend_report
+        if args.brief:
+            payload["brief"] = build_hotnews_brief(items, trend_report=trend_report)
+        print(json.dumps(payload if (args.trends or args.brief) else items, ensure_ascii=False, indent=2))
     else:
         print(format_hotnews_markdown(items, title=f"观澜热榜 / {source}"))
+        trend_report = build_trend_report(items) if (args.trends or args.brief) else None
         if args.trends:
             print()
-            print(format_trend_report_markdown(build_trend_report(items), title=f"观澜趋势归并 / {source}"))
+            print(format_trend_report_markdown(trend_report or {}, title=f"观澜趋势归并 / {source}"))
+        if args.brief:
+            print()
+            print(format_hotnews_brief_markdown(build_hotnews_brief(items, trend_report=trend_report), title=f"观澜今日水势简报 / {source}"))
 
 
 def _cmd_route(args):
@@ -1044,6 +1074,7 @@ def _cmd_research(args):
             read_backend=args.read_backend,
             max_read_chars=max(args.max_read_chars, 1) if args.max_read_chars is not None else None,
             advisor=args.advisor,
+            advisor_style=args.advisor_style,
             select_top=max(args.select_top, 0) if args.select_top is not None else None,
         )
     except Exception as e:
@@ -1092,6 +1123,7 @@ def _cmd_prompt(args):
             read_backend=args.read_backend,
             max_read_chars=max(args.max_read_chars, 1),
             advisor=args.advisor,
+            advisor_style=args.advisor_style,
             select_top=max(args.select_top, 1),
         )
     except Exception as e:
@@ -1151,8 +1183,10 @@ def _cmd_read(args):
         format_read_batch_prompt,
         format_read_context,
         format_read_prompt,
+        format_read_trace,
         read_batch,
         read_url,
+        read_url_with_trace,
     )
 
     try:
@@ -1183,25 +1217,50 @@ def _cmd_read(args):
         if not args.url:
             print("Error: URL is required", file=sys.stderr)
             sys.exit(2)
-        content = read_url(
-            args.url,
-            max_chars=args.max_chars or None,
-            backend=args.backend,
-            fallback_search=args.fallback_search,
-            fallback_limit=max(args.fallback_limit, 1),
-            profile=args.profile or None,
-            cache_ttl=max(args.cache_ttl, 0),
-            use_cache=not args.no_cache,
-            watch=args.watch,
-        )
+        read_packet = None
+        if args.trace:
+            read_packet = read_url_with_trace(
+                args.url,
+                max_chars=args.max_chars or None,
+                backend=args.backend,
+                fallback_search=args.fallback_search,
+                fallback_limit=max(args.fallback_limit, 1),
+                profile=args.profile or None,
+                cache_ttl=max(args.cache_ttl, 0),
+                use_cache=not args.no_cache,
+                watch=args.watch,
+            )
+            content = str(read_packet.get("content", ""))
+        else:
+            content = read_url(
+                args.url,
+                max_chars=args.max_chars or None,
+                backend=args.backend,
+                fallback_search=args.fallback_search,
+                fallback_limit=max(args.fallback_limit, 1),
+                profile=args.profile or None,
+                cache_ttl=max(args.cache_ttl, 0),
+                use_cache=not args.no_cache,
+                watch=args.watch,
+            )
         if args.format == "json":
-            print(json.dumps({"url": args.url, "content": content}, ensure_ascii=False, indent=2))
+            payload = read_packet if read_packet is not None else {"url": args.url, "content": content}
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
         elif args.format == "context":
             print(format_read_context(content, url=args.url))
+            if read_packet is not None:
+                print()
+                print(format_read_trace(read_packet))
         elif args.format == "prompt":
             print(format_read_prompt(content, query=args.question, url=args.url))
+            if read_packet is not None:
+                print()
+                print(format_read_trace(read_packet))
         else:
             print(content)
+            if read_packet is not None:
+                print()
+                print(format_read_trace(read_packet))
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -1415,6 +1474,24 @@ def _cmd_eval(args):
         print(format_evaluation_jsonl(scenarios))
     else:
         print(format_evaluation_markdown(scenarios))
+
+
+def _cmd_quality(args):
+    """Run Guanlan quality gates."""
+    from guanlan.quality import format_quality_jsonl, format_quality_report, run_quality_checks
+
+    if getattr(args, "quality_command", None) != "run":
+        print("Error: quality command is required: run", file=sys.stderr)
+        sys.exit(2)
+    report = run_quality_checks(mode=args.mode, limit=max(args.limit, 1))
+    if args.format == "json":
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    elif args.format == "jsonl":
+        print(format_quality_jsonl(report))
+    else:
+        print(format_quality_report(report))
+    if report.get("summary", {}).get("fail", 0):
+        sys.exit(1)
 
 
 def _format_archive_add_summary(records: list[dict]) -> str:

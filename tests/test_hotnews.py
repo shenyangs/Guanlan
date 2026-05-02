@@ -268,6 +268,21 @@ def test_hotnews_trend_report_avoids_generic_bigram_false_merge():
     assert all(trend["item_count"] == 1 for trend in report["trends"])
 
 
+def test_hotnews_brief_includes_followup_queries():
+    items = [
+        hotnews.HotNewsItem(platform="baidu", source_id="baidu", category="hotnews", title="AI 眼镜新品发布", rank=1).to_dict(),
+        hotnews.HotNewsItem(platform="weibo", source_id="weibo", category="social", title="AI眼镜 新品 引热议", rank=2).to_dict(),
+    ]
+
+    brief = hotnews.build_hotnews_brief(items)
+    md = hotnews.format_hotnews_brief_markdown(brief)
+
+    assert brief["sample_count"] == 2
+    assert brief["highlights"][0]["research_queries"]
+    assert "观澜今日水势简报" in md
+    assert "继续查" in md
+
+
 def test_normalize_hotnews_payload_accepts_newsnow_like_shape():
     payload = {
         "data": {

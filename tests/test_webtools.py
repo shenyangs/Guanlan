@@ -271,6 +271,31 @@ def test_search_quality_fixture_rankings():
         assert ranked[0].domain == scenario["expected_first_domain"], scenario["name"]
 
 
+def test_search_ranking_penalizes_non_chinese_drift_for_chinese_reputation_query():
+    ranked = webtools.rank_results(
+        [
+            webtools.SearchResult(
+                title="Leo Jiménez Stats, Height, Weight, Position",
+                url="https://www.baseball-reference.com/players/j/jimenle01.shtml",
+                snippet="Baseball player statistics",
+                source="fixture",
+                rank=1,
+            ),
+            webtools.SearchResult(
+                title="国产新能源车到底值不值得买？用了3年，谈谈我的使用感受",
+                url="https://zhuanlan.zhihu.com/p/123",
+                snippet="车主评价、体验、优缺点和购买建议",
+                source="fixture",
+                rank=2,
+            ),
+        ],
+        query="某新能源车 用户评价 值不值得买",
+    )
+
+    assert ranked[0].domain == "zhuanlan.zhihu.com"
+    assert ranked[1].score_parts["language_mismatch_penalty"] < 0
+
+
 def test_search_web_cache_ttl_reuses_results(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr(webtools, "cache_dir", lambda: tmp_path / "cache")
@@ -889,6 +914,24 @@ def test_read_cli_outputs_context(capsys):
     assert "content" in captured.out
 
 
+def test_read_cli_outputs_trace_json(capsys):
+    from guanlan.cli import main
+
+    packet = {
+        "url": "https://example.com",
+        "content": "content",
+        "quality": {"label": "clean", "score": 100},
+        "trace": {"selected_backend": "direct", "attempts": []},
+    }
+    with patch("guanlan.webtools.read_url_with_trace", return_value=packet):
+        with patch("sys.argv", ["guanlan", "read", "https://example.com", "--format", "json", "--trace"]):
+            main()
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["quality"]["label"] == "clean"
+    assert payload["trace"]["selected_backend"] == "direct"
+
+
 def test_read_cli_batch_outputs_json(capsys, tmp_path):
     from guanlan.cli import main
 
@@ -1354,6 +1397,20 @@ def test_build_research_packet_adds_cautious_advisor_when_requested(monkeypatch)
     assert any("搜索摘要" in item for item in advisor_packet["advisor"]["evidence_limits"])
     assert any("固定模板" in item for item in advisor_packet["advisor"]["synthesis_rules"])
     assert any("用户真实动机" in item for item in advisor_packet["advisor"]["response_contract"])
+
+
+def test_build_research_packet_accepts_advisor_style(monkeypatch):
+    monkeypatch.setattr(webtools, "search_web", lambda *args, **kwargs: [])
+    packet = webtools.build_research_packet(
+        "某产品 用户评价",
+        preset="reputation",
+        read_top=0,
+        advisor=True,
+        advisor_style="risk",
+    )
+
+    assert packet["advisor"]["style"] == "risk"
+    assert any("风险" in item or "误判" in item for item in packet["advisor"]["answer_frame"])
 
 
 def test_format_research_markdown():

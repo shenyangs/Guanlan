@@ -679,6 +679,85 @@ def format_trend_report_markdown(report: dict[str, Any], title: str = "观澜趋
     return "\n".join(lines)
 
 
+def build_hotnews_brief(items: list[dict[str, Any]], trend_report: dict[str, Any] | None = None, limit: int = 8) -> dict[str, Any]:
+    """Build a lightweight daily brief from hotnews items and trend clusters."""
+    trend_report = trend_report or build_trend_report(items, limit=limit)
+    platform_counts: dict[str, int] = {}
+    category_counts: dict[str, int] = {}
+    for item in items:
+        platform = _clean_text(item.get("source_id") or item.get("platform") or "unknown")
+        category = _clean_text(item.get("category") or "hotnews")
+        platform_counts[platform] = platform_counts.get(platform, 0) + 1
+        category_counts[category] = category_counts.get(category, 0) + 1
+
+    highlights = []
+    for trend in (trend_report.get("trends") or [])[: max(limit, 1)]:
+        title = _clean_text(trend.get("title"))
+        sources = list(trend.get("sources") or [])
+        highlights.append(
+            {
+                "title": title,
+                "sources": sources,
+                "source_count": int(trend.get("source_count") or 0),
+                "item_count": int(trend.get("item_count") or 0),
+                "heat_score": trend.get("heat_score", 0),
+                "research_queries": _trend_research_queries(title, sources),
+            }
+        )
+
+    warnings: list[str] = []
+    if len(platform_counts) <= 1 and len(items) >= 5:
+        warnings.append("当前热榜来源较单一，不能代表整个中文互联网水势。")
+    if trend_report.get("trend_count", 0) >= max(len(items) - 2, 1):
+        warnings.append("跨源重合度较低，今天更像多主题分散水面；不要强行归并。")
+
+    return {
+        "sample_count": len(items),
+        "platform_counts": platform_counts,
+        "category_counts": category_counts,
+        "trend_count": int(trend_report.get("trend_count") or 0),
+        "highlights": highlights,
+        "warnings": warnings,
+    }
+
+
+def format_hotnews_brief_markdown(brief: dict[str, Any], title: str = "观澜今日水势简报") -> str:
+    """Render a hotnews brief as compact Markdown."""
+    lines = [f"# {title}", ""]
+    lines.append(f"- 样本数: {brief.get('sample_count', 0)}")
+    lines.append(f"- 趋势数: {brief.get('trend_count', 0)}")
+    platform_counts = brief.get("platform_counts") or {}
+    if platform_counts:
+        lines.append("- 来源分布: " + "；".join(f"{key}: {value}" for key, value in platform_counts.items()))
+    warnings = brief.get("warnings") or []
+    if warnings:
+        lines.extend(["", "## 边界提醒"])
+        lines.extend(f"- {warning}" for warning in warnings)
+    highlights = brief.get("highlights") or []
+    if highlights:
+        lines.extend(["", "## 值得追踪"])
+        for idx, item in enumerate(highlights, start=1):
+            sources = ", ".join(item.get("sources") or [])
+            lines.append(f"{idx}. {item.get('title', '')}")
+            lines.append(f"   来源: {sources or 'unknown'} | 条目: {item.get('item_count', 0)} | 热度: {item.get('heat_score', 0)}")
+            queries = item.get("research_queries") or []
+            if queries:
+                lines.append("   继续查: " + "；".join(queries[:2]))
+    return "\n".join(lines)
+
+
+def _trend_research_queries(title: str, sources: list[str]) -> list[str]:
+    title = _clean_text(title)
+    if not title:
+        return []
+    queries = [f"{title} 原因 进展", f"{title} 官方回应"]
+    if any(source in {"weibo", "bilibili", "v2ex"} for source in sources):
+        queries.append(f"{title} 网友讨论")
+    if any(source in {"baidu", "ithome"} for source in sources):
+        queries.append(f"{title} 最新报道")
+    return queries[:3]
+
+
 def _annotate_trends(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     report = build_trend_report(items, limit=len(items) or 1)
     trend_map: dict[int, str] = {}
