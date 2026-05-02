@@ -112,7 +112,8 @@ def main():
     p_conf.add_argument("key", nargs="?", default=None,
                         choices=["proxy", "github-token", "groq-key",
                                  "twitter-cookies", "youtube-cookies",
-                                 "xhs-cookies", "newsnow-base-url"],
+                                 "xhs-cookies", "newsnow-base-url",
+                                 "telemetry", "telemetry-endpoint"],
                         help="What to configure (omit if using --from-browser)")
     p_conf.add_argument("value", nargs="*", help="The value(s) to set")
     p_conf.add_argument("--from-browser", metavar="BROWSER",
@@ -464,6 +465,33 @@ def main():
         print(f"观澜 / Guanlan v{__version__}")
         sys.exit(0)
 
+    from guanlan.telemetry import telemetry_span
+
+    with telemetry_span(_telemetry_command_name(args), surface="cli"):
+        _dispatch_command(args)
+
+
+def _telemetry_command_name(args) -> str:
+    """Return a privacy-safe command label for anonymous telemetry."""
+    command = str(getattr(args, "command", "") or "unknown")
+    # Only include subcommand names that are already part of the public command
+    # shape. Do not include configure keys, queries, URLs, plugin paths, or values.
+    subcommand_attrs = {
+        "archive": "archive_command",
+        "mcp": "mcp_command",
+        "eval": "eval_command",
+        "profile": "action",
+    }
+    attr = subcommand_attrs.get(command)
+    if attr:
+        value = str(getattr(args, attr, "") or "").strip()
+        if value:
+            return f"{command}.{value}"
+    return command
+
+
+def _dispatch_command(args):
+    """Run a parsed command."""
     if args.command == "doctor":
         _cmd_doctor(args)
     elif args.command == "profile":
@@ -1121,6 +1149,7 @@ def _cmd_read(args):
         format_read_batch_context,
         format_read_batch_markdown,
         format_read_batch_prompt,
+        format_read_context,
         format_read_prompt,
         read_batch,
         read_url,
@@ -1165,7 +1194,11 @@ def _cmd_read(args):
             use_cache=not args.no_cache,
             watch=args.watch,
         )
-        if args.format == "prompt":
+        if args.format == "json":
+            print(json.dumps({"url": args.url, "content": content}, ensure_ascii=False, indent=2))
+        elif args.format == "context":
+            print(format_read_context(content, url=args.url))
+        elif args.format == "prompt":
             print(format_read_prompt(content, query=args.question, url=args.url))
         else:
             print(content)
@@ -2004,6 +2037,22 @@ def _cmd_configure(args):
         print("✅ NewsNow BASE_URL configured!")
         print("  Example: guanlan hotnews newsnow:36kr-quick --limit 50")
 
+    elif args.key == "telemetry":
+        normalized = value.strip().lower()
+        if normalized in {"on", "true", "1", "yes"}:
+            config.set("telemetry_enabled", True)
+            print("✅ Anonymous telemetry enabled.")
+        elif normalized in {"off", "false", "0", "no"}:
+            config.set("telemetry_enabled", False)
+            print("✅ Anonymous telemetry disabled.")
+        else:
+            print("Expected telemetry value: on or off")
+
+    elif args.key == "telemetry-endpoint":
+        config.set("telemetry_endpoint", value.rstrip("/"))
+        print("✅ Telemetry endpoint configured!")
+        print("  Guanlan will only send anonymous command/tool lifecycle metadata.")
+
     elif args.key == "twitter-cookies":
         # Accept two formats:
         # 1. auth_token ct0 (two separate values)
@@ -2733,6 +2782,7 @@ def _cmd_status():
     from guanlan.archive import archive_stats
     from guanlan.config import Config
     from guanlan.doctor import check_all
+    from guanlan.telemetry import telemetry_status
     from guanlan.webtools import cache_summary
 
     config = Config()
@@ -2774,16 +2824,25 @@ def _cmd_status():
     print(f"路径: {cache['path']}")
     if not cache["exists"]:
         print("状态: 尚未创建")
-        return
-    print(f"文件数: {cache['total_files']}")
-    for kind, count in cache.get("kinds", {}).items():
-        print(f"- {kind}: {count}")
+    else:
+        print(f"文件数: {cache['total_files']}")
+        for kind, count in cache.get("kinds", {}).items():
+            print(f"- {kind}: {count}")
 
     archive = archive_stats()
     print()
     print("本地知识库")
     print(f"路径: {archive['path']}")
     print(f"文档数: {archive['documents']}")
+
+    telemetry = telemetry_status(config)
+    print()
+    print("匿名遥测")
+    print(f"状态: {'启用' if telemetry['enabled'] else '未启用'}")
+    if telemetry["configured"]:
+        print(f"端点: {telemetry['endpoint']}")
+    else:
+        print("端点: 未配置")
 
 
 if __name__ == "__main__":

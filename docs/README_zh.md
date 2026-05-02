@@ -12,6 +12,8 @@
 | [Agent 使用说明](agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜、社交平台和安全降级规则。 |
 | [安装指南](install.md) | 让 Agent 按步骤安装、配置和自检。 |
 | [发布自动化](release-automation.md) | 维护者用：PyPI 自动发布与 Homebrew tap 自动更新。 |
+| [质量测试计划](quality-test-plan.md) | 搜索、热榜、阅读、趋势和 advisor 的发布前质量闸门。 |
+| [匿名遥测](telemetry.md) | 可选自托管遥测，只记录命令生命周期元数据。 |
 | [排障手册](troubleshooting.md) | 遇到钥匙串弹窗、网络异常、Cookie 或平台失败时排查。 |
 | [中文互联网设计](chinese-web-design.md) | 查看产品方案、平台矩阵和阶段路线。 |
 | [发布冒烟样本](release-smoke-samples.md) | 第一版发布前的真实中文查询样本和通过标准。 |

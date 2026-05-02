@@ -1323,6 +1323,16 @@ def format_read_prompt(content: str, query: str = "", url: str = "") -> str:
     ).strip()
 
 
+def format_read_context(content: str, url: str = "") -> str:
+    """Render a single read result as compact agent context."""
+    lines = ["# 观澜阅读上下文", ""]
+    if url:
+        lines.append(f"URL: {url}")
+        lines.append("")
+    lines.append(content.strip())
+    return "\n".join(lines).strip() + "\n"
+
+
 def format_read_batch_prompt(records: list[dict[str, Any]], query: str = "请综合分析这些网页。") -> str:
     """Render batch read records as a complete local-LLM prompt."""
     return "\n".join(
@@ -1559,11 +1569,14 @@ def build_advisor_view(packet: dict[str, Any]) -> dict[str, Any]:
     supports = _advisor_supports(source_mix, topic_count, result_count, readings)
     limits = _advisor_limits(packet, source_mix, topic_count, result_count, readings, read_top)
     next_steps = _advisor_next_steps(query, preset, source_mix, limits)
+    answer_frame = _advisor_answer_frame(preset, query, source_mix, supports, limits, next_steps)
 
     return {
         "title": "助理视角规则",
         "mode": "agent_guidance",
         "stance": "以下内容用于指导 Agent 生成建议：它只约束如何基于当前证据思考，不代表用户真实目的，也不构成最终结论。",
+        "briefing": _advisor_briefing(query, preset, source_mix, supports, limits, next_steps),
+        "answer_frame": answer_frame,
         "synthesis_rules": _advisor_synthesis_rules(preset, query, source_mix),
         "suggested_angles": intents,
         "possible_intents": intents,
@@ -1582,6 +1595,7 @@ def format_advisor_markdown(advisor: dict[str, Any]) -> str:
     if stance:
         lines.extend(["", stance])
     sections = [
+        ("自然作答骨架", advisor.get("answer_frame") or []),
         ("给 Agent 的写作规则", advisor.get("synthesis_rules") or []),
         ("可展开的判断方向", advisor.get("suggested_angles") or advisor.get("possible_intents") or []),
         ("当前证据能支持", advisor.get("evidence_supports") or []),
@@ -1605,7 +1619,11 @@ def format_advisor_context(advisor: dict[str, Any]) -> str:
     stance = str(advisor.get("stance") or "").strip()
     if stance:
         lines.append(stance)
+    briefing = str(advisor.get("briefing") or "").strip()
+    if briefing:
+        lines.append("briefing: " + briefing)
     for key, title in (
+        ("answer_frame", "自然作答骨架"),
         ("synthesis_rules", "写作规则"),
         ("suggested_angles", "可展开方向"),
         ("evidence_supports", "适合支持"),
@@ -1617,6 +1635,84 @@ def format_advisor_context(advisor: dict[str, Any]) -> str:
         if items:
             lines.append(f"{title}: " + "；".join(items[:3]))
     return "\n".join(lines)
+
+
+def _advisor_briefing(
+    query: str,
+    preset: str,
+    source_mix: dict[str, int],
+    supports: list[str],
+    limits: list[str],
+    next_steps: list[str],
+) -> str:
+    """Summarize how an agent should naturally use the advisor block."""
+    source_phrase = _advisor_source_phrase(source_mix)
+    strength = _advisor_strength_phrase(supports, limits)
+    action = next_steps[0] if next_steps else "继续补证后再下结论"
+    angle = _advisor_primary_angle(preset, query)
+    return (
+        f"可以把这次检索当作“{angle}”的初步证据包：{source_phrase}。"
+        f"{strength} 面向用户时，先给一个克制判断，再交代证据边界，最后落到下一步：{action}。"
+    )
+
+
+def _advisor_answer_frame(
+    preset: str,
+    query: str,
+    source_mix: dict[str, int],
+    supports: list[str],
+    limits: list[str],
+    next_steps: list[str],
+) -> list[str]:
+    """Return a non-template answer scaffold that the calling agent can adapt."""
+    angle = _advisor_primary_angle(preset, query)
+    source_phrase = _advisor_source_phrase(source_mix)
+    frame = [
+        f"开场先点明这只是围绕“{angle}”的证据判断，不要直接包装成最终结论。",
+        f"第二步交代主要来源结构：{source_phrase}，让用户知道“谁在说”。",
+    ]
+    if supports:
+        frame.append(f"第三步只展开证据能支撑的部分，例如：{supports[0]}。")
+    if limits:
+        frame.append(f"第四步主动说出限制：{limits[0]}。")
+    if next_steps:
+        frame.append(f"结尾给一个可执行动作：{next_steps[0]}。")
+    return frame[:5]
+
+
+def _advisor_source_phrase(source_mix: dict[str, int]) -> str:
+    if not source_mix:
+        return "当前来源结构还不清晰，需要先补充不同信源"
+    sorted_sources = sorted(source_mix.items(), key=lambda row: (-int(row[1]), row[0]))
+    parts = [f"{source_type} {count} 条" for source_type, count in sorted_sources[:3]]
+    if len(sorted_sources) > 3:
+        parts.append("以及其他来源")
+    return "主要来自 " + "、".join(parts)
+
+
+def _advisor_strength_phrase(supports: list[str], limits: list[str]) -> str:
+    if supports and limits:
+        return f"它适合用来{supports[0]}，但{limits[0]}。"
+    if supports:
+        return f"它适合用来{supports[0]}。"
+    if limits:
+        return f"当前证据仍偏线索级，尤其要注意：{limits[0]}。"
+    return "当前证据可以辅助判断，但仍应保留不确定性。"
+
+
+def _advisor_primary_angle(preset: str, query: str) -> str:
+    text = query.lower()
+    if preset in {"policy", "official", "local"} or _contains_any(text, ["政策", "监管", "通知", "官方"]):
+        return "官方口径与影响判断"
+    if preset in {"reputation", "ecommerce"} or _contains_any(text, ["评价", "口碑", "购买", "值不值得", "产品"]):
+        return "口碑线索与行动建议"
+    if preset in {"industry", "finance"} or _contains_any(text, ["行业", "融资", "财报", "股价", "商业化"]):
+        return "行业趋势与风险识别"
+    if preset == "tech" or _contains_any(text, ["框架", "开源", "github", "技术", "选型"]):
+        return "技术选型与真实限制"
+    if _contains_any(text, ["热点", "最近", "今天", "近期"]):
+        return "近期水势与后续追踪"
+    return "主题判断与下一步研究"
 
 
 def _advisor_synthesis_rules(
@@ -2724,8 +2820,55 @@ def _is_weak_read(text: str) -> bool:
     normalized = _collapse_ws(text)
     if len(normalized) < _MIN_USEFUL_READ_CHARS:
         return True
+    if _looks_mojibake(normalized):
+        return True
     lowered = normalized.lower()
     return any(marker in lowered for marker in _WEAK_READ_MARKERS)
+
+
+def _looks_mojibake(text: str) -> bool:
+    """Detect common charset failures on older Chinese sites."""
+    sample = (text or "")[:5000]
+    if not sample:
+        return False
+    replacement = sample.count("�")
+    cjk = sum(1 for char in sample if "\u4e00" <= char <= "\u9fff")
+    if replacement >= 8 and replacement > max(4, cjk // 20):
+        return True
+    return bool(re.search(r"(?:��){3,}", sample))
+
+
+def _decode_response_body(raw: bytes, content_type: str = "") -> str:
+    """Decode response bytes with Chinese legacy charset fallbacks."""
+    charsets: list[str] = []
+    header_match = re.search(r"charset=([\w.\-]+)", content_type or "", flags=re.I)
+    if header_match:
+        charsets.append(header_match.group(1))
+    head = raw[:4096].decode("ascii", errors="ignore")
+    meta_match = re.search(r"<meta[^>]+charset=['\"]?([\w.\-]+)", head, flags=re.I)
+    if meta_match:
+        charsets.append(meta_match.group(1))
+    meta_http = re.search(r"content=['\"][^'\"]*charset=([\w.\-]+)", head, flags=re.I)
+    if meta_http:
+        charsets.append(meta_http.group(1))
+    charsets.extend(["utf-8", "gb18030", "gbk", "gb2312"])
+
+    tried: set[str] = set()
+    best = ""
+    for charset in charsets:
+        normalized = charset.lower().replace("_", "-")
+        if normalized in tried:
+            continue
+        tried.add(normalized)
+        try:
+            decoded = raw.decode(charset, errors="replace")
+        except LookupError:
+            continue
+        if not best or decoded.count("�") < best.count("�"):
+            best = decoded
+        if not _looks_mojibake(decoded):
+            return decoded
+    return best or raw.decode("utf-8", errors="replace")
 
 
 def _query_from_url(url: str) -> str:
@@ -2759,8 +2902,9 @@ def _read_direct(url: str) -> str:
         },
     )
     with urllib.request.urlopen(req, timeout=20) as resp:
-        raw = resp.read().decode("utf-8", errors="replace")
+        raw_bytes = resp.read()
         content_type = resp.headers.get("content-type", "")
+    raw = _decode_response_body(raw_bytes, content_type)
     if "text/plain" in content_type:
         return raw
     return _html_to_markdownish(raw, url=url)

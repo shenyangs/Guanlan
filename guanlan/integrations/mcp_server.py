@@ -240,6 +240,13 @@ def _as_text(result) -> str:
 
 
 def _run_tool(name: str, arguments: dict | None = None):
+    from guanlan.telemetry import telemetry_span
+
+    with telemetry_span(name, surface="mcp"):
+        return _run_tool_inner(name, arguments)
+
+
+def _run_tool_inner(name: str, arguments: dict | None = None):
     """Run a Guanlan MCP tool and return text/dict/list output."""
     args = arguments or {}
     if name == "guanlan_status":

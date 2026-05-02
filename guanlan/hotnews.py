@@ -624,8 +624,8 @@ def build_trend_report(items: list[dict[str, Any]], limit: int = 20) -> dict[str
             similarity = _signature_similarity(signature, set(cluster.get("_signature", [])))
             overlap = len(signature & set(cluster.get("_signature", [])))
             if (
-                similarity >= 0.24
-                or overlap >= 2
+                (similarity >= 0.32 and overlap >= 2)
+                or overlap >= 3
                 or title in str(cluster.get("title", ""))
                 or str(cluster.get("title", "")) in title
             ):
@@ -699,7 +699,7 @@ def _trend_signature(title: str) -> set[str]:
     tokens = {token for token in text.split() if len(token) >= 2}
     cjk = re.findall(r"[\u4e00-\u9fff]", text)
     tokens.update("".join(cjk[idx:idx + 2]) for idx in range(max(len(cjk) - 1, 0)))
-    stopwords = {"一个", "如何", "为何", "什么", "最新", "今天", "回应", "官方"}
+    stopwords = {"一个", "如何", "为何", "什么", "最新", "今天", "回应", "官方", "到了", "了一", "一份"}
     return {token for token in tokens if token and token not in stopwords}
 
 

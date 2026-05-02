@@ -126,6 +126,32 @@ class TestCLI:
         captured = capsys.readouterr()
         assert "Profile set to china" in captured.out
 
+    def test_configure_telemetry_endpoint(self, capsys, tmp_path, monkeypatch):
+        from guanlan.config import Config
+
+        monkeypatch.setattr(Config, "CONFIG_FILE", tmp_path / "config.yaml")
+        monkeypatch.setattr(Config, "CONFIG_DIR", tmp_path)
+
+        with patch("sys.argv", ["guanlan", "configure", "telemetry-endpoint", "https://metrics.example/v1/events"]):
+            main()
+
+        captured = capsys.readouterr()
+        assert "Telemetry endpoint configured" in captured.out
+        assert Config().get("telemetry_endpoint") == "https://metrics.example/v1/events"
+
+    def test_configure_telemetry_off(self, capsys, tmp_path, monkeypatch):
+        from guanlan.config import Config
+
+        monkeypatch.setattr(Config, "CONFIG_FILE", tmp_path / "config.yaml")
+        monkeypatch.setattr(Config, "CONFIG_DIR", tmp_path)
+
+        with patch("sys.argv", ["guanlan", "configure", "telemetry", "off"]):
+            main()
+
+        captured = capsys.readouterr()
+        assert "Anonymous telemetry disabled" in captured.out
+        assert Config().get("telemetry_enabled") is False
+
     def test_parse_twitter_cookie_input_separate_values(self):
         auth_token, ct0 = cli._parse_twitter_cookie_input("token123 ct0abc")
         assert auth_token == "token123"

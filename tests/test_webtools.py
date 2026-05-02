@@ -612,6 +612,62 @@ def test_direct_html_reader_drops_related_login_and_app_noise(monkeypatch):
     assert "相关阅读" not in text
 
 
+def test_direct_html_reader_decodes_gbk_charset(monkeypatch):
+    html = """
+    <html>
+      <head><meta charset="gb2312"><title>联商测试</title></head>
+      <body><article><p>即时零售行业进入质量深耕阶段，平台融合和供给效率成为重点。</p></article></body>
+    </html>
+    """.encode("gb18030")
+
+    class GbkResponse:
+        headers = {"content-type": "text/html; charset=gb2312"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def read(self):
+            return html
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: GbkResponse())
+
+    text = webtools.read_url("https://example.cn/gbk", backend="direct")
+
+    assert "联商测试" in text
+    assert "即时零售行业进入质量深耕阶段" in text
+    assert "�" not in text
+
+
+def test_read_url_treats_mojibake_jina_as_weak_and_falls_back(monkeypatch):
+    requested = []
+
+    def fake_urlopen(req, timeout=None):
+        requested.append(req.full_url)
+        if req.full_url.startswith("https://r.jina.ai/"):
+            return _FakeResponse("Title: ��������\nMarkdown Content:\n������������������������")
+        return _FakeResponse(
+            "<html><title>正文</title><body><article>"
+            "<p>这是干净的中文正文，说明降级读取成功，并且保留了足够多的上下文。</p>"
+            "<p>第二段继续补充事件背景、来源说明、公开信息和可验证线索，避免被判定为弱读取。</p>"
+            "<p>第三段提供更多正文长度，用于模拟真实新闻页面中的主体内容，而不是导航栏或登录提示。</p>"
+            "</article></body></html>"
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    text = webtools.read_url("https://example.cn/article", backend="auto")
+
+    assert requested == [
+        "https://r.jina.ai/https://example.cn/article",
+        "https://example.cn/article",
+    ]
+    assert "这是干净的中文正文" in text
+    assert "����" not in text
+
+
 def test_read_url_uses_search_context_when_reading_is_blocked(monkeypatch):
     monkeypatch.setattr(webtools, "_read_with_jina", lambda url: "请先登录后查看")
     monkeypatch.setattr(webtools, "_read_direct", lambda url: "访问受限，请完成安全验证")
@@ -807,6 +863,30 @@ def test_read_cli_outputs_text(capsys):
             main()
     captured = capsys.readouterr()
     assert captured.out.strip() == "content"
+
+
+def test_read_cli_outputs_json(capsys):
+    from guanlan.cli import main
+
+    with patch("guanlan.webtools.read_url", return_value="content"):
+        with patch("sys.argv", ["guanlan", "read", "https://example.com", "--format", "json"]):
+            main()
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["url"] == "https://example.com"
+    assert payload["content"] == "content"
+
+
+def test_read_cli_outputs_context(capsys):
+    from guanlan.cli import main
+
+    with patch("guanlan.webtools.read_url", return_value="content"):
+        with patch("sys.argv", ["guanlan", "read", "https://example.com", "--format", "context"]):
+            main()
+    captured = capsys.readouterr()
+    assert "# 观澜阅读上下文" in captured.out
+    assert "URL: https://example.com" in captured.out
+    assert "content" in captured.out
 
 
 def test_read_cli_batch_outputs_json(capsys, tmp_path):
@@ -1268,6 +1348,8 @@ def test_build_research_packet_adds_cautious_advisor_when_requested(monkeypatch)
     assert advisor_packet["advisor"]["title"] == "助理视角规则"
     assert advisor_packet["advisor"]["mode"] == "agent_guidance"
     assert "不代表用户真实目的" in advisor_packet["advisor"]["stance"]
+    assert "briefing" in advisor_packet["advisor"]
+    assert any("谁在说" in item for item in advisor_packet["advisor"]["answer_frame"])
     assert any("口碑" in item for item in advisor_packet["advisor"]["suggested_angles"])
     assert any("搜索摘要" in item for item in advisor_packet["advisor"]["evidence_limits"])
     assert any("固定模板" in item for item in advisor_packet["advisor"]["synthesis_rules"])
@@ -1336,6 +1418,7 @@ def test_format_research_markdown_includes_advisor_block():
     )
 
     assert "## 助理视角规则" in md
+    assert "自然作答骨架" in md
     assert "给 Agent 的写作规则" in md
     assert "当前证据边界" in md
 

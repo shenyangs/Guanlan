@@ -256,6 +256,18 @@ def test_hotnews_build_trend_report_merges_cross_source_topics():
     assert "AI 眼镜新品发布" in md
 
 
+def test_hotnews_trend_report_avoids_generic_bigram_false_merge():
+    items = [
+        {"rank": 1, "source_id": "baidu", "title": "袁隆平夫人收到了一份特殊礼物"},
+        {"rank": 2, "source_id": "weibo", "title": "人到了一定年纪就会解锁的动作"},
+    ]
+
+    report = hotnews.build_trend_report(items)
+
+    assert report["trend_count"] == 2
+    assert all(trend["item_count"] == 1 for trend in report["trends"])
+
+
 def test_normalize_hotnews_payload_accepts_newsnow_like_shape():
     payload = {
         "data": {

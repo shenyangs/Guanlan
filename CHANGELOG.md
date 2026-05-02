@@ -8,6 +8,24 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.2.1 - 2026-05-02
+
+### Added
+
+- 新增质量测试计划 `docs/quality-test-plan.md`，把搜索质量、热点时效、正文抽取、趋势归并和 advisor 自然度纳入可复跑质量闸门。
+- 新增匿名遥测能力：CLI 与 MCP 可在显式配置 endpoint 后上报命令/tool 生命周期元数据，不包含 query、URL、正文、Cookie、Token 或本地路径。
+- 新增轻量遥测采集脚本 `scripts/telemetry_collector.py`，用于自托管聚合使用深度、错误率、并发和留存面板。
+- 更新三组观澜 logo 资产，改为更统一的朱砂方印视觉。
+
+### Changed
+
+- `research --advisor` 增加动态 briefing 和“自然作答骨架”，让 Agent 能把证据边界转化成更自然的回答，而不是机械复述规则清单。
+- `read "URL" --format json/context` 现在对单 URL 生效，便于 Agent 和脚本稳定解析网页正文。
+- 网页阅读增强国内老站编码处理：支持按 HTTP/meta charset 解析，并对 GBK/GB2312/GB18030 页面做兜底。
+- Jina Reader 若返回明显乱码，会被视为弱读取并触发直连降级。
+- 热榜趋势归并收紧相似度规则，降低通用中文 bigram 导致的错聚类风险。
+- `guanlan status` 增加匿名遥测状态展示，并避免缓存目录未创建时提前返回。
+
 ## v0.1.14 - 2026-05-02
 
 ### Changed

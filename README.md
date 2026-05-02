@@ -170,7 +170,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.1.13`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.2.1`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -654,6 +654,8 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 | [安装指南](docs/install.md) | 给 Agent 执行的安装流程与边界。 |
 | [更新指南](docs/update.md) | 更新观澜与依赖工具。 |
 | [发布自动化](docs/release-automation.md) | 维护者用：PyPI 自动发布与 Homebrew tap 自动更新。 |
+| [质量测试计划](docs/quality-test-plan.md) | 搜索、热榜、阅读、趋势和 advisor 的发布前质量闸门。 |
+| [匿名遥测](docs/telemetry.md) | 可选自托管遥测：只记录命令生命周期元数据，不记录查询和正文。 |
 | [排障手册](docs/troubleshooting.md) | 网络、Cookie、钥匙串、平台异常排查。 |
 | [中文互联网设计](docs/chinese-web-design.md) | 产品方案、平台矩阵与阶段路线。 |
 | [发布冒烟样本](docs/release-smoke-samples.md) | 第一版发布前的真实中文查询样本和通过标准。 |
@@ -676,6 +678,7 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 - 可运行 `guanlan doctor --check-config` 检查配置中是否有明文 Cookie、Token、Key 或代理凭据。
 - 如果使用共享电脑，检查配置文件权限是否为仅本人可读写。
 - 不确定是否需要授权时，先运行 `guanlan doctor --trace`。
+- 匿名遥测默认无 endpoint 不工作；如需自托管统计，需要显式配置 `guanlan configure telemetry-endpoint ...`，且只发送命令生命周期元数据，不发送 query、URL、正文或凭据。
 
 ## 许可证与来源
 
