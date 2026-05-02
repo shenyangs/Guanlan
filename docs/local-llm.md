@@ -1,0 +1,108 @@
+# 本地大模型联网指南
+
+观澜可以作为无联网本地模型的“联网前置器”。本地模型不需要内置浏览器，也不需要读取浏览器 Cookie；由观澜先完成公开搜索、网页阅读、证据压缩和来源保留，再把上下文交给模型。
+
+适用对象：
+
+- Ollama
+- LM Studio
+- Open WebUI
+- llama.cpp / Jan
+- 本地 Agent 框架
+- 任何只能吃 prompt、但不能自己联网的模型
+
+## 一、最简单：直接生成 Prompt
+
+```bash
+guanlan prompt "最近 AI 眼镜在中国市场的主要趋势是什么？" --profile china > prompt.md
+ollama run qwen3:latest < prompt.md
+```
+
+`guanlan prompt` 默认会：
+
+- 使用较大的候选池，默认 `--limit 80`。
+- 精选 8 条代表证据。
+- 摘读 2 条代表 URL。
+- 加入助理视角规则，提醒模型保留证据边界。
+
+如果只想看公开搜索，不读正文：
+
+```bash
+guanlan prompt "某产品 用户评价" --preset reputation --read-top 0 > prompt.md
+ollama run qwen3:latest < prompt.md
+```
+
+## 二、给已有命令加 `--format prompt`
+
+搜索：
+
+```bash
+guanlan search "低空经济 广东 政策" --profile china --scope local_official --format prompt > prompt.md
+ollama run qwen3:latest < prompt.md
+```
+
+研究证据包：
+
+```bash
+guanlan research "跨境电商 AI 工具" --preset ecommerce --limit 80 --format prompt > prompt.md
+ollama run qwen3:latest < prompt.md
+```
+
+读单篇网页：
+
+```bash
+guanlan read "https://example.com/article" --format prompt --question "这篇文章的核心信息是什么？" > prompt.md
+ollama run qwen3:latest < prompt.md
+```
+
+批量读网页：
+
+```bash
+guanlan read batch urls.txt --format prompt --question "请综合这些材料，判断共同趋势。" > prompt.md
+ollama run qwen3:latest < prompt.md
+```
+
+## 三、接入支持 MCP 的本地 Agent
+
+先生成配置：
+
+```bash
+guanlan mcp config --client codex
+guanlan mcp config --client claude --format json
+guanlan mcp config --client openwebui --format json
+```
+
+默认配置只启动只读 MCP server：
+
+```json
+{
+  "mcpServers": {
+    "guanlan": {
+      "command": "guanlan-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+接入后，Agent 应优先使用：
+
+- `guanlan_search`
+- `guanlan_research`
+- `guanlan_read`
+- `guanlan_hotnews`
+- `guanlan_pulse`
+- `guanlan_archive_search`
+- `guanlan_status`
+
+复杂研究建议让 Agent 使用 `limit=50-100`，再从观澜返回的精选代表证据中组织回答。
+
+## 四、安全边界
+
+- 默认只读。
+- 默认不读取浏览器 Cookie。
+- 默认不触发登录态平台动作。
+- 不发布、评论、点赞、关注或私信。
+- 涉及授权能力时，必须由用户显式触发。
+
+本地模型拿到的是观澜整理后的证据包，不是对用户环境的静默访问。

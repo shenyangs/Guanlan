@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """Tests for Guanlan's MCP helper surface."""
 
+import json
+from unittest.mock import patch
+
+from guanlan import mcp_config
 from guanlan.integrations import mcp_server
 from guanlan.limits import (
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
@@ -37,6 +41,30 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "助理视角规则" in research_tool["inputSchema"]["properties"]["advisor"]["description"]
     assert "backend" in hotnews_tool["inputSchema"]["properties"]
     assert "newsnow_base_url" in hotnews_tool["inputSchema"]["properties"]
+    search_tool = next(tool for tool in tools if tool["name"] == "guanlan_search")
+    assert "prompt" in search_tool["inputSchema"]["properties"]["format"]["enum"]
+    assert "prompt" in research_tool["inputSchema"]["properties"]["format"]["enum"]
+
+
+def test_mcp_config_outputs_copyable_server_config():
+    config = mcp_config.build_mcp_config(client="claude", command="guanlan-mcp")
+
+    assert config["mcpServers"]["guanlan"]["command"] == "guanlan-mcp"
+    assert config["mcpServers"]["guanlan"]["args"] == []
+    md = mcp_config.format_mcp_config_markdown(client="codex")
+    assert "Guanlan MCP 配置" in md
+    assert "guanlan-mcp" in md
+
+
+def test_mcp_config_cli_outputs_json(capsys):
+    from guanlan.cli import main
+
+    with patch("sys.argv", ["guanlan", "mcp", "config", "--format", "json"]):
+        main()
+
+    captured = capsys.readouterr()
+    config = json.loads(captured.out)
+    assert config["mcpServers"]["guanlan"]["command"] == "guanlan-mcp"
 
 
 def test_mcp_tool_definitions_use_expanded_limits():

@@ -170,7 +170,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.1.11`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.1.12`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -309,6 +309,7 @@ guanlan configure --from-browser chrome
 | `guanlan search "最近 关键词 热点" --trace` | 自动识别时效性意图，收束到近期窗口，并在 trace 中解释结果日期。 |
 | `guanlan search "关键词" --cache-ttl 3600` | 一小时内复用同条件搜索结果，降低上游扰动。 |
 | `guanlan search "关键词" --format context` | 输出紧凑的 LLM-friendly 证据表格。 |
+| `guanlan search "关键词" --format prompt` | 输出可直接喂给本地模型的完整 Prompt。 |
 | `guanlan search "关键词" --source-chart` | 追加 ASCII 来源/域名分布图，快速判断信息面是否偏斜。 |
 | `guanlan search "关键词" --backend plugin:my_company_api` | 显式调用本地自定义只读搜索 backend。 |
 | `guanlan search "关键词" --scope party_central` | 在党央媒与中央重点媒体白名单内搜索。 |
@@ -316,11 +317,15 @@ guanlan configure --from-browser chrome
 | `guanlan research "关键词"` | 生成 Agent 可直接使用的研究证据包。 |
 | `guanlan research --list-presets` | 查看研究模板和默认 scope/site 策略。 |
 | `guanlan research "关键词" --format context` | 输出适合直接放进 prompt 的研究上下文。 |
+| `guanlan research "关键词" --format prompt` | 输出本地模型联网 Prompt。 |
 | `guanlan research "关键词" --advisor` | 在证据包后追加助理视角规则，帮助 Agent 基于证据生成建议。 |
+| `guanlan prompt "问题"` | 快速生成 Ollama / LM Studio / Open WebUI 可用的联网 Prompt。 |
 | `guanlan research "关键词" --sites zhihu.com,weibo.com` | 按多个指定站点生成平台定向证据块。 |
 | `guanlan pulse "关键词"` | 安全版话题回响分析，输出讨论倾向、关键词信号和明确边界。 |
 | `guanlan read "URL"` | 读取网页并转成 Markdown。 |
+| `guanlan read "URL" --format prompt --question "问题"` | 把网页正文包装成本地模型 Prompt。 |
 | `guanlan read batch urls.txt --format context` | 批量读取 URL 列表并输出紧凑上下文。 |
+| `guanlan mcp config --client codex` | 输出可复制的 MCP 客户端配置。 |
 | `guanlan read "URL" --watch` | 保存/比较本地快照，输出内容变化 diff。 |
 | `guanlan read "URL" --backend direct` | 绕过 Jina Reader，直接读取原网页。 |
 | `guanlan archive add "URL"` | 将网页读取为 Markdown 后沉淀进本地知识库。 |
@@ -527,12 +532,15 @@ guanlan search "问题" --profile china --format context
 guanlan search "最近 问题 热点" --profile china --format context --trace
 guanlan research "问题" --preset policy --format context --source-chart
 guanlan research "产品 用户评价" --preset reputation --read-top 0 --format context
+guanlan prompt "问题" --profile china
 guanlan pulse "产品 用户评价" --format context
 guanlan read batch urls.txt --format context --cache-ttl 3600
 guanlan archive search "问题" --format context
 ```
 
 CLI 是默认主路径；如果当前 Agent 或平台支持 MCP，可以把 `guanlan-mcp` 作为可选集成接进去，让 Agent 直接调用 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search` 和 `guanlan_status`。
+
+本地模型没有联网能力时，用 `guanlan prompt "问题"` 或给 `search/research/read` 加 `--format prompt`，把观澜证据包直接喂给 Ollama、LM Studio 或 Open WebUI。MCP 客户端配置可用 `guanlan mcp config --client codex` 生成。
 
 ### 14. 把读过的网页沉淀成本地知识库
 
@@ -629,6 +637,7 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 | [更新日志](CHANGELOG.md) | 记录每个版本的能力变化、边界调整和下一步收口。 |
 | [路线图](docs/roadmap.md) | 后续迭代主线、验收标准和暂不做事项。 |
 | [产品哲学与增强计划](docs/product-philosophy.md) | 观澜为什么存在、要补齐哪些能力、本地大模型联网怎么做。 |
+| [本地大模型联网指南](docs/local-llm.md) | Ollama、LM Studio、Open WebUI 等无联网模型如何接入观澜。 |
 | [Agent 使用说明](docs/agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜和安全路由规则。 |
 | [安装指南](docs/install.md) | 给 Agent 执行的安装流程与边界。 |
 | [更新指南](docs/update.md) | 更新观澜与依赖工具。 |

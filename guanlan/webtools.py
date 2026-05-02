@@ -1023,6 +1023,7 @@ def build_research_packet(
     max_read_chars: int | None = None,
     preset: str | None = "general",
     advisor: bool = False,
+    select_top: int | None = None,
 ) -> dict[str, Any]:
     """Build an agent-ready evidence packet from search + selected reads."""
     preset_config = resolve_research_preset(preset)
@@ -1042,6 +1043,7 @@ def build_research_packet(
         max_read_chars if max_read_chars is not None else preset_config["max_read_chars"],
         1,
     )
+    effective_select_top = max(select_top if select_top is not None else 8, 0)
     results, search_errors, result_groups = _research_search(
         query,
         limit=effective_limit,
@@ -1083,9 +1085,11 @@ def build_research_packet(
         "search_errors": search_errors,
         "result_groups": result_groups,
         "results": results,
+        "selected_evidence": _select_representative_evidence(results, effective_select_top),
         "readings": readings,
         "guidance": list(preset_config.get("guidance", [])) + [
             "这是一份证据上下文，不是最终结论。",
+            "先看“精选代表证据”，再回到完整搜索池补充细节；不要只凭第一条结果下判断。",
             "优先使用不同 topic、不同 source_type 的材料交叉验证。",
             "topic=related 的结果可作为补充线索，不要当成独立证据重复计数。",
             "阅读兜底内容只代表公开搜索线索，不等同于原文全文。",
@@ -1128,6 +1132,11 @@ def format_research_markdown(packet: dict[str, Any]) -> str:
     if isinstance(advisor, dict):
         lines.extend(["", format_advisor_markdown(advisor)])
 
+    selected = packet.get("selected_evidence", [])
+    if selected:
+        lines.extend(["", "## 精选代表证据", ""])
+        lines.append(format_search_markdown(selected, title="代表证据"))
+
     groups = packet.get("result_groups", [])
     if groups:
         lines.extend(["", "## 子证据块"])
@@ -1160,6 +1169,122 @@ def format_research_markdown(packet: dict[str, Any]) -> str:
             if content:
                 lines.extend(["", content])
     return "\n".join(lines)
+
+
+def format_research_prompt(packet: dict[str, Any]) -> str:
+    """Render a complete prompt for local LLMs that have no search tool."""
+    query = str(packet.get("query", "")).strip()
+    lines = [
+        "# 观澜本地模型联网 Prompt",
+        "",
+        "你将基于观澜提供的中文互联网证据回答用户问题。请严格遵守：",
+        "- 先回答问题，再列依据。",
+        "- 保留来源链接，说明哪些判断来自事实、哪些只是推断。",
+        "- 不要把搜索样本写成全网结论。",
+        "- 证据不足时直接说明缺口，并给下一步检索建议。",
+        "- 涉及医疗、法律、金融和重大决策时，只给信息整理与风险提醒。",
+        "",
+        f"## 用户问题\n{query}",
+        "",
+        "## 观澜证据包",
+        "",
+    ]
+    guidance = packet.get("guidance", [])
+    if guidance:
+        lines.append("### 使用规则")
+        lines.extend(f"- {item}" for item in guidance)
+        lines.append("")
+    selected = packet.get("selected_evidence") or packet.get("results", [])[:8]
+    lines.append(format_search_context(selected, title="精选代表证据"))
+    readings = packet.get("readings", [])
+    if readings:
+        lines.extend(["", "### 原文摘读"])
+        for item in readings:
+            title = _collapse_ws(str(item.get("title", "")))
+            url = str(item.get("url", ""))
+            status = str(item.get("status", ""))
+            content = _collapse_ws(str(item.get("content") or item.get("error") or ""))
+            lines.extend(["", f"- [{status}] {title}", f"  来源: {url}", f"  摘要: {content[:900]}"])
+    advisor = packet.get("advisor")
+    if isinstance(advisor, dict):
+        lines.extend(["", format_advisor_context(advisor)])
+    lines.extend(
+        [
+            "",
+            "## 请输出",
+            "- 简明结论",
+            "- 关键依据与来源",
+            "- 不确定性和证据缺口",
+            "- 可执行的下一步",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def format_search_prompt(results: list[dict[str, Any]], query: str, title: str = "观澜搜索 Prompt") -> str:
+    """Render search results as a complete local-LLM prompt."""
+    return "\n".join(
+        [
+            f"# {title}",
+            "",
+            "你将基于以下观澜搜索证据回答用户问题。请保留来源链接，区分事实与推断，不要把样本写成全网结论。",
+            "",
+            f"## 用户问题\n{query}",
+            "",
+            format_search_context(results, title="搜索证据"),
+            "",
+            "## 请输出",
+            "- 结论",
+            "- 依据",
+            "- 不确定性",
+            "- 下一步检索建议",
+        ]
+    )
+
+
+def format_read_prompt(content: str, query: str = "", url: str = "") -> str:
+    """Render a single read result as a complete local-LLM prompt."""
+    question = query or "请总结并分析这份材料。"
+    source = f"\n来源: {url}\n" if url else ""
+    return "\n".join(
+        [
+            "# 观澜网页阅读 Prompt",
+            "",
+            "请基于以下网页正文回答问题。不要引入正文以外的事实；如果正文不足，请说明不足。",
+            source.rstrip(),
+            f"## 用户问题\n{question}",
+            "",
+            "## 网页正文",
+            content.strip(),
+            "",
+            "## 请输出",
+            "- 摘要",
+            "- 关键事实",
+            "- 可引用来源",
+            "- 不确定性",
+        ]
+    ).strip()
+
+
+def format_read_batch_prompt(records: list[dict[str, Any]], query: str = "请综合分析这些网页。") -> str:
+    """Render batch read records as a complete local-LLM prompt."""
+    return "\n".join(
+        [
+            "# 观澜批量阅读 Prompt",
+            "",
+            "请综合以下多篇网页。保留来源，合并重复信息，指出分歧和缺口。",
+            "",
+            f"## 用户问题\n{query}",
+            "",
+            format_read_batch_context(records),
+            "",
+            "## 请输出",
+            "- 综合结论",
+            "- 分来源依据",
+            "- 分歧和不确定性",
+            "- 下一步",
+        ]
+    )
 
 
 def _research_scopes(
@@ -1280,6 +1405,50 @@ def _result_from_dict(item: dict[str, Any]) -> SearchResult:
         topic_role=str(item.get("topic_role", "single")),
         trace=dict(item.get("trace") or {}),
     )
+
+
+def _select_representative_evidence(results: list[dict[str, Any]], select_top: int) -> list[dict[str, Any]]:
+    """Pick a small, diverse evidence set from the broad candidate pool."""
+    if select_top <= 0:
+        return []
+    chosen: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    seen_topics: set[str] = set()
+    seen_source_types: set[str] = set()
+    seen_domains: set[str] = set()
+
+    def evidence_score(item: dict[str, Any]) -> tuple[float, int]:
+        score = float(item.get("score") or 0.0)
+        topic = str(item.get("topic_key") or "")
+        source_type = str(item.get("source_type") or "")
+        domain = str(item.get("domain") or "")
+        if item.get("topic_role") == "representative":
+            score += 8
+        if topic and topic not in seen_topics:
+            score += 6
+        if source_type and source_type not in seen_source_types:
+            score += 4
+        if domain and domain not in seen_domains:
+            score += 2
+        rank = int(item.get("rank") or 9999)
+        return score, -rank
+
+    candidates = [item for item in results if item.get("url")]
+    while candidates and len(chosen) < select_top:
+        best = max(candidates, key=evidence_score)
+        candidates.remove(best)
+        url = str(best.get("url") or "")
+        if url in seen_urls:
+            continue
+        chosen.append(best)
+        seen_urls.add(url)
+        if best.get("topic_key"):
+            seen_topics.add(str(best.get("topic_key")))
+        if best.get("source_type"):
+            seen_source_types.add(str(best.get("source_type")))
+        if best.get("domain"):
+            seen_domains.add(str(best.get("domain")))
+    return chosen
 
 
 def _select_reading_candidates(results: list[dict[str, Any]], read_top: int) -> list[dict[str, Any]]:
@@ -2483,6 +2652,7 @@ def _extract_article_text(raw: str) -> str:
         body,
         flags=re.S | re.I,
     )
+    body = _drop_noise_blocks(body)
     body = _prefer_main_content(body)
     body = re.sub(r"</?(?:p|div|section|article|main|h[1-6]|li|blockquote|tr|br)[^>]*>", "\n", body, flags=re.I)
     text = html.unescape(re.sub(r"<[^>]+>", " ", body or ""))
@@ -2501,6 +2671,25 @@ def _extract_article_text(raw: str) -> str:
     if not lines:
         return _strip_tags(raw)
     return "\n\n".join(lines)
+
+
+def _drop_noise_blocks(body: str) -> str:
+    """Remove common navigation, login, comment, related-story, and ad blocks."""
+    noise_attr = (
+        r"(?:nav|navbar|menu|footer|header|sidebar|aside|breadcrumb|share|social|comment|"
+        r"recommend|related|relate|hot|popular|advert|ad-|ads|login|signin|signup|"
+        r"download|app|qrcode|qr-code|copyright|toolbar|pagination|下一篇|上一篇)"
+    )
+    pattern = rf"<(div|section|ul|ol)\b[^>]*(?:id|class|role)=['\"][^'\"]*{noise_attr}[^'\"]*['\"][^>]*>.*?</\1>"
+    previous = None
+    cleaned = body
+    # Repeat a few times because shallow regex removal can expose nested noisy blocks.
+    for _ in range(4):
+        previous = cleaned
+        cleaned = re.sub(pattern, " ", cleaned, flags=re.S | re.I)
+        if cleaned == previous:
+            break
+    return cleaned
 
 
 def _prefer_main_content(body: str) -> str:
@@ -2575,6 +2764,18 @@ def _is_noise_content_line(line: str) -> bool:
         "京公网安备",
         "联系我们",
         "关于我们",
+        "打开app",
+        "打开 app",
+        "展开全文",
+        "继续阅读",
+        "点击查看",
+        "点击下载",
+        "微信扫一扫",
+        "用微信扫码",
+        "扫码关注",
+        "更多精彩",
+        "特别声明",
+        "免责声明",
     )
     if len(line) <= 28 and any(marker in lowered for marker in noise_markers):
         return True

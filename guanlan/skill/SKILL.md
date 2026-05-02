@@ -65,8 +65,11 @@ guanlan search "query" --site zhihu.com --limit 50
 guanlan search "query" --trace
 guanlan search "query" --cache-ttl 3600
 guanlan search "query" --format context
+guanlan search "query" --format prompt
 guanlan search "query" --source-chart
 guanlan research "query" --profile china --advisor
+guanlan research "query" --profile china --format prompt
+guanlan prompt "query" --profile china
 guanlan research "product 用户评价" --preset reputation --read-top 0 --advisor
 guanlan pulse "query" --format context
 
@@ -79,6 +82,7 @@ guanlan read "URL" --watch
 guanlan archive add "URL"
 guanlan archive search "query" --format context
 guanlan archive export --format jsonl
+guanlan mcp config --client codex
 
 # GitHub 搜索
 gh search repos "query" --sort stars --limit 50

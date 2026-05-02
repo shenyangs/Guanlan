@@ -8,6 +8,23 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.1.12 - 2026-05-02
+
+### Added
+
+- 新增 `guanlan prompt "问题"`，直接生成适合 Ollama、LM Studio、Open WebUI 等本地模型使用的完整联网 Prompt。
+- `search`、`research`、`read` 和 `read batch` 增加 `--format prompt`，输出“证据 + 回答规则 + 用户问题”的本地模型输入格式。
+- `research` 增加精选代表证据层，从 50-100 条广搜候选池中挑出多 topic、多信源、多域名的代表材料。
+- 新增 `guanlan mcp config`，输出可复制的 MCP 客户端配置，支持 `generic`、`claude`、`cursor`、`codex`、`openwebui` 口径。
+- 新增 `docs/local-llm.md`，说明无联网本地模型如何通过 CLI、Prompt 和 MCP 接入观澜。
+
+### Changed
+
+- `research --format context` 默认优先输出精选代表证据，而不是把完整候选池直接塞给模型。
+- 直连网页阅读继续加强正文去噪，过滤登录、APP、推荐、相关阅读、评论、广告等页面噪声块。
+- MCP `guanlan_search` 和 `guanlan_research` 增加 `prompt` 输出格式，方便支持 MCP 的本地 Agent 直接拿完整上下文。
+- P0/P1 路线在产品哲学文档中标记为已落地。
+
 ## v0.1.11 - 2026-05-02
 
 ### Added

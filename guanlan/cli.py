@@ -22,6 +22,7 @@ from guanlan.limits import (
     DEFAULT_HOTNEWS_LIMIT,
     DEFAULT_PULSE_LIMIT,
     DEFAULT_READ_FALLBACK_LIMIT,
+    DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
 )
 from guanlan.profiles import VALID_PROFILES
@@ -191,7 +192,7 @@ def main():
                           help="Search backend: auto, duckduckgo, bing, baidu, wechat-sogou, or plugin:name")
     p_search.add_argument("--profile", choices=VALID_PROFILES, default="",
                           help="Region profile: global, china, or hybrid")
-    p_search.add_argument("--format", choices=["markdown", "json", "context"], default="markdown",
+    p_search.add_argument("--format", choices=["markdown", "json", "context", "prompt"], default="markdown",
                           help="Output format")
     p_search.add_argument("--json", action="store_true",
                           help="Print normalized JSON instead of Markdown")
@@ -231,7 +232,7 @@ def main():
                             help="Maximum characters per read excerpt; defaults to preset value")
     p_research.add_argument("--profile", choices=VALID_PROFILES, default="",
                             help="Region profile: global, china, or hybrid; defaults to preset value")
-    p_research.add_argument("--format", choices=["markdown", "json", "context"], default="markdown",
+    p_research.add_argument("--format", choices=["markdown", "json", "context", "prompt"], default="markdown",
                             help="Output format")
     p_research.add_argument("--json", action="store_true",
                             help="Print normalized JSON instead of Markdown")
@@ -239,6 +240,32 @@ def main():
                             help="Append an ASCII source/domain distribution chart")
     p_research.add_argument("--advisor", action="store_true",
                             help="Append a cautious assistant view with intent hypotheses and next steps")
+    p_research.add_argument("--select-top", type=int, default=None,
+                            help="How many representative evidence items to highlight from the broad pool")
+
+    # ── prompt ──
+    p_prompt = sub.add_parser("prompt", help="Build a complete local-LLM prompt from Guanlan research evidence")
+    p_prompt.add_argument("query", nargs="?", default="", help="Question or research topic")
+    p_prompt.add_argument("--preset", default="general",
+                          help="Research preset: general, policy, official, industry, ecommerce, reputation, tech, finance, local")
+    p_prompt.add_argument("--limit", type=int, default=80,
+                          help="Broad search pool size for local model context")
+    p_prompt.add_argument("--site", default="", help="Restrict search to a domain")
+    p_prompt.add_argument("--sites", default="", help="Comma-separated domains for platform-directed research")
+    p_prompt.add_argument("--scope", default="", help="Curated China source scope")
+    p_prompt.add_argument("--search-backend", default="auto", help="Search backend")
+    p_prompt.add_argument("--read-backend", choices=["auto", "jina", "direct"], default="auto",
+                          help="Read backend for selected evidence")
+    p_prompt.add_argument("--read-top", type=int, default=2,
+                          help="Representative URLs to read into the prompt")
+    p_prompt.add_argument("--max-read-chars", type=int, default=1800,
+                          help="Maximum characters per read excerpt")
+    p_prompt.add_argument("--profile", choices=VALID_PROFILES, default="china",
+                          help="Region profile")
+    p_prompt.add_argument("--advisor", action=argparse.BooleanOptionalAction, default=True,
+                          help="Include advisor writing rules in the prompt")
+    p_prompt.add_argument("--select-top", type=int, default=8,
+                          help="Representative evidence items to include")
 
     # ── pulse ──
     p_pulse = sub.add_parser("pulse", help="Analyze topic echo from public samples with clear caveats")
@@ -280,8 +307,10 @@ def main():
                         help="Truncate output to this many characters")
     p_read.add_argument("--backend", choices=["auto", "jina", "direct"], default="auto",
                         help="Read backend: auto tries Jina Reader then direct HTML fallback")
-    p_read.add_argument("--format", choices=["markdown", "json", "context"], default="markdown",
+    p_read.add_argument("--format", choices=["markdown", "json", "context", "prompt"], default="markdown",
                         help="Output format for batch reads")
+    p_read.add_argument("--question", default="",
+                        help="Question to include when using --format prompt")
     p_read.add_argument("--fallback-search", action=argparse.BooleanOptionalAction, default=True,
                         help="When auto reading fails, return public search context instead of hard failing")
     p_read.add_argument("--fallback-limit", type=int, default=DEFAULT_READ_FALLBACK_LIMIT,
@@ -346,6 +375,17 @@ def main():
                                   help="Export format")
     p_archive_export.add_argument("--db", default="", help="Optional archive database path")
 
+    # ── mcp ──
+    p_mcp = sub.add_parser("mcp", help="MCP helpers for agent integration")
+    mcp_sub = p_mcp.add_subparsers(dest="mcp_command", help="MCP commands")
+    p_mcp_config = mcp_sub.add_parser("config", help="Print a copyable MCP client configuration")
+    p_mcp_config.add_argument("--client", choices=["generic", "claude", "cursor", "codex", "openwebui"],
+                              default="generic", help="Target client profile")
+    p_mcp_config.add_argument("--format", choices=["markdown", "json"], default="markdown",
+                              help="Output format")
+    p_mcp_config.add_argument("--command", dest="server_command", default="guanlan-mcp",
+                              help="Command used to start the Guanlan MCP server")
+
     # ── check-update ──
     sub.add_parser("check-update", help="Check for new versions and changes")
 
@@ -399,12 +439,16 @@ def main():
         _cmd_search(args)
     elif args.command == "research":
         _cmd_research(args)
+    elif args.command == "prompt":
+        _cmd_prompt(args)
     elif args.command == "pulse":
         _cmd_pulse(args)
     elif args.command == "read":
         _cmd_read(args)
     elif args.command == "archive":
         _cmd_archive(args)
+    elif args.command == "mcp":
+        _cmd_mcp(args)
 
 
 # ── Command handlers ────────────────────────────────
@@ -791,6 +835,7 @@ def _cmd_search(args):
     from guanlan.webtools import (
         format_search_context,
         format_search_markdown,
+        format_search_prompt,
         format_search_trace,
         format_source_chart,
         search_web,
@@ -828,6 +873,9 @@ def _cmd_search(args):
         print(format_search_context(results, title=f"观澜搜索上下文{suffix} / {args.query}"))
         if args.source_chart:
             print(format_source_chart(results))
+    elif output_format == "prompt":
+        suffix = f" / {args.scope}" if args.scope else ""
+        print(format_search_prompt(results, query=args.query, title=f"观澜搜索 Prompt{suffix}"))
     else:
         suffix = f" / {args.scope}" if args.scope else ""
         print(format_search_markdown(results, title=f"观澜搜索{suffix} / {args.query}"))
@@ -844,6 +892,7 @@ def _cmd_research(args):
         build_research_packet,
         format_advisor_context,
         format_research_markdown,
+        format_research_prompt,
         format_search_context,
         format_source_chart,
         list_research_presets,
@@ -870,6 +919,7 @@ def _cmd_research(args):
             read_backend=args.read_backend,
             max_read_chars=max(args.max_read_chars, 1) if args.max_read_chars is not None else None,
             advisor=args.advisor,
+            select_top=max(args.select_top, 0) if args.select_top is not None else None,
         )
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -879,16 +929,51 @@ def _cmd_research(args):
     if output_format == "json":
         print(json.dumps(packet, ensure_ascii=False, indent=2))
     elif output_format == "context":
-        print(format_search_context(packet.get("results", []), title=f"观澜研究上下文 / {args.query}"))
+        evidence = packet.get("selected_evidence") or packet.get("results", [])
+        print(format_search_context(evidence, title=f"观澜研究上下文 / {args.query}"))
         if args.advisor and isinstance(packet.get("advisor"), dict):
             print()
             print(format_advisor_context(packet["advisor"]))
         if args.source_chart:
             print(format_source_chart(packet.get("results", [])))
+    elif output_format == "prompt":
+        print(format_research_prompt(packet))
     else:
         print(format_research_markdown(packet))
         if args.source_chart:
             print(format_source_chart(packet.get("results", [])))
+
+
+def _cmd_prompt(args):
+    """Build a local-LLM prompt from a broad Guanlan research packet."""
+
+    from guanlan.webtools import build_research_packet, format_research_prompt
+
+    if not args.query:
+        print("Error: query is required", file=sys.stderr)
+        sys.exit(2)
+
+    try:
+        packet = build_research_packet(
+            args.query,
+            preset=args.preset,
+            limit=max(args.limit or DEFAULT_RESEARCH_LIMIT, 1),
+            site=args.site or None,
+            sites=[s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
+            scope=args.scope or None,
+            search_backend=args.search_backend,
+            profile=args.profile or None,
+            read_top=max(args.read_top, 0),
+            read_backend=args.read_backend,
+            max_read_chars=max(args.max_read_chars, 1),
+            advisor=args.advisor,
+            select_top=max(args.select_top, 1),
+        )
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(format_research_prompt(packet))
 
 
 def _cmd_pulse(args):
@@ -938,6 +1023,8 @@ def _cmd_read(args):
     from guanlan.webtools import (
         format_read_batch_context,
         format_read_batch_markdown,
+        format_read_batch_prompt,
+        format_read_prompt,
         read_batch,
         read_url,
     )
@@ -962,25 +1049,29 @@ def _cmd_read(args):
                 print(json.dumps(records, ensure_ascii=False, indent=2))
             elif args.format == "context":
                 print(format_read_batch_context(records))
+            elif args.format == "prompt":
+                print(format_read_batch_prompt(records, query=args.question or "请综合分析这些网页。"))
             else:
                 print(format_read_batch_markdown(records))
             return
         if not args.url:
             print("Error: URL is required", file=sys.stderr)
             sys.exit(2)
-        print(
-            read_url(
-                args.url,
-                max_chars=args.max_chars or None,
-                backend=args.backend,
-                fallback_search=args.fallback_search,
-                fallback_limit=max(args.fallback_limit, 1),
-                profile=args.profile or None,
-                cache_ttl=max(args.cache_ttl, 0),
-                use_cache=not args.no_cache,
-                watch=args.watch,
-            )
+        content = read_url(
+            args.url,
+            max_chars=args.max_chars or None,
+            backend=args.backend,
+            fallback_search=args.fallback_search,
+            fallback_limit=max(args.fallback_limit, 1),
+            profile=args.profile or None,
+            cache_ttl=max(args.cache_ttl, 0),
+            use_cache=not args.no_cache,
+            watch=args.watch,
         )
+        if args.format == "prompt":
+            print(format_read_prompt(content, query=args.question, url=args.url))
+        else:
+            print(content)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -1093,6 +1184,31 @@ def _cmd_archive(args):
 
     print(f"Error: unknown archive command: {command}", file=sys.stderr)
     sys.exit(2)
+
+
+def _cmd_mcp(args):
+    """Print MCP integration helpers."""
+
+    from guanlan.mcp_config import build_mcp_config, format_mcp_config_markdown
+
+    command = getattr(args, "mcp_command", None)
+    if command != "config":
+        print("Error: mcp command is required: config", file=sys.stderr)
+        sys.exit(2)
+    try:
+        if args.format == "json":
+            print(
+                json.dumps(
+                    build_mcp_config(client=args.client, command=args.server_command),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print(format_mcp_config_markdown(client=args.client, command=args.server_command))
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _format_archive_add_summary(records: list[dict]) -> str:

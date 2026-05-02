@@ -54,6 +54,9 @@
 | “解释为什么这条排第一” | `guanlan search "关键词" --trace` |
 | “重复查同一题，减少请求” | `guanlan search "关键词" --cache-ttl 3600` |
 | “把搜索结果直接塞进 prompt” | `guanlan search "关键词" --format context` |
+| “给没有联网能力的本地模型准备输入” | `guanlan prompt "关键词" --profile china` |
+| “把研究证据包直接喂给本地模型” | `guanlan research "关键词" --format prompt` |
+| “生成 MCP 客户端配置” | `guanlan mcp config --client codex` |
 | “查企业内部只读搜索后端” | `guanlan search "关键词" --backend plugin:my_company_api` |
 | “批量读一组链接” | `guanlan read batch urls.txt --format context` |
 | “追踪网页内容变化” | `guanlan read "URL" --watch` |

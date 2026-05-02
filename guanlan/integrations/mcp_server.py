@@ -66,7 +66,7 @@ def _tool_definitions() -> list[dict]:
                     "scope": {"type": "string"},
                     "backend": {"type": "string", "default": "auto"},
                     "profile": {"type": "string", "enum": ["global", "china", "hybrid"]},
-                    "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "context"},
+                    "format": {"type": "string", "enum": ["markdown", "context", "prompt", "json"], "default": "context"},
                     "trace": {"type": "boolean", "default": False},
                     "cache_ttl": {"type": "integer", "default": 0, "minimum": 0},
                 },
@@ -122,7 +122,7 @@ def _tool_definitions() -> list[dict]:
                     "read_top": {"type": "integer", "minimum": 0, "maximum": 10},
                     "max_read_chars": {"type": "integer", "minimum": 1},
                     "profile": {"type": "string", "enum": ["global", "china", "hybrid"]},
-                    "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "markdown"},
+                    "format": {"type": "string", "enum": ["markdown", "context", "prompt", "json"], "default": "markdown"},
                     "advisor": {
                         "type": "boolean",
                         "default": False,
@@ -221,6 +221,7 @@ def _run_tool(name: str, arguments: dict | None = None):
         from guanlan.webtools import (
             format_search_context,
             format_search_markdown,
+            format_search_prompt,
             format_search_trace,
             search_web,
         )
@@ -241,6 +242,8 @@ def _run_tool(name: str, arguments: dict | None = None):
         if output_format == "markdown":
             text = format_search_markdown(results, title=f"观澜搜索 / {args.get('query', '')}")
             return text + (format_search_trace(results) if args.get("trace") else "")
+        if output_format == "prompt":
+            return format_search_prompt(results, query=str(args.get("query") or ""))
         return format_search_context(results, title=f"观澜搜索上下文 / {args.get('query', '')}")
 
     if name == "guanlan_read":
@@ -261,6 +264,7 @@ def _run_tool(name: str, arguments: dict | None = None):
             build_research_packet,
             format_advisor_context,
             format_research_markdown,
+            format_research_prompt,
             format_search_context,
         )
 
@@ -282,10 +286,15 @@ def _run_tool(name: str, arguments: dict | None = None):
         if output_format == "json":
             return packet
         if output_format == "context":
-            text = format_search_context(packet.get("results", []), title=f"观澜研究上下文 / {args.get('query', '')}")
+            text = format_search_context(
+                packet.get("selected_evidence") or packet.get("results", []),
+                title=f"观澜研究上下文 / {args.get('query', '')}",
+            )
             if isinstance(packet.get("advisor"), dict):
                 text += "\n\n" + format_advisor_context(packet["advisor"])
             return text
+        if output_format == "prompt":
+            return format_research_prompt(packet)
         return format_research_markdown(packet)
 
     if name == "guanlan_hotnews":

@@ -562,6 +562,31 @@ def test_direct_html_reader_filters_navigation_and_footer_noise(monkeypatch):
     assert "登录 注册" not in text
 
 
+def test_direct_html_reader_drops_related_login_and_app_noise(monkeypatch):
+    html = """
+    <html>
+      <head><title>深度文章</title></head>
+      <body>
+        <div class="login-panel">登录后查看更多 打开APP</div>
+        <article>
+          <h1>产业观察</h1>
+          <p>第一段正文说明产业变化、企业反馈和公开数据，足够长以成为有效正文。</p>
+          <p>第二段正文继续补充政策背景、市场反应和后续观察重点。</p>
+        </article>
+        <div class="related-news">相关阅读 热门推荐 下一篇</div>
+      </body>
+    </html>
+    """
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: _FakeResponse(html))
+
+    text = webtools.read_url("https://example.cn/deep", backend="direct")
+
+    assert "第一段正文说明产业变化" in text
+    assert "第二段正文继续补充政策背景" in text
+    assert "登录后查看更多" not in text
+    assert "相关阅读" not in text
+
+
 def test_read_url_uses_search_context_when_reading_is_blocked(monkeypatch):
     monkeypatch.setattr(webtools, "_read_with_jina", lambda url: "请先登录后查看")
     monkeypatch.setattr(webtools, "_read_direct", lambda url: "访问受限，请完成安全验证")
@@ -673,6 +698,29 @@ def test_search_cli_outputs_context(capsys):
     assert "[A](https://a.example)" in captured.out
 
 
+def test_search_cli_outputs_prompt(capsys):
+    from guanlan.cli import main
+
+    with patch(
+        "guanlan.webtools.search_web",
+        return_value=[
+            {
+                "title": "A",
+                "url": "https://a.example",
+                "snippet": "S",
+                "source_type": "通用网页",
+                "score": 1.0,
+            }
+        ],
+    ):
+        with patch("sys.argv", ["guanlan", "search", "query", "--format", "prompt"]):
+            main()
+    captured = capsys.readouterr()
+    assert "观澜搜索 Prompt" in captured.out
+    assert "## 用户问题" in captured.out
+    assert "query" in captured.out
+
+
 def test_research_cli_outputs_json(capsys):
     from guanlan.cli import main
 
@@ -704,6 +752,26 @@ def test_search_cli_lists_scopes(capsys):
     scopes = json.loads(captured.out)
     assert "party_central" in scopes
     assert "ecommerce" in scopes
+
+
+def test_prompt_cli_builds_local_llm_prompt(capsys):
+    from guanlan.cli import main
+
+    packet = {
+        "query": "本地模型联网",
+        "results": [],
+        "selected_evidence": [],
+        "readings": [],
+        "guidance": ["保留来源"],
+    }
+    with patch("guanlan.webtools.build_research_packet", return_value=packet) as mocked:
+        with patch("sys.argv", ["guanlan", "prompt", "本地模型联网", "--limit", "80"]):
+            main()
+    captured = capsys.readouterr()
+    assert "观澜本地模型联网 Prompt" in captured.out
+    assert "本地模型联网" in captured.out
+    assert mocked.call_args.kwargs["limit"] == 80
+    assert mocked.call_args.kwargs["advisor"] is True
 
 
 def test_read_cli_outputs_text(capsys):
@@ -954,7 +1022,55 @@ def test_build_research_packet_reads_representative_results(monkeypatch):
         "https://example.com/a",
         "https://gov.cn/c",
     ]
+    assert [item["url"] for item in packet["selected_evidence"][:2]] == [
+        "https://example.com/a",
+        "https://gov.cn/c",
+    ]
     assert packet["readings"][0]["content"] == "READ https://example.com/a"
+
+
+def test_build_research_packet_selects_diverse_representative_evidence(monkeypatch):
+    search_results = [
+        {
+            "rank": 1,
+            "title": "同题转载",
+            "url": "https://media.example/a",
+            "source_type": "商业媒体",
+            "domain": "media.example",
+            "score": 10,
+            "topic_key": "topic-1",
+            "topic_role": "related",
+        },
+        {
+            "rank": 2,
+            "title": "原文代表",
+            "url": "https://gov.cn/policy",
+            "source_type": "政府/部委",
+            "domain": "gov.cn",
+            "score": 8,
+            "topic_key": "topic-1",
+            "topic_role": "representative",
+        },
+        {
+            "rank": 3,
+            "title": "社交反馈",
+            "url": "https://weibo.com/a",
+            "source_type": "社交/内容平台",
+            "domain": "weibo.com",
+            "score": 7,
+            "topic_key": "topic-2",
+            "topic_role": "single",
+        },
+    ]
+
+    monkeypatch.setattr(webtools, "search_web", lambda *args, **kwargs: search_results)
+
+    packet = webtools.build_research_packet("政策反馈", read_top=0, select_top=2)
+
+    assert [item["url"] for item in packet["selected_evidence"]] == [
+        "https://gov.cn/policy",
+        "https://weibo.com/a",
+    ]
 
 
 def test_build_research_packet_applies_preset_defaults(monkeypatch):
