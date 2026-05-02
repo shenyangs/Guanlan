@@ -40,7 +40,7 @@
 | “查官方/央媒表述” | `guanlan search "关键词" --profile china --scope party_central` |
 | “查地方官媒/区域政策” | `guanlan search "关键词" --profile china --scope local_official` |
 | “查电商/零售/产业带” | `guanlan search "关键词" --profile china --scope ecommerce` |
-| “我该去哪搜/怎么分信源” | `guanlan route "关键词"` |
+| “我该去哪搜/怎么分信源/该跑哪个命令” | `guanlan route "关键词"`，先看 `recommended_commands` |
 | “帮我查清楚并给依据” | `guanlan research "关键词" --profile china` |
 | “查完后给建议/下一步/可能原因” | `guanlan research "关键词" --profile china --advisor` |
 | “查政策/监管/官方通知” | `guanlan research "关键词" --preset policy` |
@@ -57,6 +57,11 @@
 | “只读原文，不要兜底搜索” | `guanlan read "URL" --no-fallback-search` |
 | “今天有什么热点” | `guanlan hotnews today --limit 50` |
 | “技术社区在讨论什么” | `guanlan hotnews v2ex --limit 50` |
+| “今天有什么值得读的技术/AI 文章” | `guanlan feeds curated --limit 80` |
+| “今天微信/公众号有什么热文” | `guanlan feeds wechat-rss --limit 80` |
+| “补一个百度热点 RSS 视角” | `guanlan feeds baidu-rss --limit 80` |
+| “找精品 RSS 源目录” | `guanlan feeds curated-sources --keyword AI --limit 80` |
+| “这些 RSS 源怎么路由” | `guanlan feeds list` |
 | “输出结构化结果” | 给命令加 `--json` |
 | “检查哪些渠道可用” | `guanlan doctor --trace` |
 | “看渠道稳定性/授权边界/缓存概况” | `guanlan status`，重点看 `就绪` 和 `验证` 列 |
@@ -79,7 +84,7 @@
 | “看跨源热点趋势” | `guanlan hotnews today --trends` |
 | “拿评估集比较搜索质量” | `guanlan eval scenarios --format jsonl` |
 
-CLI 是默认主路径；如果当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_capabilities`、`guanlan_search`、`guanlan_route`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
+CLI 是默认主路径；命令选择不确定时先跑 `guanlan route "用户需求"`，按 `recommended_commands` 起手。若当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_capabilities`、`guanlan_search`、`guanlan_route`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_feeds`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
 
 MCP 客户端安装入口：
 

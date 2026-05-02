@@ -5,6 +5,7 @@ Read:   Exa crawling (primary) / Camoufox stealth browser (optional)
 Search: Exa web_search with includeDomains mp.weixin.qq.com / WechatSogou (optional backup)
 """
 
+import importlib.util
 import shutil
 import subprocess
 
@@ -37,7 +38,12 @@ def _wechat_sogou_available() -> bool:
 class WeChatChannel(Channel):
     name = "wechat"
     description = "微信公众号文章"
-    backends = ["Exa via mcporter (backend-ready)", "WechatSogou (optional)", "Camoufox (optional)"]
+    backends = [
+        "wechat-rss public hot articles",
+        "Exa via mcporter (backend-ready)",
+        "WechatSogou (optional)",
+        "Camoufox (optional)",
+    ]
     tier = 0
 
     def can_handle(self, url: str) -> bool:
@@ -48,6 +54,7 @@ class WeChatChannel(Channel):
     def check(self, config=None):
         has_exa = _exa_available()
         has_wechat_sogou = _wechat_sogou_available()
+        has_wechat_rss = importlib.util.find_spec("feedparser") is not None
         has_camoufox = False
         try:
             import camoufox  # noqa: F401
@@ -57,6 +64,8 @@ class WeChatChannel(Channel):
 
         if has_exa or has_wechat_sogou or has_camoufox:
             ready = []
+            if has_wechat_rss:
+                ready.append("wechat-rss")
             if has_exa:
                 ready.append("Exa")
             if has_wechat_sogou:
@@ -65,10 +74,17 @@ class WeChatChannel(Channel):
                 ready.append("Camoufox")
             return "warn", (
                 f"backend-ready / unverified / best-effort：已检测到 {'、'.join(ready)}。"
-                "这只代表公众号搜索/阅读路径已具备后端，不代表端到端稳定可用；"
+                "这只代表公众号搜索/阅读/热文线索路径已具备后端，不代表端到端稳定可用；"
                 "遇到验证码、登录墙、反爬或正文缺失时，请降级为普通网页搜索、同题转载页或手动授权路径。"
+            )
+        if has_wechat_rss:
+            return "warn", (
+                "backend-ready / unverified / best-effort：已检测到 wechat-rss 公开热文线索源。"
+                "可用 `guanlan feeds wechat-rss --limit 80` 补充公众号热门文章发现；"
+                "这不是全文读取能力，公众号原文仍可能受反爬、登录墙或正文缺失影响。"
             )
         return "off", (
             "未检测到公众号后端。可选安装 mcporter + Exa、WechatSogou 或 Camoufox；"
+            "或使用 `guanlan feeds wechat-rss --limit 80` 做公开热文线索发现；"
             "安装后也只会标记为 backend-ready，端到端可用性仍需按具体文章验证。"
         )

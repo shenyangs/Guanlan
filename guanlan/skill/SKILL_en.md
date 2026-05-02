@@ -274,6 +274,16 @@ print(quote["name"], quote["current"], quote["percent"])
 
 ## RSS (feedparser)
 
+```bash
+# Public curated RSS, no API key required
+guanlan feeds curated --limit 80
+guanlan feeds curated --category ai --min-score 85 --limit 80
+guanlan feeds baidu-rss --limit 80
+guanlan feeds wechat-rss --limit 80
+guanlan feeds curated-sources --keyword AI --limit 80
+guanlan feeds list
+```
+
 ```python
 python3 -c "
 import feedparser

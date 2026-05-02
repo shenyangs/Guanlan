@@ -129,6 +129,32 @@ def test_fetch_bilibili_normalizes_ranking_payload(monkeypatch):
     assert items[0]["metrics"]["owner"] == "UP 主"
 
 
+def test_fetch_bilibili_hot_search_normalizes_public_hotwords(monkeypatch):
+    monkeypatch.setattr(
+        hotnews,
+        "_read_json",
+        lambda _url: {
+            "code": 0,
+            "list": [
+                {
+                    "show_name": "AI 视频工具",
+                    "keyword": "AI 视频工具",
+                    "heat_score": 888,
+                    "heat_layer": "high",
+                }
+            ],
+        },
+    )
+
+    items = hotnews.fetch_hotnews("bilibili-hot-search", limit=1)
+
+    assert items[0]["source_id"] == "bilibili-hot-search"
+    assert items[0]["title"] == "AI 视频工具"
+    assert "search.bilibili.com" in items[0]["url"]
+    assert items[0]["metrics"]["heat"] == 888
+    assert items[0]["evidence_role"] == "video_attention_signal"
+
+
 def test_fetch_bilibili_falls_back_to_popular_payload(monkeypatch):
     requested = []
 
@@ -181,6 +207,27 @@ def test_fetch_ithome_parses_public_rss(monkeypatch):
     assert items[0]["published_at"] == "Fri, 01 May 2026 08:00:00 GMT"
 
 
+def test_fetch_sspai_parses_public_rss(monkeypatch):
+    monkeypatch.setattr(
+        hotnews,
+        "_read_text",
+        lambda _url: """
+        <rss><channel><item>
+          <title>少数派文章</title>
+          <link>https://sspai.com/post/1</link>
+          <description><![CDATA[<p>效率工具摘要</p>]]></description>
+          <pubDate>Fri, 01 May 2026 09:00:00 GMT</pubDate>
+        </item></channel></rss>
+        """,
+    )
+
+    items = hotnews.fetch_hotnews("sspai", limit=1)
+
+    assert items[0]["source_id"] == "sspai"
+    assert items[0]["title"] == "少数派文章"
+    assert items[0]["evidence_role"] == "tech_reading_signal"
+
+
 def test_fetch_today_round_robins_sources_and_tolerates_failures(monkeypatch):
     monkeypatch.setattr(
         hotnews,
@@ -197,7 +244,7 @@ def test_fetch_today_round_robins_sources_and_tolerates_failures(monkeypatch):
             hotnews.HotNewsItem(platform="weibo", source_id="weibo", category="social", title="微博 1", rank=1)
         ],
     )
-    monkeypatch.setattr(hotnews, "fetch_bilibili", lambda limit=20: (_ for _ in ()).throw(RuntimeError("403")))
+    monkeypatch.setattr(hotnews, "fetch_bilibili_hot_search", lambda limit=20: (_ for _ in ()).throw(RuntimeError("403")))
     monkeypatch.setattr(hotnews, "fetch_ithome", lambda limit=20: [])
     monkeypatch.setattr(
         hotnews,
@@ -229,7 +276,7 @@ def test_fetch_today_can_fill_expanded_limit(monkeypatch):
 
     monkeypatch.setattr(hotnews, "fetch_baidu", lambda limit=20: make_items("baidu", limit))
     monkeypatch.setattr(hotnews, "fetch_weibo", lambda limit=20: make_items("weibo", limit))
-    monkeypatch.setattr(hotnews, "fetch_bilibili", lambda limit=20: make_items("bilibili", limit))
+    monkeypatch.setattr(hotnews, "fetch_bilibili_hot_search", lambda limit=20: make_items("bilibili-hot-search", limit))
     monkeypatch.setattr(hotnews, "fetch_ithome", lambda limit=20: make_items("ithome", limit))
     monkeypatch.setattr(hotnews, "fetch_v2ex", lambda limit=20: make_items("v2ex", limit))
 
@@ -285,6 +332,69 @@ def test_hotnews_brief_includes_followup_queries():
     assert "resonance" in brief["highlights"][0]
     assert "观澜今日水势简报" in md
     assert "继续查" in md
+
+
+def test_hotnews_items_carry_evidence_metadata():
+    item = hotnews.HotNewsItem(
+        platform="weibo",
+        source_id="weibo",
+        category="social",
+        title="讨论样本",
+        url="https://weibo.com/example",
+        rank=1,
+    ).to_dict()
+
+    enriched = hotnews.enrich_hotnews_item(item)
+    distribution = hotnews.build_source_distribution([enriched])
+
+    assert enriched["evidence_role"] == "public_discussion_signal"
+    assert enriched["source_card"]["domain"] == "weibo.com"
+    assert "sample_bias" in enriched["risk_tags"]
+    assert distribution["evidence_role_counts"]["public_discussion_signal"] == 1
+
+
+def test_compact_hotnews_items_preserves_evidence_boundary():
+    compact = hotnews.compact_hotnews_items(
+        [
+            {
+                "rank": 1,
+                "source_id": "weibo",
+                "title": "讨论样本",
+                "url": "https://weibo.com/example",
+                "summary": "这是一段较长的样本摘要" * 20,
+                "metrics": {"heat": 123, "unused": "drop"},
+            }
+        ],
+        summary_chars=12,
+    )
+
+    assert compact[0]["evidence_role"] == "public_discussion_signal"
+    assert compact[0]["metrics"] == {"heat": 123}
+    assert "sample_bias" in compact[0]["risk_tags"]
+    assert compact[0]["source_card"]["domain"] == "weibo.com"
+    assert len(compact[0]["summary"]) == 12
+
+
+def test_hotnews_snapshot_compare_tracks_new_and_rank_changes(tmp_path):
+    path = tmp_path / "snapshots.jsonl"
+    previous = [
+        {"source_id": "baidu", "title": "A", "url": "https://example.com/a", "rank": 2},
+        {"source_id": "baidu", "title": "B", "url": "https://example.com/b", "rank": 1},
+    ]
+    current = [
+        {"source_id": "baidu", "title": "A", "url": "https://example.com/a", "rank": 1},
+        {"source_id": "baidu", "title": "C", "url": "https://example.com/c", "rank": 2},
+    ]
+
+    hotnews.save_hotnews_snapshot("baidu", previous, path=str(path))
+    report = hotnews.build_hotnews_snapshot_report("baidu", current, save=True, path=str(path))
+    md = hotnews.format_snapshot_report_markdown(report)
+
+    assert report["previous_snapshot"]["item_count"] == 2
+    assert report["comparison"]["new_items"][0]["title"] == "C"
+    assert report["comparison"]["disappeared_items"][0]["title"] == "B"
+    assert report["comparison"]["rank_changes"][0]["title"] == "A"
+    assert "新上榜" in md
 
 
 def test_normalize_hotnews_payload_accepts_newsnow_like_shape():
@@ -394,13 +504,17 @@ def test_hotnews_cli_lists_sources(capsys):
     assert "baidu" in data
     assert "weibo" in data
     assert "bilibili" in data
+    assert "bilibili-hot-search" in data
     assert "ithome" in data
+    assert "sspai" in data
     assert "zhihu" in data
     assert data["zhihu"]["status"] == "experimental"
     assert data["zhihu"]["verified"] is False
     assert "v2ex" in data
     assert "newsnow:36kr-quick" in data
-    assert data["newsnow:36kr-quick"]["status"] == "best-effort"
+    assert data["bilibili-hot-search"]["backend"] == "native"
+    assert data["newsnow:36kr-quick"]["backend"] == "optional"
+    assert data["newsnow:36kr-quick"]["status"] == "optional"
 
 
 def test_hotnews_cli_zhihu_failure_prints_search_fallback(capsys):

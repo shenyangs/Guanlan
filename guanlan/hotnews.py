@@ -8,15 +8,24 @@ not require cookies, browser access, or Keychain integration.
 from __future__ import annotations
 
 import json
+import os
 import re
 import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
 from guanlan.limits import DEFAULT_HOTNEWS_LIMIT, MAX_HOTNEWS_PER_SOURCE_LIMIT
+from guanlan.source_registry import (
+    get_source_metadata,
+    list_hotnews_sources,
+    list_optional_backend_sources,
+    resolve_source_id,
+)
+from guanlan.source_taxonomy import source_card_for_domain
 
 _UA = "Mozilla/5.0"
 _TIMEOUT = 12
@@ -39,107 +48,25 @@ class HotNewsItem:
     fetched_at: str = ""
     source_confidence: str = "medium"
     rank: int = 0
+    evidence_role: str = ""
+    source_card: dict[str, Any] = field(default_factory=dict)
+    risk_tags: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
 SOURCE_CATALOG: dict[str, dict[str, Any]] = {
-    "today": {
-        "name": "今日多源热榜",
-        "platform": "guanlan",
-        "category": "hotnews",
-        "risk": "low",
-        "backend": "native",
-        "status": "stable",
-        "notes": "聚合 baidu、weibo、bilibili、ithome、v2ex；单源失败不影响其它来源。",
-    },
-    "baidu": {
-        "name": "百度热搜",
-        "platform": "baidu",
-        "category": "hotnews",
-        "risk": "low",
-        "backend": "native",
-        "status": "stable",
-    },
-    "weibo": {
-        "name": "微博热搜",
-        "platform": "weibo",
-        "category": "social",
-        "risk": "low",
-        "backend": "native",
-        "status": "best-effort",
-        "notes": "公开只读热搜端点；不读取 Cookie 或登录态，但可能受反爬和地区网络影响。",
-    },
-    "bilibili": {
-        "name": "B站热门视频",
-        "platform": "bilibili",
-        "category": "video",
-        "risk": "low",
-        "backend": "native",
-        "status": "best-effort",
-        "notes": "公开全站热门视频榜，不等同于 B站搜索框热搜；接口偶尔会限流或返回风控码。",
-    },
-    "ithome": {
-        "name": "IT之家资讯",
-        "platform": "ithome",
-        "category": "tech",
-        "risk": "low",
-        "backend": "native",
-        "status": "stable",
-        "notes": "公开 RSS 源，适合作为科技资讯快照。",
-    },
-    "zhihu": {
-        "name": "知乎热榜",
-        "platform": "zhihu",
-        "category": "hotnews",
-        "risk": "low",
-        "backend": "native",
-        "status": "experimental",
-        "verified": False,
-        "notes": "实验源：公开接口在部分环境会返回 401/403，不承诺稳定可用。",
-        "fallback": 'guanlan search "知乎 热榜 关键词" --site zhihu.com --profile china',
-    },
-    "v2ex": {
-        "name": "V2EX 热门",
-        "platform": "v2ex",
-        "category": "community",
-        "risk": "low",
-        "backend": "native",
-        "status": "stable",
-    },
+    source_id: meta
+    for source_id, meta in list_hotnews_sources().items()
+    if meta.get("backend") == "native"
 }
-
-
-NEWSNOW_RECOMMENDED_SOURCES: dict[str, dict[str, Any]] = {
-    "weibo": {"name": "微博热搜", "column": "china", "type": "hottest"},
-    "bilibili-hot-search": {"name": "B站热搜", "column": "china", "type": "hottest"},
-    "36kr-quick": {"name": "36氪快讯", "column": "tech", "type": "realtime"},
-    "ithome": {"name": "IT之家", "column": "tech", "type": "realtime"},
-    "juejin": {"name": "掘金热榜", "column": "tech", "type": "hottest"},
-    "sspai": {"name": "少数派热榜", "column": "tech", "type": "hottest"},
-    "cls-telegraph": {"name": "财联社电报", "column": "finance", "type": "realtime"},
-    "wallstreetcn-quick": {"name": "华尔街见闻快讯", "column": "finance", "type": "realtime"},
-    "github-trending-today": {"name": "GitHub Trending", "column": "tech", "type": "hottest"},
-    "hackernews": {"name": "Hacker News", "column": "tech", "type": "hottest"},
-}
+NEWSNOW_RECOMMENDED_SOURCES: dict[str, dict[str, Any]] = list_optional_backend_sources("newsnow")
 
 
 def list_sources() -> dict[str, dict[str, Any]]:
     """Return supported native hotnews source metadata."""
-    sources = SOURCE_CATALOG.copy()
-    for source_id, meta in NEWSNOW_RECOMMENDED_SOURCES.items():
-        sources[f"newsnow:{source_id}"] = {
-            "name": meta["name"],
-            "platform": source_id,
-            "category": meta.get("column", "hotnews"),
-            "risk": "low",
-            "backend": "newsnow",
-            "status": "best-effort",
-            "verified": False,
-            "notes": "可选增强源：稳定性取决于 NewsNow BASE_URL、Cloudflare 和上游抓取状态。",
-        }
-    return sources
+    return list_hotnews_sources()
 
 
 def _now_iso() -> str:
@@ -192,6 +119,103 @@ def _pick(raw: dict[str, Any], *keys: str) -> Any:
     return ""
 
 
+def _unique(values: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        text = _clean_text(value)
+        key = text.casefold()
+        if text and key not in seen:
+            seen.add(key)
+            result.append(text)
+    return result
+
+
+def _source_meta(source_id: str) -> dict[str, Any]:
+    return get_source_metadata(source_id)
+
+
+def _domain_from_url(url: Any) -> str:
+    try:
+        parsed = urllib.parse.urlparse(str(url or ""))
+    except Exception:
+        return ""
+    return (parsed.netloc or "").lower().removeprefix("www.")
+
+
+def _source_domain(source_id: str, url: Any = "", platform: str | None = None) -> str:
+    domain = _domain_from_url(url)
+    if domain:
+        return domain
+    meta = _source_meta(source_id)
+    domain = str(meta.get("source_domain") or "")
+    if domain:
+        return domain
+    platform_value = (platform or meta.get("platform") or source_id).strip()
+    if "." in platform_value:
+        return platform_value.removeprefix("newsnow:")
+    return ""
+
+
+def _source_card_for_hotnews(source_id: str, url: Any = "", platform: str | None = None) -> dict[str, Any]:
+    domain = _source_domain(source_id, url=url, platform=platform)
+    if not domain:
+        return {
+            "domain": "",
+            "source_type": "热榜/聚合源",
+            "authority_role": "trend_signal",
+            "content_roles": ["fresh_signal"],
+            "risk_tags": ["sample_boundary"],
+            "authority_score": 0.2,
+            "sample_value": 0.65,
+            "freshness_value": 0.85,
+            "stability": "best_effort",
+        }
+    return source_card_for_domain(domain).to_dict()
+
+
+def _default_evidence_role(category: str) -> str:
+    mapping = {
+        "finance": "market_news_signal",
+        "tech": "tech_news_signal",
+        "community": "developer_discussion_signal",
+        "social": "public_discussion_signal",
+        "video": "video_attention_signal",
+        "wechat": "article_signal",
+        "hotnews": "fresh_trend_signal",
+    }
+    return mapping.get((category or "").lower(), "open_web_signal")
+
+
+def _hotnews_risk_tags(source_id: str, source_card: dict[str, Any]) -> list[str]:
+    tags: list[str] = []
+    meta = _source_meta(source_id)
+    tags.extend(str(tag) for tag in meta.get("risk_tags", []) if tag)
+    tags.extend(str(tag) for tag in source_card.get("risk_tags", []) if tag)
+    if meta.get("backend") == "optional" or meta.get("optional_backend") == "newsnow":
+        tags.append("external_backend")
+    return _unique(tags)
+
+
+def enrich_hotnews_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Ensure a hotnews row carries Guanlan evidence metadata."""
+    row = dict(item)
+    source_id = _clean_text(row.get("source_id") or row.get("platform") or "unknown")
+    category = _clean_text(row.get("category") or _source_meta(source_id).get("category") or "hotnews")
+    platform = _clean_text(row.get("platform") or _source_meta(source_id).get("platform") or source_id)
+    row["source_id"] = source_id
+    row["platform"] = platform
+    row["category"] = category
+    row.setdefault("fetched_at", _now_iso())
+    row.setdefault("source_confidence", "medium")
+    if not row.get("source_card"):
+        row["source_card"] = _source_card_for_hotnews(source_id, url=row.get("url", ""), platform=platform)
+    if not row.get("evidence_role"):
+        row["evidence_role"] = str(_source_meta(source_id).get("evidence_role") or _default_evidence_role(category))
+    row["risk_tags"] = _unique(list(row.get("risk_tags") or []) + _hotnews_risk_tags(source_id, row.get("source_card") or {}))
+    return row
+
+
 def _item(
     *,
     source_id: str,
@@ -207,6 +231,8 @@ def _item(
     confidence: str = "high",
 ) -> HotNewsItem:
     meta = SOURCE_CATALOG.get(source_id, {})
+    source_card = _source_card_for_hotnews(source_id, url=url, platform=platform)
+    risk_tags = _hotnews_risk_tags(source_id, source_card)
     return HotNewsItem(
         platform=platform or meta.get("platform", source_id),
         source_id=source_id,
@@ -220,6 +246,9 @@ def _item(
         fetched_at=_now_iso(),
         source_confidence=confidence,
         rank=rank,
+        evidence_role=str(meta.get("evidence_role") or _default_evidence_role(category or meta.get("category", "hotnews"))),
+        source_card=source_card,
+        risk_tags=risk_tags,
     )
 
 
@@ -349,6 +378,37 @@ def fetch_bilibili(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
     return [item for item in results if item.title]
 
 
+def fetch_bilibili_hot_search(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
+    """Fetch Bilibili hot search words from its public hotword endpoint."""
+    payload = _read_json("https://s.search.bilibili.com/main/hotword")
+    rows = payload.get("list") if isinstance(payload, dict) else []
+
+    results: list[HotNewsItem] = []
+    for idx, raw in enumerate((rows or [])[:limit], start=1):
+        if not isinstance(raw, dict):
+            continue
+        keyword = _pick(raw, "show_name", "keyword", "word", "name")
+        if not keyword:
+            continue
+        query = urllib.parse.quote(str(keyword))
+        results.append(
+            _item(
+                source_id="bilibili-hot-search",
+                title=keyword,
+                url=f"https://search.bilibili.com/all?keyword={query}",
+                summary=_pick(raw, "word_type", "label"),
+                metrics={
+                    "heat": _pick(raw, "heat_score", "heat"),
+                    "heat_layer": _pick(raw, "heat_layer"),
+                    "position": _pick(raw, "pos", "position"),
+                    "label": _pick(raw, "icon", "label"),
+                },
+                rank=idx,
+            )
+        )
+    return [item for item in results if item.title]
+
+
 def fetch_ithome(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
     """Fetch IT Home news from its public RSS feed."""
     raw_xml = _read_text("https://www.ithome.com/rss/")
@@ -360,6 +420,27 @@ def fetch_ithome(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
         results.append(
             _item(
                 source_id="ithome",
+                title=row.findtext("title", default=""),
+                url=row.findtext("link", default=""),
+                summary=_strip_html(row.findtext("description", default="")),
+                published_at=row.findtext("pubDate", default=""),
+                rank=idx,
+            )
+        )
+    return [item for item in results if item.title]
+
+
+def fetch_sspai(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
+    """Fetch Sspai articles from its public RSS feed."""
+    raw_xml = _read_text("https://sspai.com/feed")
+    root = ElementTree.fromstring(raw_xml)
+    rows = root.findall(".//item")
+
+    results: list[HotNewsItem] = []
+    for idx, row in enumerate(rows[:limit], start=1):
+        results.append(
+            _item(
+                source_id="sspai",
                 title=row.findtext("title", default=""),
                 url=row.findtext("link", default=""),
                 summary=_strip_html(row.findtext("description", default="")),
@@ -436,7 +517,7 @@ def fetch_today(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
     source_fetchers = [
         ("baidu", fetch_baidu),
         ("weibo", fetch_weibo),
-        ("bilibili", fetch_bilibili),
+        ("bilibili-hot-search", fetch_bilibili_hot_search),
         ("ithome", fetch_ithome),
         ("v2ex", fetch_v2ex),
     ]
@@ -492,13 +573,16 @@ def fetch_hotnews(
 ) -> list[dict[str, Any]]:
     """Fetch hotnews and return unified dictionaries."""
     source = source.lower().strip()
+    source = resolve_source_id(source)
     backend = (backend or "auto").lower().strip()
     fetchers = {
         "today": fetch_today,
         "baidu": fetch_baidu,
         "weibo": fetch_weibo,
+        "bilibili-hot-search": fetch_bilibili_hot_search,
         "bilibili": fetch_bilibili,
         "ithome": fetch_ithome,
+        "sspai": fetch_sspai,
         "zhihu": fetch_zhihu,
         "v2ex": fetch_v2ex,
     }
@@ -538,7 +622,7 @@ def normalize_hotnews_payload(
             item = dict(raw)
             item.setdefault("rank", idx)
             item.setdefault("fetched_at", _now_iso())
-            items.append(item)
+            items.append(enrich_hotnews_item(item))
             continue
 
         title = _pick(raw, "title", "name", "word", "query", "keyword")
@@ -560,7 +644,7 @@ def normalize_hotnews_payload(
             published_at=_pick(raw, "published_at", "created_at", "date", "time"),
             confidence="medium",
         )
-        items.append(item.to_dict())
+        items.append(enrich_hotnews_item(item.to_dict()))
     return items
 
 
@@ -584,6 +668,41 @@ def _extract_rows(payload: Any) -> list[Any]:
     return []
 
 
+def compact_hotnews_items(items: list[dict[str, Any]], summary_chars: int = 120) -> list[dict[str, Any]]:
+    """Return a smaller agent/API payload without dropping evidence boundaries."""
+    compacted: list[dict[str, Any]] = []
+    for raw in items:
+        item = enrich_hotnews_item(raw)
+        metrics = item.get("metrics") or {}
+        card = item.get("source_card") or {}
+        row: dict[str, Any] = {
+            "rank": item.get("rank"),
+            "source_id": item.get("source_id"),
+            "title": item.get("title"),
+            "url": item.get("url"),
+            "evidence_role": item.get("evidence_role"),
+            "risk_tags": item.get("risk_tags") or [],
+        }
+        if item.get("published_at"):
+            row["published_at"] = item.get("published_at")
+        if item.get("summary"):
+            row["summary"] = _clean_text(item.get("summary"))[: max(summary_chars, 0)]
+        if metrics:
+            row["metrics"] = {
+                key: metrics[key]
+                for key in ("heat", "source_rank", "replies", "views", "label")
+                if key in metrics and metrics[key] not in ("", None)
+            }
+        if card:
+            row["source_card"] = {
+                key: card.get(key)
+                for key in ("domain", "source_type", "authority_role")
+                if card.get(key) not in ("", None)
+            }
+        compacted.append({key: value for key, value in row.items() if value not in ("", None, [], {})})
+    return compacted
+
+
 def format_hotnews_markdown(items: list[dict[str, Any]], title: str = "观澜热榜") -> str:
     """Render hotnews items as compact Markdown for agent context."""
     lines = [f"# {title}", ""]
@@ -597,12 +716,15 @@ def format_hotnews_markdown(items: list[dict[str, Any]], title: str = "观澜热
         url = _clean_text(item.get("url", ""))
         source = _clean_text(item.get("source_id", "unknown"))
         summary = _clean_text(item.get("summary", ""))
+        role = _clean_text(item.get("evidence_role", ""))
         metrics = item.get("metrics") or {}
         heat = metrics.get("heat") or metrics.get("replies") or ""
 
         line = f"{rank}. [{source}] {item_title}"
         if heat not in ("", None):
             line += f"（热度: {heat}）"
+        if role:
+            line += f" / {role}"
         if url:
             line += f"\n   {url}"
         if summary:
@@ -611,10 +733,67 @@ def format_hotnews_markdown(items: list[dict[str, Any]], title: str = "观澜热
     return "\n".join(lines)
 
 
+def build_source_distribution(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize source mix so agents do not overread a narrow sample."""
+    source_counts: dict[str, int] = {}
+    category_counts: dict[str, int] = {}
+    evidence_role_counts: dict[str, int] = {}
+    source_type_counts: dict[str, int] = {}
+    risk_tag_counts: dict[str, int] = {}
+    for raw in items:
+        item = enrich_hotnews_item(raw)
+        source_id = _clean_text(item.get("source_id") or "unknown")
+        category = _clean_text(item.get("category") or "hotnews")
+        role = _clean_text(item.get("evidence_role") or "open_web_signal")
+        card = item.get("source_card") or {}
+        source_type = _clean_text(card.get("source_type") or "热榜/聚合源")
+        source_counts[source_id] = source_counts.get(source_id, 0) + 1
+        category_counts[category] = category_counts.get(category, 0) + 1
+        evidence_role_counts[role] = evidence_role_counts.get(role, 0) + 1
+        source_type_counts[source_type] = source_type_counts.get(source_type, 0) + 1
+        for tag in item.get("risk_tags") or []:
+            tag = _clean_text(tag)
+            if tag:
+                risk_tag_counts[tag] = risk_tag_counts.get(tag, 0) + 1
+    return {
+        "source_counts": dict(sorted(source_counts.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "category_counts": dict(sorted(category_counts.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "evidence_role_counts": dict(sorted(evidence_role_counts.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "source_type_counts": dict(sorted(source_type_counts.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "risk_tag_counts": dict(sorted(risk_tag_counts.items(), key=lambda kv: (-kv[1], kv[0]))),
+    }
+
+
+def build_sample_boundaries(items: list[dict[str, Any]], distribution: dict[str, Any] | None = None) -> list[str]:
+    """Generate conservative caveats for a hotnews sample."""
+    distribution = distribution or build_source_distribution(items)
+    source_counts = distribution.get("source_counts") or {}
+    evidence_counts = distribution.get("evidence_role_counts") or {}
+    risk_counts = distribution.get("risk_tag_counts") or {}
+    boundaries = [
+        "热榜样本只能说明当前公开来源的可见水势，不等同于事实结论或总体比例。",
+    ]
+    if len(source_counts) <= 1 and len(items) >= 3:
+        boundaries.append("当前样本来源单一，应作为单平台快照使用。")
+    if evidence_counts and sum(evidence_counts.values()) > 0:
+        social_count = sum(
+            count for role, count in evidence_counts.items()
+            if "discussion" in role or "attention" in role
+        )
+        if social_count >= max(3, len(items) // 2):
+            boundaries.append("社交/社区信号占比较高，适合发现讨论线索，不适合作为权威事实来源。")
+    if risk_counts.get("external_backend"):
+        boundaries.append("部分条目来自可选外部后端，应保留后端波动和缓存边界。")
+    if risk_counts.get("fast_changing"):
+        boundaries.append("快变平台热度会迅速变化，引用时应保留抓取时间。")
+    return _unique(boundaries)
+
+
 def build_trend_report(items: list[dict[str, Any]], limit: int = 20) -> dict[str, Any]:
     """Merge cross-source hotnews rows into lightweight trend clusters."""
     clusters: list[dict[str, Any]] = []
-    for item in items:
+    normalized_items = [enrich_hotnews_item(item) for item in items]
+    for item in normalized_items:
         title = _clean_text(item.get("title", ""))
         if not title:
             continue
@@ -647,18 +826,35 @@ def build_trend_report(items: list[dict[str, Any]], limit: int = 20) -> dict[str
 
     for cluster in clusters:
         items_for_cluster = cluster.get("items", [])
+        evidence_roles = _unique([_clean_text(item.get("evidence_role")) for item in items_for_cluster])
+        source_types = _unique([
+            _clean_text((item.get("source_card") or {}).get("source_type") or "")
+            for item in items_for_cluster
+        ])
+        risk_tags = _unique([
+            _clean_text(tag)
+            for item in items_for_cluster
+            for tag in (item.get("risk_tags") or [])
+        ])
         cluster["source_count"] = len(cluster.get("sources", []))
         cluster["item_count"] = len(items_for_cluster)
+        cluster["evidence_roles"] = evidence_roles
+        cluster["source_types"] = source_types
+        cluster["risk_tags"] = risk_tags
         cluster["heat_score"] = _cluster_heat_score(items_for_cluster)
         cluster["resonance"] = _trend_resonance(cluster)
         cluster["island_risk"] = _trend_island_risk(cluster)
+        cluster["boundary"] = _trend_boundary(cluster)
         cluster["timeline"] = _trend_timeline(items_for_cluster)
         cluster["research_commands"] = [f'guanlan research "{query}" --profile china --advisor' for query in _trend_research_queries(str(cluster.get("title", "")), list(cluster.get("sources") or []))[:2]]
         cluster.pop("_signature", None)
     clusters.sort(key=lambda row: (-int(row.get("source_count", 0)), -float(row.get("heat_score", 0)), str(row.get("title", ""))))
+    distribution = build_source_distribution(normalized_items)
     return {
         "trend_count": len(clusters),
-        "sample_count": len(items),
+        "sample_count": len(normalized_items),
+        "source_distribution": distribution,
+        "sample_boundaries": build_sample_boundaries(normalized_items, distribution),
         "trends": clusters[: max(limit, 1)],
     }
 
@@ -666,6 +862,17 @@ def build_trend_report(items: list[dict[str, Any]], limit: int = 20) -> dict[str
 def format_trend_report_markdown(report: dict[str, Any], title: str = "观澜趋势归并") -> str:
     """Render cross-source trend clusters as Markdown."""
     lines = [f"# {title}", "", f"- 样本数: {report.get('sample_count', 0)}", f"- 趋势数: {report.get('trend_count', 0)}"]
+    distribution = report.get("source_distribution") or {}
+    source_counts = distribution.get("source_counts") or {}
+    role_counts = distribution.get("evidence_role_counts") or {}
+    if source_counts:
+        lines.append("- 来源分布: " + "；".join(f"{key}: {value}" for key, value in source_counts.items()))
+    if role_counts:
+        lines.append("- 证据角色: " + "；".join(f"{key}: {value}" for key, value in role_counts.items()))
+    boundaries = report.get("sample_boundaries") or []
+    if boundaries:
+        lines.extend(["", "## 样本边界"])
+        lines.extend(f"- {item}" for item in boundaries)
     trends = report.get("trends") or []
     if not trends:
         lines.append("- 暂无可归并趋势。")
@@ -678,8 +885,12 @@ def format_trend_report_markdown(report: dict[str, Any], title: str = "观澜趋
             f"   来源: {sources or 'unknown'} | 条目: {trend.get('item_count', 0)} | "
             f"热度: {trend.get('heat_score', 0)} | 共振: {trend.get('resonance', 'single-source')}"
         )
+        if trend.get("evidence_roles"):
+            lines.append("   证据角色: " + ", ".join(trend.get("evidence_roles") or []))
         if trend.get("island_risk"):
             lines.append("   边界: 主要是单平台水花，不应直接写成全网趋势。")
+        elif trend.get("boundary"):
+            lines.append(f"   边界: {trend.get('boundary')}")
         timeline = trend.get("timeline") or []
         if timeline:
             lines.append("   时间线: " + "；".join(f"{item.get('time')} {item.get('source')}" for item in timeline[:3]))
@@ -696,13 +907,9 @@ def format_trend_report_markdown(report: dict[str, Any], title: str = "观澜趋
 def build_hotnews_brief(items: list[dict[str, Any]], trend_report: dict[str, Any] | None = None, limit: int = 8) -> dict[str, Any]:
     """Build a lightweight daily brief from hotnews items and trend clusters."""
     trend_report = trend_report or build_trend_report(items, limit=limit)
-    platform_counts: dict[str, int] = {}
-    category_counts: dict[str, int] = {}
-    for item in items:
-        platform = _clean_text(item.get("source_id") or item.get("platform") or "unknown")
-        category = _clean_text(item.get("category") or "hotnews")
-        platform_counts[platform] = platform_counts.get(platform, 0) + 1
-        category_counts[category] = category_counts.get(category, 0) + 1
+    distribution = trend_report.get("source_distribution") or build_source_distribution(items)
+    platform_counts = dict(distribution.get("source_counts") or {})
+    category_counts = dict(distribution.get("category_counts") or {})
 
     highlights = []
     for trend in (trend_report.get("trends") or [])[: max(limit, 1)]:
@@ -717,6 +924,9 @@ def build_hotnews_brief(items: list[dict[str, Any]], trend_report: dict[str, Any
                 "heat_score": trend.get("heat_score", 0),
                 "resonance": trend.get("resonance", "single-source"),
                 "island_risk": bool(trend.get("island_risk")),
+                "evidence_roles": list(trend.get("evidence_roles") or []),
+                "source_types": list(trend.get("source_types") or []),
+                "boundary": trend.get("boundary", ""),
                 "timeline": list(trend.get("timeline") or []),
                 "research_queries": _trend_research_queries(title, sources),
             }
@@ -732,6 +942,8 @@ def build_hotnews_brief(items: list[dict[str, Any]], trend_report: dict[str, Any
         "sample_count": len(items),
         "platform_counts": platform_counts,
         "category_counts": category_counts,
+        "source_distribution": distribution,
+        "sample_boundaries": list(trend_report.get("sample_boundaries") or build_sample_boundaries(items, distribution)),
         "trend_count": int(trend_report.get("trend_count") or 0),
         "highlights": highlights,
         "warnings": warnings,
@@ -746,6 +958,13 @@ def format_hotnews_brief_markdown(brief: dict[str, Any], title: str = "观澜今
     platform_counts = brief.get("platform_counts") or {}
     if platform_counts:
         lines.append("- 来源分布: " + "；".join(f"{key}: {value}" for key, value in platform_counts.items()))
+    role_counts = (brief.get("source_distribution") or {}).get("evidence_role_counts") or {}
+    if role_counts:
+        lines.append("- 证据角色: " + "；".join(f"{key}: {value}" for key, value in role_counts.items()))
+    sample_boundaries = brief.get("sample_boundaries") or []
+    if sample_boundaries:
+        lines.extend(["", "## 样本边界"])
+        lines.extend(f"- {item}" for item in sample_boundaries)
     warnings = brief.get("warnings") or []
     if warnings:
         lines.extend(["", "## 边界提醒"])
@@ -760,8 +979,12 @@ def format_hotnews_brief_markdown(brief: dict[str, Any], title: str = "观澜今
                 f"   来源: {sources or 'unknown'} | 条目: {item.get('item_count', 0)} | "
                 f"热度: {item.get('heat_score', 0)} | 共振: {item.get('resonance', 'single-source')}"
             )
+            if item.get("evidence_roles"):
+                lines.append("   证据角色: " + ", ".join(item.get("evidence_roles") or []))
             if item.get("island_risk"):
                 lines.append("   边界: 单平台信号，适合追踪，不宜直接定调。")
+            elif item.get("boundary"):
+                lines.append(f"   边界: {item.get('boundary')}")
             queries = item.get("research_queries") or []
             if queries:
                 lines.append("   继续查: " + "；".join(queries[:2]))
@@ -779,6 +1002,21 @@ def _trend_resonance(cluster: dict[str, Any]) -> str:
 
 def _trend_island_risk(cluster: dict[str, Any]) -> bool:
     return len(set(cluster.get("sources") or [])) <= 1 and int(cluster.get("item_count") or 0) <= 2
+
+
+def _trend_boundary(cluster: dict[str, Any]) -> str:
+    sources = set(cluster.get("sources") or [])
+    roles = set(cluster.get("evidence_roles") or [])
+    risk_tags = set(cluster.get("risk_tags") or [])
+    if len(sources) <= 1:
+        return "单来源信号，适合发现线索，不宜直接外推为全网趋势。"
+    if any("discussion" in role or "attention" in role for role in roles):
+        return "讨论/注意力信号占比高，需要用新闻、官方或一手资料交叉确认。"
+    if "external_backend" in risk_tags:
+        return "含可选外部后端信号，需保留抓取时间和后端波动边界。"
+    if "sample_boundary" in risk_tags:
+        return "聚合样本有来源边界，应结合更多检索再下结论。"
+    return ""
 
 
 def _trend_timeline(items: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -811,15 +1049,16 @@ def _trend_research_queries(title: str, sources: list[str]) -> list[str]:
 
 def _annotate_trends(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     report = build_trend_report(items, limit=len(items) or 1)
-    trend_map: dict[int, str] = {}
+    trend_map: dict[str, str] = {}
     for trend in report.get("trends", []):
         for item in trend.get("items", []):
-            trend_map[id(item)] = str(trend.get("trend_id", ""))
+            trend_map[_snapshot_item(item)["key"]] = str(trend.get("trend_id", ""))
     output = []
     for item in items:
-        row = dict(item)
-        if trend_map.get(id(item)):
-            row["trend_id"] = trend_map[id(item)]
+        row = enrich_hotnews_item(item)
+        key = _snapshot_item(row)["key"]
+        if trend_map.get(key):
+            row["trend_id"] = trend_map[key]
         output.append(row)
     return output
 
@@ -849,3 +1088,188 @@ def _cluster_heat_score(items: list[dict[str, Any]]) -> float:
         if isinstance(heat, (int, float)):
             score += min(float(heat) / 10000, 50)
     return round(score, 2)
+
+
+def hotnews_snapshot_path(path: str | None = None) -> Path:
+    """Return the local hotnews snapshot history path."""
+    if path:
+        return Path(path).expanduser()
+    env_path = os.environ.get("GUANLAN_HOTNEWS_SNAPSHOT_FILE", "")
+    if env_path:
+        return Path(env_path).expanduser()
+    return Path.home() / ".guanlan" / "hotnews_snapshots.jsonl"
+
+
+def save_hotnews_snapshot(
+    source: str,
+    items: list[dict[str, Any]],
+    *,
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Append one explicit source snapshot to local history."""
+    snapshot = {
+        "snapshot_id": _now_iso(),
+        "source": (source or "today").strip() or "today",
+        "fetched_at": _now_iso(),
+        "item_count": len(items),
+        "items": [enrich_hotnews_item(item) for item in items],
+    }
+    target = hotnews_snapshot_path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")) + "\n")
+    return {"path": str(target), **snapshot}
+
+
+def load_latest_hotnews_snapshot(
+    source: str | None = None,
+    *,
+    path: str | None = None,
+) -> dict[str, Any] | None:
+    """Load the latest saved snapshot, optionally scoped by source."""
+    target = hotnews_snapshot_path(path)
+    if not target.exists():
+        return None
+    wanted = (source or "").strip().lower()
+    latest: dict[str, Any] | None = None
+    with target.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                snapshot = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if wanted and str(snapshot.get("source") or "").lower() != wanted:
+                continue
+            latest = snapshot
+    return latest
+
+
+def compare_hotnews_snapshots(
+    previous_items: list[dict[str, Any]],
+    current_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Compare two explicit snapshots without implying background monitoring."""
+    previous = [_snapshot_item(item) for item in previous_items]
+    current = [_snapshot_item(item) for item in current_items]
+    prev_map = {item["key"]: item for item in previous if item["key"]}
+    curr_map = {item["key"]: item for item in current if item["key"]}
+    new_keys = [key for key in curr_map if key not in prev_map]
+    gone_keys = [key for key in prev_map if key not in curr_map]
+    continuing_keys = [key for key in curr_map if key in prev_map]
+    rank_changes = []
+    for key in continuing_keys:
+        before = prev_map[key]
+        after = curr_map[key]
+        delta = int(before.get("rank") or 0) - int(after.get("rank") or 0)
+        if delta:
+            rank_changes.append(
+                {
+                    "title": after["title"],
+                    "source_id": after["source_id"],
+                    "previous_rank": before.get("rank"),
+                    "current_rank": after.get("rank"),
+                    "rank_delta": delta,
+                    "direction": "up" if delta > 0 else "down",
+                    "url": after.get("url", ""),
+                }
+            )
+    rank_changes.sort(key=lambda row: (-abs(int(row.get("rank_delta") or 0)), str(row.get("title") or "")))
+    return {
+        "previous_count": len(previous),
+        "current_count": len(current),
+        "new_items": [curr_map[key] for key in new_keys],
+        "continuing_items": [curr_map[key] for key in continuing_keys],
+        "disappeared_items": [prev_map[key] for key in gone_keys],
+        "rank_changes": rank_changes,
+        "boundary": "对比只基于本机显式保存的两次快照；没有后台轮询，也不代表完整历史。",
+    }
+
+
+def build_hotnews_snapshot_report(
+    source: str,
+    items: list[dict[str, Any]],
+    *,
+    save: bool = False,
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Build a source snapshot report and optionally persist it."""
+    previous = load_latest_hotnews_snapshot(source, path=path)
+    current_items = [enrich_hotnews_item(item) for item in items]
+    comparison = compare_hotnews_snapshots(previous.get("items", []) if previous else [], current_items)
+    saved = save_hotnews_snapshot(source, current_items, path=path) if save else None
+    return {
+        "source": source,
+        "fetched_at": _now_iso(),
+        "items": current_items,
+        "source_distribution": build_source_distribution(current_items),
+        "sample_boundaries": build_sample_boundaries(current_items),
+        "previous_snapshot": {
+            "snapshot_id": previous.get("snapshot_id"),
+            "fetched_at": previous.get("fetched_at"),
+            "item_count": previous.get("item_count"),
+        } if previous else None,
+        "comparison": comparison,
+        "saved_snapshot": {
+            "snapshot_id": saved.get("snapshot_id"),
+            "path": saved.get("path"),
+        } if saved else None,
+    }
+
+
+def format_snapshot_report_markdown(report: dict[str, Any], title: str = "观澜信源快照") -> str:
+    """Render a source snapshot comparison for agent context."""
+    lines = [f"# {title}", "", f"- source: {report.get('source', '')}"]
+    previous = report.get("previous_snapshot")
+    if previous:
+        lines.append(f"- 对比基准: {previous.get('fetched_at')} / {previous.get('item_count')} 条")
+    else:
+        lines.append("- 对比基准: 暂无本地历史")
+    saved = report.get("saved_snapshot")
+    if saved:
+        lines.append(f"- 已保存: {saved.get('path')}")
+    comparison = report.get("comparison") or {}
+    lines.append(f"- 当前条目: {comparison.get('current_count', 0)}")
+    lines.append(f"- 新上榜: {len(comparison.get('new_items') or [])}")
+    lines.append(f"- 持续在榜: {len(comparison.get('continuing_items') or [])}")
+    lines.append(f"- 消失项: {len(comparison.get('disappeared_items') or [])}")
+    if comparison.get("boundary"):
+        lines.extend(["", "## 边界", f"- {comparison.get('boundary')}"])
+    if comparison.get("new_items"):
+        lines.extend(["", "## 新上榜"])
+        for item in (comparison.get("new_items") or [])[:10]:
+            lines.append(f"- [{item.get('source_id')}] {item.get('title')}" + (f" {item.get('url')}" if item.get("url") else ""))
+    if comparison.get("rank_changes"):
+        lines.extend(["", "## 排名变化"])
+        for item in (comparison.get("rank_changes") or [])[:10]:
+            direction = "上升" if item.get("direction") == "up" else "下降"
+            lines.append(
+                f"- {direction} {abs(int(item.get('rank_delta') or 0))}: "
+                f"[{item.get('source_id')}] {item.get('title')} "
+                f"{item.get('previous_rank')} -> {item.get('current_rank')}"
+            )
+    return "\n".join(lines)
+
+
+def _snapshot_item(item: dict[str, Any]) -> dict[str, Any]:
+    row = enrich_hotnews_item(item)
+    title = _clean_text(row.get("title"))
+    url = _clean_text(row.get("url"))
+    source_id = _clean_text(row.get("source_id") or "unknown")
+    key_basis = url or title
+    return {
+        "key": f"{source_id}:{_snapshot_key(key_basis)}",
+        "title": title,
+        "url": url,
+        "source_id": source_id,
+        "rank": int(row.get("rank") or 0),
+        "evidence_role": row.get("evidence_role", ""),
+    }
+
+
+def _snapshot_key(value: str) -> str:
+    text = re.sub(r"\s+", "", (value or "").lower())
+    text = re.sub(r"[?&](utm_[^=&]+|spm|from|share)[^&]*", "", text)
+    return text[:220]

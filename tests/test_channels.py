@@ -46,13 +46,26 @@ class TestWeChatChannel:
     def test_reports_backend_ready_not_verified_when_exa_exists(self, monkeypatch):
         monkeypatch.setattr("guanlan.channels.wechat._exa_available", lambda: True)
         monkeypatch.setattr("guanlan.channels.wechat._wechat_sogou_available", lambda: False)
+        monkeypatch.setattr("importlib.util.find_spec", lambda name: object() if name == "feedparser" else None)
 
         status, message = WeChatChannel().check()
 
         assert status == "warn"
         assert "backend-ready" in message
         assert "unverified" in message
+        assert "wechat-rss" in message
         assert "不代表端到端稳定可用" in message
+
+    def test_wechat_rss_counts_as_low_friction_patch(self, monkeypatch):
+        monkeypatch.setattr("guanlan.channels.wechat._exa_available", lambda: False)
+        monkeypatch.setattr("guanlan.channels.wechat._wechat_sogou_available", lambda: False)
+        monkeypatch.setattr("importlib.util.find_spec", lambda name: object() if name == "feedparser" else None)
+
+        status, message = WeChatChannel().check()
+
+        assert status == "warn"
+        assert "wechat-rss" in message
+        assert "热文线索" in message
 
 
 class TestV2EXChannel:

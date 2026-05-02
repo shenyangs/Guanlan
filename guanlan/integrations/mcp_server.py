@@ -15,12 +15,14 @@ from guanlan.config import Config
 from guanlan.core import Guanlan
 from guanlan.limits import (
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
+    DEFAULT_FEEDS_LIMIT,
     DEFAULT_HOTNEWS_LIMIT,
     DEFAULT_PULSE_LIMIT,
     DEFAULT_READ_FALLBACK_LIMIT,
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
     MAX_ARCHIVE_SEARCH_LIMIT,
+    MAX_FEEDS_LIMIT,
     MAX_HOTNEWS_LIMIT,
     MAX_PULSE_LIMIT,
     MAX_READ_FALLBACK_LIMIT,
@@ -204,6 +206,13 @@ def _tool_definitions() -> list[dict]:
                     "backend": {"type": "string", "enum": ["auto", "native", "newsnow"], "default": "auto"},
                     "newsnow_base_url": {"type": "string"},
                     "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
+                    "trends": {"type": "boolean", "default": False},
+                    "brief": {"type": "boolean", "default": False},
+                    "compact": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Return a smaller JSON payload while keeping evidence_role, source_card, and risk_tags.",
+                    },
                 },
             },
         },
@@ -231,6 +240,40 @@ def _tool_definitions() -> list[dict]:
                     "profile": {"type": "string", "enum": ["global", "china", "hybrid"], "default": "china"},
                     "read_top": {"type": "integer", "default": 0, "minimum": 0, "maximum": 5},
                     "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "context"},
+                },
+            },
+        },
+        {
+            "name": "guanlan_feeds",
+            "description": (
+                "Discover high-quality public RSS content and source catalogs. "
+                "Use source=curated for curated reading RSS, curated-sources for the OPML catalog, "
+                "baidu-rss for dynamic Baidu hot topics, wechat-rss for dynamic WeChat hot articles, "
+                "list for source routing metadata, or pass a direct RSS/Atom URL. Prefer 80 items for discovery."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string", "default": "curated"},
+                    "limit": {
+                        "type": "integer",
+                        "default": DEFAULT_FEEDS_LIMIT,
+                        "minimum": 1,
+                        "maximum": MAX_FEEDS_LIMIT,
+                    },
+                    "language": {"type": "string", "enum": ["zh", "en"], "default": "zh"},
+                    "category": {"type": "string", "enum": ["programming", "ai", "product", "business"]},
+                    "resource_type": {"type": "string", "enum": ["article", "podcast", "video", "twitter"]},
+                    "featured": {"type": "boolean", "default": False},
+                    "min_score": {"type": "integer", "minimum": 0, "maximum": 100},
+                    "keyword": {"type": "string"},
+                    "time_filter": {"type": "string", "enum": ["1d", "3d", "1w", "1m", "3m"]},
+                    "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "context"},
+                    "compact": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "For JSON output, return compact rows with source/evidence metadata.",
+                    },
                 },
             },
         },
@@ -384,7 +427,15 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         return format_research_markdown(packet)
 
     if name == "guanlan_hotnews":
-        from guanlan.hotnews import fetch_hotnews, format_hotnews_markdown
+        from guanlan.hotnews import (
+            build_hotnews_brief,
+            build_trend_report,
+            compact_hotnews_items,
+            fetch_hotnews,
+            format_hotnews_brief_markdown,
+            format_hotnews_markdown,
+            format_trend_report_markdown,
+        )
 
         items = fetch_hotnews(
             str(args.get("source") or "today"),
@@ -392,9 +443,24 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             backend=str(args.get("backend") or "auto"),
             newsnow_base_url=args.get("newsnow_base_url") or None,
         )
-        if str(args.get("format") or "markdown") == "json":
-            return items
-        return format_hotnews_markdown(items, title=f"观澜热榜 / {args.get('source') or 'today'}")
+        output_format = str(args.get("format") or "markdown")
+        trend_report = build_trend_report(items) if (args.get("trends") or args.get("brief")) else None
+        if output_format == "json":
+            rows = compact_hotnews_items(items) if args.get("compact") else items
+            if args.get("trends") or args.get("brief") or args.get("compact"):
+                payload = {"items": rows}
+                if args.get("trends"):
+                    payload["trend_report"] = trend_report
+                if args.get("brief"):
+                    payload["brief"] = build_hotnews_brief(items, trend_report=trend_report)
+                return payload
+            return rows
+        text = format_hotnews_markdown(items, title=f"观澜热榜 / {args.get('source') or 'today'}")
+        if args.get("trends"):
+            text += "\n\n" + format_trend_report_markdown(trend_report or {}, title=f"观澜趋势归并 / {args.get('source') or 'today'}")
+        if args.get("brief"):
+            text += "\n\n" + format_hotnews_brief_markdown(build_hotnews_brief(items, trend_report=trend_report), title=f"观澜今日水势简报 / {args.get('source') or 'today'}")
+        return text
 
     if name == "guanlan_pulse":
         from guanlan.pulse import (
@@ -419,6 +485,55 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         if output_format == "markdown":
             return format_pulse_markdown(report)
         return format_pulse_context(report)
+
+    if name == "guanlan_feeds":
+        from guanlan.feeds import (
+            compact_feed_items,
+            fetch_feed_source,
+            format_feed_catalog_markdown,
+            format_feed_items_context,
+            format_feed_items_markdown,
+            format_feed_sources_markdown,
+            list_curated_sources,
+            list_feed_sources,
+            resolve_feed_source,
+        )
+
+        source = resolve_feed_source(str(args.get("source") or "curated"))
+        limit = min(max(int(args.get("limit") or DEFAULT_FEEDS_LIMIT), 1), MAX_FEEDS_LIMIT)
+        output_format = str(args.get("format") or "context")
+        if source == "list":
+            catalog = list_feed_sources()
+            if output_format == "json":
+                return catalog
+            return format_feed_catalog_markdown(catalog)
+        if source == "curated-sources":
+            sources = list_curated_sources(limit=limit, query=args.get("keyword") or None)
+            if output_format == "json":
+                return sources
+            return format_feed_sources_markdown(sources, title="观澜 RSS 源目录 / 精品源")
+        items = fetch_feed_source(
+            source,
+            limit=limit,
+            language=str(args.get("language") or "zh"),
+            category=args.get("category") or None,
+            resource_type=args.get("resource_type") or None,
+            featured=bool(args.get("featured", False)),
+            min_score=int(args["min_score"]) if args.get("min_score") is not None else None,
+            keyword=args.get("keyword") or None,
+            time_filter=args.get("time_filter") or None,
+        )
+        source_titles = {
+            "curated": "精品内容流",
+            "baidu-rss": "百度实时热点 RSS",
+            "wechat-rss": "微信热门文章 RSS",
+        }
+        title = f"观澜内容发现 / {source_titles.get(source, 'RSS')}"
+        if output_format == "json":
+            return compact_feed_items(items) if args.get("compact") else items
+        if output_format == "markdown":
+            return format_feed_items_markdown(items, title=title)
+        return format_feed_items_context(items, title=f"{title} 上下文")
 
     if name == "guanlan_archive_search":
         from guanlan.archive import (

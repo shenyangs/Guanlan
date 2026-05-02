@@ -10,6 +10,7 @@ from guanlan import hotnews, webtools
 from guanlan.evaluation import list_evaluation_scenarios
 from guanlan.limits import (
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
+    DEFAULT_FEEDS_LIMIT,
     DEFAULT_HOTNEWS_LIMIT,
     DEFAULT_READ_FALLBACK_LIMIT,
     DEFAULT_RESEARCH_LIMIT,
@@ -96,6 +97,7 @@ def run_coverage_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any]:
             "search_min": 50,
             "research_min": 50,
             "hotnews_min": 50,
+            "feeds_min": 80,
             "archive_search_min": 50,
             "read_fallback_min": 20,
             "principle": "新版本不得让 Agent 默认拿到的候选池、证据字段或归档元数据大面积缩水。",
@@ -139,6 +141,7 @@ def format_coverage_report(report: dict[str, Any]) -> str:
         f"- search >= {contract.get('search_min', 50)}",
         f"- research >= {contract.get('research_min', 50)}",
         f"- hotnews >= {contract.get('hotnews_min', 50)}",
+        f"- feeds >= {contract.get('feeds_min', 80)}",
         f"- archive search >= {contract.get('archive_search_min', 50)}",
         f"- read fallback >= {contract.get('read_fallback_min', 20)}",
         "",
@@ -164,6 +167,7 @@ def _check_default_limits() -> list[dict[str, Any]]:
         ("coverage_search_default_limit", "search", DEFAULT_SEARCH_LIMIT, 50),
         ("coverage_research_default_limit", "research", DEFAULT_RESEARCH_LIMIT, 50),
         ("coverage_hotnews_default_limit", "hotnews", DEFAULT_HOTNEWS_LIMIT, 50),
+        ("coverage_feeds_default_limit", "feeds", DEFAULT_FEEDS_LIMIT, 80),
         ("coverage_archive_search_default_limit", "archive", DEFAULT_ARCHIVE_SEARCH_LIMIT, 50),
         ("coverage_read_fallback_default_limit", "read", DEFAULT_READ_FALLBACK_LIMIT, 20),
     ]

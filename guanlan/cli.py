@@ -19,11 +19,13 @@ from guanlan import __version__
 from guanlan.limits import (
     DEFAULT_ARCHIVE_LIST_LIMIT,
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
+    DEFAULT_FEEDS_LIMIT,
     DEFAULT_HOTNEWS_LIMIT,
     DEFAULT_PULSE_LIMIT,
     DEFAULT_READ_FALLBACK_LIMIT,
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
+    MAX_FEEDS_LIMIT,
 )
 from guanlan.profiles import VALID_PROFILES
 
@@ -178,7 +180,9 @@ def main():
     # ── hotnews ──
     p_hotnews = sub.add_parser("hotnews", help="Fetch Chinese hotnews from native sources")
     p_hotnews.add_argument("source", nargs="?", default="today",
-                           help="Source id: today, baidu, weibo, bilibili, ithome, zhihu, v2ex, newsnow:<id>, or list")
+                           help="Source id: today, snapshot, baidu, weibo, bilibili-hot-search, bilibili, ithome, sspai, zhihu, v2ex, newsnow:<id>, or list")
+    p_hotnews.add_argument("snapshot_source", nargs="?",
+                           help="Source id when using `guanlan hotnews snapshot <source>`")
     p_hotnews.add_argument("--backend", choices=["auto", "native", "newsnow"], default="auto",
                            help="Hotnews backend; auto uses native first, unknown sources as NewsNow")
     p_hotnews.add_argument("--newsnow-base-url", default="",
@@ -191,6 +195,10 @@ def main():
                            help="For multi-source hotnews, append cross-source trend clusters")
     p_hotnews.add_argument("--brief", action="store_true",
                            help="Append a compact daily trend brief with follow-up queries")
+    p_hotnews.add_argument("--watch", action="store_true",
+                           help="Compare with the latest explicit local snapshot and save this run")
+    p_hotnews.add_argument("--snapshot-db", default="",
+                           help="Optional local JSONL path for explicit hotnews snapshots")
 
     # ── route ──
     p_route = sub.add_parser("route", help="Explain Guanlan's source and demand routing plan")
@@ -335,6 +343,32 @@ def main():
     p_pulse.add_argument("--format", choices=["markdown", "json", "context"], default="markdown",
                          help="Output format")
     p_pulse.add_argument("--json", action="store_true",
+                         help="Print normalized JSON instead of Markdown")
+
+    # ── feeds ──
+    p_feeds = sub.add_parser("feeds", help="Discover high-quality public RSS content and source catalogs")
+    p_feeds.add_argument("source", nargs="?", default="curated",
+                         help="Source: curated, curated-sources, baidu-rss, wechat-rss, list, or a direct RSS/Atom URL")
+    p_feeds.add_argument("--limit", type=int, default=DEFAULT_FEEDS_LIMIT,
+                         help="Maximum number of items or sources")
+    p_feeds.add_argument("--language", choices=["zh", "en"], default="zh",
+                         help="Curated RSS language")
+    p_feeds.add_argument("--category", choices=["programming", "ai", "product", "business"], default="",
+                         help="Curated RSS category filter")
+    p_feeds.add_argument("--type", dest="resource_type",
+                         choices=["article", "podcast", "video", "twitter"], default="",
+                         help="Curated RSS resource type filter")
+    p_feeds.add_argument("--featured", action="store_true",
+                         help="Only fetch featured curated content")
+    p_feeds.add_argument("--min-score", type=int, default=None,
+                         help="Curated RSS minimum AI score, 0-100")
+    p_feeds.add_argument("--keyword", default="",
+                         help="Curated RSS keyword filter, or source-catalog query for curated-sources")
+    p_feeds.add_argument("--time-filter", choices=["1d", "3d", "1w", "1m", "3m"], default="",
+                         help="Curated RSS time window")
+    p_feeds.add_argument("--format", choices=["markdown", "json", "context"], default="markdown",
+                         help="Output format")
+    p_feeds.add_argument("--json", action="store_true",
                          help="Print normalized JSON instead of Markdown")
 
     # ── read ──
@@ -577,6 +611,8 @@ def _dispatch_command(args):
         _cmd_prompt(args)
     elif args.command == "pulse":
         _cmd_pulse(args)
+    elif args.command == "feeds":
+        _cmd_feeds(args)
     elif args.command == "read":
         _cmd_read(args)
     elif args.command == "archive":
@@ -949,10 +985,12 @@ def _cmd_hotnews(args):
     from guanlan.config import Config
     from guanlan.hotnews import (
         build_hotnews_brief,
+        build_hotnews_snapshot_report,
         build_trend_report,
         fetch_hotnews,
         format_hotnews_brief_markdown,
         format_hotnews_markdown,
+        format_snapshot_report_markdown,
         format_trend_report_markdown,
         list_sources,
     )
@@ -961,6 +999,10 @@ def _cmd_hotnews(args):
     if source == "list":
         print(json.dumps(list_sources(), ensure_ascii=False, indent=2))
         return
+    snapshot_mode = source == "snapshot"
+    if snapshot_mode:
+        source = (args.snapshot_source or "today").lower()
+        args.trends = args.trends or source == "today"
 
     if source == "zhihu":
         print(
@@ -1000,9 +1042,17 @@ def _cmd_hotnews(args):
             payload["trend_report"] = trend_report
         if args.brief:
             payload["brief"] = build_hotnews_brief(items, trend_report=trend_report)
-        print(json.dumps(payload if (args.trends or args.brief) else items, ensure_ascii=False, indent=2))
+        if snapshot_mode or args.watch:
+            payload["snapshot"] = build_hotnews_snapshot_report(
+                source,
+                items,
+                save=bool(args.watch),
+                path=args.snapshot_db or None,
+            )
+        expanded_payload = bool(args.trends or args.brief or snapshot_mode or args.watch)
+        print(json.dumps(payload if expanded_payload else items, ensure_ascii=False, indent=2))
     else:
-        print(format_hotnews_markdown(items, title=f"观澜热榜 / {source}"))
+        print(format_hotnews_markdown(items, title=f"观澜{'信源快照' if snapshot_mode else '热榜'} / {source}"))
         trend_report = build_trend_report(items) if (args.trends or args.brief) else None
         if args.trends:
             print()
@@ -1010,6 +1060,19 @@ def _cmd_hotnews(args):
         if args.brief:
             print()
             print(format_hotnews_brief_markdown(build_hotnews_brief(items, trend_report=trend_report), title=f"观澜今日水势简报 / {source}"))
+        if snapshot_mode or args.watch:
+            print()
+            print(
+                format_snapshot_report_markdown(
+                    build_hotnews_snapshot_report(
+                        source,
+                        items,
+                        save=bool(args.watch),
+                        path=args.snapshot_db or None,
+                    ),
+                    title=f"观澜信源快照 / {source}",
+                )
+            )
 
 
 def _cmd_route(args):
@@ -1229,6 +1292,70 @@ def _cmd_pulse(args):
         print(format_pulse_context(report))
     else:
         print(format_pulse_markdown(report))
+
+
+def _cmd_feeds(args):
+    """Discover content and source catalogs from public RSS/OPML."""
+
+    from guanlan.feeds import (
+        fetch_feed_source,
+        format_feed_catalog_markdown,
+        format_feed_items_context,
+        format_feed_items_markdown,
+        format_feed_sources_markdown,
+        format_json,
+        list_curated_sources,
+        list_feed_sources,
+        resolve_feed_source,
+    )
+
+    source = resolve_feed_source(args.source or "curated")
+    limit = min(max(args.limit, 1), MAX_FEEDS_LIMIT)
+    output_format = "json" if args.json else args.format
+
+    try:
+        if source == "list":
+            catalog = list_feed_sources()
+            if output_format == "json":
+                print(format_json(catalog))
+            else:
+                print(format_feed_catalog_markdown(catalog))
+            return
+        if source == "curated-sources":
+            sources = list_curated_sources(limit=limit, query=args.keyword or None)
+            if output_format == "json":
+                print(format_json(sources))
+            else:
+                suffix = f" / {args.keyword}" if args.keyword else ""
+                print(format_feed_sources_markdown(sources, title=f"观澜 RSS 源目录 / 精品源{suffix}"))
+            return
+        items = fetch_feed_source(
+            source,
+            limit=limit,
+            language=args.language,
+            category=args.category or None,
+            resource_type=args.resource_type or None,
+            featured=args.featured,
+            min_score=args.min_score,
+            keyword=args.keyword or None,
+            time_filter=args.time_filter or None,
+        )
+        source_titles = {
+            "curated": "精品内容流",
+            "baidu-rss": "百度实时热点 RSS",
+            "wechat-rss": "微信热门文章 RSS",
+        }
+        title = f"观澜内容发现 / {source_titles.get(source, 'RSS')}"
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if output_format == "json":
+        print(format_json(items))
+    elif output_format == "context":
+        print(format_feed_items_context(items, title=f"{title} 上下文"))
+    else:
+        print(format_feed_items_markdown(items, title=title))
 
 
 def _cmd_read(args):

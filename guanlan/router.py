@@ -29,6 +29,8 @@ class RoutePlan:
     avoid_as_primary: list[str] = field(default_factory=list)
     query_variants: list[str] = field(default_factory=list)
     backend_hint: list[str] = field(default_factory=list)
+    recommended_feeds: list[str] = field(default_factory=list)
+    recommended_commands: list[str] = field(default_factory=list)
     read_top: int = 2
     limit: int = 50
     advisor_recommended: bool = False
@@ -197,6 +199,28 @@ def build_route_plan(
         {"purchase_advice", "reputation", "finance", "policy", "industry", "tech"} & set(primary + secondary)
         or high_risk
     )
+    try:
+        from guanlan.feeds import recommend_feed_sources
+
+        recommended_feeds = recommend_feed_sources(clean_query)
+    except Exception:
+        recommended_feeds = []
+    reading_discovery = _is_reading_discovery(text)
+    if "hot_trend" in primary + secondary and not reading_discovery and "baidu-rss" not in recommended_feeds:
+        recommended_feeds.append("baidu-rss")
+    if "tech" in primary + secondary and "curated" not in recommended_feeds:
+        recommended_feeds.append("curated")
+    recommended_feeds = _unique(recommended_feeds)
+    recommended_commands = _recommended_commands(
+        clean_query,
+        intents=primary + secondary,
+        domains=domains,
+        feeds=recommended_feeds,
+        preferred_scopes=preferred_scopes,
+        target_sites=target_sites,
+        profile=profile,
+        read_top=read_top,
+    )
     read_default = 3 if {"policy", "official_position", "tech", "industry"} & set(primary + secondary) else 2
     if "reputation" in primary + secondary and not high_risk:
         read_default = 1
@@ -215,6 +239,8 @@ def build_route_plan(
         avoid_as_primary=_avoid_as_primary(primary + secondary),
         query_variants=_query_variants(clean_query, primary + secondary, domains),
         backend_hint=["baidu", "bing", "duckduckgo"] if profile == "china" else ["duckduckgo", "bing"],
+        recommended_feeds=recommended_feeds,
+        recommended_commands=recommended_commands,
         read_top=max(read_top if read_top is not None else read_default, 0),
         limit=max(limit if limit is not None else 50, 1),
         advisor_recommended=advisor_recommended,
@@ -246,7 +272,12 @@ def format_route_plan_markdown(plan: RoutePlan | dict[str, Any]) -> str:
     lines.append(f"- 优先 scope: {', '.join(data.get('preferred_scopes') or []) or 'open web'}")
     lines.append(f"- 兜底 scope: {', '.join(data.get('fallback_scopes') or []) or 'open web'}")
     lines.append(f"- 推荐站点: {', '.join(data.get('target_sites') or []) or '无'}")
+    lines.append(f"- 推荐 RSS: {', '.join(data.get('recommended_feeds') or []) or '无'}（仅作补充线索，不覆盖主 scope）")
     lines.append(f"- 不宜作为主证据: {', '.join(data.get('avoid_as_primary') or []) or '无'}")
+    if data.get("recommended_commands"):
+        lines.extend(["", "## 建议命令"])
+        for command in data.get("recommended_commands") or []:
+            lines.append(f"- `{command}`")
     lines.extend(["", "## 查询改写"])
     for variant in data.get("query_variants") or []:
         lines.append(f"- {variant}")
@@ -334,6 +365,71 @@ def _avoid_as_primary(intents: list[str]) -> list[str]:
     if "finance" in intents:
         avoid.extend(["社交荐股", "未核验市场传言"])
     return _unique(avoid)
+
+
+def _recommended_commands(
+    query: str,
+    *,
+    intents: list[str],
+    domains: list[str],
+    feeds: list[str],
+    preferred_scopes: list[str],
+    target_sites: list[str],
+    profile: str | None,
+    read_top: int | None,
+) -> list[str]:
+    """Build a small command shortlist for agents after routing."""
+    commands: list[str] = []
+    quoted = _shell_quote(query)
+    profile_part = " --profile china" if profile == "china" else ""
+    effective_read_top = 2 if read_top is None else max(read_top, 0)
+    reading_discovery = _is_reading_discovery(query.lower())
+
+    if "hot_trend" in intents and not reading_discovery:
+        commands.append("guanlan hotnews today --limit 50")
+    if "policy" in intents:
+        commands.append(f"guanlan research {quoted} --preset policy{profile_part} --limit 50 --read-top {max(effective_read_top, 2)}")
+    elif "official_position" in intents:
+        commands.append(f"guanlan research {quoted} --preset official{profile_part} --limit 50 --read-top {max(effective_read_top, 2)}")
+    elif "reputation" in intents or "purchase_advice" in intents:
+        commands.append(f"guanlan pulse {quoted}{profile_part} --limit 80 --format context")
+        commands.append(f"guanlan research {quoted} --preset reputation{profile_part} --limit 50 --read-top {effective_read_top}")
+    elif "tech" in intents:
+        commands.append(f"guanlan research {quoted} --preset tech{profile_part} --limit 50 --read-top {max(effective_read_top, 2)}")
+    elif "industry" in intents:
+        commands.append(f"guanlan research {quoted} --preset industry{profile_part} --limit 50 --read-top {max(effective_read_top, 2)}")
+    elif "finance" in intents:
+        commands.append(f"guanlan research {quoted} --preset finance{profile_part} --limit 50 --read-top {max(effective_read_top, 1)}")
+
+    if not commands:
+        scope = preferred_scopes[0] if preferred_scopes else ""
+        scope_part = f" --scope {scope}" if scope else ""
+        commands.append(f"guanlan search {quoted}{profile_part}{scope_part} --limit 50")
+
+    if target_sites and not any(site in commands[0] for site in target_sites[:1]):
+        commands.append(f"guanlan search {quoted} --site {target_sites[0]}{profile_part} --limit 50")
+
+    for feed in feeds:
+        if feed == "curated":
+            category = " --category ai" if "ai" in domains else ""
+            commands.append(f"guanlan feeds curated{category} --limit 80")
+        elif feed == "curated-sources":
+            commands.append(f"guanlan feeds curated-sources --keyword {quoted} --limit 80")
+        elif feed == "baidu-rss":
+            commands.append("guanlan feeds baidu-rss --limit 80")
+        elif feed == "wechat-rss":
+            commands.append("guanlan feeds wechat-rss --limit 80")
+
+    return _unique(commands)[:6]
+
+
+def _shell_quote(value: str) -> str:
+    escaped = (value or "").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _is_reading_discovery(text: str) -> bool:
+    return any(term in text for term in ("值得读", "好文章", "技术文章", "技术博客", "阅读", "精品源", "rss", "opml"))
 
 
 def _route_explanations(intents: list[str], scopes: list[str], sites: list[str]) -> list[str]:

@@ -125,8 +125,43 @@ class TestCLI:
         data = json.loads(captured.out)
         ids = {item["id"] for item in data}
         assert "discover" in ids
+        assert "feeds" in ids
         assert "advisor" in ids
         assert any(item["mcp"] == "guanlan_capabilities" for item in data)
+
+    def test_feeds_curated_cli_outputs_json(self, capsys, monkeypatch):
+        monkeypatch.setattr(
+            "guanlan.feeds.fetch_feed_source",
+            lambda *_args, **_kwargs: [{"title": "AI Article", "url": "https://example.com/a"}],
+        )
+
+        with patch("sys.argv", ["guanlan", "feeds", "curated", "--json", "--category", "ai", "--limit", "3"]):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data[0]["title"] == "AI Article"
+
+    def test_feeds_curated_sources_cli_outputs_catalog(self, capsys, monkeypatch):
+        monkeypatch.setattr(
+            "guanlan.feeds.list_curated_sources",
+            lambda **_kwargs: [{"title": "LangChain Blog", "url": "https://blog.langchain.dev/rss/"}],
+        )
+
+        with patch("sys.argv", ["guanlan", "feeds", "curated-sources", "--keyword", "LangChain"]):
+            main()
+
+        captured = capsys.readouterr()
+        assert "观澜 RSS 源目录 / 精品源 / LangChain" in captured.out
+        assert "LangChain Blog" in captured.out
+
+    def test_feeds_list_cli_outputs_routing_catalog(self, capsys):
+        with patch("sys.argv", ["guanlan", "feeds", "list"]):
+            main()
+
+        captured = capsys.readouterr()
+        assert "观澜 RSS 信源路由" in captured.out
+        assert "wechat-rss" in captured.out
 
     def test_welcome_prints_short_user_guide(self, capsys, tmp_path, monkeypatch):
         monkeypatch.setenv("GUANLAN_ONBOARDING_FILE", str(tmp_path / "onboarding.json"))

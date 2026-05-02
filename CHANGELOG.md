@@ -8,6 +8,25 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.2.6 - 2026-05-02
+
+### Added
+
+- 新增 `guanlan feeds` 内容发现入口，覆盖精品内容流、精品 RSS 源目录、百度实时热点 RSS 和微信热门文章 RSS。
+- MCP 新增 `guanlan_feeds`，HTTP 只读服务新增 `/feeds`，方便本地 Agent、MCP 客户端和无搜索能力模型接入 RSS 内容池。
+- `route` 输出 `recommended_feeds` 和 `recommended_commands`，让 Agent 在不知道该跑哪个命令时能直接拿到下一步起手式。
+- `hotnews` 新增 `snapshot` / `--watch`，可显式保存本地快照并比较新上榜、消失项和排名变化。
+- 热榜条目增加 `evidence_role`、`source_card`、`risk_tags`，趋势简报增加来源分布、证据角色和样本边界。
+- 新增中央信源矩阵 `source_registry`，统一 hotnews、feeds、router、MCP 和 HTTP 的信源身份、风险、适用场景和可选后端边界。
+- Coverage Guard 增加 `feeds >= 80` 默认结果池下限检查。
+
+### Changed
+
+- `today` 多源热榜改用 B 站热搜词作为默认 B 站信号，保留 B 站热门视频为独立源。
+- 微信渠道诊断加入 `wechat-rss` 低摩擦热文线索能力，同时继续明确公众号全文读取仍是 best-effort。
+- README、Agent 文档和 Skill 文档同步 feeds、recommended_commands、RSS 路由和 `/feeds` 用法。
+- 官网展示版本号同步到 `0.2.6`。
+
 ## v0.2.5 - 2026-05-02
 
 ### Added

@@ -8,12 +8,14 @@ from guanlan import mcp_config
 from guanlan.integrations import mcp_server
 from guanlan.limits import (
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
+    DEFAULT_FEEDS_LIMIT,
     DEFAULT_HOTNEWS_LIMIT,
     DEFAULT_PULSE_LIMIT,
     DEFAULT_READ_FALLBACK_LIMIT,
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
     MAX_ARCHIVE_SEARCH_LIMIT,
+    MAX_FEEDS_LIMIT,
     MAX_HOTNEWS_LIMIT,
     MAX_PULSE_LIMIT,
     MAX_READ_FALLBACK_LIMIT,
@@ -34,6 +36,7 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "guanlan_research" in names
     assert "guanlan_hotnews" in names
     assert "guanlan_pulse" in names
+    assert "guanlan_feeds" in names
     assert "guanlan_archive_search" in names
     research_tool = next(tool for tool in tools if tool["name"] == "guanlan_research")
     capabilities_tool = next(tool for tool in tools if tool["name"] == "guanlan_capabilities")
@@ -83,6 +86,7 @@ def test_mcp_tool_definitions_use_expanded_limits():
     route_limit = tools["guanlan_route"]["inputSchema"]["properties"]["limit"]
     hotnews_limit = tools["guanlan_hotnews"]["inputSchema"]["properties"]["limit"]
     pulse_limit = tools["guanlan_pulse"]["inputSchema"]["properties"]["limit"]
+    feeds_limit = tools["guanlan_feeds"]["inputSchema"]["properties"]["limit"]
     archive_limit = tools["guanlan_archive_search"]["inputSchema"]["properties"]["limit"]
 
     assert search_limit == {"type": "integer", "default": DEFAULT_SEARCH_LIMIT, "minimum": 1, "maximum": MAX_SEARCH_LIMIT}
@@ -115,6 +119,12 @@ def test_mcp_tool_definitions_use_expanded_limits():
         "default": DEFAULT_PULSE_LIMIT,
         "minimum": 1,
         "maximum": MAX_PULSE_LIMIT,
+    }
+    assert feeds_limit == {
+        "type": "integer",
+        "default": DEFAULT_FEEDS_LIMIT,
+        "minimum": 1,
+        "maximum": MAX_FEEDS_LIMIT,
     }
     assert archive_limit == {
         "type": "integer",
@@ -251,3 +261,83 @@ def test_mcp_pulse_uses_pulse(monkeypatch):
 
     assert "观澜回响上下文" in text
     assert "偏负向" in text
+
+
+def test_mcp_feeds_uses_curated(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.feeds.fetch_feed_source",
+        lambda *_args, **_kwargs: [
+            {
+                "title": "高分 AI 文章",
+                "url": "https://example.com/a",
+                "source_title": "精品内容流",
+                "summary": "值得读",
+            }
+        ],
+    )
+
+    text = mcp_server._run_tool(
+        "guanlan_feeds",
+        {"source": "curated", "category": "ai", "format": "context"},
+    )
+
+    assert "观澜内容发现 / 精品内容流 上下文" in text
+    assert "高分 AI 文章" in text
+
+
+def test_mcp_hotnews_json_can_return_compact_brief(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.hotnews.fetch_hotnews",
+        lambda *_args, **_kwargs: [
+            {"rank": 1, "source_id": "baidu", "title": "AI 热点", "url": "https://example.com/a"}
+        ],
+    )
+
+    payload = mcp_server._run_tool(
+        "guanlan_hotnews",
+        {"source": "today", "format": "json", "compact": True, "brief": True},
+    )
+
+    assert set(payload) == {"items", "brief"}
+    assert payload["items"][0]["evidence_role"] == "fresh_trend_signal"
+    assert payload["brief"]["sample_count"] == 1
+
+
+def test_mcp_feeds_json_can_return_compact_rows(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.feeds.fetch_feed_source",
+        lambda *_args, **_kwargs: [
+            {
+                "title": "高分 AI 文章",
+                "url": "https://example.com/a",
+                "source_id": "curated",
+                "source_title": "精品内容流",
+                "summary": "值得读",
+                "evidence_role": "reading_discovery_signal",
+            }
+        ],
+    )
+
+    payload = mcp_server._run_tool("guanlan_feeds", {"source": "curated", "format": "json", "compact": True})
+
+    assert payload[0]["title"] == "高分 AI 文章"
+    assert payload[0]["evidence_role"] == "reading_discovery_signal"
+
+
+def test_mcp_feeds_lists_curated_sources(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.feeds.list_curated_sources",
+        lambda **_kwargs: [{"title": "LangChain Blog", "url": "https://blog.langchain.dev/rss/"}],
+    )
+
+    text = mcp_server._run_tool("guanlan_feeds", {"source": "curated-sources"})
+
+    assert "观澜 RSS 源目录 / 精品源" in text
+    assert "LangChain Blog" in text
+
+
+def test_mcp_feeds_lists_source_routing():
+    text = mcp_server._run_tool("guanlan_feeds", {"source": "list"})
+
+    assert "观澜 RSS 信源路由" in text
+    assert "baidu-rss" in text

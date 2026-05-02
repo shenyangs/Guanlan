@@ -85,6 +85,12 @@ guanlan read "URL" --strict --trace
 guanlan read "URL" --backend direct --extract metadata
 guanlan read batch urls.txt --format context
 guanlan read "URL" --watch
+guanlan feeds curated --limit 80
+guanlan feeds curated --category ai --min-score 85 --limit 80
+guanlan feeds baidu-rss --limit 80
+guanlan feeds wechat-rss --limit 80
+guanlan feeds curated-sources --keyword AI --limit 80
+guanlan feeds list
 
 # 本地知识库
 guanlan archive add "URL"

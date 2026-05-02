@@ -2,7 +2,7 @@
 """Read-only local HTTP service for Guanlan.
 
 The service is intentionally local-first and conservative: by default it binds
-to 127.0.0.1 and exposes only search/read/research/hotnews/archive lookup.
+to 127.0.0.1 and exposes only search/read/research/hotnews/feeds/archive lookup.
 """
 
 from __future__ import annotations
@@ -25,6 +25,15 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
             from guanlan import __version__
 
             return 200, {"ok": True, "name": "guanlan", "version": __version__, "mode": "read-only"}
+        if method == "GET" and route == "/sources":
+            from guanlan.source_registry import list_sources
+
+            return 200, {
+                "sources": list_sources(
+                    surface=query_args.get("surface") or None,
+                    backend=query_args.get("backend") or None,
+                )
+            }
         if method == "POST" and route == "/route":
             from guanlan.router import build_route_plan
 
@@ -80,17 +89,54 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
             )
             return 200, {"url": payload.get("url", ""), "content": content}
         if method == "GET" and route == "/hotnews":
-            from guanlan.hotnews import build_trend_report, fetch_hotnews
+            from guanlan.hotnews import (
+                build_hotnews_brief,
+                build_trend_report,
+                compact_hotnews_items,
+                fetch_hotnews,
+            )
 
             items = fetch_hotnews(
                 str(query_args.get("source") or "today"),
                 limit=_int(query_args.get("limit"), 50),
                 backend=str(query_args.get("backend") or "auto"),
             )
-            response: dict[str, Any] = {"items": items}
-            if str(query_args.get("trends") or "").lower() in {"1", "true", "yes"}:
-                response["trend_report"] = build_trend_report(items)
+            compact = _bool(query_args.get("compact"))
+            response: dict[str, Any] = {"items": compact_hotnews_items(items) if compact else items}
+            trend_report = build_trend_report(items) if (_bool(query_args.get("trends")) or _bool(query_args.get("brief"))) else None
+            if _bool(query_args.get("trends")):
+                response["trend_report"] = trend_report
+            if _bool(query_args.get("brief")):
+                response["brief"] = build_hotnews_brief(items, trend_report=trend_report)
             return 200, response
+        if method == "GET" and route == "/feeds":
+            from guanlan.feeds import (
+                compact_feed_items,
+                fetch_feed_source,
+                list_curated_sources,
+                list_feed_sources,
+                resolve_feed_source,
+            )
+
+            source = resolve_feed_source(str(query_args.get("source") or "curated"))
+            limit = _int(query_args.get("limit"), 80)
+            if source == "list":
+                return 200, {"sources": list_feed_sources()}
+            if source == "curated-sources":
+                sources = list_curated_sources(limit=limit, query=query_args.get("keyword") or None)
+                return 200, {"sources": sources}
+            items = fetch_feed_source(
+                source,
+                limit=limit,
+                language=str(query_args.get("language") or "zh"),
+                category=query_args.get("category") or None,
+                resource_type=query_args.get("type") or query_args.get("resource_type") or None,
+                featured=str(query_args.get("featured") or "").lower() in {"1", "true", "yes", "y"},
+                min_score=_optional_int(query_args.get("min_score") or query_args.get("minScore")),
+                keyword=query_args.get("keyword") or None,
+                time_filter=query_args.get("time_filter") or query_args.get("timeFilter") or None,
+            )
+            return 200, {"items": compact_feed_items(items) if _bool(query_args.get("compact")) else items}
         if method == "POST" and route == "/archive/search":
             from guanlan.archive import search_documents
 
@@ -109,7 +155,7 @@ def run_server(host: str = "127.0.0.1", port: int = 8765) -> None:
     """Run the read-only local HTTP server."""
     server = ThreadingHTTPServer((host, int(port)), _GuanlanHandler)
     print(f"观澜只读服务启动: http://{host}:{port}")
-    print("Endpoints: /health, /route, /search, /research, /read, /hotnews, /archive/search")
+    print("Endpoints: /health, /sources, /route, /search, /research, /read, /hotnews, /feeds, /archive/search")
     server.serve_forever()
 
 
@@ -156,3 +202,7 @@ def _optional_int(value: Any) -> int | None:
     if value in (None, ""):
         return None
     return _int(value)
+
+
+def _bool(value: Any) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}

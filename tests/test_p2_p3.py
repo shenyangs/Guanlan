@@ -16,6 +16,10 @@ def test_serve_dispatch_health_and_route():
     assert status == 200
     assert "reputation" in plan["primary_intents"] + plan["secondary_intents"]
 
+    status, body = serve.dispatch_request("GET", "/sources?surface=hotnews&backend=native")
+    assert status == 200
+    assert body["sources"]["bilibili-hot-search"]["backend"] == "native"
+
 
 def test_serve_dispatch_search_uses_webtools(monkeypatch):
     monkeypatch.setattr(
@@ -27,6 +31,34 @@ def test_serve_dispatch_search_uses_webtools(monkeypatch):
 
     assert status == 200
     assert body["results"][0]["title"] == "A"
+
+
+def test_serve_dispatch_feeds_uses_curated(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.feeds.fetch_feed_source",
+        lambda *_args, **kwargs: [{"title": "A", "url": "https://example.com/a", "limit": kwargs["limit"]}],
+    )
+
+    status, body = serve.dispatch_request("GET", "/feeds?source=curated&limit=3&category=ai")
+
+    assert status == 200
+    assert body["items"][0]["title"] == "A"
+    assert body["items"][0]["limit"] == 3
+
+
+def test_serve_dispatch_hotnews_compact_brief(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.hotnews.fetch_hotnews",
+        lambda *_args, **_kwargs: [
+            {"rank": 1, "source_id": "baidu", "title": "AI 热点", "url": "https://example.com/a"}
+        ],
+    )
+
+    status, body = serve.dispatch_request("GET", "/hotnews?source=today&compact=1&brief=1")
+
+    assert status == 200
+    assert body["items"][0]["evidence_role"] == "fresh_trend_signal"
+    assert body["brief"]["sample_count"] == 1
 
 
 def test_plugin_registry_registers_readonly_backend(tmp_path):

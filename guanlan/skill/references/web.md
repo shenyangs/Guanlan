@@ -149,11 +149,14 @@ mcporter call 'exa.web_search_exa(query: "搜索关键词", numResults: 50, incl
 # 观澜统一搜索：公开搜索优先，必要时把 WechatSogou 作为 best-effort 备份
 guanlan search "搜索关键词" --site mp.weixin.qq.com --profile china --limit 50
 
+# 公开 RSS 热文线索补丁：适合先发现公众号热文，不等于全文读取
+guanlan feeds wechat-rss --limit 80
+
 # 显式使用实验性搜狗微信后端（需安装可选依赖）
 guanlan search "搜索关键词" --backend wechat-sogou --limit 50
 ```
 
-公众号能力口径必须诚实：Exa、WechatSogou 或 Camoufox 安装成功只代表 `backend-ready`，不代表端到端 `verified`。遇到搜狗验证码、反爬、登录墙、正文缺失或超时时应降级，不要自动打码、不要读取浏览器 Cookie。
+公众号能力口径必须诚实：`wechat-rss` 只是公开热文线索补丁；Exa、WechatSogou 或 Camoufox 安装成功也只代表 `backend-ready`，不代表端到端 `verified`。遇到搜狗验证码、反爬、登录墙、正文缺失或超时时应降级，不要自动打码、不要读取浏览器 Cookie。
 
 ### 阅读公众号文章全文（通过 Exa）
 
@@ -172,6 +175,21 @@ cd ~/.guanlan/tools/wechat-article-for-ai && python3 main.py "https://mp.weixin.
 
 ## RSS (feedparser)
 
+```bash
+# 公开精品内容 RSS（无需 API Key）
+guanlan feeds curated --limit 80
+guanlan feeds curated --category ai --min-score 85 --limit 80
+guanlan feeds curated --featured --type article --time-filter 1w
+
+# 动态热点 RSS
+guanlan feeds baidu-rss --limit 80
+guanlan feeds wechat-rss --limit 80
+
+# 公开 OPML 源目录与路由说明
+guanlan feeds curated-sources --keyword AI --limit 80
+guanlan feeds list
+```
+
 ```python
 python3 -c "
 import feedparser
@@ -180,7 +198,7 @@ for e in feedparser.parse('FEED_URL').entries[:5]:
 "
 ```
 
-**适用场景**: 订阅博客、新闻源、播客等 RSS feed。
+**适用场景**: 订阅博客、新闻源、播客等 RSS feed。`curated` 适合做技术、AI、产品和商业科技的阅读发现；`baidu-rss` 适合补充实时热点词；`wechat-rss` 适合发现公众号热文线索；`curated-sources` 适合扩展长期信源池。
 
 ## 选择指南
 
@@ -194,5 +212,6 @@ for e in feedparser.parse('FEED_URL').entries[:5]:
 | 快速验证 Jina 输出 | Jina Reader (`curl r.jina.ai`) |
 | 需要图片/格式控制 | web-reader MCP |
 | 微信公众号 | 搜索公开转载/同题信源，必要时 Exa/Camoufox 可选阅读 |
-| RSS 订阅 | feedparser |
+| 精品 RSS 发现 | `guanlan feeds curated` / `guanlan feeds curated-sources` |
+| 通用 RSS 订阅 | feedparser |
 | 微博/知乎等 | 先搜索公开页，再尝试 `guanlan read`，不要硬撞登录墙 |

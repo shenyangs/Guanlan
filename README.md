@@ -175,7 +175,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.2.5`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.2.6`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -326,7 +326,8 @@ guanlan configure --from-browser chrome
 | `guanlan doctor --trace` | 展示诊断路径，帮助定位是否存在敏感探测风险。 |
 | `guanlan doctor --check-config` | 扫描本地配置中可能误存的明文 Cookie、Token、Key 或代理凭据。 |
 | `guanlan status` | 显示渠道运行、就绪、验证、稳定性、授权边界和本地缓存概览。 |
-| `guanlan route "关键词"` | 解释需求路由、证据角色、优先 scope、推荐站点和边界提醒。 |
+| `guanlan route "关键词"` | 解释需求路由、证据角色、优先 scope、推荐站点、推荐 RSS 和边界提醒。 |
+| `guanlan route "关键词" --json` | 给 Agent 前置路由，输出 `recommended_commands` 作为下一步命令起手式。 |
 | `guanlan search "关键词"` | 搜索网页，输出适合 Agent 阅读的结果列表。 |
 | `guanlan search "关键词" --trace` | 展示评分因子、后端顺序、聚类阈值和缓存命中状态。 |
 | `guanlan search "最近 关键词 热点" --trace` | 自动识别时效性意图，收束到近期窗口，并在 trace 中解释结果日期。 |
@@ -349,6 +350,12 @@ guanlan configure --from-browser chrome
 | `guanlan prompt "问题" --style decision` | 为本地模型生成决策型/证据型/简洁型/深度型联网 Prompt。 |
 | `guanlan research "关键词" --sites zhihu.com,weibo.com` | 按多个指定站点生成平台定向证据块。 |
 | `guanlan pulse "关键词"` | 安全版话题回响分析，输出讨论倾向、关键词信号和明确边界。 |
+| `guanlan feeds curated --limit 80` | 读取公开精品 RSS，发现技术、AI、产品和商业科技内容。 |
+| `guanlan feeds curated --category ai --min-score 85` | 按分类和评分筛选高质量内容。 |
+| `guanlan feeds baidu-rss --limit 80` | 读取动态百度实时热点 RSS，补充热榜词和热度信号。 |
+| `guanlan feeds wechat-rss --limit 80` | 读取动态微信热门文章 RSS，补充公众号热文线索。 |
+| `guanlan feeds curated-sources --keyword AI` | 从公开 OPML 中检索精品 RSS 源目录。 |
+| `guanlan feeds list` | 查看 RSS 信源定位、内容方向、质量口径和路由建议。 |
 | `guanlan hotnews today --trends` | 多源热榜归并成趋势簇，观察中文互联网当日水势。 |
 | `guanlan hotnews today --brief` | 生成今日水势简报、来源分布、边界提醒和后续查询建议。 |
 | `guanlan read "URL"` | 读取网页并转成 Markdown。 |
@@ -375,7 +382,7 @@ guanlan configure --from-browser chrome
 | `guanlan configure --from-browser chrome` | 显式从浏览器提取支持平台的 Cookie。 |
 | `guanlan skill --install` | 将观澜使用说明安装到 Agent skills 目录。 |
 
-默认候选池从 `v0.1.10` 起按 Agent 研究场景放大：`search`、`research`、`archive search` 默认 50 条，`hotnews` 默认 50 条且 MCP 最高 100 条，`read` 的搜索兜底默认 20 条。`v0.2.5` 增加 Coverage Guard，发版前会检查这些下限和关键证据字段，避免下游 Agent 因更新拿到的材料大面积变少。
+默认候选池从 `v0.1.10` 起按 Agent 研究场景放大：`search`、`research`、`archive search` 默认 50 条，`feeds` 默认 80 条，`hotnews` 默认 50 条且 MCP 最高 100 条，`read` 的搜索兜底默认 20 条。`v0.2.5` 增加 Coverage Guard，发版前会检查这些下限和关键证据字段，避免下游 Agent 因更新拿到的材料大面积变少。
 
 ## 使用场景与案例
 
@@ -662,7 +669,7 @@ guanlan mcp config --client openwebui
 guanlan serve --host 127.0.0.1 --port 8765
 ```
 
-服务默认只监听本机，提供 `/search`、`/research`、`/read`、`/hotnews`、`/route` 和 `/archive/search` 等只读接口，不提供发布、评论、点赞、私信等写操作。对本地模型来说，推荐工作流是：
+服务默认只监听本机，提供 `/search`、`/research`、`/read`、`/hotnews`、`/feeds`、`/route` 和 `/archive/search` 等只读接口，不提供发布、评论、点赞、私信等写操作。对本地模型来说，推荐工作流是：
 
 1. 用 `hotnews --brief` 或 `route` 判断该去哪找。
 2. 用 `search/research --format context` 拿证据表。

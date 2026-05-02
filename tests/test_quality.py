@@ -33,6 +33,7 @@ def test_coverage_guard_checks_default_contract():
 
     assert report["summary"]["fail"] == 0
     assert any(item["id"] == "coverage_search_default_limit" for item in report["checks"])
+    assert any(item["id"] == "coverage_feeds_default_limit" for item in report["checks"])
     assert "不得让 Agent" in quality.format_coverage_report(report)
 
 
@@ -46,4 +47,5 @@ def test_quality_cli_coverage_outputs_json(capsys):
 
     assert payload["mode"] == "quick"
     assert payload["contract"]["search_min"] == 50
+    assert payload["contract"]["feeds_min"] == 80
     assert payload["summary"]["fail"] == 0
