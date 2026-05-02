@@ -8,7 +8,6 @@
 | --- | --- |
 | [README.md](../README.md) | 第一次了解观澜：它是什么、为什么存在、默认边界是什么。 |
 | [更新日志](../CHANGELOG.md) | 查看每个版本的能力变化、边界调整和下一步收口。 |
-| [产品哲学与增强计划](product-philosophy.md) | 理解观澜为什么不是普通 web search，以及本地大模型联网路线。 |
 | [本地大模型联网指南](local-llm.md) | 让 Ollama、LM Studio、Open WebUI 等无联网模型使用观澜证据包。 |
 | [Agent 使用说明](agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜、社交平台和安全降级规则。 |
 | [安装指南](install.md) | 让 Agent 按步骤安装、配置和自检。 |
@@ -32,6 +31,6 @@
 - Jina Reader 已作为第一读取入口，但不是唯一依赖；读取不稳时可用 `guanlan read "URL" --backend direct` 直连原网页。
 - 本地知识库雏形已经可用：`guanlan archive add "URL"`、`guanlan archive search "关键词" --format context`、`guanlan archive export --format jsonl`。
 - 本地模型联网入口已经可用：`guanlan prompt "问题"`、`guanlan research "问题" --format prompt`、`guanlan mcp config --client codex`。
-- P2/P3 可用骨架已经落地：`guanlan serve` 本地只读 HTTP、`hotnews --trends` 趋势归并、`archive ingest-search` RAG 沉淀、`plugin register/template` 企业只读 connector、`eval scenarios` 评估集。
+- 进阶能力已经有第一版骨架：`guanlan serve` 本地只读 HTTP、`hotnews --trends` 趋势归并、`archive ingest-search` RAG 沉淀、`plugin register/template` 企业只读 connector、`eval scenarios` 评估集。
 - 第一批原生热榜命令已经可用：`guanlan hotnews list`、`guanlan hotnews baidu --limit 50`、`guanlan hotnews v2ex --json`；`zhihu` 是 experimental 源，失败时使用搜索 fallback。
 - 观澜当前优先强化中文搜索、热榜聚合、社交口碑、视频、财经和开发者社区。
