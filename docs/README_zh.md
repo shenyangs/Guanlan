@@ -8,6 +8,7 @@
 | --- | --- |
 | [README.md](../README.md) | 第一次了解观澜：它是什么、为什么存在、默认边界是什么。 |
 | [更新日志](../CHANGELOG.md) | 查看每个版本的能力变化、边界调整和下一步收口。 |
+| [产品哲学与增强计划](product-philosophy.md) | 理解观澜为什么不是普通 web search，以及本地大模型联网路线。 |
 | [Agent 使用说明](agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜、社交平台和安全降级规则。 |
 | [安装指南](install.md) | 让 Agent 按步骤安装、配置和自检。 |
 | [发布自动化](release-automation.md) | 维护者用：PyPI 自动发布与 Homebrew tap 自动更新。 |

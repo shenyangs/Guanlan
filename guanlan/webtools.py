@@ -1312,7 +1312,7 @@ def _reading_record(
 
 
 def build_advisor_view(packet: dict[str, Any]) -> dict[str, Any]:
-    """Build a cautious assistant view from a research packet."""
+    """Build evidence-bound guidance that helps an agent write its own advice."""
     query = str(packet.get("query", "")).strip()
     preset = str(packet.get("preset", "general")).strip() or "general"
     results = list(packet.get("results") or [])
@@ -1328,13 +1328,17 @@ def build_advisor_view(packet: dict[str, Any]) -> dict[str, Any]:
     next_steps = _advisor_next_steps(query, preset, source_mix, limits)
 
     return {
-        "title": "助理视角",
-        "stance": "以下是基于当前检索材料的意图假设和下一步建议，不代表用户真实目的，也不构成最终结论。",
+        "title": "助理视角规则",
+        "mode": "agent_guidance",
+        "stance": "以下内容用于指导 Agent 生成建议：它只约束如何基于当前证据思考，不代表用户真实目的，也不构成最终结论。",
+        "synthesis_rules": _advisor_synthesis_rules(preset, query, source_mix),
+        "suggested_angles": intents,
         "possible_intents": intents,
         "evidence_supports": supports,
         "evidence_limits": limits,
         "scenario_advice": _advisor_scenario_advice(preset, query, source_mix),
         "next_steps": next_steps,
+        "response_contract": _advisor_response_contract(packet, limits),
     }
 
 
@@ -1345,10 +1349,12 @@ def format_advisor_markdown(advisor: dict[str, Any]) -> str:
     if stance:
         lines.extend(["", stance])
     sections = [
-        ("可能的搜索目的", advisor.get("possible_intents") or []),
-        ("当前材料更适合支持", advisor.get("evidence_supports") or []),
-        ("当前材料暂时不适合支持", advisor.get("evidence_limits") or []),
-        ("按不同目的看下一步", advisor.get("scenario_advice") or []),
+        ("给 Agent 的写作规则", advisor.get("synthesis_rules") or []),
+        ("可展开的判断方向", advisor.get("suggested_angles") or advisor.get("possible_intents") or []),
+        ("当前证据能支持", advisor.get("evidence_supports") or []),
+        ("当前证据边界", advisor.get("evidence_limits") or []),
+        ("不同场景的展开方式", advisor.get("scenario_advice") or []),
+        ("输出时必须避免", advisor.get("response_contract") or []),
         ("建议补充", advisor.get("next_steps") or []),
     ]
     for title, items in sections:
@@ -1367,15 +1373,38 @@ def format_advisor_context(advisor: dict[str, Any]) -> str:
     if stance:
         lines.append(stance)
     for key, title in (
-        ("possible_intents", "可能目的"),
+        ("synthesis_rules", "写作规则"),
+        ("suggested_angles", "可展开方向"),
         ("evidence_supports", "适合支持"),
         ("evidence_limits", "不适合支持"),
         ("scenario_advice", "下一步"),
+        ("response_contract", "输出边界"),
     ):
         items = [str(item) for item in advisor.get(key, []) if str(item).strip()]
         if items:
             lines.append(f"{title}: " + "；".join(items[:3]))
     return "\n".join(lines)
+
+
+def _advisor_synthesis_rules(
+    preset: str,
+    query: str,
+    source_mix: dict[str, int],
+) -> list[str]:
+    rules = [
+        "先用证据回答用户真正要解决的问题，再说明不确定性和需要补证的地方",
+        "把建议写成可执行的下一步，而不是复述搜索结果或固定模板",
+        "明确区分事实、推断、风险提醒和行动建议",
+    ]
+    if preset in {"policy", "official", "local"} or _contains_any(query, ["政策", "监管", "通知", "官方"]):
+        rules.append("涉及政策或官方口径时，优先引用原文和发文主体，再解释影响")
+    if preset in {"reputation", "ecommerce"} or _contains_any(query, ["口碑", "评价", "购买", "产品"]):
+        rules.append("涉及口碑时，提炼高频场景和用户原话，不把样本热度写成总体比例")
+    if any(_source_has(key, ["社交", "内容平台"]) for key in source_mix):
+        rules.append("社交材料只能支持线索和表达，不直接支持总体判断")
+    if _high_stakes_query(query):
+        rules.append("涉及医疗、法律、金融或重大决策时，只给研究路线和风险提示")
+    return _unique_keep_order(rules)[:5]
 
 
 def _advisor_intents(
@@ -1507,6 +1536,19 @@ def _advisor_next_steps(
         steps.append("涉及重大决策时，补充权威来源或专业意见后再行动")
     steps.append("把当前建议视为下一步研究路线，而不是最终判断")
     return _unique_keep_order(steps)[:4]
+
+
+def _advisor_response_contract(packet: dict[str, Any], limits: list[str]) -> list[str]:
+    contract = [
+        "不要声称已经知道用户真实动机，只能说“可能在关心”",
+        "不要把当前搜索样本写成全网结论",
+        "不要省略来源、证据边界和失败后端带来的覆盖缺口",
+    ]
+    if any("高影响决策" in item for item in limits) or _high_stakes_query(str(packet.get("query", ""))):
+        contract.append("不要给医疗、法律、金融等高风险事项的最终建议")
+    if packet.get("read_top") == 0:
+        contract.append("没有原文摘读时，不要写成已经完成深度阅读")
+    return contract
 
 
 def _contains_any(text: str, needles: list[str]) -> bool:

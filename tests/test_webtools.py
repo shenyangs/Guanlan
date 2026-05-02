@@ -1087,10 +1087,13 @@ def test_build_research_packet_adds_cautious_advisor_when_requested(monkeypatch)
     )
 
     assert "advisor" not in plain_packet
-    assert advisor_packet["advisor"]["title"] == "助理视角"
+    assert advisor_packet["advisor"]["title"] == "助理视角规则"
+    assert advisor_packet["advisor"]["mode"] == "agent_guidance"
     assert "不代表用户真实目的" in advisor_packet["advisor"]["stance"]
-    assert any("口碑" in item for item in advisor_packet["advisor"]["possible_intents"])
+    assert any("口碑" in item for item in advisor_packet["advisor"]["suggested_angles"])
     assert any("搜索摘要" in item for item in advisor_packet["advisor"]["evidence_limits"])
+    assert any("固定模板" in item for item in advisor_packet["advisor"]["synthesis_rules"])
+    assert any("用户真实动机" in item for item in advisor_packet["advisor"]["response_contract"])
 
 
 def test_format_research_markdown():
@@ -1154,9 +1157,9 @@ def test_format_research_markdown_includes_advisor_block():
         }
     )
 
-    assert "## 助理视角" in md
-    assert "可能的搜索目的" in md
-    assert "当前材料暂时不适合支持" in md
+    assert "## 助理视角规则" in md
+    assert "给 Agent 的写作规则" in md
+    assert "当前证据边界" in md
 
 
 def test_read_watch_outputs_diff(monkeypatch, tmp_path):

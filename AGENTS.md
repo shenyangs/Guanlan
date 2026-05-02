@@ -2,6 +2,11 @@
 
 This repository is designed as a CLI-first search productivity tool for AI agents.
 
+Agent operating rule: when using Guanlan for search, research, hotnews, pulse, or archive lookup,
+prefer the largest sensible result pool instead of a tiny sample. Use the default 50 results for
+normal work, raise to 80-100 for broad research when latency is acceptable, and only lower the
+limit when the user explicitly asks for a small sample or a quick smoke check.
+
 When using Guanlan as an agent, prefer this minimal command set:
 
 ```bash
@@ -30,4 +35,4 @@ Safety rules:
 - Do not run `guanlan doctor --auth-check` unless the user wants deep auth checks.
 - Do not post, comment, like, follow, or send messages automatically.
 - Prefer public search/read/hotnews first, then ask for authorization only when needed.
-- Use `guanlan research ... --advisor` when the user asks for advice, implications, next steps, or "why they might be searching this"; treat the advisor block as cautious hypotheses, not as the user's true intent or a final decision.
+- Use `guanlan research ... --advisor` when the user asks for advice, implications, next steps, or "why they might be searching this"; treat the advisor block as evidence-bound writing rules for your answer, not as the user's true intent or a final decision.

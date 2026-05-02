@@ -33,6 +33,8 @@
 
 中文互联网的信息分布并不均匀。公众号、微博、知乎、B站、小红书、抖音、雪球、V2EX、RSS、开发者社区和新闻热榜各自带着不同的语气、圈层与偏见。观澜做的事情，是让 Agent 看见这些波纹，也看见它们各自从哪里来。
 
+普通 web search 给 Agent 一双眼睛；观澜要给 Agent 一套专业调研员的思维框架。它关心的不只是相关性，也包括信源身份、中文平台孤岛、证据压缩、安全授权和今日水势。
+
 ## 当前最稳能力
 
 这些是当前最敢承诺、最适合作为默认工作流的能力：
@@ -168,7 +170,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.1.10`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.1.11`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -314,7 +316,7 @@ guanlan configure --from-browser chrome
 | `guanlan research "关键词"` | 生成 Agent 可直接使用的研究证据包。 |
 | `guanlan research --list-presets` | 查看研究模板和默认 scope/site 策略。 |
 | `guanlan research "关键词" --format context` | 输出适合直接放进 prompt 的研究上下文。 |
-| `guanlan research "关键词" --advisor` | 在证据包后追加谨慎助理视角，推测可能意图并给下一步建议。 |
+| `guanlan research "关键词" --advisor` | 在证据包后追加助理视角规则，帮助 Agent 基于证据生成建议。 |
 | `guanlan research "关键词" --sites zhihu.com,weibo.com` | 按多个指定站点生成平台定向证据块。 |
 | `guanlan pulse "关键词"` | 安全版话题回响分析，输出讨论倾向、关键词信号和明确边界。 |
 | `guanlan read "URL"` | 读取网页并转成 Markdown。 |
@@ -584,7 +586,7 @@ guanlan research "某产品 用户评价" --preset reputation --read-top 0 --adv
 
 `research` 会把搜索结果、同题聚类、信源多样性和原文摘读整理成一份更适合 Agent 消化的证据包。
 
-如果用户需要建议、下一步、风险提醒，或希望你判断“他为什么搜这个”，加 `--advisor`。助理视角只基于当前材料提出可能意图和行动建议，必须保留假设性与边界感，不能当作用户真实目的或高风险专业结论。
+如果用户需要建议、下一步、风险提醒，或希望你判断“他为什么搜这个”，加 `--advisor`。助理视角规则会告诉 Agent 当前证据能支持什么、不能支持什么，以及回答时必须守住哪些边界；最终建议应由 Agent 结合用户问题自然生成，不能机械复述模板，也不能当作用户真实目的或高风险专业结论。
 
 Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会查 `gov + party_central`，`reputation` 会查 `social_web + tech_dev + business`，并补充知乎、微博、小红书、B站等公开页证据块。用户显式传入 `--scope`、`--site` 或 `--sites` 时，以用户指定范围为准。
 
@@ -626,6 +628,7 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 | [中文入口](docs/README_zh.md) | 中文文档导航。 |
 | [更新日志](CHANGELOG.md) | 记录每个版本的能力变化、边界调整和下一步收口。 |
 | [路线图](docs/roadmap.md) | 后续迭代主线、验收标准和暂不做事项。 |
+| [产品哲学与增强计划](docs/product-philosophy.md) | 观澜为什么存在、要补齐哪些能力、本地大模型联网怎么做。 |
 | [Agent 使用说明](docs/agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜和安全路由规则。 |
 | [安装指南](docs/install.md) | 给 Agent 执行的安装流程与边界。 |
 | [更新指南](docs/update.md) | 更新观澜与依赖工具。 |
