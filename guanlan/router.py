@@ -237,6 +237,7 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
         "fallback": ("business", "social_web"),
         "sites": ("github.com", "v2ex.com", "juejin.cn", "segmentfault.com"),
         "roles": ("source_code", "technical_note", "developer_discussion"),
+        "warning": "科技/技术类内容必须额外补一轮 RSS/精品内容流，避免只看到搜索引擎排名或社区单点样本。",
     },
     {
         "intent": "academic",
@@ -746,6 +747,8 @@ def _route_explanations(intents: list[str], scopes: list[str], sites: list[str])
         output.append("英文政策/监管问题需要官方、监管或标准组织原文作为主证据。")
     if "academic" in intents:
         output.append("学术检索问题需要数据库/出版商口径、会议 CFP 和高校认定口径分开核验。")
+    if "tech" in intents:
+        output.append("科技/技术内容除开发者社区和代码仓库外，必须额外补一轮 RSS/精品内容流作为阅读发现视角。")
     if "standards_compliance" in intents:
         output.append("标准/合规问题需要标准原文、监管解释、实施材料和厂商声明分层引用。")
     if "medical_health" in intents:

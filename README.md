@@ -223,7 +223,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.3.8`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.3.9`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -589,7 +589,10 @@ guanlan search "某产品 使用体验" --profile china --site bilibili.com --li
 ```bash
 guanlan research "Python Agent 框架 对比" --preset tech --read-top 2
 guanlan search "LangGraph AutoGen CrewAI 对比" --profile china --scope tech_dev --format context
+guanlan feeds curated --category ai --limit 80
 ```
+
+科技、AI、开发者、工程实践类问题有一条硬规则：必须额外补一轮 RSS/精品内容流。`research --preset tech` 会自动把 `feeds curated` 纳入候选池和 `result_groups`；如果 Agent 只使用 `route` 或 `search`，则需要再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。RSS 只作为阅读发现和新鲜线索，不替代官方文档、代码仓库、issue、benchmark 原文。
 
 ### 8. 查学术会议、投稿和检索要求
 
@@ -765,6 +768,19 @@ guanlan hotnews today --trends
 ```
 
 CLI 是默认主路径；如果当前 Agent 或平台支持 MCP，可以把 `guanlan-mcp` 作为可选集成接进去，让 Agent 直接调用 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search` 和 `guanlan_status`。
+
+**Agent 外层 timeout 建议**
+
+观澜内部会给单个网页、RSS 和热榜源设置请求超时，防止一个上游无限卡住；但 Agent/MCP/自动化平台包住整个命令时，要给组合流程更大的外层 timeout。建议：
+
+| 命令场景 | 外层 timeout |
+| --- | --- |
+| `status`、`doctor`、`search`、单 URL `read` | 60-90 秒 |
+| `hotnews`、`feeds`、`pulse`、`read batch` | 120 秒 |
+| `research`、`compare`、`timeline`、`dossier`、`archive ingest-research` | 180-300 秒 |
+| 安装、升级、发布 smoke、Homebrew/PyPI 校验 | 300-600 秒 |
+
+如果超时，先重试一次；支持缓存的命令可加 `--cache-ttl 3600`。严肃研究优先降低 `--read-top` 到 0 或 1，而不是把 `--limit 50` 砍成很小样本。超时只能说明本轮网络或上游源未完成，不代表没有证据。
 
 ### 15. 本地大模型联网
 

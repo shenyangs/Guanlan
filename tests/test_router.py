@@ -98,11 +98,15 @@ def test_route_plan_detects_legal_judicial_need():
 def test_route_plan_recommends_rss_sources_by_need():
     wechat = build_route_plan("今天微信公众号有什么 AI 热文", profile="china")
     reading = build_route_plan("最近有什么值得读的 Agent 技术文章", profile="china")
+    tech = build_route_plan("Python Agent 框架 对比 github issue", profile="china")
     generic = build_route_plan("帮我查一下某公司情况", profile="china")
 
     assert "wechat-rss" in wechat.recommended_feeds
     assert "baidu-rss" in wechat.recommended_feeds
     assert "curated" in reading.recommended_feeds
+    assert "curated" in tech.recommended_feeds
+    assert any(command.startswith("guanlan feeds curated") for command in tech.recommended_commands)
+    assert any("RSS" in warning for warning in tech.warnings)
     assert generic.recommended_feeds == []
     assert "guanlan feeds wechat-rss --limit 80" in wechat.recommended_commands
     assert any(command.startswith("guanlan feeds curated") for command in reading.recommended_commands)

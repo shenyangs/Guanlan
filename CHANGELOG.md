@@ -8,6 +8,20 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.3.9 - 2026-05-02
+
+### Added
+
+- 科技/AI/开发者/工程实践类路由新增强约束：必须额外补一轮 RSS/精品内容流，避免只依赖搜索引擎排名或社区单点样本。
+- `research` 在科技类路线中自动把 `feeds curated` 作为 forced feed group 纳入候选池；RSS 失败会进入 `search_errors/result_groups`，不拖垮整份研究证据包。
+- Agent 文档、Skill、README 和 `guanlan capabilities` 新增外层 timeout 预算建议：搜索/单 URL 阅读 60-90 秒，热榜/feeds/pulse 120 秒，research/compare/timeline/dossier 180-300 秒，安装/发布 smoke 300-600 秒。
+
+### Changed
+
+- `route` 对科技类问题会明确推荐 `guanlan feeds curated --limit 80` 或 `--category ai`，并输出 RSS 边界提醒。
+- `research` 的 guidance 会提示 RSS 是阅读发现和新鲜线索，不替代官方文档、代码仓库、issue、benchmark 原文或可复现验证。
+- 官网展示版本号同步到 `0.3.9`。
+
 ## v0.3.8 - 2026-05-02
 
 ### Added

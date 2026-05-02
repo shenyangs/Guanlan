@@ -28,6 +28,8 @@ Run `guanlan doctor` to check which channels are available.
 `guanlan research` includes evidence-audit hints for version/name conflicts, source timelines, and follow-up verification.
 Use `guanlan archive verify`, `archive context`, `archive wiki`, and `archive pack` for local archive memory, Agent Wiki, RAG export, and local-model context. These commands only use local archived records.
 Use `guanlan report html` only as a sidecar renderer when the user asks for a static HTML report; it reads existing JSON/stdin/demo data and does not replace search/read/research/hotnews.
+If your agent/MCP runner supports tool timeouts, use generous outer budgets: 60-90s for search/read/status/doctor, 120s for hotnews/feeds/pulse/batch reads, 180-300s for research/compare/timeline/dossier/archive ingest, and 300-600s for install/update/release smoke. Treat timeouts as network/upstream evidence, not proof of no results; retry once, use cache_ttl where available, or reduce read_top before shrinking the result pool.
+For technology/AI/developer/engineering-practice routes, always add one RSS discovery pass. `guanlan research ... --preset tech` does this automatically; if you only run route or search, run `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80` as the second pass.
 
 ## ⚠️ Workspace Rules
 

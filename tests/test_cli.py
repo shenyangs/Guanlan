@@ -118,6 +118,8 @@ class TestCLI:
         assert "助理视角" in captured.out
         assert "查过资料不要丢" in captured.out
         assert "archive context" in captured.out
+        assert "Agent 超时预算" in captured.out
+        assert "180-300 秒" in captured.out
 
     def test_capabilities_json_lists_mcp_tools(self, capsys):
         with patch("sys.argv", ["guanlan", "capabilities", "--json"]):

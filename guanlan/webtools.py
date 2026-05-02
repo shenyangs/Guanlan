@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from guanlan.limits import (
+    DEFAULT_FEEDS_LIMIT,
     DEFAULT_READ_FALLBACK_LIMIT,
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
@@ -1758,6 +1759,19 @@ def build_research_packet(
         include_open_fallback=not bool(explicit_scope or explicit_sites),
         query_strategy=query_strategy,
     )
+    feed_results, feed_errors, feed_groups = _research_feed_discovery(
+        query,
+        route_plan=route_plan.to_dict(),
+        preset_id=preset_config["id"],
+        limit=effective_limit,
+        profile=effective_profile,
+    )
+    if feed_groups:
+        result_groups.extend(feed_groups)
+    if feed_errors:
+        search_errors.extend(feed_errors)
+    if feed_results:
+        results = _merge_ranked_result_dicts(results + feed_results, limit=effective_limit)
     readings: list[dict[str, Any]] = []
     for item in _select_reading_candidates(results, effective_read_top):
         try:
@@ -1814,7 +1828,11 @@ def build_research_packet(
             "阅读兜底内容只代表公开搜索线索，不等同于原文全文。",
             "路由计划是软约束：优先源用于提高适配度，开放搜索兜底用于避免信息池过窄。",
             "查询策略会把同一问题拆成不同证据角色；回答时要保留“官方、媒体、社区、用户样本”的差异。",
-        ],
+        ] + (
+            ["科技/技术类路线已强制补跑 RSS/精品内容流；RSS 适合作阅读发现和新鲜线索，不替代代码仓库、官方文档或原文核验。"]
+            if feed_groups
+            else []
+        ),
     }
     packet["evidence_audit"] = build_evidence_audit(packet)
     if advisor:
@@ -2292,6 +2310,122 @@ def _research_search(
     if not combined and errors:
         raise RuntimeError("; ".join(errors))
     return _merge_ranked_result_dicts(combined, limit=limit), errors, groups
+
+
+def _research_feed_discovery(
+    query: str,
+    *,
+    route_plan: dict[str, Any],
+    preset_id: str,
+    limit: int,
+    profile: str | None,
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
+    """Run the mandatory RSS discovery pass for technology routes."""
+    if not _requires_tech_rss_discovery(route_plan, preset_id):
+        return [], [], []
+    feed_limit = max(1, min(DEFAULT_FEEDS_LIMIT, max(limit, 20)))
+    language = "en" if profile == "english" else "zh"
+    category = "ai" if "ai" in set(route_plan.get("domains") or []) else "programming"
+    errors: list[str] = []
+    groups: list[dict[str, Any]] = []
+    try:
+        from guanlan.feeds import fetch_feed_source
+
+        items = fetch_feed_source(
+            "curated",
+            limit=feed_limit,
+            language=language,
+            category=category,
+        )
+        results = [
+            converted
+            for idx, item in enumerate(items, start=1)
+            if (converted := _feed_item_to_search_result(item, rank=idx)) is not None
+        ]
+        unavailable = [
+            str((item.get("feed_status") or {}).get("error") or item.get("summary") or "")
+            for item in items
+            if item.get("evidence_role") == "source_availability_signal"
+        ]
+        if unavailable and not results:
+            errors.append(f"feed:curated: {unavailable[0]}")
+        groups.append(
+            {
+                "type": "feed",
+                "label": "curated",
+                "query": f"{query} / RSS curated:{category}:{language}",
+                "result_count": len(results),
+                "results": results,
+                "forced": True,
+                "reason": "tech_route_requires_rss_discovery",
+                "source": "guanlan feeds curated",
+                "category": category,
+                "language": language,
+                **({"error": unavailable[0]} if unavailable and not results else {}),
+            }
+        )
+        return results, errors, groups
+    except Exception as exc:
+        message = f"feed:curated: {exc}"
+        errors.append(message)
+        groups.append(
+            {
+                "type": "feed",
+                "label": "curated",
+                "query": f"{query} / RSS curated:{category}:{language}",
+                "result_count": 0,
+                "results": [],
+                "forced": True,
+                "reason": "tech_route_requires_rss_discovery",
+                "source": "guanlan feeds curated",
+                "category": category,
+                "language": language,
+                "error": str(exc),
+            }
+        )
+        return [], errors, groups
+
+
+def _requires_tech_rss_discovery(route_plan: dict[str, Any], preset_id: str) -> bool:
+    primary = set(route_plan.get("primary_intents") or [])
+    return preset_id == "tech" or "tech" in primary
+
+
+def _feed_item_to_search_result(item: dict[str, Any], *, rank: int) -> dict[str, Any] | None:
+    url = str(item.get("url") or "").strip()
+    if not url or item.get("evidence_role") == "source_availability_signal":
+        return None
+    source_id = str(item.get("source_id") or "curated")
+    source_card = dict(item.get("source_card") or {})
+    domain = str(source_card.get("domain") or _domain(url))
+    source_type = str(source_card.get("source_type") or "RSS/内容发现")
+    status = item.get("feed_status") if isinstance(item.get("feed_status"), dict) else {}
+    risk_tags = [str(tag) for tag in item.get("risk_tags", []) if tag]
+    return {
+        "title": str(item.get("title") or url),
+        "url": url,
+        "snippet": str(item.get("summary") or item.get("content_direction") or ""),
+        "source": f"feeds:{source_id}",
+        "rank": rank,
+        "domain": domain,
+        "source_type": source_type,
+        "matched_scope": "rss",
+        "trust_level": 3,
+        "evidence_role": str(item.get("evidence_role") or "reading_discovery_signal"),
+        "score": max(1.0, 4.8 - rank * 0.02),
+        "score_parts": {"rss_discovery": 1.0, "rank": max(0.0, 1 - rank / max(DEFAULT_FEEDS_LIMIT, 1))},
+        "topic_key": str(item.get("source_title") or source_id),
+        "topic_size": 1,
+        "topic_role": "single",
+        "trace": {
+            "source_card": source_card,
+            "feed_status": status,
+            "risk_tags": risk_tags,
+            "source_id": source_id,
+            "published_at": str(item.get("published_at") or ""),
+            "forced_rss_discovery": True,
+        },
+    }
 
 
 def _query_for_research_job(

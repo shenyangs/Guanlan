@@ -23,6 +23,16 @@ prefer the largest sensible result pool instead of a tiny sample. Use the defaul
 normal work, raise to 80-100 for broad research when latency is acceptable, and only lower the
 limit when the user explicitly asks for a small sample or a quick smoke check.
 
+Agent timeout budget rule: Guanlan may touch multiple public web/RSS/hotnews sources in one command,
+and weak networks can make some upstreams slow before Guanlan falls back or marks stale cache. If an
+agent platform, MCP client, or automation runner lets you set a tool timeout, use these outer budgets:
+60-90 seconds for `status`, `doctor`, `search`, and single-URL `read`; 120 seconds for `hotnews`,
+`feeds`, `pulse`, and batch reads; 180-300 seconds for `research`, `compare`, `timeline`, `dossier`,
+and `archive ingest-research`; 300-600 seconds for install/update/release smoke workflows. On timeout,
+retry once with `--cache-ttl 3600` where supported or reduce `--read-top`, but do not shrink the
+result pool below the normal 50 just to make the command finish faster. A timeout is network evidence,
+not evidence that the topic has no results.
+
 When using Guanlan as an agent, prefer this minimal command set:
 
 ```bash
@@ -79,6 +89,7 @@ Safety rules:
 - Use `guanlan search ... --trace` or `guanlan research ...` when you need query_strategy, source diagnostics, and evidence-role query rewrites; do not rely on one broad query for serious research.
 - Use `guanlan compare`, `guanlan timeline`, or `guanlan dossier` when the user asks for comparison, event chronology, or an entity dossier; these are structured views over evidence packets, not final truth.
 - Use `guanlan research ... --preset academic --read-top 0` for EI/SCI/Scopus, academic conference, paper submission, indexing, and university-recognition questions; read selected official URLs afterward if needed.
+- For technology/AI/developer routing, always include one RSS discovery pass. `guanlan research ... --preset tech` does this automatically; if you only run `route` or `search`, also run `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80` as a second pass.
 - Use `guanlan read ... --quality-report` when deciding whether a page body is clean enough for downstream reasoning; use `--strict` when noisy page chrome would be harmful; use `--extract metadata` or `--extract links` for source/date/link checks.
 - Use `guanlan archive verify` before relying on archive as memory/RAG/Wiki; use `archive context` or `archive wiki context` when a local model needs evidence-bound context from stored materials.
 - Use `guanlan archive wiki build` only as a local sidecar export over existing archive records; it must not be treated as whole-web truth or cloud sync.

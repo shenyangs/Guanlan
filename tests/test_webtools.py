@@ -639,6 +639,7 @@ def test_research_english_profile_adapts_legacy_tech_preset(monkeypatch):
         ]
 
     monkeypatch.setattr(webtools, "search_web", fake_search)
+    monkeypatch.setattr("guanlan.feeds.fetch_feed_source", lambda *_args, **_kwargs: [])
 
     packet = webtools.build_research_packet(
         "OpenAI SDK release notes",
@@ -651,6 +652,65 @@ def test_research_english_profile_adapts_legacy_tech_preset(monkeypatch):
     assert "developer" in packet["scopes"]
     assert "tech_dev" not in packet["scopes"]
     assert packet["route_plan"]["recommended_commands"]
+
+
+def test_research_tech_route_forces_rss_discovery(monkeypatch):
+    search_calls = []
+    feed_calls = []
+
+    def fake_search(query, **kwargs):
+        search_calls.append((query, kwargs))
+        label = kwargs.get("scope") or kwargs.get("site") or "open"
+        return [
+            {
+                "title": f"{label} 技术结果",
+                "url": f"https://example.com/{label}",
+                "snippet": "Python Agent 框架 对比 github issue",
+                "source": "fixture",
+                "rank": 1,
+                "domain": "example.com",
+                "source_type": "科技/开发者社区",
+                "matched_scope": kwargs.get("scope") or "",
+                "trust_level": 3,
+                "evidence_role": "developer_discussion",
+                "score": 6.0,
+                "topic_key": label,
+                "topic_role": "single",
+            }
+        ]
+
+    def fake_feed(source, **kwargs):
+        feed_calls.append((source, kwargs))
+        return [
+            {
+                "title": "RSS Agent 深度文章",
+                "url": "https://rss.example.com/agent",
+                "summary": "来自精品 RSS 的技术阅读线索。",
+                "source_id": "curated",
+                "source_title": "精品内容流",
+                "evidence_role": "reading_discovery_signal",
+                "source_card": {"domain": "rss.example.com", "source_type": "RSS/OPML"},
+                "feed_status": {"status": "fresh", "source_id": "curated", "stale": False, "error": ""},
+                "risk_tags": [],
+            }
+        ]
+
+    monkeypatch.setattr(webtools, "search_web", fake_search)
+    monkeypatch.setattr("guanlan.feeds.fetch_feed_source", fake_feed)
+
+    packet = webtools.build_research_packet(
+        "Python Agent 框架 对比 github issue",
+        preset="tech",
+        limit=20,
+        read_top=0,
+    )
+
+    assert search_calls
+    assert feed_calls and feed_calls[0][0] == "curated"
+    assert feed_calls[0][1]["category"] == "ai"
+    assert any(group["type"] == "feed" and group["forced"] for group in packet["result_groups"])
+    assert any(item["source"].startswith("feeds:") for item in packet["results"])
+    assert any("强制补跑 RSS" in item for item in packet["guidance"])
 
 
 def test_search_web_parses_bing_html(monkeypatch):

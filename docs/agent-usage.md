@@ -22,9 +22,28 @@
 - 失败时降级，不要硬撞平台风控。
 - 默认候选池按研究任务放大：搜索/研究/归档检索默认 50 条，热榜默认 50 条，读取失败后的搜索兜底默认 20 条。
 - Agent 调用时应尽量多取结果再筛选：普通任务保持 50，复杂研究可设到 80-100；只有用户明确要求“小样本/快速看一下”时才降低 limit。
+- Agent 平台外层 timeout 要宽松：不要用 10-30 秒去包住 `research`、`feeds` 或 `hotnews` 这种组合命令；超时只能说明网络/上游抖动，不代表没有证据。
 - 用户需要建议、影响判断、下一步行动，或询问“为什么会搜这个”时，优先使用 `research --advisor`，但把助理视角当作证据边界和写作规则，由你结合用户问题生成自然建议；不要机械复述模板，也不要当作用户真实意图。
 - 不确定该查哪些信源时，先用 `guanlan route "关键词"` 看需求路由；路由计划是软约束，优先源用于提高适配度，开放网页兜底用于防止信源池过窄。
 - `research` 会附带证据审计提示：如果同一模型、版本号、价格、参数量或发布时间出现不同说法，先把冲突和来源日期讲清楚，再给取舍依据；不要把观澜的冲突提示当成最终裁决。
+
+## Agent 外层超时建议
+
+观澜内部会给单个网页、RSS、热榜源设置较短的请求超时，避免一个源站无限卡住。但 Agent/MCP/自动化平台包住整个命令时，需要给组合流程更大的外层预算。建议值：
+
+| 场景 | 建议外层 timeout |
+| --- | --- |
+| `guanlan status`、`doctor`、`search`、单 URL `read` | 60-90 秒 |
+| `hotnews`、`feeds`、`pulse`、`read batch` | 120 秒 |
+| `research`、`compare`、`timeline`、`dossier`、`archive ingest-research` | 180-300 秒 |
+| 安装、升级、发布 smoke、Homebrew/PyPI 校验 | 300-600 秒 |
+
+如果发生超时：
+
+- 先重试一次；对 `search`、`read`、`pulse` 可加 `--cache-ttl 3600` 降低重复请求扰动。
+- 对 `research` 优先降低 `--read-top` 到 0 或 1，而不是把 `--limit` 从 50 砍到很小。
+- 对 `feeds` 看到 `feed_status=stale_cache` 时，要说明这是最近成功缓存，不是实时榜单。
+- 不要把 timeout 写成“没有结果”或“没有证据”；只能写成“本轮网络/上游未能完成，需要稍后重试或换后端”。
 
 ## 最小命令集
 
@@ -250,6 +269,15 @@ guanlan research "某主题" --profile china --limit 50 --read-top 2
 `research` 会自动整合搜索质量层、同题聚类、信源多样性和原文摘读。输出仍然不是最终答案，Agent 需要基于证据包再组织结论、依据和不确定性。
 
 `route` 会输出主要意图、证据角色、优先 scope、推荐站点、兜底 scope、查询改写和边界提醒。不要把 route 当成硬过滤：除非用户显式指定 `--scope` 或 `--site`，否则 `research` 会同时保留开放网页兜底，避免只在白名单里打转。
+
+科技、AI、开发者、工程实践类问题必须额外补一轮 RSS/精品内容流。`guanlan research "问题" --preset tech` 会自动把 `feeds curated` 作为 forced feed group 纳入候选池；如果 Agent 只跑了 `route` 或 `search`，还需要再跑：
+
+```bash
+guanlan feeds curated --category ai --limit 80
+guanlan feeds curated --limit 80
+```
+
+RSS 适合作阅读发现、新鲜技术文章和趋势线索，不替代官方文档、代码仓库、issue、benchmark 原文或可复现验证。
 
 `feeds` 依赖真实外部 RSS/OPML 源，默认会缓存最近一次成功结果。若源站超时，输出中可能出现 `feed_status=stale_cache` 和 `risk_tags=stale_cache`；这代表“用最近成功缓存保住线索”，不是实时状态，回答时要说明边界。
 

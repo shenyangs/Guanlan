@@ -40,6 +40,9 @@ metadata:
 
 - 搜索、研究、热榜、回响和本地知识库检索时，默认使用 50 条以上候选池；复杂调研可提高到 80-100。
 - 只有用户明确要“少量样本”“快速试一下”“只看前几条”时，才主动降低 limit。
+- 如果 Agent/MCP/自动化平台能设置工具 timeout：`search/read/status/doctor` 用 60-90 秒；`hotnews/feeds/pulse/read batch` 用 120 秒；`research/compare/timeline/dossier/archive ingest-research` 用 180-300 秒；安装/升级/发布 smoke 用 300-600 秒。
+- 超时只代表网络或上游源未完成，不代表没有证据；优先重试一次、加 `--cache-ttl 3600`，或把 `--read-top` 降到 0/1，不要为了速度把 50 条候选池砍成小样本。
+- 科技/AI/开发者/工程实践类问题必须额外补一轮 RSS/精品内容流；`research --preset tech` 会自动补，若只跑 `route` 或 `search`，再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。
 - 如果新用户问“装好了怎么用/怎么让 Agent 用观澜”，先运行 `guanlan welcome`。
 - 如果用户或 Agent 不知道观澜有哪些功能、该用哪个命令，先运行 `guanlan capabilities`；MCP 模式下调用 `guanlan_capabilities`。
 - `--advisor` 输出的是证据边界和写作规则，Agent 需要据此生成自然建议，不要机械复述固定小标题。
