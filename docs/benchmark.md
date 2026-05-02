@@ -54,3 +54,7 @@ guanlan quality live-smoke --limit 5
 ```
 
 `quality live-smoke` is deliberately optional. It is useful for seeing live network or upstream-source wobble, but the default release gate remains deterministic so a transient RSS timeout does not block an otherwise safe release.
+
+## Public Reports
+
+- [v0.3.7 benchmark and workflow report](benchmark-report-v0.3.7.md): records the first benchmark plan that includes compare/timeline/dossier, search-quality v2, read-quality summaries, and local-LLM workflow checks.

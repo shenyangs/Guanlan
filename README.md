@@ -41,7 +41,7 @@
 | 中文互联网研究底座 | 不只返回链接，而是把搜索、阅读、热榜、归档整理成 Agent 可继续推理的证据包。 |
 | 信源身份清楚 | 在中文语境里，“谁说的”很重要；观澜保留官方、党央媒、地方官媒、垂类媒体、社区样本和热榜信号的身份差异。 |
 | 信息孤岛路由 | 政策看官方，口碑看社区和内容平台，技术看开发者社区，产业看垂类媒体；观澜先判断去哪搜。 |
-| Agent-ready 输出 | `route`、`research`、`--format context`、MCP、只读 HTTP 和本地模型 Prompt 都面向下游 Agent。 |
+| Agent-ready 输出 | `route`、`research`、`compare`、`timeline`、`dossier`、`--format context`、MCP、只读 HTTP 和本地模型 Prompt 都面向下游 Agent。 |
 | 安全边界明确 | 默认只读、低扰、明源；Cookie、Keychain 和登录态访问都走显式授权。 |
 | 本地模型联网 | 让 Ollama、LM Studio、Open WebUI 等没有原生搜索能力的模型拿到中文互联网证据上下文。 |
 
@@ -51,18 +51,18 @@
 
 ## TL;DR（30 秒上手）
 
-安装（任选一种）：
+安装/升级（任选一种，默认使用“强制拿最新”的命令）：
 
 ```bash
-brew tap shenyangs/tap && brew install guanlan
+brew update && brew tap shenyangs/tap && brew reinstall shenyangs/tap/guanlan
 ```
 
 ```bash
-uv tool install guanlan
+uv tool install --force --upgrade guanlan
 ```
 
 ```bash
-pipx install guanlan
+pipx install --force guanlan
 ```
 
 验证：
@@ -90,6 +90,7 @@ guanlan hotnews today --brief
 - **网页阅读与降级**：`guanlan read "URL"`，Jina Reader、直连 HTML、搜索兜底组合使用。
 - **热榜观察**：原生多源入口 `guanlan hotnews today`，覆盖百度、微博、B站、IT之家、V2EX；NewsNow 可选增强源 `guanlan hotnews newsnow:36kr-quick`
 - **研究证据包**：`guanlan research "关键词" --format context`
+- **高阶研究工作流**：`compare` 做多对象对比，`timeline` 抽时间线，`dossier` 生成研究档案。
 - **本地知识库**：`guanlan archive add/search/export`
 
 ## 为什么是“观澜”
@@ -128,6 +129,7 @@ guanlan hotnews today --brief
 | RSS | RSS/Atom 订阅源解析 | 可用 |
 | GitHub | 公开仓库、Issue、PR、搜索；认证后可访问更多能力 | 可用 |
 | 搜索 | Baidu/Bing/DuckDuckGo 多后端聚合、去重、信源分类、可信度评分、中文/英文 scope | 可用，持续优化 |
+| 研究工作流 | `compare`、`timeline`、`dossier` 把证据包整理成对比、时间线和档案 | 可用 |
 | 视频 | YouTube、B站字幕与元信息读取 | 可用 |
 | 开发者社区 | V2EX 热门、节点、帖子与回复 | 可用 |
 | 微博 | 热搜、搜索、用户与话题读取 | best-effort，按环境和授权波动 |
@@ -205,13 +207,13 @@ brew reinstall shenyangs/tap/guanlan
 或（PyPI + `uv`）：
 
 ```bash
-uv tool install guanlan
+uv tool install --force --upgrade guanlan
 ```
 
 或（PyPI + `pipx`）：
 
 ```bash
-pipx install guanlan
+pipx install --force guanlan
 ```
 
 **第三步：确认能用**
@@ -221,7 +223,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.3.6`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.3.7`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -283,22 +285,26 @@ guanlan hotnews today --limit 5 --trends
 推荐直接从 PyPI 安装：
 
 ```bash
-uv tool install guanlan
+uv tool install --force --upgrade guanlan
+guanlan version
 guanlan doctor
 ```
 
 如果你使用 `pipx`：
 
 ```bash
-pipx install guanlan
+pipx install --force guanlan
+guanlan version
 guanlan doctor
 ```
 
 如果你偏好 Homebrew：
 
 ```bash
+brew update
 brew tap shenyangs/tap
-brew install guanlan
+brew reinstall shenyangs/tap/guanlan
+guanlan version
 guanlan doctor
 ```
 
@@ -422,9 +428,13 @@ guanlan configure --from-browser chrome
 | `guanlan research "关键词" --route-chart` | 追加 ASCII 路由诊断图，展示意图、证据角色和 scope 权重。 |
 | `guanlan research "关键词" --advisor` | 在证据包后追加助理视角规则，帮助 Agent 基于证据生成建议。 |
 | `guanlan research "关键词" --advisor --advisor-style risk` | 按风险/决策/策略等风格生成更自然的 Agent 作答骨架。 |
+| `guanlan compare "A" "B" --focus "价格 口碑" --limit 80` | 对多个对象分别建证据包，再按官方/媒体/用户样本/近期动态/风险维度做对比。 |
+| `guanlan timeline "某政策 最新进展" --limit 80` | 从宽候选池里抽取带日期的事件线索，并把无日期但可能重要的证据单列出来。 |
+| `guanlan dossier "某公司" --focus "业务 口碑 风险" --limit 80` | 生成一个实体研究档案：信源概览、分面证据、近期时间线、待核验问题和下一步命令。 |
 | `guanlan prompt "问题"` | 快速生成 Ollama / LM Studio / Open WebUI 可用的联网 Prompt。 |
 | `guanlan context "问题"` | `prompt` 的别名，适合在本地 Agent 工作流里表达“给模型上下文”。 |
 | `guanlan prompt "问题" --style decision` | 为本地模型生成决策型/证据型/简洁型/深度型联网 Prompt。 |
+| `guanlan report html --input results.json --output report.html` | 旁支静态 HTML 报表渲染，只读取已有 JSON/stdin/demo 数据，不触发搜索、阅读或归档。 |
 | `guanlan research "关键词" --sites zhihu.com,weibo.com` | 按多个指定站点生成平台定向证据块。 |
 | `guanlan pulse "关键词"` | 安全版话题回响分析，输出讨论倾向、关键词信号和明确边界。 |
 | `guanlan feeds curated --limit 80` | 读取公开精品 RSS，发现技术、AI、产品和商业科技内容；外部源超时时会优先返回最近成功缓存并标记 `stale_cache`。 |
@@ -584,6 +594,22 @@ guanlan search "EI会议 投稿 检索" --profile china --scope academic --forma
 
 这类问题会优先区分数据库/出版商口径、会议 CFP、学校或单位认定口径和经验帖；不要把 SEO 代投文章当成最终标准。
 
+### 高阶研究工作流：对比、时间线和档案
+
+当用户不是简单问“搜一下”，而是要“帮我比较”“梳理脉络”“整理一个完整档案”，可以直接使用三类高阶工作流。它们仍然基于 `research` 的公开证据包，不替代事实核验，但能让下游 Agent 少做很多结构化整理。
+
+```bash
+guanlan compare "LangGraph" "AutoGen" "CrewAI" --focus "中文资料 技术选型 社区反馈" --preset tech --limit 80 --format context
+guanlan timeline "低空经济 广东 政策 最新进展" --preset local --limit 80
+guanlan dossier "某公司" --focus "业务 口碑 风险 近期动态" --limit 80 --read-top 2
+```
+
+三者适用边界：
+
+- `compare`：适合多产品、多公司、多政策方案、多技术路线对照；它会按官方/产业/用户样本/近期动态/风险维度提示“证据足不足”。
+- `timeline`：适合近期进展、事件演变、政策发布、版本发布；日期来自公开材料可见线索，缺日期的重要证据会单列。
+- `dossier`：适合做公司、产品、政策、事件的研究档案；输出的是可继续补证的骨架，不是最终定论。
+
 ### 9. 读取单篇文章或网页
 
 适合用户给你一个 URL，希望你读完再总结。默认会先尝试更干净的阅读路径，再按情况降级。
@@ -709,6 +735,8 @@ guanlan search "最新 人工智能 政策" --profile china --cluster-threshold 
 
 从 `0.2.4` 开始，trace 还会显示 `query_strategy`：观澜会把一个问题拆成官方原文、权威报道、用户样本、行业材料、近期进展等不同证据角色。`research` 会用这些 query 变体分头搜索，再合并去重，避免一个宽泛 query 把水面看窄。
 
+从 `0.3.7` 开始，`query_strategy` 还会暴露 `time_window` 和 `search_quality_v2`：涉及“近期、最近、热点、最新”等问题时，Agent 会被提醒按时间窗口解释结果，窗口外材料只作为背景；同时保持 50-100 的较大候选池，先宽取再筛选。
+
 从 `0.2.5` 开始，每条搜索结果还会带 `evidence_role`，例如 `official_primary`、`authoritative_report`、`user_sample`、`industry_report`。如果结果池缺少某类关键证据，`search --trace` 会给出“缺什么信源、建议补什么”的提示。
 
 ### 14. 给 AI Agent 的最短工作流
@@ -766,6 +794,15 @@ guanlan search "新质生产力 政策 原文" --profile china --scope party_cen
 guanlan read "https://example.com/article" --format prompt --question "请提炼这篇文章的关键信息" > prompt.md
 ```
 
+如果本地模型要做更复杂的研究整理，可以先让观澜输出结构化上下文，再交给模型写答案：
+
+```bash
+guanlan compare "产品A" "产品B" --focus "价格 口碑 风险" --format context > context.md
+guanlan timeline "某事件 最新进展" --limit 80 --format context > context.md
+guanlan dossier "某公司" --focus "业务 口碑 风险" --format context > context.md
+ollama run qwen3:latest < context.md
+```
+
 如果本地 Agent 支持 MCP，可以生成配置：
 
 ```bash
@@ -779,7 +816,7 @@ guanlan mcp config --client openwebui
 guanlan serve --host 127.0.0.1 --port 8765
 ```
 
-服务默认只监听本机，提供 `/search`、`/research`、`/read`、`/hotnews`、`/feeds`、`/route`、`/context`、`/prompt` 和 `/archive/search` 等只读接口，不提供发布、评论、点赞、私信等写操作。如果必须监听 `0.0.0.0` 或局域网地址，请使用 `--token` 或 `GUANLAN_SERVE_TOKEN`，请求侧通过 `Authorization: Bearer <token>` 或 `X-Guanlan-Token` 传入；否则虽然只读，也可能暴露本地 archive 内容和搜索行为。对本地模型来说，推荐工作流是：
+服务默认只监听本机，提供 `/search`、`/research`、`/compare`、`/timeline`、`/dossier`、`/read`、`/hotnews`、`/feeds`、`/route`、`/context`、`/prompt` 和 `/archive/search` 等只读接口，不提供发布、评论、点赞、私信等写操作。如果必须监听 `0.0.0.0` 或局域网地址，请使用 `--token` 或 `GUANLAN_SERVE_TOKEN`，请求侧通过 `Authorization: Bearer <token>` 或 `X-Guanlan-Token` 传入；否则虽然只读，也可能暴露本地 archive 内容和搜索行为。对本地模型来说，推荐工作流是：
 
 1. 用 `hotnews --brief` 或 `route` 判断该去哪找。
 2. 用 `search/research --format context` 拿证据表。

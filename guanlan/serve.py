@@ -2,7 +2,7 @@
 """Read-only local HTTP service for Guanlan.
 
 The service is intentionally local-first and conservative: by default it binds
-to 127.0.0.1 and exposes only search/read/research/hotnews/feeds/archive lookup.
+to 127.0.0.1 and exposes only search/read/research/workflow/hotnews/feeds/archive lookup.
 """
 
 from __future__ import annotations
@@ -79,6 +79,54 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 advisor=bool(payload.get("advisor", False)),
             )
             return 200, packet
+        if method == "POST" and route == "/compare":
+            from guanlan.research_workflows import build_compare_report
+
+            subjects = payload.get("subjects")
+            if not isinstance(subjects, list):
+                subjects = []
+            return 200, build_compare_report(
+                [str(item) for item in subjects],
+                focus=str(payload.get("focus") or ""),
+                preset=str(payload.get("preset") or "general"),
+                profile=payload.get("profile") or "china",
+                limit=_int(payload.get("limit"), 50),
+                read_top=_int(payload.get("read_top"), 0),
+                search_backend=str(payload.get("search_backend") or "auto"),
+                read_backend=str(payload.get("read_backend") or "auto"),
+                max_read_chars=_optional_int(payload.get("max_read_chars")),
+                select_top=_int(payload.get("select_top"), 6),
+            )
+        if method == "POST" and route == "/timeline":
+            from guanlan.research_workflows import build_timeline_report
+
+            return 200, build_timeline_report(
+                str(payload.get("query", "")),
+                preset=str(payload.get("preset") or "general"),
+                profile=payload.get("profile") or "china",
+                limit=_int(payload.get("limit"), 80),
+                read_top=_int(payload.get("read_top"), 0),
+                search_backend=str(payload.get("search_backend") or "auto"),
+                read_backend=str(payload.get("read_backend") or "auto"),
+                max_read_chars=_optional_int(payload.get("max_read_chars")),
+                max_events=_int(payload.get("max_events"), 20),
+                order=str(payload.get("order") or "desc"),
+            )
+        if method == "POST" and route == "/dossier":
+            from guanlan.research_workflows import build_dossier_report
+
+            return 200, build_dossier_report(
+                str(payload.get("entity", "")),
+                focus=str(payload.get("focus") or ""),
+                preset=str(payload.get("preset") or "general"),
+                profile=payload.get("profile") or "china",
+                limit=_int(payload.get("limit"), 80),
+                read_top=_int(payload.get("read_top"), 2),
+                search_backend=str(payload.get("search_backend") or "auto"),
+                read_backend=str(payload.get("read_backend") or "auto"),
+                max_read_chars=_int(payload.get("max_read_chars"), 2400),
+                select_top=_int(payload.get("select_top"), 10),
+            )
         if method == "POST" and route in {"/prompt", "/context"}:
             from guanlan.webtools import build_research_packet, format_research_prompt
 
@@ -179,7 +227,7 @@ def run_server(host: str = "127.0.0.1", port: int = 8765, token: str = "") -> No
     server = ThreadingHTTPServer((host, int(port)), _GuanlanHandler)
     server.guanlan_token = token or os.environ.get("GUANLAN_SERVE_TOKEN", "")
     print(f"观澜只读服务启动: http://{host}:{port}")
-    print("Endpoints: /health, /sources, /route, /search, /research, /read, /hotnews, /feeds, /archive/search")
+    print("Endpoints: /health, /sources, /route, /search, /research, /compare, /timeline, /dossier, /read, /hotnews, /feeds, /archive/search")
     if server.guanlan_token:
         print("Access: token required via Authorization: Bearer <token> or X-Guanlan-Token")
     server.serve_forever()

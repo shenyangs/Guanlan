@@ -66,6 +66,17 @@ guanlan research "跨境电商 AI 工具" --preset ecommerce --limit 80 --format
 ollama run qwen3:latest < prompt.md
 ```
 
+高阶研究工作流也可以直接给本地模型做前置联网：
+
+```bash
+guanlan compare "产品A" "产品B" --focus "价格 口碑 风险" --limit 80 --format context > context.md
+guanlan timeline "某事件 最新进展" --limit 80 --format context > context.md
+guanlan dossier "某公司" --focus "业务 口碑 风险" --limit 80 --format context > context.md
+ollama run qwen3:latest < context.md
+```
+
+`compare` 适合让本地模型写“怎么选/差异在哪”，`timeline` 适合写“发生顺序/最新进展”，`dossier` 适合写“对象档案/待核验问题”。三者都保留来源链接和边界，不要求模型自己联网。
+
 读单篇网页：
 
 ```bash
@@ -137,6 +148,9 @@ guanlan serve --host 0.0.0.0 --port 8765
 - `POST /route`
 - `POST /search`
 - `POST /research`
+- `POST /compare`
+- `POST /timeline`
+- `POST /dossier`
 - `POST /context`
 - `POST /prompt`
 - `POST /read`

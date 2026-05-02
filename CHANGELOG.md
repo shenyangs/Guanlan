@@ -8,6 +8,26 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.3.7 - 2026-05-02
+
+### Added
+
+- 新增 `guanlan compare`：对多个对象分别建立研究证据包，并按官方/媒体/用户样本/近期动态/风险等维度输出对比表、代表证据、共同边界和下一步命令。
+- 新增 `guanlan timeline`：从宽候选池抽取可见日期线索，生成事件时间线，并把无日期但可能重要的证据单列出来，避免把“无日期材料”静默丢掉。
+- 新增 `guanlan dossier`：为公司、产品、政策、事件或主题生成研究档案，包含信源概览、分面证据、近期时间线、待核验问题、advisor 规则和下一步命令。
+- MCP 新增 `guanlan_compare`、`guanlan_timeline`、`guanlan_dossier` 三个只读工具；本地 HTTP 服务新增 `/compare`、`/timeline`、`/dossier` 只读接口。
+- 新增 `guanlan report html` 旁支静态 HTML 报表渲染器，只读取已有 JSON/stdin/demo 数据，不触发搜索、阅读、归档或网络请求。
+- 新增 `docs/benchmark-report-v0.3.7.md`，记录高阶工作流、搜索质量 v2、阅读质量摘要和本地模型工作流的测试口径。
+- 新增官网发布辅助脚本：`scripts/sync_website_version.py` 同步官网版本号，`scripts/deploy_website_ecs.sh` 用于部署 `website/` 静态站点。
+
+### Changed
+
+- `query_strategy` 增加 `time_window` 和 `search_quality_v2`，近期/热点类查询会更明确提醒 Agent 按时间窗口解释结果，窗口外材料仅作背景。
+- `read_quality_summary` 增加 `status_counts`、`low_quality_count`、`low_quality_urls` 和 `recommendation`，让下游 Agent 更清楚哪些正文可引用、哪些只能作线索。
+- README、Agent 文档、Skill、本地模型指南、契约文档和官网同步新增 compare/timeline/dossier 用法，并把安装命令继续收束到“强制拿最新 + 安装后校验版本”。
+- README、Agent 文档、Skill 和能力地图同步补充 `report html` 的旁支定位，明确它不是主搜索/阅读/研究链路的替代品。
+- 官网展示版本号同步到 `0.3.7`，并补充对比研究、时间线和研究档案的命令入口。
+
 ## v0.3.6 - 2026-05-02
 
 ### Changed

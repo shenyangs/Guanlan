@@ -25,6 +25,7 @@ triggers:
   - web: 网页/链接/文章/公众号/微信文章/rss/读一下/打开这个
   - video: youtube/视频/播客/字幕/小宇宙/转录/yt
   - finance: 雪球/股票/stock/xueqiu/行情/基金
+  - report: 报表/html report/可视化报告/汇报页/出个报告
 metadata:
   openclaw:
     homepage: local-repo
@@ -42,6 +43,7 @@ metadata:
 - 如果用户或 Agent 不知道观澜有哪些功能、该用哪个命令，先运行 `guanlan capabilities`；MCP 模式下调用 `guanlan_capabilities`。
 - `--advisor` 输出的是证据边界和写作规则，Agent 需要据此生成自然建议，不要机械复述固定小标题。
 - `research` 证据包会附带证据审计提示；遇到版本号、价格、参数量、发布日期冲突时，先说明不同来源分别怎么说，再给取舍依据。
+- `report html` 是旁支展示层，只把已有 JSON/stdin/demo 数据渲染成静态 HTML；不要用它替代 search/read/research/hotnews 主链路。
 - 更新观澜时必须全量更新，不要只跑增量 upgrade：优先 `uv tool install --force --upgrade guanlan`，注意 uv 只有 `--force` 可能重装旧锁定版本；Homebrew 用 `brew update && brew reinstall shenyangs/tap/guanlan`；pipx 用 `pipx install --force guanlan`。更新后运行 `hash -r`、`command -v guanlan`、`which -a guanlan`、`guanlan version`，再跑 `guanlan capabilities`、`guanlan doctor --install-check`、`guanlan doctor --trace`、`guanlan search "人工智能 政策" --profile china --limit 5 --trace`、`guanlan hotnews today --limit 5 --trends`。版本或路径不一致时停止配置 MCP。
 
 ## 路由表
@@ -82,6 +84,9 @@ guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
 guanlan prompt "query" --profile china --style evidence
 guanlan context "query" --profile china --style evidence
 guanlan research "product 用户评价" --preset reputation --read-top 0 --advisor
+guanlan compare "A" "B" --focus "价格 口碑 风险" --limit 80 --format context
+guanlan timeline "某事件 最新进展" --limit 80 --format context
+guanlan dossier "某对象" --focus "业务 口碑 风险" --limit 80 --format context
 guanlan pulse "query" --format context
 
 # 通用网页阅读
@@ -111,6 +116,7 @@ guanlan plugin template my_company_api
 guanlan quality robustness
 guanlan eval benchmark
 guanlan eval scenarios --format jsonl
+guanlan report html --input results.json --output report.html
 
 # GitHub 搜索
 gh search repos "query" --sort stars --limit 50

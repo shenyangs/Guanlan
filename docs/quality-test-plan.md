@@ -11,6 +11,7 @@
 | 正文抽取 | `read` 输出应尽量接近正文，而不是导航、登录、推荐和页脚。 | 中文新闻/官方页正文占比明显高于噪声；失败时能给搜索兜底。 |
 | 趋势归并 | 多源热点能把同一事件聚到一起，同时避免错聚类。 | `--trends` 能展示跨源来源数、代表标题和分布；聚类解释可读。 |
 | advisor 自然度 | `--advisor` 给 Agent 规则和边界，不机械复述模板。 | 输出能结合 query intent、证据类型、样本偏差和下一步；不声称知道用户真实动机。 |
+| 研究工作流 | `compare/timeline/dossier` 能把证据包整理成对比、时间线和档案，不吞掉来源和边界。 | JSON/Markdown/context 都保留来源链接、证据角色、边界提示和下一步命令。 |
 | 路由评测 | 固定场景能命中合适的意图、scope、证据角色和候选池下限。 | `eval benchmark` 通过；覆盖政策、口碑、热点、技术、学术、地方、电商和本地模型。 |
 | 发版回归 | 每次更新不能让下游 Agent 拿到的材料变少、变窄或变脏。 | `quality regression` 通过；默认池、RSS 兜底、正文抽取和 advisor 动态性保持。 |
 
@@ -49,6 +50,12 @@
 - `guanlan research "新质生产力 政策 原文 最新" --preset policy --read-top 1 --advisor`
 - `guanlan research "最近 中文互联网 AI 热点" --profile china --read-top 0 --advisor`
 
+### 研究工作流
+
+- `guanlan compare "产品A" "产品B" --focus "价格 口碑 风险" --limit 80 --format context`
+- `guanlan timeline "低空经济 广东 政策 最新进展" --limit 80 --format context`
+- `guanlan dossier "某公司" --focus "业务 口碑 风险" --limit 80 --format context`
+
 ## 评分方法
 
 每条用例按 0-2 分粗评：
@@ -76,4 +83,5 @@
 - 至少跑 5 个热榜源和一次 `today --trends`。
 - 至少读 5 篇中文页面并记录正文/噪声观察。
 - 至少跑 3 条 `research --advisor`，人工检查自然度。
+- 至少跑 1 条 `compare`、1 条 `timeline`、1 条 `dossier`，检查输出是否仍保留信源身份、证据角色和边界。
 - 更新薄弱点清单，不把实验能力包装成稳定能力。

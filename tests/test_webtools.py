@@ -188,6 +188,9 @@ def test_query_strategy_builds_role_specific_variants():
     assert "user_sample" in roles
     assert "review" in roles
     assert "fresh_news" in roles
+    assert "fresh_user_sample" in roles
+    assert strategy["time_window"]["enabled"] is True
+    assert strategy["search_quality_v2"]["recency_bounded"] is True
     assert strategy["agent_hint"]
 
 
@@ -1555,6 +1558,8 @@ def test_build_research_packet_reads_representative_results(monkeypatch):
     assert packet["readings"][0]["content"] == "READ https://example.com/a"
     assert packet["readings"][0]["read_quality"]["chars"] > 0
     assert packet["read_quality_summary"]["count"] == 2
+    assert "recommendation" in packet["read_quality_summary"]
+    assert "status_counts" in packet["read_quality_summary"]
 
 
 def test_build_research_packet_selects_diverse_representative_evidence(monkeypatch):

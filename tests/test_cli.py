@@ -127,7 +127,49 @@ class TestCLI:
         assert "discover" in ids
         assert "feeds" in ids
         assert "advisor" in ids
+        assert "report" in ids
         assert any(item["mcp"] == "guanlan_capabilities" for item in data)
+
+    def test_report_html_cli_writes_sidecar_report(self, capsys, tmp_path):
+        input_path = tmp_path / "results.json"
+        output_path = tmp_path / "report.html"
+        input_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "title": "Search result",
+                        "url": "https://example.com/a",
+                        "source_title": "Example",
+                        "snippet": "Useful.",
+                        "score": 8,
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        with patch(
+            "sys.argv",
+            [
+                "guanlan",
+                "report",
+                "html",
+                "--input",
+                str(input_path),
+                "--output",
+                str(output_path),
+                "--title",
+                "侧边报表",
+            ],
+        ):
+            main()
+
+        captured = capsys.readouterr()
+        assert "观澜旁支 HTML 报表" in captured.out
+        assert output_path.exists()
+        html = output_path.read_text(encoding="utf-8")
+        assert "侧边报表" in html
+        assert "Search result" in html
 
     def test_feeds_curated_cli_outputs_json(self, capsys, monkeypatch):
         monkeypatch.setattr(

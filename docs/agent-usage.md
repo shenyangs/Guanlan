@@ -47,6 +47,9 @@
 | “我该去哪搜/怎么分信源/该跑哪个命令” | `guanlan route "关键词"`，先看 `recommended_commands` |
 | “帮我查清楚并给依据” | `guanlan research "关键词" --profile china` |
 | “查完后给建议/下一步/可能原因” | `guanlan research "关键词" --profile china --advisor` |
+| “帮我对比/竞品分析/多个方案怎么选” | `guanlan compare "A" "B" --focus "价格 口碑 风险" --limit 80 --format context` |
+| “按时间线梳理/最近发生了什么” | `guanlan timeline "关键词 最新进展" --limit 80 --format context` |
+| “整理一个公司/产品/政策档案” | `guanlan dossier "对象" --focus "业务 口碑 风险" --limit 80 --format context` |
 | “查政策/监管/官方通知” | `guanlan research "关键词" --preset policy` |
 | “查产品口碑/用户评价” | `guanlan research "关键词" --preset reputation` |
 | “查 EI/SCI/Scopus、学术会议、投稿/检索/收录要求” | `guanlan research "关键词" --preset academic --read-top 0` |
@@ -76,6 +79,7 @@
 | “把搜索结果直接塞进 prompt” | `guanlan search "关键词" --format context` |
 | “给没有联网能力的本地模型准备输入” | `guanlan context "关键词" --profile china --style evidence` |
 | “把研究证据包直接喂给本地模型” | `guanlan research "关键词" --format prompt` |
+| “把结果做成静态 HTML 报表/汇报页” | `guanlan report html --input results.json --output report.html`，这是旁支渲染器，不替代主链路 |
 | “生成 MCP 客户端配置” | `guanlan mcp config --client codex` |
 | “本地工具不支持 MCP，但能调 HTTP” | `guanlan serve --host 127.0.0.1 --port 8765` |
 | “必须把 HTTP 服务暴露到局域网” | `guanlan serve --host 0.0.0.0 --token "$TOKEN"` |
@@ -98,7 +102,7 @@
 | “导出真实任务评测池” | `guanlan eval tasks --format jsonl` |
 | “发版前检查稳健性” | `guanlan quality robustness` |
 
-CLI 是默认主路径；命令选择不确定时先跑 `guanlan route "用户需求"`，按 `recommended_commands` 起手。若当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_capabilities`、`guanlan_search`、`guanlan_route`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_feeds`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
+CLI 是默认主路径；命令选择不确定时先跑 `guanlan route "用户需求"`，按 `recommended_commands` 起手。若当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_capabilities`、`guanlan_search`、`guanlan_route`、`guanlan_read`、`guanlan_research`、`guanlan_compare`、`guanlan_timeline`、`guanlan_dossier`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_feeds`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
 
 本地 HTTP 服务默认只建议监听 `127.0.0.1`。如果用户明确要求监听局域网或服务器公网地址，必须提醒其设置 `--token` 或 `GUANLAN_SERVE_TOKEN`，因为只读接口也可能暴露本地 archive 内容和搜索行为。
 

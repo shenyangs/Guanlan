@@ -68,6 +68,18 @@ This document records the fields Guanlan treats as stable for downstream agents,
 
 `guanlan archive stats --quality` should expose aggregate read-quality and RAG-readiness signals. `archive export --min-quality N` may filter noisy records for RAG import, but filtering is explicit and should not silently delete local archive rows.
 
+## Workflow Contract
+
+`guanlan compare`, `guanlan timeline`, `guanlan dossier`, MCP workflow tools, and HTTP `/compare` `/timeline` `/dossier` are structured views over research evidence packets.
+
+| Workflow | Stable Fields |
+| --- | --- |
+| `compare` | `mode`, `subjects`, `focus`, `subject_reports`, `comparison_table`, `shared_caveats`, `suggested_next`, `boundary`. |
+| `timeline` | `mode`, `query`, `event_count`, `events`, `undated_evidence`, `source_diagnostics`, `route_plan`, `evidence_audit`, `boundary`. |
+| `dossier` | `mode`, `entity`, `focus`, `query`, `source_mix`, `source_diagnostics`, `route_plan`, `read_quality_summary`, `sections`, `timeline`, `open_questions`, `suggested_next`, `boundary`. |
+
+Workflow JSON should stay compact enough for agents: public payloads should not embed the full raw research packet unless an explicit future flag asks for it. Workflows may add new sections, but should keep source links, evidence roles, and boundary wording visible.
+
 ## Hotnews And Feeds Contract
 
 `hotnews` and `feeds` are public read-only discovery surfaces. They should preserve:
@@ -95,6 +107,9 @@ Stable MCP tools include:
 - `guanlan_route`
 - `guanlan_read`
 - `guanlan_research`
+- `guanlan_compare`
+- `guanlan_timeline`
+- `guanlan_dossier`
 - `guanlan_pulse`
 - `guanlan_hotnews`
 - `guanlan_feeds`

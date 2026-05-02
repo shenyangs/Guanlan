@@ -95,6 +95,15 @@
             <button class="intent-button" type="button" data-command='guanlan research "某产品 用户评价" --preset reputation --limit 80 --read-top 0 --advisor'>
               口碑回响
             </button>
+            <button class="intent-button" type="button" data-command='guanlan compare "产品A" "产品B" --focus "价格 口碑 风险" --limit 80 --format context'>
+              对比研究
+            </button>
+            <button class="intent-button" type="button" data-command='guanlan timeline "某事件 最新进展" --limit 80 --format context'>
+              时间线
+            </button>
+            <button class="intent-button" type="button" data-command='guanlan dossier "某公司" --focus "业务 口碑 风险" --limit 80 --format context'>
+              研究档案
+            </button>
             <button class="intent-button" type="button" data-command='guanlan prompt "今天中文互联网 AI 热点" --profile china --style evidence'>
               本地模型
             </button>
@@ -119,6 +128,10 @@
         <article>
           <span>research</span>
           <code>guanlan research "关键词" --profile china --limit 80</code>
+        </article>
+        <article>
+          <span>workflow</span>
+          <code>guanlan compare "A" "B" --limit 80</code>
         </article>
         <article>
           <span>local llm</span>
@@ -152,6 +165,11 @@
             <h3>给本地模型接上网络</h3>
             <p>Ollama、LM Studio、Open WebUI 等无联网模型，可以通过 CLI、MCP 或本地只读 HTTP 获得中文互联网证据。</p>
           </article>
+          <article>
+            <span>05</span>
+            <h3>把材料组织成交付形态</h3>
+            <p>compare、timeline、dossier 把证据包整理成对比、脉络和档案，让 Agent 少做机械整理，多做判断。</p>
+          </article>
         </div>
       </section>
 
@@ -180,6 +198,11 @@
             <span class="feature-index">04</span>
             <h3>本地知识库</h3>
             <p>把链接收入 archive，之后用搜索、质量视图与 JSONL 导出接入自己的 RAG、报告或长期研究流。</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-index">05</span>
+            <h3>研究工作流</h3>
+            <p>多对象对比、事件时间线和实体档案都可以直接输出为 Agent 上下文、JSON 或 Markdown。</p>
           </article>
         </div>
       </section>
@@ -277,8 +300,10 @@
                 <path d="M8 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-1v1a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3h1V7Zm2 1h3a3 3 0 0 1 3 3v3h1a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v1Zm-3 2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H7Z"/>
               </svg>
             </button>
-            <pre><code>brew tap shenyangs/tap
-brew install guanlan
+            <pre><code>brew update
+brew tap shenyangs/tap
+brew reinstall shenyangs/tap/guanlan
+guanlan version
 guanlan doctor</code></pre>
           </article>
           <article>
@@ -288,7 +313,8 @@ guanlan doctor</code></pre>
                 <path d="M8 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-1v1a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3h1V7Zm2 1h3a3 3 0 0 1 3 3v3h1a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v1Zm-3 2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H7Z"/>
               </svg>
             </button>
-            <pre><code>uv tool install guanlan
+            <pre><code>uv tool install --force --upgrade guanlan
+guanlan version
 guanlan doctor</code></pre>
           </article>
         </div>
@@ -296,7 +322,7 @@ guanlan doctor</code></pre>
     </main>
 
     <footer class="site-footer">
-      <span>Guanlan v0.3.6</span>
+      <span>Guanlan v0.3.7</span>
       <a href="../README.md">README</a>
       <a href="../docs/agent-usage.md">Agent Guide</a>
       <a href="../docs/install.md">Install</a>

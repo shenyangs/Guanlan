@@ -12,6 +12,7 @@
 | [Agent 使用说明](agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜、社交平台和安全降级规则。 |
 | [Agent 输出契约](contract.md) | 给 Agent/MCP/HTTP/RAG 集成方看的稳定字段与边界承诺。 |
 | [Benchmark 说明](benchmark.md) | 离线契约评测、真实任务池和 live/manual benchmark 方法。 |
+| [v0.3.7 Benchmark 报告](benchmark-report-v0.3.7.md) | 对比、时间线、档案、搜索质量 v2 与本地模型工作流的测试口径。 |
 | [安装指南](install.md) | 让 Agent 按步骤安装、配置和自检。 |
 | [排障手册](troubleshooting.md) | 遇到钥匙串弹窗、网络异常、Cookie 或平台失败时排查。 |
 | [Cookie 导出](cookie-export.md) | 需要手动提供 Cookie 时，按安全方式导出。 |
@@ -40,6 +41,7 @@
 - `guanlan status` 已区分 `verified`、`backend-ready`、`best-effort`，避免把后端存在误读为端到端稳定。
 - Agent 基础搜索/阅读命令已经可用：`guanlan search "关键词"`、`guanlan search "关键词" --profile china`、`guanlan search "关键词" --scope party_central`、`guanlan read "URL"`。
 - 搜索质量层已经可用：多后端聚合、URL 去重、中文信源分类、可信度评分、scope 语境优先和近期/热点类查询的时间收束。
+- 高阶研究工作流已经可用：`guanlan compare`、`guanlan timeline`、`guanlan dossier`，用于对比、时间线和实体档案。
 - 来源分布诊断已经可用：`guanlan search "关键词" --source-chart`、`guanlan research "关键词" --source-chart`。
 - 安全版话题回响已经可用：`guanlan pulse "关键词" --format context`，默认只基于公开搜索样本输出倾向、置信度和边界提醒。
 - Jina Reader 已作为第一读取入口，但不是唯一依赖；读取不稳时可用 `guanlan read "URL" --backend direct` 直连原网页。

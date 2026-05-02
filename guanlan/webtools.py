@@ -2470,15 +2470,48 @@ def _reading_record(
 
 def _read_quality_summary(readings: list[dict[str, Any]]) -> dict[str, Any]:
     qualities = [item.get("read_quality") for item in readings if isinstance(item.get("read_quality"), dict) and item.get("read_quality")]
+    status_counts: dict[str, int] = {}
+    for item in readings:
+        status = str(item.get("status") or "unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
     if not qualities:
-        return {"count": 0, "usable_count": 0, "avg_score": 0, "labels": {}}
+        return {
+            "count": 0,
+            "usable_count": 0,
+            "low_quality_count": 0,
+            "avg_score": 0,
+            "labels": {},
+            "status_counts": status_counts,
+            "recommendation": "未成功读取正文；下游 Agent 应使用搜索摘要并补读更合适的一手来源。",
+        }
     labels: dict[str, int] = {}
     for quality in qualities:
         label = str(quality.get("label") or "unknown")
         labels[label] = labels.get(label, 0) + 1
     usable = [quality for quality in qualities if quality.get("score", 0) >= 55 and quality.get("chars", 0) >= 160]
+    low_quality = [
+        item
+        for item in readings
+        if isinstance(item.get("read_quality"), dict)
+        and (item["read_quality"].get("score", 0) < 55 or item["read_quality"].get("chars", 0) < 160)
+    ]
     avg_score = round(sum(float(quality.get("score") or 0) for quality in qualities) / max(len(qualities), 1), 1)
-    return {"count": len(qualities), "usable_count": len(usable), "avg_score": avg_score, "labels": labels}
+    if not usable:
+        recommendation = "正文质量偏弱；回答前建议扩大 read-top、尝试 --read-backend direct，或回到搜索结果挑选更干净的来源。"
+    elif len(usable) < len(qualities):
+        recommendation = "部分页面正文偏弱；可引用 usable 页面，低质量页面只作线索。"
+    else:
+        recommendation = "代表页面正文质量可用；仍需保留来源、日期和平台边界。"
+    return {
+        "count": len(qualities),
+        "usable_count": len(usable),
+        "low_quality_count": len(low_quality),
+        "avg_score": avg_score,
+        "labels": labels,
+        "status_counts": status_counts,
+        "low_quality_urls": [str(item.get("url") or "") for item in low_quality[:5] if item.get("url")],
+        "recommendation": recommendation,
+    }
 
 
 def build_evidence_audit(packet: dict[str, Any]) -> dict[str, Any]:
@@ -3925,16 +3958,42 @@ def build_query_strategy(
         add("case_record", f"{clean_query} 裁判文书 案例 法院", "补裁判文书或案例材料")
     if recency.get("enabled") or "hot_trend" in intents:
         add("fresh_news", _apply_recency_query(f"{clean_query} 最新 进展", recency), "近期/热点问题收束时间窗口")
+        if {"policy", "official_position", "local", "company_primary"} & set(intents):
+            add("fresh_primary", _apply_recency_query(f"{clean_query} 官方 发布 时间", recency), "近期问题优先补一手发布时间线索")
+        if {"reputation", "purchase_advice"} & set(intents):
+            add("fresh_user_sample", _apply_recency_query(f"{clean_query} 最新 用户 反馈", recency), "近期口碑需要补新鲜用户样本")
     if roles and len(variants) == 1:
         add(str(roles[0]), f"{clean_query} 依据 来源", "按路由证据角色补充查询")
 
+    time_window = _query_strategy_time_window(recency)
     return {
         "primary_query": variants[0]["query"] if variants else clean_query,
         "recency": recency,
+        "time_window": time_window,
         "intent": quality.get("intent") or (intents[0] if intents else "general"),
         "roles": roles,
         "variants": variants[:8],
-        "agent_hint": "不要只用一个宽泛 query；按证据角色分别搜索，再合并去重和标注边界。",
+        "search_quality_v2": {
+            "prefer_broad_pool": True,
+            "minimum_recommended_limit": DEFAULT_RESEARCH_LIMIT,
+            "recency_bounded": bool(recency.get("enabled")),
+            "source_role_queries": len(variants),
+        },
+        "agent_hint": "不要只用一个宽泛 query；按证据角色分别搜索，再合并去重和标注边界；涉及近期/热点时必须保留时间窗口。",
+    }
+
+
+def _query_strategy_time_window(recency: dict[str, Any]) -> dict[str, Any]:
+    if not recency.get("enabled"):
+        return {"enabled": False}
+    return {
+        "enabled": True,
+        "label": recency.get("label") or "recent",
+        "window_days": recency.get("window_days"),
+        "start_date": recency.get("start_date"),
+        "end_date": recency.get("end_date"),
+        "matched_terms": list(recency.get("matched_terms") or []),
+        "instruction": "近期/热点查询应优先使用窗口内结果；窗口外材料只作背景，不应写成最新。",
     }
 
 

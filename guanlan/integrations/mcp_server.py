@@ -188,6 +188,83 @@ def _tool_definitions() -> list[dict]:
             },
         },
         {
+            "name": "guanlan_compare",
+            "description": (
+                "Compare two or more subjects through separate Guanlan evidence packets. Use this when the "
+                "user asks for 对比, compare, 竞品, alternatives, or pros/cons with source boundaries."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "required": ["subjects"],
+                "properties": {
+                    "subjects": {"type": "array", "items": {"type": "string"}, "minItems": 2},
+                    "focus": {"type": "string"},
+                    "preset": {"type": "string", "default": "general"},
+                    "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
+                    "limit": {
+                        "type": "integer",
+                        "default": DEFAULT_RESEARCH_LIMIT,
+                        "minimum": 1,
+                        "maximum": MAX_RESEARCH_LIMIT,
+                    },
+                    "read_top": {"type": "integer", "default": 0, "minimum": 0, "maximum": 10},
+                    "search_backend": {"type": "string", "default": "auto"},
+                    "read_backend": {"type": "string", "enum": ["auto", "jina", "direct"], "default": "auto"},
+                    "max_read_chars": {"type": "integer", "minimum": 1},
+                    "select_top": {"type": "integer", "default": 6, "minimum": 1, "maximum": 20},
+                    "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "context"},
+                },
+            },
+        },
+        {
+            "name": "guanlan_timeline",
+            "description": (
+                "Extract a dated timeline from a broad Guanlan evidence packet. Use this for 发展历程, "
+                "事件脉络, 最近进展, release history, or when recency matters."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string"},
+                    "preset": {"type": "string", "default": "general"},
+                    "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
+                    "limit": {"type": "integer", "default": 80, "minimum": 1, "maximum": MAX_RESEARCH_LIMIT},
+                    "read_top": {"type": "integer", "default": 0, "minimum": 0, "maximum": 10},
+                    "search_backend": {"type": "string", "default": "auto"},
+                    "read_backend": {"type": "string", "enum": ["auto", "jina", "direct"], "default": "auto"},
+                    "max_read_chars": {"type": "integer", "minimum": 1},
+                    "max_events": {"type": "integer", "default": 20, "minimum": 1, "maximum": 50},
+                    "order": {"type": "string", "enum": ["desc", "asc"], "default": "desc"},
+                    "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "context"},
+                },
+            },
+        },
+        {
+            "name": "guanlan_dossier",
+            "description": (
+                "Build a structured dossier for one entity or issue: source mix, official/material/sample "
+                "sections, timeline hints, open questions, and next commands."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "required": ["entity"],
+                "properties": {
+                    "entity": {"type": "string"},
+                    "focus": {"type": "string"},
+                    "preset": {"type": "string", "default": "general"},
+                    "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
+                    "limit": {"type": "integer", "default": 80, "minimum": 1, "maximum": MAX_RESEARCH_LIMIT},
+                    "read_top": {"type": "integer", "default": 2, "minimum": 0, "maximum": 10},
+                    "search_backend": {"type": "string", "default": "auto"},
+                    "read_backend": {"type": "string", "enum": ["auto", "jina", "direct"], "default": "auto"},
+                    "max_read_chars": {"type": "integer", "default": 2400, "minimum": 1},
+                    "select_top": {"type": "integer", "default": 10, "minimum": 1, "maximum": 20},
+                    "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "context"},
+                },
+            },
+        },
+        {
             "name": "guanlan_hotnews",
             "description": (
                 "Fetch Chinese hotnews/trend lists from public endpoints. "
@@ -430,6 +507,85 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         if output_format == "prompt":
             return format_research_prompt(packet)
         return format_research_markdown(packet)
+
+    if name == "guanlan_compare":
+        from guanlan.research_workflows import (
+            build_compare_report,
+            format_compare_markdown,
+            format_workflow_context,
+        )
+
+        subjects = args.get("subjects") if isinstance(args.get("subjects"), list) else []
+        report = build_compare_report(
+            [str(item) for item in subjects],
+            focus=str(args.get("focus") or ""),
+            preset=str(args.get("preset") or "general"),
+            profile=args.get("profile") or "china",
+            limit=int(args.get("limit") or DEFAULT_RESEARCH_LIMIT),
+            read_top=int(args.get("read_top") or 0),
+            search_backend=str(args.get("search_backend") or "auto"),
+            read_backend=str(args.get("read_backend") or "auto"),
+            max_read_chars=int(args["max_read_chars"]) if args.get("max_read_chars") is not None else None,
+            select_top=int(args.get("select_top") or 6),
+        )
+        output_format = str(args.get("format") or "context")
+        if output_format == "json":
+            return report
+        if output_format == "markdown":
+            return format_compare_markdown(report)
+        return format_workflow_context(report, title="观澜对比研究上下文")
+
+    if name == "guanlan_timeline":
+        from guanlan.research_workflows import (
+            build_timeline_report,
+            format_timeline_markdown,
+            format_workflow_context,
+        )
+
+        report = build_timeline_report(
+            str(args.get("query", "")).strip(),
+            preset=str(args.get("preset") or "general"),
+            profile=args.get("profile") or "china",
+            limit=int(args.get("limit") or 80),
+            read_top=int(args.get("read_top") or 0),
+            search_backend=str(args.get("search_backend") or "auto"),
+            read_backend=str(args.get("read_backend") or "auto"),
+            max_read_chars=int(args["max_read_chars"]) if args.get("max_read_chars") is not None else None,
+            max_events=int(args.get("max_events") or 20),
+            order=str(args.get("order") or "desc"),
+        )
+        output_format = str(args.get("format") or "context")
+        if output_format == "json":
+            return report
+        if output_format == "markdown":
+            return format_timeline_markdown(report)
+        return format_workflow_context(report, title="观澜时间线上下文")
+
+    if name == "guanlan_dossier":
+        from guanlan.research_workflows import (
+            build_dossier_report,
+            format_dossier_markdown,
+            format_workflow_context,
+        )
+
+        report = build_dossier_report(
+            str(args.get("entity", "")).strip(),
+            focus=str(args.get("focus") or ""),
+            preset=str(args.get("preset") or "general"),
+            profile=args.get("profile") or "china",
+            limit=int(args.get("limit") or 80),
+            read_top=int(args.get("read_top") or 2),
+            search_backend=str(args.get("search_backend") or "auto"),
+            read_backend=str(args.get("read_backend") or "auto"),
+            max_read_chars=int(args.get("max_read_chars") or 2400),
+            select_top=int(args.get("select_top") or 10),
+        )
+        output_format = str(args.get("format") or "context")
+        if output_format == "json":
+            return report
+        if output_format == "markdown":
+            return format_dossier_markdown(report)
+        return format_workflow_context(report, title="观澜研究档案上下文")
 
     if name == "guanlan_hotnews":
         from guanlan.hotnews import (

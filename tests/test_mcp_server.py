@@ -34,6 +34,9 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "guanlan_route" in names
     assert "guanlan_read" in names
     assert "guanlan_research" in names
+    assert "guanlan_compare" in names
+    assert "guanlan_timeline" in names
+    assert "guanlan_dossier" in names
     assert "guanlan_hotnews" in names
     assert "guanlan_pulse" in names
     assert "guanlan_feeds" in names
@@ -54,6 +57,12 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "evidence roles" in route_tool["description"]
     assert "prompt" in search_tool["inputSchema"]["properties"]["format"]["enum"]
     assert "prompt" in research_tool["inputSchema"]["properties"]["format"]["enum"]
+    compare_tool = next(tool for tool in tools if tool["name"] == "guanlan_compare")
+    timeline_tool = next(tool for tool in tools if tool["name"] == "guanlan_timeline")
+    dossier_tool = next(tool for tool in tools if tool["name"] == "guanlan_dossier")
+    assert compare_tool["inputSchema"]["properties"]["subjects"]["minItems"] == 2
+    assert "max_events" in timeline_tool["inputSchema"]["properties"]
+    assert "source mix" in dossier_tool["description"]
 
 
 def test_mcp_config_outputs_copyable_server_config():
@@ -264,6 +273,36 @@ def test_mcp_pulse_uses_pulse(monkeypatch):
 
     assert "观澜回响上下文" in text
     assert "偏负向" in text
+
+
+def test_mcp_research_workflow_tools(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.research_workflows.build_compare_report",
+        lambda subjects, **_kwargs: {"mode": "compare", "subjects": subjects, "comparison_table": []},
+    )
+    monkeypatch.setattr(
+        "guanlan.research_workflows.build_timeline_report",
+        lambda query, **_kwargs: {"mode": "timeline", "query": query, "events": [], "boundary": "边界"},
+    )
+    monkeypatch.setattr(
+        "guanlan.research_workflows.build_dossier_report",
+        lambda entity, **_kwargs: {
+            "mode": "dossier",
+            "entity": entity,
+            "query": entity,
+            "sections": [],
+            "suggested_next": [],
+            "boundary": "边界",
+        },
+    )
+
+    compare = mcp_server._run_tool("guanlan_compare", {"subjects": ["A", "B"], "format": "json"})
+    timeline = mcp_server._run_tool("guanlan_timeline", {"query": "AI 眼镜", "format": "markdown"})
+    dossier = mcp_server._run_tool("guanlan_dossier", {"entity": "某公司", "format": "context"})
+
+    assert compare["subjects"] == ["A", "B"]
+    assert "观澜时间线" in timeline
+    assert "观澜研究档案" in dossier
 
 
 def test_mcp_feeds_uses_curated(monkeypatch):

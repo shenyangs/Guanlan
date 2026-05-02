@@ -295,6 +295,51 @@ def main():
     p_research.add_argument("--select-top", type=int, default=None,
                             help="How many representative evidence items to highlight from the broad pool")
 
+    # ── compare ──
+    p_compare = sub.add_parser("compare", help="Compare multiple subjects with one evidence packet per subject")
+    p_compare.add_argument("subjects", nargs="+", help="Two or more companies, products, policies, tools, or topics")
+    p_compare.add_argument("--focus", default="", help="Shared comparison focus, e.g. 价格/口碑/政策影响")
+    p_compare.add_argument("--preset", default="general", help="Research preset applied to every subject")
+    p_compare.add_argument("--profile", choices=VALID_PROFILES, default="china", help="Region profile")
+    p_compare.add_argument("--limit", type=int, default=DEFAULT_RESEARCH_LIMIT, help="Search pool per subject")
+    p_compare.add_argument("--read-top", type=int, default=0, help="Representative URLs to read per subject")
+    p_compare.add_argument("--search-backend", default="auto", help="Search backend")
+    p_compare.add_argument("--read-backend", choices=["auto", "jina", "direct"], default="auto", help="Read backend")
+    p_compare.add_argument("--max-read-chars", type=int, default=None, help="Maximum characters per read excerpt")
+    p_compare.add_argument("--select-top", type=int, default=6, help="Representative evidence items per subject")
+    p_compare.add_argument("--format", choices=["markdown", "json", "context"], default="markdown", help="Output format")
+    p_compare.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+
+    # ── timeline ──
+    p_timeline = sub.add_parser("timeline", help="Extract a dated event timeline from a broad evidence packet")
+    p_timeline.add_argument("query", nargs="?", default="", help="Topic, policy, company, product, or event")
+    p_timeline.add_argument("--preset", default="general", help="Research preset")
+    p_timeline.add_argument("--profile", choices=VALID_PROFILES, default="china", help="Region profile")
+    p_timeline.add_argument("--limit", type=int, default=80, help="Broad search pool size")
+    p_timeline.add_argument("--read-top", type=int, default=0, help="Representative URLs to read")
+    p_timeline.add_argument("--search-backend", default="auto", help="Search backend")
+    p_timeline.add_argument("--read-backend", choices=["auto", "jina", "direct"], default="auto", help="Read backend")
+    p_timeline.add_argument("--max-read-chars", type=int, default=None, help="Maximum characters per read excerpt")
+    p_timeline.add_argument("--max-events", type=int, default=20, help="Maximum dated events to return")
+    p_timeline.add_argument("--order", choices=["desc", "asc"], default="desc", help="Event order")
+    p_timeline.add_argument("--format", choices=["markdown", "json", "context"], default="markdown", help="Output format")
+    p_timeline.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+
+    # ── dossier ──
+    p_dossier = sub.add_parser("dossier", help="Build a structured research dossier for one entity or issue")
+    p_dossier.add_argument("entity", nargs="?", default="", help="Company, product, policy, person, event, or topic")
+    p_dossier.add_argument("--focus", default="", help="Optional dossier focus")
+    p_dossier.add_argument("--preset", default="general", help="Research preset")
+    p_dossier.add_argument("--profile", choices=VALID_PROFILES, default="china", help="Region profile")
+    p_dossier.add_argument("--limit", type=int, default=80, help="Broad search pool size")
+    p_dossier.add_argument("--read-top", type=int, default=2, help="Representative URLs to read")
+    p_dossier.add_argument("--search-backend", default="auto", help="Search backend")
+    p_dossier.add_argument("--read-backend", choices=["auto", "jina", "direct"], default="auto", help="Read backend")
+    p_dossier.add_argument("--max-read-chars", type=int, default=2400, help="Maximum characters per read excerpt")
+    p_dossier.add_argument("--select-top", type=int, default=10, help="Representative evidence items")
+    p_dossier.add_argument("--format", choices=["markdown", "json", "context"], default="markdown", help="Output format")
+    p_dossier.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+
     # ── prompt ──
     p_prompt = sub.add_parser(
         "prompt",
@@ -419,6 +464,26 @@ def main():
                         help="Direct-read extraction target")
     p_read.add_argument("--interval", default="",
                         help="Accepted for watch workflows; this CLI stores one snapshot per run")
+
+    # ── report ──
+    p_report = sub.add_parser("report", help="Render sidecar static HTML reports from existing JSON")
+    report_sub = p_report.add_subparsers(dest="report_command", help="Report commands")
+    p_report_html = report_sub.add_parser(
+        "html",
+        help="Render a self-contained HTML report from local JSON, stdin, or demo data",
+    )
+    p_report_html.add_argument("--input", default="",
+                               help="JSON input path; use '-' for stdin. Omit for a demo report")
+    p_report_html.add_argument("--output", default="guanlan-report.html",
+                               help="Output HTML path")
+    p_report_html.add_argument("--title", default="", help="Override report title")
+    p_report_html.add_argument("--subtitle", default="", help="Override report subtitle")
+    p_report_html.add_argument(
+        "--score-mode",
+        choices=["signal", "risk", "quality"],
+        default="signal",
+        help="Color encoding: signal/risk means higher is warmer; quality means higher is greener",
+    )
 
     # ── archive ──
     p_archive = sub.add_parser("archive", help="Manage the local Markdown knowledge archive")
@@ -634,6 +699,7 @@ def _telemetry_command_name(args) -> str:
         "eval": "eval_command",
         "quality": "quality_command",
         "profile": "action",
+        "report": "report_command",
     }
     attr = subcommand_attrs.get(command)
     if attr:
@@ -679,6 +745,12 @@ def _dispatch_command(args):
         _cmd_search(args)
     elif args.command == "research":
         _cmd_research(args)
+    elif args.command == "compare":
+        _cmd_compare(args)
+    elif args.command == "timeline":
+        _cmd_timeline(args)
+    elif args.command == "dossier":
+        _cmd_dossier(args)
     elif args.command in {"prompt", "context"}:
         _cmd_prompt(args)
     elif args.command == "pulse":
@@ -687,6 +759,8 @@ def _dispatch_command(args):
         _cmd_feeds(args)
     elif args.command == "read":
         _cmd_read(args)
+    elif args.command == "report":
+        _cmd_report(args)
     elif args.command == "archive":
         _cmd_archive(args)
     elif args.command == "mcp":
@@ -1297,6 +1371,114 @@ def _cmd_research(args):
             print(format_route_chart(packet.get("route_plan", {})))
 
 
+def _cmd_compare(args):
+    """Compare multiple subjects through Guanlan evidence packets."""
+    from guanlan.research_workflows import (
+        build_compare_report,
+        format_compare_markdown,
+        format_workflow_context,
+    )
+
+    try:
+        report = build_compare_report(
+            list(args.subjects or []),
+            focus=args.focus,
+            preset=args.preset,
+            profile=args.profile,
+            limit=max(args.limit, 1),
+            read_top=max(args.read_top, 0),
+            search_backend=args.search_backend,
+            read_backend=args.read_backend,
+            max_read_chars=max(args.max_read_chars, 1) if args.max_read_chars is not None else None,
+            select_top=max(args.select_top, 1),
+        )
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    output_format = "json" if args.json else args.format
+    if output_format == "json":
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    elif output_format == "context":
+        print(format_workflow_context(report, title="观澜对比研究上下文"))
+    else:
+        print(format_compare_markdown(report))
+
+
+def _cmd_timeline(args):
+    """Build a dated timeline from Guanlan evidence."""
+    from guanlan.research_workflows import (
+        build_timeline_report,
+        format_timeline_markdown,
+        format_workflow_context,
+    )
+
+    if not args.query:
+        print("Error: query is required", file=sys.stderr)
+        sys.exit(2)
+    try:
+        report = build_timeline_report(
+            args.query,
+            preset=args.preset,
+            profile=args.profile,
+            limit=max(args.limit, 1),
+            read_top=max(args.read_top, 0),
+            search_backend=args.search_backend,
+            read_backend=args.read_backend,
+            max_read_chars=max(args.max_read_chars, 1) if args.max_read_chars is not None else None,
+            max_events=max(args.max_events, 1),
+            order=args.order,
+        )
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    output_format = "json" if args.json else args.format
+    if output_format == "json":
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    elif output_format == "context":
+        print(format_workflow_context(report, title="观澜时间线上下文"))
+    else:
+        print(format_timeline_markdown(report))
+
+
+def _cmd_dossier(args):
+    """Build a structured Guanlan dossier for one entity."""
+    from guanlan.research_workflows import (
+        build_dossier_report,
+        format_dossier_markdown,
+        format_workflow_context,
+    )
+
+    if not args.entity:
+        print("Error: entity is required", file=sys.stderr)
+        sys.exit(2)
+    try:
+        report = build_dossier_report(
+            args.entity,
+            focus=args.focus,
+            preset=args.preset,
+            profile=args.profile,
+            limit=max(args.limit, 1),
+            read_top=max(args.read_top, 0),
+            search_backend=args.search_backend,
+            read_backend=args.read_backend,
+            max_read_chars=max(args.max_read_chars, 1) if args.max_read_chars is not None else None,
+            select_top=max(args.select_top, 1),
+        )
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    output_format = "json" if args.json else args.format
+    if output_format == "json":
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    elif output_format == "context":
+        print(format_workflow_context(report, title="观澜研究档案上下文"))
+    else:
+        print(format_dossier_markdown(report))
+
+
 def _cmd_prompt(args):
     """Build a local-LLM prompt from a broad Guanlan research packet."""
 
@@ -1547,6 +1729,39 @@ def _read_quality_kwargs(args) -> dict[str, object]:
     if getattr(args, "extract", "article") != "article":
         kwargs["extract"] = args.extract
     return kwargs
+
+
+def _cmd_report(args):
+    """Render optional static HTML reports from existing JSON payloads."""
+
+    from guanlan.reports import read_report_payload, write_html_report
+
+    command = getattr(args, "report_command", None)
+    if command != "html":
+        print("Error: report command is required: html", file=sys.stderr)
+        sys.exit(2)
+
+    try:
+        stdin_text = sys.stdin.read() if args.input == "-" else None
+        payload = read_report_payload(args.input or None, stdin_text=stdin_text)
+        result = write_html_report(
+            payload,
+            args.output,
+            title=args.title,
+            subtitle=args.subtitle,
+            score_mode=args.score_mode,
+        )
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print("# 观澜旁支 HTML 报表")
+    print()
+    print(f"- 输出: {result['path']}")
+    print(f"- 条目: {result['items']}")
+    print(f"- 指标: {result['metrics']}")
+    print(f"- 色彩模式: {result['score_mode']}")
+    print("- 边界: 只渲染已有 JSON/样例数据，不触发搜索、阅读或归档。")
 
 
 def _cmd_archive(args):

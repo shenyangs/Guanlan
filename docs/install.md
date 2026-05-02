@@ -2,7 +2,7 @@
 
 本文档写给正在执行安装任务的 Agent。目标是先把观澜 CLI 装到当前机器上，完成基础自检，并在用户明确需要时再安装可选渠道。MCP 是给 Agent/平台集成用的可选路径，不是普通用户的默认入口。
 
-观澜第一版优先以 GitHub 源码发布。请先克隆可信仓库，再在仓库根目录执行本地安装；不要从来历不明的远程脚本直接安装。
+观澜优先使用 PyPI / Homebrew / GitHub 可信源安装；不要从来历不明的远程脚本直接安装。Agent 执行安装时必须优先使用强制升级命令，避免复用旧锁定版本或旧 PATH。
 
 ## 安装边界
 
@@ -23,17 +23,19 @@
 
 ## 基础安装
 
-推荐使用 `uv` 从 GitHub 一条命令安装：
+推荐使用 `uv` 从 PyPI 安装或升级到最新版本：
 
 ```bash
-uv tool install git+https://github.com/shenyangs/Guanlan.git
+uv tool install --force --upgrade guanlan
+guanlan version
 guanlan doctor
 ```
 
 如果你使用 `pipx`：
 
 ```bash
-pipx install git+https://github.com/shenyangs/Guanlan.git
+pipx install --force guanlan
+guanlan version
 guanlan doctor
 ```
 
@@ -61,10 +63,18 @@ brew reinstall shenyangs/tap/guanlan
 guanlan version
 ```
 
-如果仍然拿到旧版本，说明 Homebrew tap 尚未同步到最新发布；改用 GitHub/uv 安装路径：
+如果仍然拿到旧版本，说明 Homebrew tap 尚未同步到最新发布，或 Agent 正在调用 PATH 里的旧二进制；改用 PyPI/uv 安装路径并检查 `which -a guanlan`：
 
 ```bash
-uv tool install --force git+https://github.com/shenyangs/Guanlan.git
+uv tool install --force --upgrade guanlan
+which -a guanlan
+guanlan version
+```
+
+如果必须直接安装 GitHub main：
+
+```bash
+uv tool install --force --upgrade git+https://github.com/shenyangs/Guanlan.git
 guanlan version
 ```
 

@@ -61,6 +61,33 @@ def test_serve_dispatch_context_returns_prompt(monkeypatch):
     assert "观澜本地模型联网 Prompt" in body["prompt"]
 
 
+def test_serve_dispatch_research_workflows(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.research_workflows.build_compare_report",
+        lambda subjects, **_kwargs: {"mode": "compare", "subjects": subjects},
+    )
+    monkeypatch.setattr(
+        "guanlan.research_workflows.build_timeline_report",
+        lambda query, **_kwargs: {"mode": "timeline", "query": query},
+    )
+    monkeypatch.setattr(
+        "guanlan.research_workflows.build_dossier_report",
+        lambda entity, **_kwargs: {"mode": "dossier", "entity": entity},
+    )
+
+    status, compare = serve.dispatch_request("POST", "/compare", {"subjects": ["A", "B"]})
+    assert status == 200
+    assert compare["subjects"] == ["A", "B"]
+
+    status, timeline = serve.dispatch_request("POST", "/timeline", {"query": "AI 眼镜"})
+    assert status == 200
+    assert timeline["query"] == "AI 眼镜"
+
+    status, dossier = serve.dispatch_request("POST", "/dossier", {"entity": "某公司"})
+    assert status == 200
+    assert dossier["entity"] == "某公司"
+
+
 def test_serve_dispatch_hotnews_compact_brief(monkeypatch):
     monkeypatch.setattr(
         "guanlan.hotnews.fetch_hotnews",
