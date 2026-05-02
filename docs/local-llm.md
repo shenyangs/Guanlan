@@ -154,7 +154,30 @@ curl -s http://127.0.0.1:8765/context \
 
 RSS / feeds 是公开外部源，可能因源站或网络抖动超时。观澜会优先返回最近成功缓存，并在结果里标记 `feed_status=stale_cache`；本地模型回答时应把这类结果当作阅读线索，而不是实时排名。
 
-## 五、安全边界
+## 五、把搜过的材料变成本地知识库
+
+如果你希望本地模型反复使用同一批中文资料，可以先把观澜 research 的代表证据沉淀到本地 archive：
+
+```bash
+guanlan archive ingest-research "人工智能 政策 原文" --limit 80
+guanlan archive search "人工智能 政策" --format context
+```
+
+导出给 RAG、向量库或个人知识库：
+
+```bash
+guanlan archive export --format rag-jsonl > guanlan-rag.jsonl
+```
+
+`rag-jsonl` 只包含 RAG 常用字段，便于导入；如果你的系统需要完整来源诊断、路线计划、阅读质量和原始元数据，请改用：
+
+```bash
+guanlan archive export --format jsonl > guanlan-full.jsonl
+```
+
+Archive 保存在本机 `~/.guanlan/archive.db`，不会自动上传，也不会绕过高风险社交平台的批量保护。
+
+## 六、安全边界
 
 - 默认只读。
 - 默认不读取浏览器 Cookie。

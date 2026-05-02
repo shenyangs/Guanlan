@@ -106,6 +106,7 @@ guanlan doctor
 查看诊断路径：
 
 ```bash
+guanlan doctor --install-check
 guanlan doctor --trace
 ```
 
@@ -217,6 +218,7 @@ guanlan skill --install
 
 ```bash
 guanlan version
+guanlan doctor --install-check
 guanlan doctor --trace
 ```
 
@@ -242,6 +244,7 @@ scripts/release_smoke.sh
 | `guanlan install --env=auto --dry-run` | 预演安装步骤。 |
 | `guanlan install --env=auto --safe` | 安全模式检查。 |
 | `guanlan doctor` | 普通健康检查。 |
+| `guanlan doctor --install-check` | 检查版本、路径和多安装入口。 |
 | `guanlan doctor --trace` | 显示诊断路径。 |
 | `guanlan profile set china` | 使用中文场景画像。 |
 | `guanlan configure --from-browser chrome` | 显式读取浏览器 Cookie。 |

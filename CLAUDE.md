@@ -3,7 +3,7 @@
 ## Project
 观澜 / Guanlan — Python CLI + library for AI-agent search, reading, hotnews, and source routing across the Chinese web.
 Positioning: CLI-first, read-first router with explicit authorization boundaries.
-License: MIT | Version: 0.2.9
+License: MIT | Version: 0.3.0
 
 ## Commands
 - `pip install -e .` — Dev install

@@ -13,7 +13,7 @@ Then refresh shell command lookup with `hash -r` when available, run `command -v
 match README/release notes, stop and report the path/version mismatch instead of configuring MCP or
 using the tool. If Homebrew is stale, switch to the uv path.
 
-Post-update smoke rule: after a full reinstall, run `guanlan capabilities`, `guanlan doctor --trace`,
+Post-update smoke rule: after a full reinstall, run `guanlan capabilities`, `guanlan doctor --install-check`, `guanlan doctor --trace`,
 `guanlan search "人工智能 政策" --profile china --limit 5 --trace`, and
 `guanlan hotnews today --limit 5 --trends`. Report the exact version, executable path, and smoke
 results to the user. Do not treat an old global executable as a successful update.
@@ -48,9 +48,11 @@ guanlan hotnews weibo --limit 50
 guanlan hotnews bilibili --limit 50
 guanlan hotnews ithome --limit 50
 guanlan hotnews v2ex --limit 50
+guanlan doctor --install-check
 guanlan doctor --trace
-guanlan archive ingest-search "query" --limit 80
+guanlan archive ingest-research "query" --limit 80
 guanlan quality coverage
+guanlan eval benchmark
 guanlan eval scenarios --format jsonl
 ```
 
@@ -69,5 +71,5 @@ Safety rules:
 - Use `guanlan search ... --trace` or `guanlan research ...` when you need query_strategy, source diagnostics, and evidence-role query rewrites; do not rely on one broad query for serious research.
 - Use `guanlan research ... --preset academic --read-top 0` for EI/SCI/Scopus, academic conference, paper submission, indexing, and university-recognition questions; read selected official URLs afterward if needed.
 - Use `guanlan read ... --quality-report` when deciding whether a page body is clean enough for downstream reasoning; use `--strict` when noisy page chrome would be harmful; use `--extract metadata` or `--extract links` for source/date/link checks.
-- Before release, run `guanlan quality coverage` and do not ship if it fails; new versions must not silently shrink the default result pool or remove agent-facing evidence metadata.
+- Before release, run `guanlan quality coverage`, `guanlan quality regression`, and `guanlan eval benchmark` and do not ship if it fails; new versions must not silently shrink the default result pool or remove agent-facing evidence metadata.
 - Use `guanlan research ... --advisor` when the user asks for advice, implications, next steps, or "why they might be searching this"; treat the advisor block as evidence-bound writing rules for your answer, not as the user's true intent or a final decision.

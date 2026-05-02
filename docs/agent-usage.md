@@ -69,6 +69,7 @@
 | “这些 RSS 源怎么路由” | `guanlan feeds list` |
 | “输出结构化结果” | 给命令加 `--json` |
 | “检查哪些渠道可用” | `guanlan doctor --trace` |
+| “确认装到的是最新版/没调到旧路径” | `guanlan doctor --install-check` |
 | “看渠道稳定性/授权边界/缓存概况” | `guanlan status`，重点看 `就绪` 和 `验证` 列 |
 | “解释为什么这条排第一” | `guanlan search "关键词" --trace` |
 | “重复查同一题，减少请求” | `guanlan search "关键词" --cache-ttl 3600` |
@@ -82,12 +83,14 @@
 | “批量读一组链接” | `guanlan read batch urls.txt --format context` |
 | “追踪网页内容变化” | `guanlan read "URL" --watch` |
 | “看来源是否偏斜” | `guanlan search "关键词" --source-chart` |
+| “看研究路由是否偏斜” | `guanlan research "关键词" --route-chart` |
 | “把链接存入本地知识库” | `guanlan archive add "URL"` |
-| “把一次研究沉淀成本地知识” | `guanlan archive ingest-search "关键词" --limit 80` |
+| “把一次研究沉淀成本地知识” | `guanlan archive ingest-research "关键词" --limit 80` |
 | “搜索本地知识库” | `guanlan archive search "关键词" --format context` |
-| “导出给 RAG 系统” | `guanlan archive export --format jsonl` |
+| “导出给 RAG 系统” | `guanlan archive export --format rag-jsonl` |
 | “看跨源热点趋势” | `guanlan hotnews today --trends` |
 | “拿评估集比较搜索质量” | `guanlan eval scenarios --format jsonl` |
+| “发版前检查观澜契约” | `guanlan eval benchmark` |
 
 CLI 是默认主路径；命令选择不确定时先跑 `guanlan route "用户需求"`，按 `recommended_commands` 起手。若当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_capabilities`、`guanlan_search`、`guanlan_route`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_feeds`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
 
@@ -402,6 +405,12 @@ guanlan archive add "https://example.com/article"
 guanlan archive add batch urls.txt
 ```
 
+把一次 research 的代表证据直接沉淀下来：
+
+```bash
+guanlan archive ingest-research "人工智能 政策" --limit 80
+```
+
 查询本地沉淀材料：
 
 ```bash
@@ -412,9 +421,10 @@ guanlan archive search "人工智能 政策" --format context
 
 ```bash
 guanlan archive export --format jsonl
+guanlan archive export --format rag-jsonl
 ```
 
-Archive 默认保存在 `~/.guanlan/archive.db`。它只保存本机归档内容，不自动上传。批量归档仍遵守高风险社交域名保护；遇到微博、小红书、抖音、Twitter/X、LinkedIn 等平台时，不要绕过授权边界批量读取。
+Archive 默认保存在 `~/.guanlan/archive.db`。它只保存本机归档内容，不自动上传。`rag-jsonl` 会导出本地 RAG 常用的 `id/text/source/title/domain/source_type/topic` 字段；如果需要完整元数据，用普通 `jsonl`。批量归档仍遵守高风险社交域名保护；遇到微博、小红书、抖音、Twitter/X、LinkedIn 等平台时，不要绕过授权边界批量读取。
 
 自定义 backend 只在显式调用时启用。配置示例：
 

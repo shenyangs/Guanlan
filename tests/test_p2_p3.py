@@ -94,3 +94,23 @@ def test_eval_scenarios_jsonl_is_machine_readable():
 
     assert first["id"] == "policy_source_identity"
     assert "checks" in first
+
+
+def test_eval_benchmark_covers_academic_and_agent_pool():
+    report = evaluation.run_benchmark(limit=50)
+
+    ids = {case["id"] for case in report["cases"]}
+    assert "academic_indexing" in ids
+    assert report["summary"]["fail"] == 0
+    assert report["summary"]["score"] >= 80
+
+
+def test_route_chart_explains_scopes_and_evidence_roles():
+    from guanlan.router import build_route_plan, format_route_chart
+
+    plan = build_route_plan("EI会议 投稿 检索 收录 要求", preset="academic", profile="china")
+    chart = format_route_chart(plan)
+
+    assert "路由诊断图" in chart
+    assert "academic" in chart
+    assert "证据角色" in chart

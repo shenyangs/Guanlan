@@ -151,6 +151,11 @@ def main():
         action="store_true",
         help="Scan ~/.guanlan/config.yaml for plaintext cookies, tokens, keys, or proxy credentials",
     )
+    p_doctor.add_argument(
+        "--install-check",
+        action="store_true",
+        help="Check active Guanlan command path, version drift, and duplicate installs",
+    )
 
     # ── profile ──
     p_profile = sub.add_parser("profile", help="Show or set the region profile")
@@ -278,6 +283,8 @@ def main():
                             help="Print normalized JSON instead of Markdown")
     p_research.add_argument("--source-chart", action="store_true",
                             help="Append an ASCII source/domain distribution chart")
+    p_research.add_argument("--route-chart", action="store_true",
+                            help="Append an ASCII route/intent/evidence diagnostic chart")
     p_research.add_argument("--advisor", action="store_true",
                             help="Append a cautious assistant view with intent hypotheses and next steps")
     p_research.add_argument("--advisor-style", choices=["brief", "decision", "risk", "strategy"], default="brief",
@@ -457,14 +464,18 @@ def main():
     p_archive_stats.add_argument("--db", default="", help="Optional archive database path")
 
     p_archive_export = archive_sub.add_parser("export", help="Export archive records")
-    p_archive_export.add_argument("--format", choices=["jsonl", "markdown"], default="jsonl",
+    p_archive_export.add_argument("--format", choices=["jsonl", "markdown", "rag-jsonl"], default="jsonl",
                                   help="Export format")
     p_archive_export.add_argument("--domain", default="", help="Filter export by domain")
     p_archive_export.add_argument("--source-type", default="", help="Filter export by archived source_type metadata")
     p_archive_export.add_argument("--topic", default="", help="Filter export by archived topic metadata")
     p_archive_export.add_argument("--db", default="", help="Optional archive database path")
 
-    p_archive_ingest = archive_sub.add_parser("ingest-search", help="Research a query and archive representative evidence")
+    p_archive_ingest = archive_sub.add_parser(
+        "ingest-search",
+        aliases=["ingest-research"],
+        help="Research a query and archive representative evidence",
+    )
     p_archive_ingest.add_argument("query", help="Research query to ingest")
     p_archive_ingest.add_argument("--limit", type=int, default=DEFAULT_RESEARCH_LIMIT, help="Broad search pool size")
     p_archive_ingest.add_argument("--read-top", type=int, default=3, help="Representative URLs to read")
@@ -494,6 +505,12 @@ def main():
     eval_sub = p_eval.add_subparsers(dest="eval_command", help="Evaluation commands")
     p_eval_scenarios = eval_sub.add_parser("scenarios", help="Print built-in evaluation scenarios")
     p_eval_scenarios.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
+    p_eval_benchmark = eval_sub.add_parser("benchmark", help="Run deterministic agent-facing benchmark")
+    p_eval_benchmark.add_argument("--mode", choices=["quick", "live"], default="quick",
+                                  help="Benchmark mode; quick is deterministic and offline")
+    p_eval_benchmark.add_argument("--limit", type=int, default=50,
+                                  help="Candidate pool size to verify in route plans")
+    p_eval_benchmark.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
 
     # ── quality ──
     p_quality = sub.add_parser("quality", help="Run Guanlan quality gates")
@@ -1169,6 +1186,7 @@ def _cmd_search(args):
 def _cmd_research(args):
     """Build an agent-ready research evidence packet."""
 
+    from guanlan.router import format_route_chart
     from guanlan.webtools import (
         build_research_packet,
         format_advisor_context,
@@ -1222,12 +1240,16 @@ def _cmd_research(args):
             print(format_advisor_context(packet["advisor"]))
         if args.source_chart:
             print(format_source_chart(packet.get("results", [])))
+        if args.route_chart:
+            print(format_route_chart(packet.get("route_plan", {})))
     elif output_format == "prompt":
         print(format_research_prompt(packet, style=args.prompt_style))
     else:
         print(format_research_markdown(packet))
         if args.source_chart:
             print(format_source_chart(packet.get("results", [])))
+        if args.route_chart:
+            print(format_route_chart(packet.get("route_plan", {})))
 
 
 def _cmd_prompt(args):
@@ -1500,7 +1522,7 @@ def _cmd_archive(args):
 
     command = getattr(args, "archive_command", None)
     if not command:
-        print("Error: archive command is required: add, ingest-search, search, list, stats, export", file=sys.stderr)
+        print("Error: archive command is required: add, ingest-search, ingest-research, search, list, stats, export", file=sys.stderr)
         sys.exit(2)
     db_path = args.db or None
 
@@ -1585,12 +1607,15 @@ def _cmd_archive(args):
                     print()
                     print(str(item.get("content", "")).strip())
                     print("\n---\n")
+            elif args.format == "rag-jsonl":
+                for item in records:
+                    print(json.dumps(item.get("rag", {}), ensure_ascii=False, sort_keys=True))
             else:
                 for item in records:
                     print(json.dumps(item, ensure_ascii=False, sort_keys=True))
             return
 
-        if command == "ingest-search":
+        if command in {"ingest-search", "ingest-research"}:
             result = ingest_search(
                 args.query,
                 limit=max(args.limit, 1),
@@ -1680,14 +1705,29 @@ def _cmd_plugin(args):
 def _cmd_eval(args):
     """Show built-in evaluation scenarios."""
     from guanlan.evaluation import (
+        format_benchmark_jsonl,
+        format_benchmark_markdown,
         format_evaluation_jsonl,
         format_evaluation_markdown,
         list_evaluation_scenarios,
+        run_benchmark,
     )
 
-    if getattr(args, "eval_command", None) != "scenarios":
-        print("Error: eval command is required: scenarios", file=sys.stderr)
+    command = getattr(args, "eval_command", None)
+    if command not in {"scenarios", "benchmark"}:
+        print("Error: eval command is required: scenarios or benchmark", file=sys.stderr)
         sys.exit(2)
+    if command == "benchmark":
+        report = run_benchmark(mode=args.mode, limit=max(args.limit, 1))
+        if args.format == "json":
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        elif args.format == "jsonl":
+            print(format_benchmark_jsonl(report))
+        else:
+            print(format_benchmark_markdown(report))
+        if report.get("summary", {}).get("fail", 0):
+            sys.exit(1)
+        return
     scenarios = list_evaluation_scenarios()
     if args.format == "json":
         print(json.dumps(scenarios, ensure_ascii=False, indent=2))
@@ -2738,6 +2778,12 @@ def _cmd_uninstall(args):
 
 
 def _cmd_doctor(args):
+    if getattr(args, "install_check", False):
+        from guanlan.update_check import format_install_check, run_install_check
+
+        print(format_install_check(run_install_check(__version__, timeout=3.0)))
+        return
+
     from guanlan.config import Config
     from guanlan.doctor import (
         check_all,

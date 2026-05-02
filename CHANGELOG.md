@@ -8,6 +8,22 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.3.0 - 2026-05-02
+
+### Added
+
+- 新增 `guanlan eval benchmark`，提供离线确定性评测基准，覆盖政策、口碑、热点、技术、学术、地方、电商和本地模型联网场景，检查路由意图、scope、证据角色和候选池下限。
+- 新增 `guanlan doctor --install-check`，只读检查当前 `guanlan` 命令路径、公开最新版本、多安装入口和升级建议，降低 Agent 调到旧版 CLI 的风险。
+- `research` 新增 `--route-chart`，输出 ASCII 路由诊断图，展示意图、证据角色、优先 scope 和路由置信度。
+- `archive export` 新增 `--format rag-jsonl`，只导出 RAG 常用字段，便于本地向量库、个人知识库和无联网模型接入。
+- `archive ingest-search` 增加语义别名 `archive ingest-research`，让 Agent 更容易把一次 research 的代表证据沉淀成本地知识。
+
+### Changed
+
+- 评估场景扩展到学术检索、地方官方、电商产业和本地模型联网，观澜的“专业调研员框架”从表达进一步落到可测命令。
+- README、Agent 文档、Skill 和质量测试计划同步安装自检、路由诊断图、RAG JSONL、评测基准和发布前质量闸门。
+- 官网展示版本号同步到 `0.3.0`。
+
 ## v0.2.9 - 2026-05-02
 
 ### Changed

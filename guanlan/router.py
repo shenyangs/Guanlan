@@ -506,6 +506,37 @@ def route_plan_context(plan: RoutePlan | dict[str, Any]) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
+def format_route_chart(plan: RoutePlan | dict[str, Any], width: int = 24) -> str:
+    """Render a compact ASCII view of route weight for diagnostics."""
+    data = plan.to_dict() if isinstance(plan, RoutePlan) else dict(plan)
+    lines = ["", "## 路由诊断图"]
+    sections = [
+        ("意图", list(data.get("primary_intents") or []) + list(data.get("secondary_intents") or [])),
+        ("证据角色", list(data.get("evidence_roles") or [])),
+        ("优先 scope", list(data.get("preferred_scopes") or [])),
+    ]
+    for title, values in sections:
+        lines.extend(["", f"### {title}"])
+        if not values:
+            lines.append("- open web " + "#".ljust(width) + " 100.0% (1)")
+            continue
+        counts: dict[str, int] = {}
+        for value in values:
+            label = str(value or "unknown")
+            counts[label] = counts.get(label, 0) + 1
+        max_count = max(counts.values()) or 1
+        total = sum(counts.values()) or 1
+        max_label = max(len(label) for label in counts)
+        for label, count in sorted(counts.items(), key=lambda item: (-item[1], item[0])):
+            bar_len = max(1, round(count / max_count * width))
+            bar = "#" * bar_len
+            percent = count / total * 100
+            lines.append(f"- {label.ljust(max_label)} {bar.ljust(width)} {percent:5.1f}% ({count})")
+    confidence = float(data.get("confidence", 0.0) or 0.0)
+    lines.extend(["", f"- 路由置信度: {confidence:.2f}"])
+    return "\n".join(lines)
+
+
 def _preset_rule(preset: str) -> dict[str, Any] | None:
     mapping = {
         "policy": "policy",

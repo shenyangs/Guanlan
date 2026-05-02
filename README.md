@@ -212,7 +212,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.2.9`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.3.0`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -260,6 +260,7 @@ command -v guanlan
 which -a guanlan
 guanlan version
 guanlan capabilities
+guanlan doctor --install-check
 guanlan doctor --trace
 guanlan search "人工智能 政策" --profile china --limit 5 --trace
 guanlan hotnews today --limit 5 --trends
@@ -385,6 +386,7 @@ guanlan configure --from-browser chrome
 | `guanlan doctor` | 健康检查，默认跳过敏感登录态探测。 |
 | `guanlan doctor --trace` | 展示诊断路径，帮助定位是否存在敏感探测风险。 |
 | `guanlan doctor --check-config` | 扫描本地配置中可能误存的明文 Cookie、Token、Key 或代理凭据。 |
+| `guanlan doctor --install-check` | 检查当前命令路径、版本漂移和多安装入口，避免 Agent 调到旧版。 |
 | `guanlan status` | 显示渠道运行、就绪、验证、稳定性、授权边界和本地缓存概览。 |
 | `guanlan route "关键词"` | 解释需求路由、证据角色、优先 scope、推荐站点、推荐 RSS 和边界提醒。 |
 | `guanlan route "关键词" --json` | 给 Agent 前置路由，输出 `recommended_commands` 作为下一步命令起手式。 |
@@ -408,6 +410,7 @@ guanlan configure --from-browser chrome
 | `guanlan research --list-presets` | 查看研究模板和默认 scope/site 策略。 |
 | `guanlan research "关键词" --format context` | 输出适合直接放进 prompt 的研究上下文。 |
 | `guanlan research "关键词" --format prompt --prompt-style evidence` | 输出本地模型联网 Prompt，可指定证据型/决策型等风格。 |
+| `guanlan research "关键词" --route-chart` | 追加 ASCII 路由诊断图，展示意图、证据角色和 scope 权重。 |
 | `guanlan research "关键词" --advisor` | 在证据包后追加助理视角规则，帮助 Agent 基于证据生成建议。 |
 | `guanlan research "关键词" --advisor --advisor-style risk` | 按风险/决策/策略等风格生成更自然的 Agent 作答骨架。 |
 | `guanlan prompt "问题"` | 快速生成 Ollama / LM Studio / Open WebUI 可用的联网 Prompt。 |
@@ -435,11 +438,14 @@ guanlan configure --from-browser chrome
 | `guanlan read "URL" --backend direct` | 绕过 Jina Reader，直接读取原网页。 |
 | `guanlan archive add "URL"` | 将网页读取为 Markdown 后沉淀进本地知识库。 |
 | `guanlan archive ingest-search "关键词"` | 把一次 research 的精选代表证据沉淀进本地知识库。 |
+| `guanlan archive ingest-research "关键词"` | `ingest-search` 的语义别名，更适合 Agent 记忆“研究入库”。 |
 | `guanlan archive search "关键词"` | 在本地知识库中检索已归档材料。 |
 | `guanlan archive export --format jsonl --source-type 政府` | 按 domain/source_type/topic 导出 RAG 友好 JSONL。 |
+| `guanlan archive export --format rag-jsonl` | 只导出 RAG 载入常用字段：id/text/source/title/domain/source_type/topic。 |
 | `guanlan serve --host 127.0.0.1 --port 8765` | 启动本地只读 HTTP 服务。 |
 | `guanlan plugin template my_company_api` | 生成企业内部只读搜索 connector 模板。 |
 | `guanlan eval scenarios --format jsonl` | 输出中文语境搜索质量评估集。 |
+| `guanlan eval benchmark` | 跑离线确定性评测，检查路由、证据角色和候选池是否守住 Agent 契约。 |
 | `guanlan quality run` | 一键跑搜索/阅读/热榜/advisor 质量闸门。 |
 | `guanlan quality coverage` | 发版前检查默认结果池和证据字段没有缩水。 |
 | `guanlan quality regression` | 发版前检查结果池、来源多样性、RSS 兜底、正文抽取和 advisor 动态性没有退化。 |
@@ -776,12 +782,14 @@ curl -s http://127.0.0.1:8765/context \
 ```bash
 guanlan archive add "https://example.com/article"
 guanlan archive add batch urls.txt
+guanlan archive ingest-research "人工智能 政策" --limit 80
 guanlan archive search "人工智能 政策" --format context
 guanlan archive stats
 guanlan archive export --format jsonl > guanlan-archive.jsonl
+guanlan archive export --format rag-jsonl > guanlan-rag.jsonl
 ```
 
-本地知识库默认保存在 `~/.guanlan/archive.db`。第一版使用 SQLite + FTS/LIKE 检索，保存 URL、标题、域名、Markdown 正文、摘要、更新时间和元数据。`v0.2.5` 起，归档元数据会保留 `source_card`、`read_quality`、`quality_report` 和 `route_plan`，方便后续接 RAG 时知道材料的来源角色、正文质量和检索路径。它不是云同步，也不会自动上传内容。
+本地知识库默认保存在 `~/.guanlan/archive.db`。第一版使用 SQLite + FTS/LIKE 检索，保存 URL、标题、域名、Markdown 正文、摘要、更新时间和元数据。归档元数据会保留 `source_card`、`read_quality`、`quality_report`、`route_plan` 和 `query_strategy`，方便后续接 RAG 时知道材料的来源角色、正文质量和检索路径。`rag-jsonl` 会把每条材料收束成 `id/text/source/title/domain/source_type/topic/updated_at`，适合导入轻量本地 RAG、向量库或个人知识库。它不是云同步，也不会自动上传内容。
 
 ### 17. 质量闸门
 
@@ -793,6 +801,7 @@ guanlan quality run --format json
 guanlan quality run --coverage
 guanlan quality coverage
 guanlan quality regression
+guanlan eval benchmark
 guanlan quality run --mode live --limit 5
 ```
 
@@ -801,6 +810,8 @@ guanlan quality run --mode live --limit 5
 `quality coverage` 是给发版用的防缩水护栏：检查 `search/research/archive/hotnews/read fallback` 的默认结果池下限，检查搜索结果是否保留 `evidence_role`，检查 research/read/archive 是否保留质量元数据。它不保证每个网络请求都成功，但能防止一次更新把 Agent 赖以判断的信息面悄悄变窄。
 
 `quality regression` 是更完整的发版回归闸门：除默认结果池外，还检查来源多样性、RSS 缓存兜底元数据、正文主体抽取信号和 advisor 是否会随任务变化。它的目标很朴素：每次更新，都不能让下游 Agent 拿到的材料突然变少、变窄、变脏。
+
+`eval benchmark` 是更偏“观澜契约”的离线评测：不依赖外网，固定检查政策、口碑、热点、技术、学术、地方、电商和本地模型场景是否被路由到合适的意图、scope、证据角色和足够大的候选池。
 
 ### 18. 安全检查和授权边界
 

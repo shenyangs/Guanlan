@@ -52,3 +52,44 @@ def test_check_update_uses_pypi_without_github_repo(capsys, monkeypatch):
     captured = capsys.readouterr()
     assert result == "update_available"
     assert "版本提醒" in captured.out
+
+
+def test_install_check_reports_duplicate_paths_and_stale_version():
+    report = update_check.run_install_check(
+        "0.2.9",
+        latest="0.3.0",
+        command_path="/usr/local/bin/guanlan",
+        all_paths=["/usr/local/bin/guanlan", "/opt/homebrew/bin/guanlan"],
+    )
+    text = update_check.format_install_check(report)
+
+    assert report["status"] == "fail"
+    assert report["stale"] is True
+    assert report["multiple_paths"] is True
+    assert "多个 guanlan 路径" in text
+    assert "uv tool install --force --upgrade guanlan" in text
+
+
+def test_doctor_install_check_cli(capsys):
+    import guanlan.cli as cli
+
+    with patch(
+        "guanlan.update_check.run_install_check",
+        return_value={
+            "status": "ok",
+            "current_version": "0.3.0",
+            "latest_version": "0.3.0",
+            "command_path": "/tmp/guanlan",
+            "all_paths": ["/tmp/guanlan"],
+            "path_count": 1,
+            "python": "/tmp/python",
+            "stale": False,
+            "multiple_paths": False,
+            "recommendations": ["可以继续配置 MCP 或 Agent。"],
+        },
+    ), patch("sys.argv", ["guanlan", "doctor", "--install-check"]):
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert "观澜安装自检" in captured.out
+    assert "/tmp/guanlan" in captured.out

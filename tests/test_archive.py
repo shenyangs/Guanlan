@@ -115,6 +115,27 @@ def test_archive_export_filters_and_adds_rag_fields(tmp_path):
     assert records[0]["rag"]["topic"] == "policy"
 
 
+def test_archive_cli_export_rag_jsonl(tmp_path, capsys):
+    from guanlan.cli import main
+
+    db = tmp_path / "archive.db"
+    archive.add_document(
+        "https://gov.cn/a",
+        "# 政策原文\n正文",
+        metadata={"source_type": "政府/部委", "topic_key": "policy"},
+        db_path=db,
+    )
+
+    with patch("sys.argv", ["guanlan", "archive", "export", "--format", "rag-jsonl", "--db", str(db)]):
+        main()
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert payload["id"].startswith("guanlan-")
+    assert payload["source"] == "https://gov.cn/a"
+    assert payload["text"].startswith("# 政策原文")
+
+
 def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkeypatch):
     db = tmp_path / "archive.db"
 
@@ -149,3 +170,32 @@ def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkey
     assert records[0]["metadata"]["route_plan"]["primary_intents"] == ["policy"]
     assert records[0]["metadata"]["read_quality"]["chars"] > 0
     assert records[0]["metadata"]["source_card"]["domain"] == "gov.cn"
+
+
+def test_archive_cli_ingest_research_alias(tmp_path, capsys, monkeypatch):
+    from guanlan.cli import main
+
+    db = tmp_path / "archive.db"
+    monkeypatch.setattr(
+        "guanlan.webtools.build_research_packet",
+        lambda *args, **kwargs: {
+            "result_count": 1,
+            "preset": "academic",
+            "route_plan": {"primary_intents": ["academic"]},
+            "selected_evidence": [
+                {
+                    "title": "EI 检索说明",
+                    "url": "https://example.com/ei",
+                    "snippet": "EI 检索要求",
+                    "source_type": "学术/论文检索",
+                }
+            ],
+            "readings": [],
+        },
+    )
+
+    with patch("sys.argv", ["guanlan", "archive", "ingest-research", "EI检索", "--db", str(db)]):
+        main()
+    captured = capsys.readouterr()
+
+    assert "已归档: 1" in captured.out

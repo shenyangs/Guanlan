@@ -10,6 +10,7 @@
 
 ```bash
 guanlan version
+guanlan doctor --install-check
 guanlan doctor --trace
 guanlan search --list-scopes
 guanlan research --list-presets

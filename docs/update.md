@@ -33,6 +33,7 @@ guanlan version
 
 # 4) 最小 smoke：确认能力说明、健康检查、搜索降级、热榜都可用。
 guanlan capabilities
+guanlan doctor --install-check
 guanlan doctor --trace
 guanlan search "人工智能 政策" --profile china --limit 5 --trace
 guanlan hotnews today --limit 5 --trends
@@ -63,6 +64,7 @@ hash -r 2>/dev/null || true
 command -v guanlan
 which -a guanlan
 guanlan version
+guanlan doctor --install-check
 guanlan doctor --trace
 ```
 
@@ -75,6 +77,7 @@ hash -r 2>/dev/null || true
 command -v guanlan
 which -a guanlan
 guanlan version
+guanlan doctor --install-check
 guanlan doctor --trace
 ```
 
@@ -98,7 +101,8 @@ pipx upgrade bilibili-cli
 npm update -g mcporter
 ```
 
-这些命令可能因为安装方式不同而失败。失败时不要强行清理用户环境，先运行 `guanlan doctor --trace` 看当前渠道状态。
+这些命令可能因为安装方式不同而失败。失败时不要强行清理用户环境，先运行
+`guanlan doctor --install-check` 和 `guanlan doctor --trace` 看当前渠道状态。
 
 ## 版本检查
 
@@ -118,6 +122,7 @@ guanlan check-update
 guanlan version
 command -v guanlan
 which -a guanlan
+guanlan doctor --install-check
 guanlan doctor --trace
 guanlan search "人工智能 政策" --profile china --limit 5 --trace
 guanlan hotnews today --limit 5 --trends
