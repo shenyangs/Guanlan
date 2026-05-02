@@ -8,6 +8,26 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.1.13 - 2026-05-02
+
+### Added
+
+- 新增 `guanlan route "query"` 与 MCP `guanlan_route`，输出需求路由、意图、证据角色、优先 scope、推荐站点、兜底范围和边界提醒。
+- 新增 `guanlan/router.py` 和 `guanlan/source_taxonomy.py`，把需求识别和信源价值拆成可解释的本地启发式结构。
+- 新增 `guanlan serve`，提供默认绑定 `127.0.0.1` 的只读 HTTP 服务，覆盖 `/route`、`/search`、`/research`、`/read`、`/hotnews`、`/archive/search`。
+- 新增热榜跨源趋势归并：`guanlan hotnews today --trends` 可输出多源趋势簇。
+- 新增 `guanlan archive ingest-search "query"`，把一次 research 的精选代表证据沉淀进本地知识库。
+- `archive export` 增加 RAG 字段和 `--domain`、`--source-type`、`--topic` 过滤。
+- 新增只读插件生态入口：`guanlan plugin list/register/template`，方便企业内部搜索 connector 接入 `search --backend plugin:name`。
+- 新增 `guanlan eval scenarios`，提供比较普通 web_search 与观澜证据包的中文语境评估集。
+
+### Changed
+
+- `search --trace` 展示 route plan，并把路由与结构化 source card 纳入评分解释。
+- `research` 会把 route 优先源与 open web 兜底一起纳入候选池，避免信源规则过窄。
+- README、Agent 文档、Skill 文档同步 route、serve、plugin、archive/RAG、趋势归并和评估集用法。
+- 产品哲学文档将 P2/P3 标记为已建立可用骨架。
+
 ## v0.1.12 - 2026-05-02
 
 ### Added

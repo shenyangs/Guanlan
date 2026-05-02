@@ -96,6 +96,31 @@ def test_search_web_trace_includes_quality_profile(monkeypatch):
     assert results[0]["trace"]["quality"]["fit"] is True
     assert results[0]["trace"]["quality_summary"]["preferred_hit_count"] == 1
     assert results[0]["score_parts"]["intent_fit"] > 0
+    assert results[0]["trace"]["route_plan"]["primary_intents"][0] == "policy"
+    assert "gov" in results[0]["trace"]["route_plan"]["preferred_scopes"]
+
+
+def test_search_trace_includes_route_plan(monkeypatch):
+    monkeypatch.setattr(
+        webtools,
+        "_search_duckduckgo",
+        lambda query, limit=10: [
+            webtools.SearchResult(
+                title="用户评价",
+                url="https://www.zhihu.com/question/1",
+                snippet="值不值得买",
+                source="duckduckgo",
+                rank=1,
+            )
+        ],
+    )
+
+    results = webtools.search_web("某产品 用户评价 值不值得买", backend="duckduckgo", trace=True)
+    trace = webtools.format_search_trace(results)
+
+    assert "route_plan: intents=" in trace
+    assert "reputation" in trace
+    assert results[0]["trace"]["source_card"]["sample_value"] > results[0]["trace"]["source_card"]["authority_score"]
 
 
 def test_format_search_trace_shows_query_quality(monkeypatch):
@@ -1084,12 +1109,49 @@ def test_build_research_packet_applies_preset_defaults(monkeypatch):
 
     packet = webtools.build_research_packet("人工智能监管", preset="policy")
 
-    assert [call["scope"] for call in calls] == ["gov", "party_central"]
-    assert all(call["limit"] == DEFAULT_RESEARCH_LIMIT // 2 + 2 for call in calls)
+    assert [call["scope"] for call in calls] == ["gov", "party_central", None]
+    assert all(call["limit"] == DEFAULT_RESEARCH_LIMIT // 3 + 2 for call in calls)
     assert packet["preset"] == "policy"
     assert packet["scope"] == "gov"
     assert packet["scopes"] == ["gov", "party_central"]
     assert packet["read_top"] == 3
+    assert packet["route_plan"]["primary_intents"][0] == "policy"
+
+
+def test_build_research_packet_includes_route_plan_and_open_fallback(monkeypatch):
+    calls = []
+
+    def fake_search(query, **kwargs):
+        calls.append(kwargs)
+        label = kwargs.get("scope") or kwargs.get("site") or "open"
+        return [
+            {
+                "title": f"{label} result",
+                "url": f"https://example.com/{label}",
+                "snippet": "用户评价 值不值得买",
+                "source": "mock",
+                "rank": 1,
+                "score": 1.0,
+                "source_type": "通用网页",
+                "matched_scope": kwargs.get("scope") or "",
+                "topic_key": label,
+                "topic_role": "single",
+            }
+        ]
+
+    monkeypatch.setattr(webtools, "search_web", fake_search)
+
+    packet = webtools.build_research_packet(
+        "某产品 用户评价 值不值得买",
+        preset="general",
+        limit=12,
+        read_top=0,
+    )
+
+    assert "reputation" in packet["route_plan"]["primary_intents"] + packet["route_plan"]["secondary_intents"]
+    assert "social_web" in packet["scopes"]
+    assert any(call["scope"] is None and call["site"] is None for call in calls)
+    assert any(group["type"] == "general" for group in packet["result_groups"])
 
 
 def test_build_research_packet_user_scope_overrides_preset(monkeypatch):
@@ -1168,7 +1230,7 @@ def test_build_research_packet_preset_adds_site_evidence_groups(monkeypatch):
     assert "zhihu.com" in searched_sites
     assert "weibo.com" in searched_sites
     assert packet["sites"][:2] == ["zhihu.com", "weibo.com"]
-    assert {group["type"] for group in packet["result_groups"]} == {"scope", "site"}
+    assert {group["type"] for group in packet["result_groups"]} == {"scope", "site", "general"}
 
 
 def test_build_research_packet_adds_cautious_advisor_when_requested(monkeypatch):

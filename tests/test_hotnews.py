@@ -239,6 +239,23 @@ def test_fetch_today_can_fill_expanded_limit(monkeypatch):
     assert items[-1]["rank"] == 50
 
 
+def test_hotnews_build_trend_report_merges_cross_source_topics():
+    items = [
+        {"rank": 1, "source_id": "baidu", "title": "AI 眼镜新品发布", "metrics": {"heat": 10000}},
+        {"rank": 2, "source_id": "weibo", "title": "AI眼镜 新品 引热议", "metrics": {"heat": 5000}},
+        {"rank": 3, "source_id": "v2ex", "title": "Python 框架讨论"},
+    ]
+
+    report = hotnews.build_trend_report(items)
+
+    assert report["trend_count"] == 2
+    assert report["trends"][0]["source_count"] == 2
+    assert {"baidu", "weibo"} <= set(report["trends"][0]["sources"])
+    md = hotnews.format_trend_report_markdown(report)
+    assert "观澜趋势归并" in md
+    assert "AI 眼镜新品发布" in md
+
+
 def test_normalize_hotnews_payload_accepts_newsnow_like_shape():
     payload = {
         "data": {

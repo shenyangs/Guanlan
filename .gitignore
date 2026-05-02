@@ -12,3 +12,4 @@ build/
 .env
 .guanlan/
 *.log
+redbook/

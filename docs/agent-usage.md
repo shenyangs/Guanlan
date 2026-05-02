@@ -21,6 +21,7 @@
 - 默认候选池按研究任务放大：搜索/研究/归档检索默认 50 条，热榜默认 50 条，读取失败后的搜索兜底默认 20 条。
 - Agent 调用时应尽量多取结果再筛选：普通任务保持 50，复杂研究可设到 80-100；只有用户明确要求“小样本/快速看一下”时才降低 limit。
 - 用户需要建议、影响判断、下一步行动，或询问“为什么会搜这个”时，优先使用 `research --advisor`，但把助理视角当作证据边界和写作规则，由你结合用户问题生成自然建议；不要机械复述模板，也不要当作用户真实意图。
+- 不确定该查哪些信源时，先用 `guanlan route "关键词"` 看需求路由；路由计划是软约束，优先源用于提高适配度，开放网页兜底用于防止信源池过窄。
 
 ## 最小命令集
 
@@ -34,6 +35,7 @@
 | “查官方/央媒表述” | `guanlan search "关键词" --profile china --scope party_central` |
 | “查地方官媒/区域政策” | `guanlan search "关键词" --profile china --scope local_official` |
 | “查电商/零售/产业带” | `guanlan search "关键词" --profile china --scope ecommerce` |
+| “我该去哪搜/怎么分信源” | `guanlan route "关键词"` |
 | “帮我查清楚并给依据” | `guanlan research "关键词" --profile china` |
 | “查完后给建议/下一步/可能原因” | `guanlan research "关键词" --profile china --advisor` |
 | “查政策/监管/官方通知” | `guanlan research "关键词" --preset policy` |
@@ -57,13 +59,18 @@
 | “给没有联网能力的本地模型准备输入” | `guanlan prompt "关键词" --profile china` |
 | “把研究证据包直接喂给本地模型” | `guanlan research "关键词" --format prompt` |
 | “生成 MCP 客户端配置” | `guanlan mcp config --client codex` |
+| “本地工具不支持 MCP，但能调 HTTP” | `guanlan serve --host 127.0.0.1 --port 8765` |
 | “查企业内部只读搜索后端” | `guanlan search "关键词" --backend plugin:my_company_api` |
+| “注册企业内部只读搜索 connector” | `guanlan plugin register my_company_api ./backend.py` |
 | “批量读一组链接” | `guanlan read batch urls.txt --format context` |
 | “追踪网页内容变化” | `guanlan read "URL" --watch` |
 | “看来源是否偏斜” | `guanlan search "关键词" --source-chart` |
 | “把链接存入本地知识库” | `guanlan archive add "URL"` |
+| “把一次研究沉淀成本地知识” | `guanlan archive ingest-search "关键词" --limit 80` |
 | “搜索本地知识库” | `guanlan archive search "关键词" --format context` |
 | “导出给 RAG 系统” | `guanlan archive export --format jsonl` |
+| “看跨源热点趋势” | `guanlan hotnews today --trends` |
+| “拿评估集比较搜索质量” | `guanlan eval scenarios --format jsonl` |
 
 CLI 是默认主路径；如果当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
 
@@ -188,10 +195,13 @@ guanlan pulse "产品名 用户评价" --read-top 2 --format context
 如果用户希望你直接形成回答依据，而不是只列链接，优先使用研究证据包：
 
 ```bash
+guanlan route "某主题"
 guanlan research "某主题" --profile china --limit 50 --read-top 2
 ```
 
 `research` 会自动整合搜索质量层、同题聚类、信源多样性和原文摘读。输出仍然不是最终答案，Agent 需要基于证据包再组织结论、依据和不确定性。
+
+`route` 会输出主要意图、证据角色、优先 scope、推荐站点、兜底 scope、查询改写和边界提醒。不要把 route 当成硬过滤：除非用户显式指定 `--scope` 或 `--site`，否则 `research` 会同时保留开放网页兜底，避免只在白名单里打转。
 
 如果用户需要你在证据包之外给一个谨慎的“助理视角”，加 `--advisor`：
 

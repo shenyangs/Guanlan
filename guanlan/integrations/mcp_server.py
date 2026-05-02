@@ -73,6 +73,34 @@ def _tool_definitions() -> list[dict]:
             },
         },
         {
+            "name": "guanlan_route",
+            "description": (
+                "Explain Guanlan's source and demand routing plan before searching. Use this when the "
+                "agent needs to understand which source pools, sites, evidence roles, warnings, and "
+                "fallbacks fit a Chinese web research request."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string"},
+                    "preset": {"type": "string", "default": "general"},
+                    "scope": {"type": "string"},
+                    "site": {"type": "string"},
+                    "sites": {"type": "array", "items": {"type": "string"}},
+                    "profile": {"type": "string", "enum": ["global", "china", "hybrid"], "default": "china"},
+                    "limit": {
+                        "type": "integer",
+                        "default": DEFAULT_RESEARCH_LIMIT,
+                        "minimum": 1,
+                        "maximum": MAX_RESEARCH_LIMIT,
+                    },
+                    "read_top": {"type": "integer", "minimum": 0, "maximum": 10},
+                    "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
+                },
+            },
+        },
+        {
             "name": "guanlan_read",
             "description": "Read a public URL into Markdown with Jina/direct/search fallbacks.",
             "inputSchema": {
@@ -245,6 +273,23 @@ def _run_tool(name: str, arguments: dict | None = None):
         if output_format == "prompt":
             return format_search_prompt(results, query=str(args.get("query") or ""))
         return format_search_context(results, title=f"观澜搜索上下文 / {args.get('query', '')}")
+
+    if name == "guanlan_route":
+        from guanlan.router import build_route_plan, format_route_plan_markdown
+
+        plan = build_route_plan(
+            str(args.get("query", "")).strip(),
+            preset=args.get("preset") or "general",
+            scope=args.get("scope") or None,
+            site=args.get("site") or None,
+            sites=args.get("sites") or None,
+            profile=args.get("profile") or "china",
+            limit=int(args.get("limit") or DEFAULT_RESEARCH_LIMIT),
+            read_top=int(args["read_top"]) if args.get("read_top") is not None else None,
+        )
+        if str(args.get("format") or "markdown") == "json":
+            return plan.to_dict()
+        return format_route_plan_markdown(plan)
 
     if name == "guanlan_read":
         from guanlan.webtools import read_url

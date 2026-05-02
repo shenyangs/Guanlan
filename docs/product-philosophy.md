@@ -181,14 +181,14 @@ guanlan serve --host 127.0.0.1 --port 8765
 - `read` 正文抽取继续去噪。
 - MCP 配置生成器：`guanlan mcp config`。
 
-### P2：稳定后做
+### P2：已在 v0.1.13 建立可用骨架
 
 - `guanlan serve` 本地只读 HTTP 服务。
 - 热榜跨源趋势归并。
 - 更细的 query intent router。
 - archive 到 RAG 的结构化导出增强。
 
-### P3：长期做
+### P3：已在 v0.1.13 建立第一版基础
 
 - 平台插件生态。
 - 企业内部只读搜索 connector。

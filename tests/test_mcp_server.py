@@ -28,6 +28,7 @@ def test_mcp_tool_definitions_include_agent_search_tools():
 
     assert "guanlan_status" in names
     assert "guanlan_search" in names
+    assert "guanlan_route" in names
     assert "guanlan_read" in names
     assert "guanlan_research" in names
     assert "guanlan_hotnews" in names
@@ -42,6 +43,8 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "backend" in hotnews_tool["inputSchema"]["properties"]
     assert "newsnow_base_url" in hotnews_tool["inputSchema"]["properties"]
     search_tool = next(tool for tool in tools if tool["name"] == "guanlan_search")
+    route_tool = next(tool for tool in tools if tool["name"] == "guanlan_route")
+    assert "evidence roles" in route_tool["description"]
     assert "prompt" in search_tool["inputSchema"]["properties"]["format"]["enum"]
     assert "prompt" in research_tool["inputSchema"]["properties"]["format"]["enum"]
 
@@ -73,6 +76,7 @@ def test_mcp_tool_definitions_use_expanded_limits():
     search_limit = tools["guanlan_search"]["inputSchema"]["properties"]["limit"]
     read_fallback = tools["guanlan_read"]["inputSchema"]["properties"]["fallback_limit"]
     research_limit = tools["guanlan_research"]["inputSchema"]["properties"]["limit"]
+    route_limit = tools["guanlan_route"]["inputSchema"]["properties"]["limit"]
     hotnews_limit = tools["guanlan_hotnews"]["inputSchema"]["properties"]["limit"]
     pulse_limit = tools["guanlan_pulse"]["inputSchema"]["properties"]["limit"]
     archive_limit = tools["guanlan_archive_search"]["inputSchema"]["properties"]["limit"]
@@ -85,6 +89,12 @@ def test_mcp_tool_definitions_use_expanded_limits():
         "maximum": MAX_READ_FALLBACK_LIMIT,
     }
     assert research_limit == {
+        "type": "integer",
+        "default": DEFAULT_RESEARCH_LIMIT,
+        "minimum": 1,
+        "maximum": MAX_RESEARCH_LIMIT,
+    }
+    assert route_limit == {
         "type": "integer",
         "default": DEFAULT_RESEARCH_LIMIT,
         "minimum": 1,
@@ -152,6 +162,18 @@ def test_mcp_read_uses_webtools(monkeypatch):
 
     assert text == "# Article"
     assert calls[0]["fallback_limit"] == DEFAULT_READ_FALLBACK_LIMIT
+
+
+def test_mcp_route_explains_source_plan():
+    text = mcp_server._run_tool(
+        "guanlan_route",
+        {"query": "某产品 用户评价 值不值得买", "format": "markdown"},
+    )
+
+    assert "观澜路由计划" in text
+    assert "reputation" in text
+    assert "purchase_advice" in text
+    assert "social_web" in text
 
 
 def test_mcp_archive_search_uses_archive(monkeypatch):

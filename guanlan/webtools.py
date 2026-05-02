@@ -30,6 +30,8 @@ from guanlan.limits import (
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
 )
+from guanlan.router import build_route_plan, format_route_plan_markdown
+from guanlan.source_taxonomy import source_card_for_domain
 
 _UA = "Mozilla/5.0 (compatible; Guanlan/1.4)"
 _TIMEOUT = 20
@@ -386,6 +388,14 @@ def search_web(
         raise ValueError("query is required")
     recency = detect_recency_intent(original_query)
     quality = detect_search_quality_profile(original_query, scope=scope, site=site, profile=profile)
+    route_plan = build_route_plan(
+        original_query,
+        scope=scope,
+        site=site,
+        profile=profile,
+        limit=limit,
+    )
+    quality = _quality_with_route_plan(quality, route_plan.to_dict(), explicit_scope=scope, site=site)
     if scope:
         from guanlan.search_sources import resolve_scope, scoped_query
 
@@ -488,6 +498,7 @@ def search_web(
                 "cache_key": cache_key,
                 "cluster_threshold": cluster_threshold,
                 "query_recency": recency,
+                "route_plan": route_plan.to_dict(),
                 "query_quality": quality,
                 "quality_summary": quality_summary,
                 "errors": list(errors),
@@ -526,6 +537,10 @@ def rank_results(
         item.source_type = meta["source_type"]
         item.matched_scope = meta["matched_scope"]
         item.trust_level = meta["trust_level"]
+        item.trace["source_card"] = source_card_for_domain(
+            item.domain,
+            preferred_scope=preferred_scope,
+        ).to_dict()
         item.score_parts = _score_result_parts(
             item,
             query=query,
@@ -1030,6 +1045,17 @@ def build_research_packet(
     effective_limit = max(limit if limit is not None else preset_config["limit"], 1)
     effective_profile = profile or preset_config["profile"]
     explicit_scope = scope if scope not in (None, "") else None
+    explicit_sites = _normalize_sites(([site] if site else []) + (sites or []))
+    route_plan = build_route_plan(
+        query,
+        preset=preset_config["id"],
+        scope=explicit_scope,
+        site=site,
+        sites=explicit_sites,
+        profile=effective_profile,
+        limit=effective_limit,
+        read_top=read_top,
+    )
     effective_scope = explicit_scope if explicit_scope is not None else preset_config["scope"]
     effective_sites = _research_sites(preset_config, site=site, sites=sites, explicit_scope=explicit_scope)
     effective_scopes = _research_scopes(
@@ -1038,7 +1064,16 @@ def build_research_packet(
         explicit_sites=effective_sites,
         site=site,
     )
+    if explicit_scope is None and not explicit_sites:
+        effective_scopes = _unique_keep_order(
+            effective_scopes
+            + list(route_plan.preferred_scopes)
+        )[:6]
+        if not effective_sites:
+            effective_sites = _normalize_sites(list(route_plan.target_sites))[:6]
     effective_read_top = max(read_top if read_top is not None else preset_config["read_top"], 0)
+    if read_top is None and preset_config["id"] == "general":
+        effective_read_top = route_plan.read_top
     effective_max_read_chars = max(
         max_read_chars if max_read_chars is not None else preset_config["max_read_chars"],
         1,
@@ -1051,6 +1086,7 @@ def build_research_packet(
         scopes=effective_scopes,
         search_backend=search_backend,
         profile=effective_profile,
+        include_open_fallback=not bool(explicit_scope or explicit_sites),
     )
     readings: list[dict[str, Any]] = []
     for item in _select_reading_candidates(results, effective_read_top):
@@ -1079,6 +1115,7 @@ def build_research_packet(
         "search_backend": search_backend,
         "read_backend": read_backend,
         "read_top": effective_read_top,
+        "route_plan": route_plan.to_dict(),
         "result_count": len(results),
         "source_mix": _source_mix(results),
         "topic_count": len({item.get("topic_key") for item in results if item.get("topic_key")}),
@@ -1093,6 +1130,7 @@ def build_research_packet(
             "优先使用不同 topic、不同 source_type 的材料交叉验证。",
             "topic=related 的结果可作为补充线索，不要当成独立证据重复计数。",
             "阅读兜底内容只代表公开搜索线索，不等同于原文全文。",
+            "路由计划是软约束：优先源用于提高适配度，开放搜索兜底用于避免信息池过窄。",
         ],
     }
     if advisor:
@@ -1127,6 +1165,20 @@ def format_research_markdown(packet: dict[str, Any]) -> str:
         lines.append(f"- Preset: {packet.get('preset')} / {packet.get('preset_name', '')}")
     if packet.get("search_errors"):
         lines.append(f"- 部分搜索失败: {'；'.join(packet['search_errors'])}")
+    route_plan = packet.get("route_plan") or {}
+    if isinstance(route_plan, dict) and route_plan:
+        lines.extend(["", "## 路由计划"])
+        lines.append(f"- 主要意图: {', '.join(route_plan.get('primary_intents') or []) or 'general'}")
+        if route_plan.get("secondary_intents"):
+            lines.append(f"- 次要意图: {', '.join(route_plan.get('secondary_intents') or [])}")
+        lines.append(f"- 证据角色: {', '.join(route_plan.get('evidence_roles') or [])}")
+        lines.append(f"- 优先 scope: {', '.join(route_plan.get('preferred_scopes') or []) or 'open web'}")
+        if route_plan.get("fallback_scopes"):
+            lines.append(f"- 兜底 scope: {', '.join(route_plan.get('fallback_scopes') or [])}")
+        if route_plan.get("target_sites"):
+            lines.append(f"- 推荐站点: {', '.join(route_plan.get('target_sites') or [])}")
+        for warning in route_plan.get("warnings", [])[:4]:
+            lines.append(f"- 边界: {warning}")
 
     advisor = packet.get("advisor")
     if isinstance(advisor, dict):
@@ -1193,6 +1245,11 @@ def format_research_prompt(packet: dict[str, Any]) -> str:
     if guidance:
         lines.append("### 使用规则")
         lines.extend(f"- {item}" for item in guidance)
+        lines.append("")
+    route_plan = packet.get("route_plan")
+    if isinstance(route_plan, dict) and route_plan:
+        lines.append("### 路由计划")
+        lines.append(format_route_plan_markdown(route_plan))
         lines.append("")
     selected = packet.get("selected_evidence") or packet.get("results", [])[:8]
     lines.append(format_search_context(selected, title="精选代表证据"))
@@ -1343,11 +1400,14 @@ def _research_search(
     scopes: list[str],
     search_backend: str,
     profile: str | None,
+    include_open_fallback: bool = True,
 ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
     errors: list[str] = []
     groups: list[dict[str, Any]] = []
     jobs: list[tuple[str, str]] = [("scope", scope_id) for scope_id in scopes]
     jobs.extend(("site", site_id) for site_id in sites)
+    if jobs and include_open_fallback:
+        jobs.append(("general", "open_web"))
     if not jobs:
         results = search_web(query, limit=limit, backend=search_backend, profile=profile)
         return results, errors, [{"type": "general", "label": "web", "result_count": len(results), "results": results}]
@@ -1380,7 +1440,8 @@ def _merge_ranked_result_dicts(results: list[dict[str, Any]], limit: int) -> lis
     candidates.sort(key=lambda item: (-item.score, item.rank))
     deduped = _dedupe_results(candidates)
     ranked = sorted(deduped, key=lambda item: (-item.score, item.rank))
-    _assign_topic_clusters(ranked)
+    if not all(item.topic_key for item in ranked):
+        _assign_topic_clusters(ranked)
     ranked = _order_topic_representatives_first(ranked)
     for idx, item in enumerate(ranked, start=1):
         item.rank = idx
@@ -1434,6 +1495,9 @@ def _select_representative_evidence(results: list[dict[str, Any]], select_top: i
         return score, -rank
 
     candidates = [item for item in results if item.get("url")]
+    primary_candidates = [item for item in candidates if item.get("topic_role") != "related"]
+    if len(primary_candidates) >= select_top:
+        candidates = primary_candidates
     while candidates and len(chosen) < select_top:
         best = max(candidates, key=evidence_score)
         candidates.remove(best)
@@ -1871,6 +1935,17 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
         return "\n".join(lines)
     query_quality = (results[0].get("trace") or {}).get("query_quality") or {}
     quality_summary = (results[0].get("trace") or {}).get("quality_summary") or {}
+    route_plan = (results[0].get("trace") or {}).get("route_plan") or {}
+    if route_plan:
+        lines.append(
+            "- route_plan: "
+            f"intents={','.join(route_plan.get('primary_intents') or []) or 'general'} "
+            f"scopes={','.join(route_plan.get('preferred_scopes') or []) or 'open'} "
+            f"sites={','.join(route_plan.get('target_sites') or []) or 'none'} "
+            f"risk={route_plan.get('risk_level', 'low')}"
+        )
+        for warning in route_plan.get("warnings", [])[:3]:
+            lines.append(f"  route_warning: {warning}")
     if query_quality:
         preferred = ",".join(query_quality.get("preferred_source_types") or []) or "none"
         lines.append(
@@ -2014,6 +2089,44 @@ def detect_search_quality_profile(
         "guidance": data.get("guidance", "先看来源类型、topic 和时效性，再决定是否扩大搜索。"),
         "reasons": reasons,
     }
+
+
+def _quality_with_route_plan(
+    quality: dict[str, Any],
+    route_plan: dict[str, Any],
+    explicit_scope: str | None = None,
+    site: str | None = None,
+) -> dict[str, Any]:
+    """Softly enrich quality preferences from the route plan."""
+    enriched = dict(quality or {})
+    preferred_scopes = list(enriched.get("preferred_scopes") or [])
+    preferred_types = list(enriched.get("preferred_source_types") or [])
+    if not explicit_scope and not site:
+        for scope_id in route_plan.get("preferred_scopes") or []:
+            if scope_id not in preferred_scopes:
+                preferred_scopes.append(scope_id)
+        try:
+            from guanlan.search_sources import resolve_scope
+
+            for scope_id in preferred_scopes:
+                source_type = resolve_scope(scope_id).source_type
+                if source_type not in preferred_types:
+                    preferred_types.append(source_type)
+        except Exception:
+            pass
+    enriched["preferred_scopes"] = preferred_scopes
+    enriched["preferred_source_types"] = preferred_types
+    enriched["route_intents"] = list(route_plan.get("primary_intents") or [])
+    enriched["route_evidence_roles"] = list(route_plan.get("evidence_roles") or [])
+    enriched["route_warnings"] = list(route_plan.get("warnings") or [])
+    if enriched.get("intent") == "general" and route_plan.get("primary_intents"):
+        enriched["intent"] = "+".join(route_plan.get("primary_intents") or ["general"])
+        enriched["name"] = "路由识别 / " + enriched["intent"]
+    enriched.setdefault("reasons", [])
+    enriched["reasons"] = list(enriched.get("reasons") or []) + [
+        f"route:{intent}" for intent in route_plan.get("primary_intents") or [] if intent != "general"
+    ]
+    return enriched
 
 
 def search_quality_summary(
@@ -2366,6 +2479,9 @@ def _score_result_parts(
     parts: dict[str, float] = {
         "base": 1.0,
         "source_credibility": min(item.trust_level, 5) * 0.25,
+        "authority_fit": 0.0,
+        "sample_fit": 0.0,
+        "freshness_fit": 0.0,
         "intent_fit": 0.0,
         "source_quality": _source_quality_weight(item.source_type),
         "content_length": 0.2 if item.snippet else 0.0,
@@ -2374,8 +2490,30 @@ def _score_result_parts(
         "recency_boost": 0.0,
         "ad_penalty": 0.0,
         "intent_mismatch_penalty": 0.0,
+        "source_risk_penalty": 0.0,
         "stale_penalty": 0.0,
     }
+    source_card = (item.trace or {}).get("source_card") or {}
+    route_intents = set(quality.get("route_intents") or [])
+    route_roles = set(quality.get("route_evidence_roles") or [])
+    fit_tags = set(source_card.get("fit_tags") or [])
+    content_roles = set(source_card.get("content_roles") or [])
+    risk_tags = set(source_card.get("risk_tags") or [])
+    authority_score = float(source_card.get("authority_score") or 0.0)
+    sample_value = float(source_card.get("sample_value") or 0.0)
+    freshness_value = float(source_card.get("freshness_value") or 0.0)
+    if route_intents & {"policy", "official_position", "local", "finance"}:
+        parts["authority_fit"] = authority_score * 0.45
+    if route_intents & {"reputation", "purchase_advice", "tech"}:
+        parts["sample_fit"] = sample_value * 0.42
+    if route_intents & {"hot_trend"} or (recency and recency.get("enabled")):
+        parts["freshness_fit"] = freshness_value * 0.32
+    if route_roles and (route_roles & (fit_tags | content_roles)):
+        parts["intent_fit"] += 0.18
+    if risk_tags & {"soft_article", "sponsored_content", "seo_content", "commercial_content"}:
+        parts["source_risk_penalty"] -= 0.18
+    if risk_tags & {"sample_bias", "not_representative"} and route_intents & {"policy", "finance"}:
+        parts["source_risk_penalty"] -= 0.22
     title_text = (item.title + " " + item.snippet).lower()
     terms = [t.lower() for t in re.split(r"\s+", query) if t and not t.startswith("site:")]
     if terms:
@@ -2388,9 +2526,9 @@ def _score_result_parts(
     preferred_source_types = set(quality.get("preferred_source_types") or [])
     caution_source_types = set(quality.get("caution_source_types") or [])
     if item.matched_scope and item.matched_scope in preferred_scopes:
-        parts["intent_fit"] = 0.65
+        parts["intent_fit"] += 0.65
     elif item.source_type and item.source_type in preferred_source_types:
-        parts["intent_fit"] = 0.48
+        parts["intent_fit"] += 0.48
     if item.source_type and item.source_type in caution_source_types:
         parts["intent_mismatch_penalty"] = -0.35
     if recency and recency.get("enabled"):

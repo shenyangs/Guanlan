@@ -97,7 +97,31 @@ guanlan mcp config --client openwebui --format json
 
 复杂研究建议让 Agent 使用 `limit=50-100`，再从观澜返回的精选代表证据中组织回答。
 
-## 四、安全边界
+## 四、不支持 MCP：使用本地只读 HTTP
+
+```bash
+guanlan serve --host 127.0.0.1 --port 8765
+```
+
+常用接口：
+
+- `GET /health`
+- `POST /route`
+- `POST /search`
+- `POST /research`
+- `POST /read`
+- `GET /hotnews?source=today&limit=50&trends=1`
+- `POST /archive/search`
+
+示例：
+
+```bash
+curl -s http://127.0.0.1:8765/research \
+  -H 'content-type: application/json' \
+  -d '{"query":"AI 眼镜 中国市场 趋势","profile":"china","limit":80,"advisor":true}'
+```
+
+## 五、安全边界
 
 - 默认只读。
 - 默认不读取浏览器 Cookie。

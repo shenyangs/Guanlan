@@ -465,7 +465,7 @@ def fetch_today(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
 
     if not merged and errors:
         raise RuntimeError("All native hotnews sources failed: " + "; ".join(errors))
-    return merged[:limit]
+    return _annotate_trends(merged[:limit])
 
 
 def fetch_newsnow(
@@ -513,10 +513,11 @@ def fetch_hotnews(
             return fetch_newsnow(source, limit=limit, base_url=newsnow_base_url)
         available = ", ".join(sorted(fetchers) + [f"newsnow:{name}" for name in sorted(NEWSNOW_RECOMMENDED_SOURCES)])
         raise ValueError(f"Unknown hotnews source: {source}. Available: {available}")
-    return [
+    items = [
         item.to_dict() if hasattr(item, "to_dict") else dict(item)
         for item in fetchers[source](limit=limit)
     ]
+    return _annotate_trends(items) if source == "today" else items
 
 
 def normalize_hotnews_payload(
@@ -608,3 +609,113 @@ def format_hotnews_markdown(items: list[dict[str, Any]], title: str = "观澜热
             line += f"\n   {summary[:180]}"
         lines.append(line)
     return "\n".join(lines)
+
+
+def build_trend_report(items: list[dict[str, Any]], limit: int = 20) -> dict[str, Any]:
+    """Merge cross-source hotnews rows into lightweight trend clusters."""
+    clusters: list[dict[str, Any]] = []
+    for item in items:
+        title = _clean_text(item.get("title", ""))
+        if not title:
+            continue
+        signature = _trend_signature(title)
+        matched = None
+        for cluster in clusters:
+            similarity = _signature_similarity(signature, set(cluster.get("_signature", [])))
+            overlap = len(signature & set(cluster.get("_signature", [])))
+            if (
+                similarity >= 0.24
+                or overlap >= 2
+                or title in str(cluster.get("title", ""))
+                or str(cluster.get("title", "")) in title
+            ):
+                matched = cluster
+                break
+        if matched is None:
+            matched = {
+                "trend_id": f"trend-{len(clusters) + 1}",
+                "title": title,
+                "sources": [],
+                "items": [],
+                "_signature": sorted(signature),
+            }
+            clusters.append(matched)
+        matched["items"].append(item)
+        source_id = _clean_text(item.get("source_id", "unknown"))
+        if source_id and source_id not in matched["sources"]:
+            matched["sources"].append(source_id)
+
+    for cluster in clusters:
+        items_for_cluster = cluster.get("items", [])
+        cluster["source_count"] = len(cluster.get("sources", []))
+        cluster["item_count"] = len(items_for_cluster)
+        cluster["heat_score"] = _cluster_heat_score(items_for_cluster)
+        cluster.pop("_signature", None)
+    clusters.sort(key=lambda row: (-int(row.get("source_count", 0)), -float(row.get("heat_score", 0)), str(row.get("title", ""))))
+    return {
+        "trend_count": len(clusters),
+        "sample_count": len(items),
+        "trends": clusters[: max(limit, 1)],
+    }
+
+
+def format_trend_report_markdown(report: dict[str, Any], title: str = "观澜趋势归并") -> str:
+    """Render cross-source trend clusters as Markdown."""
+    lines = [f"# {title}", "", f"- 样本数: {report.get('sample_count', 0)}", f"- 趋势数: {report.get('trend_count', 0)}"]
+    trends = report.get("trends") or []
+    if not trends:
+        lines.append("- 暂无可归并趋势。")
+        return "\n".join(lines)
+    lines.extend(["", "## 趋势"])
+    for idx, trend in enumerate(trends, start=1):
+        sources = ", ".join(trend.get("sources") or [])
+        lines.append(f"{idx}. {trend.get('title', '')}")
+        lines.append(f"   来源: {sources or 'unknown'} | 条目: {trend.get('item_count', 0)} | 热度: {trend.get('heat_score', 0)}")
+        for item in (trend.get("items") or [])[:3]:
+            source = _clean_text(item.get("source_id", "unknown"))
+            url = _clean_text(item.get("url", ""))
+            item_title = _clean_text(item.get("title", ""))
+            lines.append(f"   - [{source}] {item_title}" + (f" {url}" if url else ""))
+    return "\n".join(lines)
+
+
+def _annotate_trends(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    report = build_trend_report(items, limit=len(items) or 1)
+    trend_map: dict[int, str] = {}
+    for trend in report.get("trends", []):
+        for item in trend.get("items", []):
+            trend_map[id(item)] = str(trend.get("trend_id", ""))
+    output = []
+    for item in items:
+        row = dict(item)
+        if trend_map.get(id(item)):
+            row["trend_id"] = trend_map[id(item)]
+        output.append(row)
+    return output
+
+
+def _trend_signature(title: str) -> set[str]:
+    text = re.sub(r"[^\w\u4e00-\u9fff]+", " ", title.lower())
+    tokens = {token for token in text.split() if len(token) >= 2}
+    cjk = re.findall(r"[\u4e00-\u9fff]", text)
+    tokens.update("".join(cjk[idx:idx + 2]) for idx in range(max(len(cjk) - 1, 0)))
+    stopwords = {"一个", "如何", "为何", "什么", "最新", "今天", "回应", "官方"}
+    return {token for token in tokens if token and token not in stopwords}
+
+
+def _signature_similarity(left: set[str], right: set[str]) -> float:
+    if not left or not right:
+        return 0.0
+    return len(left & right) / len(left | right)
+
+
+def _cluster_heat_score(items: list[dict[str, Any]]) -> float:
+    score = 0.0
+    for item in items:
+        rank = int(item.get("rank") or 99)
+        score += max(1, 101 - rank)
+        metrics = item.get("metrics") or {}
+        heat = metrics.get("heat") or metrics.get("views") or metrics.get("replies")
+        if isinstance(heat, (int, float)):
+            score += min(float(heat) / 10000, 50)
+    return round(score, 2)

@@ -170,7 +170,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.1.12`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.1.13`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -304,6 +304,7 @@ guanlan configure --from-browser chrome
 | `guanlan doctor --trace` | 展示诊断路径，帮助定位是否存在敏感探测风险。 |
 | `guanlan doctor --check-config` | 扫描本地配置中可能误存的明文 Cookie、Token、Key 或代理凭据。 |
 | `guanlan status` | 显示渠道运行、就绪、验证、稳定性、授权边界和本地缓存概览。 |
+| `guanlan route "关键词"` | 解释需求路由、证据角色、优先 scope、推荐站点和边界提醒。 |
 | `guanlan search "关键词"` | 搜索网页，输出适合 Agent 阅读的结果列表。 |
 | `guanlan search "关键词" --trace` | 展示评分因子、后端顺序、聚类阈值和缓存命中状态。 |
 | `guanlan search "最近 关键词 热点" --trace` | 自动识别时效性意图，收束到近期窗口，并在 trace 中解释结果日期。 |
@@ -322,6 +323,7 @@ guanlan configure --from-browser chrome
 | `guanlan prompt "问题"` | 快速生成 Ollama / LM Studio / Open WebUI 可用的联网 Prompt。 |
 | `guanlan research "关键词" --sites zhihu.com,weibo.com` | 按多个指定站点生成平台定向证据块。 |
 | `guanlan pulse "关键词"` | 安全版话题回响分析，输出讨论倾向、关键词信号和明确边界。 |
+| `guanlan hotnews today --trends` | 多源热榜归并成趋势簇，观察中文互联网当日水势。 |
 | `guanlan read "URL"` | 读取网页并转成 Markdown。 |
 | `guanlan read "URL" --format prompt --question "问题"` | 把网页正文包装成本地模型 Prompt。 |
 | `guanlan read batch urls.txt --format context` | 批量读取 URL 列表并输出紧凑上下文。 |
@@ -329,8 +331,12 @@ guanlan configure --from-browser chrome
 | `guanlan read "URL" --watch` | 保存/比较本地快照，输出内容变化 diff。 |
 | `guanlan read "URL" --backend direct` | 绕过 Jina Reader，直接读取原网页。 |
 | `guanlan archive add "URL"` | 将网页读取为 Markdown 后沉淀进本地知识库。 |
+| `guanlan archive ingest-search "关键词"` | 把一次 research 的精选代表证据沉淀进本地知识库。 |
 | `guanlan archive search "关键词"` | 在本地知识库中检索已归档材料。 |
-| `guanlan archive export --format jsonl` | 导出本地知识库，方便接入 RAG 或其他系统。 |
+| `guanlan archive export --format jsonl --source-type 政府` | 按 domain/source_type/topic 导出 RAG 友好 JSONL。 |
+| `guanlan serve --host 127.0.0.1 --port 8765` | 启动本地只读 HTTP 服务。 |
+| `guanlan plugin template my_company_api` | 生成企业内部只读搜索 connector 模板。 |
+| `guanlan eval scenarios --format jsonl` | 输出中文语境搜索质量评估集。 |
 | `guanlan hotnews today --limit 50` | 拉取原生多源中文热榜。 |
 | `guanlan profile set china` | 切换到中文场景画像。 |
 | `guanlan configure --from-browser chrome` | 显式从浏览器提取支持平台的 Cookie。 |
@@ -529,6 +535,7 @@ guanlan search "最新 人工智能 政策" --profile china --cluster-threshold 
 
 ```bash
 guanlan search "问题" --profile china --format context
+guanlan route "问题"
 guanlan search "最近 问题 热点" --profile china --format context --trace
 guanlan research "问题" --preset policy --format context --source-chart
 guanlan research "产品 用户评价" --preset reputation --read-top 0 --format context
@@ -536,11 +543,14 @@ guanlan prompt "问题" --profile china
 guanlan pulse "产品 用户评价" --format context
 guanlan read batch urls.txt --format context --cache-ttl 3600
 guanlan archive search "问题" --format context
+guanlan hotnews today --trends
 ```
 
 CLI 是默认主路径；如果当前 Agent 或平台支持 MCP，可以把 `guanlan-mcp` 作为可选集成接进去，让 Agent 直接调用 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search` 和 `guanlan_status`。
 
 本地模型没有联网能力时，用 `guanlan prompt "问题"` 或给 `search/research/read` 加 `--format prompt`，把观澜证据包直接喂给 Ollama、LM Studio 或 Open WebUI。MCP 客户端配置可用 `guanlan mcp config --client codex` 生成。
+
+不支持 MCP 的本地工具可以走只读 HTTP：`guanlan serve --host 127.0.0.1 --port 8765`。服务默认只监听本机，提供搜索、研究、阅读、热榜、路由和本地归档检索接口，不提供发布/评论/点赞/私信等写操作。
 
 ### 14. 把读过的网页沉淀成本地知识库
 
@@ -585,6 +595,7 @@ guanlan configure --from-browser chrome
 遇到“帮我查清楚再回答”这类任务，通常可以直接用：
 
 ```bash
+guanlan route "某产品 用户评价 值不值得买"
 guanlan research "人工智能 新质生产力" --profile china --scope party_central
 guanlan research "跨境电商 AI" --profile china --scope ecommerce --read-top 3
 guanlan research "某产品 用户评价" --profile china --site zhihu.com --read-top 0
@@ -593,6 +604,8 @@ guanlan research "某产品 用户评价" --preset reputation --read-top 0 --adv
 ```
 
 `research` 会把搜索结果、同题聚类、信源多样性和原文摘读整理成一份更适合 Agent 消化的证据包。
+
+`route` 会先解释“为什么这样搜”：识别需求标签，给出优先 scope、推荐站点、证据角色、风险提醒和查询改写。它是软路由，不会把世界缩小成白名单；`research` 会把优先信源和开放网页兜底一起纳入候选池，避免信源池过窄。
 
 如果用户需要建议、下一步、风险提醒，或希望你判断“他为什么搜这个”，加 `--advisor`。助理视角规则会告诉 Agent 当前证据能支持什么、不能支持什么，以及回答时必须守住哪些边界；最终建议应由 Agent 结合用户问题自然生成，不能机械复述模板，也不能当作用户真实目的或高风险专业结论。
 

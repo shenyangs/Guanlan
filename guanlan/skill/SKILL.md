@@ -67,6 +67,7 @@ guanlan search "query" --cache-ttl 3600
 guanlan search "query" --format context
 guanlan search "query" --format prompt
 guanlan search "query" --source-chart
+guanlan route "query"
 guanlan research "query" --profile china --advisor
 guanlan research "query" --profile china --format prompt
 guanlan prompt "query" --profile china
@@ -80,15 +81,20 @@ guanlan read "URL" --watch
 
 # 本地知识库
 guanlan archive add "URL"
+guanlan archive ingest-search "query" --limit 80
 guanlan archive search "query" --format context
 guanlan archive export --format jsonl
 guanlan mcp config --client codex
+guanlan serve --host 127.0.0.1 --port 8765
+guanlan plugin template my_company_api
+guanlan eval scenarios --format jsonl
 
 # GitHub 搜索
 gh search repos "query" --sort stars --limit 50
 
 # 中文热榜（原生公开源，不需要 Cookie）
 guanlan hotnews today --limit 50
+guanlan hotnews today --limit 50 --trends
 guanlan hotnews weibo --limit 50
 guanlan hotnews bilibili --limit 50
 guanlan hotnews ithome --limit 50

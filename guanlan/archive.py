@@ -191,6 +191,69 @@ def add_document(
     }
 
 
+def ingest_search(
+    query: str,
+    *,
+    limit: int = 50,
+    read_top: int = 3,
+    select_top: int = 8,
+    preset: str = "general",
+    profile: str | None = "china",
+    db_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Run Guanlan research and persist representative evidence into the archive."""
+    from guanlan.webtools import build_research_packet
+
+    packet = build_research_packet(
+        query,
+        limit=max(limit, 1),
+        read_top=max(read_top, 0),
+        select_top=max(select_top, 1),
+        preset=preset,
+        profile=profile,
+    )
+    readings_by_url = {
+        str(item.get("url", "")): item
+        for item in packet.get("readings", [])
+        if item.get("status") == "ok"
+    }
+    records: list[dict[str, Any]] = []
+    for item in packet.get("selected_evidence") or packet.get("results", [])[:select_top]:
+        url = str(item.get("url", "")).strip()
+        if not url:
+            continue
+        reading = readings_by_url.get(url)
+        if reading and reading.get("content"):
+            content = str(reading.get("content", ""))
+        else:
+            title = str(item.get("title") or url)
+            snippet = str(item.get("snippet") or "")
+            content = f"# {title}\n\nURL: {url}\n\n{snippet}".strip()
+        metadata = {
+            "ingest_query": query,
+            "ingest_type": "research",
+            "preset": packet.get("preset", preset),
+            "source_type": item.get("source_type", ""),
+            "source": item.get("source", ""),
+            "topic_key": item.get("topic_key", ""),
+            "topic_role": item.get("topic_role", ""),
+            "rank": item.get("rank", 0),
+            "score": item.get("score", 0),
+            "route_plan": packet.get("route_plan", {}),
+        }
+        try:
+            records.append(add_document(url, content, title=str(item.get("title", "")), metadata=metadata, db_path=db_path))
+        except Exception as exc:
+            records.append({"url": url, "status": "error", "error": str(exc)})
+    return {
+        "query": query,
+        "packet_result_count": packet.get("result_count", 0),
+        "selected_count": len(packet.get("selected_evidence") or []),
+        "archived_count": sum(1 for item in records if item.get("status") in {"created", "updated", "unchanged"}),
+        "records": records,
+    }
+
+
 def search_documents(
     query: str,
     limit: int = DEFAULT_ARCHIVE_SEARCH_LIMIT,
@@ -233,11 +296,21 @@ def list_documents(limit: int = DEFAULT_ARCHIVE_LIST_LIMIT, db_path: str | Path 
     return [_row_to_record(row) for row in rows]
 
 
-def export_documents(db_path: str | Path | None = None) -> list[dict[str, Any]]:
+def export_documents(
+    db_path: str | Path | None = None,
+    *,
+    domain: str | None = None,
+    source_type: str | None = None,
+    topic: str | None = None,
+) -> list[dict[str, Any]]:
     """Return all archive documents for JSONL/Markdown export."""
     with _connect(db_path) as conn:
         rows = conn.execute("SELECT * FROM documents ORDER BY updated_at DESC, id DESC").fetchall()
-    return [_row_to_record(row, include_content=True) for row in rows]
+    records = [_row_to_record(row, include_content=True, rag=True) for row in rows]
+    return [
+        record for record in records
+        if _export_filter(record, domain=domain, source_type=source_type, topic=topic)
+    ]
 
 
 def archive_stats(db_path: str | Path | None = None) -> dict[str, Any]:
@@ -432,7 +505,12 @@ def _search_like(conn: sqlite3.Connection, query: str, limit: int) -> list[sqlit
     ).fetchall()
 
 
-def _row_to_record(row: sqlite3.Row, query: str = "", include_content: bool = False) -> dict[str, Any]:
+def _row_to_record(
+    row: sqlite3.Row,
+    query: str = "",
+    include_content: bool = False,
+    rag: bool = False,
+) -> dict[str, Any]:
     data = dict(row)
     metadata_raw = data.pop("metadata_json", "{}")
     try:
@@ -452,7 +530,36 @@ def _row_to_record(row: sqlite3.Row, query: str = "", include_content: bool = Fa
     }
     if include_content:
         record["content"] = data.get("content", "")
+    if rag:
+        metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+        record["rag"] = {
+            "id": f"guanlan-{record.get('id')}",
+            "text": data.get("content", ""),
+            "source": record.get("url", ""),
+            "title": record.get("title", ""),
+            "domain": record.get("domain", ""),
+            "source_type": metadata.get("source_type", ""),
+            "topic": metadata.get("topic_key", ""),
+            "updated_at": record.get("updated_at", 0),
+        }
     return record
+
+
+def _export_filter(
+    record: dict[str, Any],
+    *,
+    domain: str | None = None,
+    source_type: str | None = None,
+    topic: str | None = None,
+) -> bool:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    if domain and domain.lower() not in str(record.get("domain", "")).lower():
+        return False
+    if source_type and source_type.lower() not in str(metadata.get("source_type", "")).lower():
+        return False
+    if topic and topic.lower() not in str(metadata.get("topic_key", "")).lower():
+        return False
+    return True
 
 
 def _normalize_url(url: str) -> str:

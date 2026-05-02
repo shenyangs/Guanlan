@@ -176,6 +176,25 @@ def main():
                            help="Maximum number of items to fetch")
     p_hotnews.add_argument("--json", action="store_true",
                            help="Print normalized JSON instead of Markdown")
+    p_hotnews.add_argument("--trends", action="store_true",
+                           help="For multi-source hotnews, append cross-source trend clusters")
+
+    # ── route ──
+    p_route = sub.add_parser("route", help="Explain Guanlan's source and demand routing plan")
+    p_route.add_argument("query", nargs="?", default="", help="Query or research need to route")
+    p_route.add_argument("--preset", default="general",
+                         help="Optional research preset context")
+    p_route.add_argument("--site", default="", help="User-requested site, if any")
+    p_route.add_argument("--sites", default="", help="Comma-separated user-requested sites")
+    p_route.add_argument("--scope", default="", help="User-requested scope, if any")
+    p_route.add_argument("--profile", choices=VALID_PROFILES, default="china",
+                         help="Region profile")
+    p_route.add_argument("--limit", type=int, default=DEFAULT_RESEARCH_LIMIT,
+                         help="Candidate pool size to plan for")
+    p_route.add_argument("--read-top", type=int, default=None,
+                         help="Optional read count to plan for")
+    p_route.add_argument("--json", action="store_true",
+                         help="Print route plan JSON instead of Markdown")
 
     # ── search ──
     p_search = sub.add_parser("search", help="Search the web for agent-ready results")
@@ -373,7 +392,41 @@ def main():
     p_archive_export = archive_sub.add_parser("export", help="Export archive records")
     p_archive_export.add_argument("--format", choices=["jsonl", "markdown"], default="jsonl",
                                   help="Export format")
+    p_archive_export.add_argument("--domain", default="", help="Filter export by domain")
+    p_archive_export.add_argument("--source-type", default="", help="Filter export by archived source_type metadata")
+    p_archive_export.add_argument("--topic", default="", help="Filter export by archived topic metadata")
     p_archive_export.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_ingest = archive_sub.add_parser("ingest-search", help="Research a query and archive representative evidence")
+    p_archive_ingest.add_argument("query", help="Research query to ingest")
+    p_archive_ingest.add_argument("--limit", type=int, default=DEFAULT_RESEARCH_LIMIT, help="Broad search pool size")
+    p_archive_ingest.add_argument("--read-top", type=int, default=3, help="Representative URLs to read")
+    p_archive_ingest.add_argument("--select-top", type=int, default=8, help="Representative evidence items to archive")
+    p_archive_ingest.add_argument("--preset", default="general", help="Research preset")
+    p_archive_ingest.add_argument("--profile", choices=VALID_PROFILES, default="china", help="Region profile")
+    p_archive_ingest.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_archive_ingest.add_argument("--db", default="", help="Optional archive database path")
+
+    # ── serve ──
+    p_serve = sub.add_parser("serve", help="Run a local read-only HTTP service")
+    p_serve.add_argument("--host", default="127.0.0.1", help="Host to bind; default keeps service local-only")
+    p_serve.add_argument("--port", type=int, default=8765, help="Port to listen on")
+
+    # ── plugin ──
+    p_plugin = sub.add_parser("plugin", help="Manage read-only search backend plugins")
+    plugin_sub = p_plugin.add_subparsers(dest="plugin_command", help="Plugin commands")
+    plugin_sub.add_parser("list", help="List registered plugins")
+    p_plugin_register = plugin_sub.add_parser("register", help="Register a local read-only plugin backend")
+    p_plugin_register.add_argument("name", help="Plugin backend name")
+    p_plugin_register.add_argument("path", help="Path to plugin script")
+    p_plugin_template = plugin_sub.add_parser("template", help="Print a plugin backend template")
+    p_plugin_template.add_argument("name", nargs="?", default="my_company_api", help="Template plugin name")
+
+    # ── eval ──
+    p_eval = sub.add_parser("eval", help="Show Guanlan evaluation scenarios")
+    eval_sub = p_eval.add_subparsers(dest="eval_command", help="Evaluation commands")
+    p_eval_scenarios = eval_sub.add_parser("scenarios", help="Print built-in evaluation scenarios")
+    p_eval_scenarios.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
 
     # ── mcp ──
     p_mcp = sub.add_parser("mcp", help="MCP helpers for agent integration")
@@ -435,6 +488,8 @@ def main():
         _cmd_format(args)
     elif args.command == "hotnews":
         _cmd_hotnews(args)
+    elif args.command == "route":
+        _cmd_route(args)
     elif args.command == "search":
         _cmd_search(args)
     elif args.command == "research":
@@ -449,6 +504,12 @@ def main():
         _cmd_archive(args)
     elif args.command == "mcp":
         _cmd_mcp(args)
+    elif args.command == "serve":
+        _cmd_serve(args)
+    elif args.command == "plugin":
+        _cmd_plugin(args)
+    elif args.command == "eval":
+        _cmd_eval(args)
 
 
 # ── Command handlers ────────────────────────────────
@@ -784,7 +845,13 @@ def _cmd_hotnews(args):
     """Fetch Chinese hotnews from native public sources."""
 
     from guanlan.config import Config
-    from guanlan.hotnews import fetch_hotnews, format_hotnews_markdown, list_sources
+    from guanlan.hotnews import (
+        build_trend_report,
+        fetch_hotnews,
+        format_hotnews_markdown,
+        format_trend_report_markdown,
+        list_sources,
+    )
 
     source = (args.source or "today").lower()
     if source == "list":
@@ -823,9 +890,39 @@ def _cmd_hotnews(args):
         sys.exit(1)
 
     if args.json:
-        print(json.dumps(items, ensure_ascii=False, indent=2))
+        payload = {"items": items}
+        if args.trends:
+            payload["trend_report"] = build_trend_report(items)
+        print(json.dumps(payload if args.trends else items, ensure_ascii=False, indent=2))
     else:
         print(format_hotnews_markdown(items, title=f"观澜热榜 / {source}"))
+        if args.trends:
+            print()
+            print(format_trend_report_markdown(build_trend_report(items), title=f"观澜趋势归并 / {source}"))
+
+
+def _cmd_route(args):
+    """Explain the soft routing plan for a query."""
+
+    from guanlan.router import build_route_plan, format_route_plan_markdown
+
+    if not args.query:
+        print("Error: query is required", file=sys.stderr)
+        sys.exit(2)
+    plan = build_route_plan(
+        args.query,
+        preset=args.preset,
+        scope=args.scope or None,
+        site=args.site or None,
+        sites=[s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
+        profile=args.profile or None,
+        limit=max(args.limit, 1),
+        read_top=max(args.read_top, 0) if args.read_top is not None else None,
+    )
+    if args.json:
+        print(json.dumps(plan.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(format_route_plan_markdown(plan))
 
 
 def _cmd_search(args):
@@ -1088,13 +1185,14 @@ def _cmd_archive(args):
         format_archive_context,
         format_archive_markdown,
         format_archive_stats,
+        ingest_search,
         list_documents,
         search_documents,
     )
 
     command = getattr(args, "archive_command", None)
     if not command:
-        print("Error: archive command is required: add, search, list, stats, export", file=sys.stderr)
+        print("Error: archive command is required: add, ingest-search, search, list, stats, export", file=sys.stderr)
         sys.exit(2)
     db_path = args.db or None
 
@@ -1164,7 +1262,12 @@ def _cmd_archive(args):
             return
 
         if command == "export":
-            records = export_documents(db_path=db_path)
+            records = export_documents(
+                db_path=db_path,
+                domain=args.domain or None,
+                source_type=args.source_type or None,
+                topic=args.topic or None,
+            )
             if args.format == "markdown":
                 for item in records:
                     print(f"# {item.get('title', '')}")
@@ -1177,6 +1280,22 @@ def _cmd_archive(args):
             else:
                 for item in records:
                     print(json.dumps(item, ensure_ascii=False, sort_keys=True))
+            return
+
+        if command == "ingest-search":
+            result = ingest_search(
+                args.query,
+                limit=max(args.limit, 1),
+                read_top=max(args.read_top, 0),
+                select_top=max(args.select_top, 1),
+                preset=args.preset,
+                profile=args.profile or None,
+                db_path=db_path,
+            )
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print(_format_archive_ingest_summary(result))
             return
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -1211,6 +1330,60 @@ def _cmd_mcp(args):
         sys.exit(1)
 
 
+def _cmd_serve(args):
+    """Run local read-only HTTP service."""
+    if args.host not in {"127.0.0.1", "localhost", "::1"}:
+        print(
+            "[!] 默认建议只监听 127.0.0.1；当前未启用任何写操作或 Cookie 读取，但请确认网络边界。",
+            file=sys.stderr,
+        )
+    from guanlan.serve import run_server
+
+    run_server(host=args.host, port=max(args.port, 1))
+
+
+def _cmd_plugin(args):
+    """Manage read-only plugin backends."""
+    from guanlan.plugins import list_plugins, plugin_template, register_plugin
+
+    command = getattr(args, "plugin_command", None)
+    try:
+        if command == "list":
+            print(json.dumps(list_plugins(), ensure_ascii=False, indent=2))
+            return
+        if command == "register":
+            print(json.dumps(register_plugin(args.name, args.path), ensure_ascii=False, indent=2))
+            return
+        if command == "template":
+            print(plugin_template(args.name))
+            return
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    print("Error: plugin command is required: list, register, template", file=sys.stderr)
+    sys.exit(2)
+
+
+def _cmd_eval(args):
+    """Show built-in evaluation scenarios."""
+    from guanlan.evaluation import (
+        format_evaluation_jsonl,
+        format_evaluation_markdown,
+        list_evaluation_scenarios,
+    )
+
+    if getattr(args, "eval_command", None) != "scenarios":
+        print("Error: eval command is required: scenarios", file=sys.stderr)
+        sys.exit(2)
+    scenarios = list_evaluation_scenarios()
+    if args.format == "json":
+        print(json.dumps(scenarios, ensure_ascii=False, indent=2))
+    elif args.format == "jsonl":
+        print(format_evaluation_jsonl(scenarios))
+    else:
+        print(format_evaluation_markdown(scenarios))
+
+
 def _format_archive_add_summary(records: list[dict]) -> str:
     lines = ["# 观澜本地知识库归档", ""]
     if not records:
@@ -1224,6 +1397,21 @@ def _format_archive_add_summary(records: list[dict]) -> str:
             lines.append(f"  {item['url']}")
         if item.get("error"):
             lines.append(f"  错误: {item['error']}")
+    return "\n".join(lines)
+
+
+def _format_archive_ingest_summary(result: dict) -> str:
+    lines = [
+        "# 观澜本地知识库 ingest-search",
+        "",
+        f"- Query: {result.get('query', '')}",
+        f"- 搜索结果数: {result.get('packet_result_count', 0)}",
+        f"- 精选数: {result.get('selected_count', 0)}",
+        f"- 已归档: {result.get('archived_count', 0)}",
+        "",
+    ]
+    for item in result.get("records", []):
+        lines.append(f"- [{item.get('status', 'unknown')}] {item.get('title') or item.get('url')}")
     return "\n".join(lines)
 
 

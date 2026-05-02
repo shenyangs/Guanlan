@@ -25,6 +25,9 @@ guanlan search "跨境电商 AI" --profile china --scope ecommerce
 ## 研究证据包 (Guanlan)
 
 ```bash
+# 先解释需求路由、证据角色、优先信源和兜底范围
+guanlan route "关键词"
+
 # 直接生成 Agent 回答前可用的证据上下文
 guanlan research "关键词" --profile china --limit 50 --read-top 2
 
@@ -51,6 +54,10 @@ guanlan research --list-presets
 ```
 
 **适用场景**: 用户要你“查清楚”“给依据”“做一个判断”。`research` 会整合搜索质量层、同题聚类、信源多样性和代表结果摘读。输出不是最终答案，你仍需要基于证据包组织结论、依据和不确定性。
+
+**需求路由**: 当你不确定应该查官方、垂类、社交、社区、财经还是开放网页时，先运行 `guanlan route "关键词"`。路由计划是软约束：它解释优先信源和证据角色，但不会把结果锁死在白名单里；除非用户显式指定 `--scope` 或 `--site`，`research` 会保留开放网页兜底。
+
+**本地服务与 RAG**: 不支持 MCP 的工具可启动 `guanlan serve --host 127.0.0.1 --port 8765`，只开放本机只读 HTTP。需要把一次调研沉淀为知识库时，用 `guanlan archive ingest-search "关键词" --limit 80`，再用 `guanlan archive export --format jsonl --source-type 政府` 导出给 RAG。
 
 **助理视角规则**: 当用户希望你给建议、下一步、风险提醒、可能意图或“这意味着什么”时，使用 `--advisor`。它输出的是证据边界、可展开角度和写作约束；你需要据此生成自然建议，不要机械复述固定小标题，不要把它写成用户真实目的，也不要把搜索样本写成总体结论。
 

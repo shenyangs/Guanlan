@@ -88,3 +88,59 @@ def test_archive_cli_add_batch_respects_blocked_records(tmp_path, capsys, monkey
 
     assert payload[0]["status"] == "blocked"
     assert payload[1]["status"] == "created"
+
+
+def test_archive_export_filters_and_adds_rag_fields(tmp_path):
+    db = tmp_path / "archive.db"
+    archive.add_document(
+        "https://gov.cn/a",
+        "# 政策原文\n正文",
+        metadata={"source_type": "政府/部委", "topic_key": "policy"},
+        db_path=db,
+    )
+    archive.add_document(
+        "https://example.com/b",
+        "# 普通文章\n正文",
+        metadata={"source_type": "通用网页", "topic_key": "general"},
+        db_path=db,
+    )
+
+    records = archive.export_documents(db_path=db, source_type="政府", topic="policy")
+
+    assert len(records) == 1
+    assert records[0]["domain"] == "gov.cn"
+    assert records[0]["rag"]["source_type"] == "政府/部委"
+    assert records[0]["rag"]["topic"] == "policy"
+
+
+def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkeypatch):
+    db = tmp_path / "archive.db"
+
+    monkeypatch.setattr(
+        "guanlan.webtools.build_research_packet",
+        lambda *args, **kwargs: {
+            "result_count": 1,
+            "preset": "general",
+            "route_plan": {"primary_intents": ["policy"]},
+            "selected_evidence": [
+                {
+                    "title": "政策原文",
+                    "url": "https://gov.cn/a",
+                    "snippet": "政策正文摘要",
+                    "source_type": "政府/部委",
+                    "topic_key": "policy",
+                    "topic_role": "single",
+                    "rank": 1,
+                    "score": 9.0,
+                }
+            ],
+            "readings": [{"url": "https://gov.cn/a", "status": "ok", "content": "# 政策原文\n全文"}],
+        },
+    )
+
+    result = archive.ingest_search("人工智能 政策", db_path=db)
+    records = archive.search_documents("全文", db_path=db)
+
+    assert result["archived_count"] == 1
+    assert records[0]["title"] == "政策原文"
+    assert records[0]["metadata"]["source_type"] == "政府/部委"
