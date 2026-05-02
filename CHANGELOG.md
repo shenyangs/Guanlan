@@ -8,6 +8,23 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.3.8 - 2026-05-02
+
+### Added
+
+- 新增 `guanlan archive verify`：体检本地 archive 的索引一致性、空正文、样本召回和 RAG/Wiki 就绪度，帮助 Agent 在把本地库当作记忆前先确认边界。
+- 新增 `guanlan archive context`、`guanlan archive wiki context` 和 `guanlan archive pack`：从本地 archive 生成 prompt-ready 上下文，或打包成 Markdown / JSONL 供本地模型、RAG 和 Agent 工作流复用。
+- 新增 `guanlan archive wiki build`：把已归档资料组织成静态 Markdown/HTML Agent Wiki，并区分 core / candidate 材料。
+- Archive 导出新增 `llamaindex-jsonl`、`langchain-jsonl`、`openwebui-jsonl` 三种常见加载器 profile。
+- MCP 新增 `guanlan_archive_context` 和 `guanlan_archive_verify`，并在 `guanlan_archive_search --trace` 输出本地检索诊断。
+- 新增 `guanlan/archive_wiki.py` 和对应测试，覆盖 Wiki 构建、上下文生成、RAG pack 与 CLI 工作流。
+
+### Changed
+
+- `archive search --trace` 增加本地库文档数、查询词、索引类型、FTS/LIKE 边界、`semantic=not-vector` 和空结果建议。
+- README、Agent 使用文档、本地模型指南、Skill、welcome 和 capabilities 同步补充 Archive Wiki / RAG / 本地模型上下文用法，并继续强调本地 archive 不是全网知识库。
+- 官网展示版本号同步到 `0.3.8`。
+
 ## v0.3.7 - 2026-05-02
 
 ### Added

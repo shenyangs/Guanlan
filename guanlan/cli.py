@@ -15,6 +15,7 @@ import os
 import secrets
 import sys
 import time
+from pathlib import Path
 
 from guanlan import __version__
 from guanlan.limits import (
@@ -550,8 +551,14 @@ def main():
     p_archive_reindex.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
     p_archive_reindex.add_argument("--db", default="", help="Optional archive database path")
 
+    p_archive_verify = archive_sub.add_parser("verify", help="Verify archive index, content quality, and sample recall")
+    p_archive_verify.add_argument("--limit", type=int, default=8, help="Recent documents to sample for recall checks")
+    p_archive_verify.add_argument("--min-quality", type=int, default=60, help="RAG/Wiki quality threshold")
+    p_archive_verify.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_archive_verify.add_argument("--db", default="", help="Optional archive database path")
+
     p_archive_export = archive_sub.add_parser("export", help="Export archive records")
-    p_archive_export.add_argument("--format", choices=["jsonl", "markdown", "rag-jsonl"], default="jsonl",
+    p_archive_export.add_argument("--format", choices=["jsonl", "markdown", "rag-jsonl", "llamaindex-jsonl", "langchain-jsonl", "openwebui-jsonl"], default="jsonl",
                                   help="Export format")
     p_archive_export.add_argument("--domain", default="", help="Filter export by domain")
     p_archive_export.add_argument("--source-type", default="", help="Filter export by archived source_type metadata")
@@ -559,6 +566,44 @@ def main():
     p_archive_export.add_argument("--min-quality", type=int, default=None,
                                   help="Only export records whose read_quality score is at least this value")
     p_archive_export.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_context = archive_sub.add_parser("context", help="Build a local-model context from archive matches")
+    p_archive_context.add_argument("query", help="Question or topic to search in the local archive")
+    p_archive_context.add_argument("--limit", type=int, default=20, help="Maximum archive records")
+    p_archive_context.add_argument("--min-quality", type=int, default=0, help="Mark lower-quality evidence as candidate")
+    p_archive_context.add_argument("--max-chars", type=int, default=1200, help="Maximum characters per evidence excerpt")
+    p_archive_context.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
+    p_archive_context.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_archive_context.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_pack = archive_sub.add_parser("pack", help="Package archive matches as Markdown or RAG JSONL")
+    p_archive_pack.add_argument("query", help="Question or topic to pack from the local archive")
+    p_archive_pack.add_argument("--limit", type=int, default=20, help="Maximum archive records")
+    p_archive_pack.add_argument("--max-chars", type=int, default=1200, help="Maximum characters per evidence excerpt")
+    p_archive_pack.add_argument("--format", choices=["markdown", "jsonl", "rag-jsonl", "llamaindex-jsonl", "langchain-jsonl", "openwebui-jsonl"], default="markdown", help="Pack format")
+    p_archive_pack.add_argument("--output", default="", help="Optional output path; omit to print to stdout")
+    p_archive_pack.add_argument("--json", action="store_true", help="Print write summary as JSON when --output is used")
+    p_archive_pack.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_wiki = archive_sub.add_parser("wiki", help="Build or query a local Agent Wiki from the archive")
+    archive_wiki_sub = p_archive_wiki.add_subparsers(dest="wiki_command", help="Archive wiki commands")
+    p_archive_wiki_build = archive_wiki_sub.add_parser("build", help="Build a static Markdown/HTML Agent Wiki")
+    p_archive_wiki_build.add_argument("--output", default="", help="Output directory; defaults to ~/.guanlan/wiki")
+    p_archive_wiki_build.add_argument("--topic", default="", help="Optional topic query to build a focused wiki")
+    p_archive_wiki_build.add_argument("--format", choices=["html", "markdown", "both"], default="html", help="Wiki output format")
+    p_archive_wiki_build.add_argument("--limit", type=int, default=200, help="Maximum archive records")
+    p_archive_wiki_build.add_argument("--min-quality", type=int, default=60, help="Core/candidate quality threshold")
+    p_archive_wiki_build.add_argument("--no-candidates", action="store_true", help="Exclude candidate/low-quality pages")
+    p_archive_wiki_build.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_archive_wiki_build.add_argument("--db", default="", help="Optional archive database path")
+    p_archive_wiki_context = archive_wiki_sub.add_parser("context", help="Build prompt-ready context from the local Agent Wiki/archive")
+    p_archive_wiki_context.add_argument("query", help="Question or topic to search in the local archive")
+    p_archive_wiki_context.add_argument("--limit", type=int, default=20, help="Maximum archive records")
+    p_archive_wiki_context.add_argument("--min-quality", type=int, default=0, help="Mark lower-quality evidence as candidate")
+    p_archive_wiki_context.add_argument("--max-chars", type=int, default=1200, help="Maximum characters per evidence excerpt")
+    p_archive_wiki_context.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
+    p_archive_wiki_context.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_archive_wiki_context.add_argument("--db", default="", help="Optional archive database path")
 
     p_archive_ingest = archive_sub.add_parser(
         "ingest-search",
@@ -1771,22 +1816,32 @@ def _cmd_archive(args):
         add_url,
         add_urls,
         archive_quality_summary,
+        archive_search_diagnostics,
         archive_stats,
         export_documents,
         format_archive_context,
+        format_archive_export_jsonl,
         format_archive_markdown,
         format_archive_stats,
+        format_archive_verify,
         ingest_search,
         inspect_document,
         list_documents,
         reindex_archive,
         remove_document,
         search_documents,
+        verify_archive,
+    )
+    from guanlan.archive_wiki import (
+        build_archive_pack,
+        build_archive_wiki,
+        build_archive_wiki_context,
+        format_wiki_build_summary,
     )
 
     command = getattr(args, "archive_command", None)
     if not command:
-        print("Error: archive command is required: add, ingest-search, ingest-research, search, list, inspect, remove, reindex, stats, export", file=sys.stderr)
+        print("Error: archive command is required: add, search, context, pack, wiki, ingest-search, ingest-research, list, inspect, remove, reindex, verify, stats, export", file=sys.stderr)
         sys.exit(2)
     db_path = args.db or None
 
@@ -1827,17 +1882,56 @@ def _cmd_archive(args):
 
         if command == "search":
             records = search_documents(args.query, limit=max(args.limit, 1), trace=args.trace, db_path=db_path)
+            diagnostics = archive_search_diagnostics(args.query, records=records, db_path=db_path) if args.trace else None
             output_format = "json" if args.json else args.format
             if output_format == "json":
-                print(json.dumps(records, ensure_ascii=False, indent=2))
+                print(json.dumps({"records": records, "diagnostics": diagnostics} if diagnostics else records, ensure_ascii=False, indent=2))
             elif output_format == "context":
                 print(format_archive_context(records, title=f"观澜本地知识库上下文 / {args.query}"))
                 if args.trace:
-                    print(_format_archive_search_trace(records))
+                    print(_format_archive_search_trace(records, diagnostics=diagnostics))
             else:
                 print(format_archive_markdown(records, title=f"观澜本地知识库 / {args.query}"))
                 if args.trace:
-                    print(_format_archive_search_trace(records))
+                    print(_format_archive_search_trace(records, diagnostics=diagnostics))
+            return
+
+        if command == "context":
+            result = build_archive_wiki_context(
+                args.query,
+                limit=max(args.limit, 1),
+                min_quality=max(args.min_quality, 0),
+                max_chars=max(args.max_chars, 1),
+                db_path=db_path,
+            )
+            output_format = "json" if args.json else args.format
+            if output_format == "json":
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print(result["context"])
+            return
+
+        if command == "pack":
+            result = build_archive_pack(
+                args.query,
+                output_path=args.output or None,
+                output_format=args.format,
+                limit=max(args.limit, 1),
+                max_chars=max(args.max_chars, 1),
+                db_path=db_path,
+            )
+            if args.output:
+                if args.json:
+                    print(json.dumps({key: value for key, value in result.items() if key != "content"}, ensure_ascii=False, indent=2))
+                else:
+                    print("# 观澜 Archive Pack")
+                    print()
+                    print(f"- 输出: {result.get('path', '')}")
+                    print(f"- 格式: {result.get('format', '')}")
+                    print(f"- 记录数: {result.get('records', 0)}")
+                    print(f"- 边界: {result.get('boundary', '')}")
+            else:
+                print(result["content"])
             return
 
         if command == "list":
@@ -1893,6 +1987,18 @@ def _cmd_archive(args):
                 print(f"- 说明: {result.get('message')}")
             return
 
+        if command == "verify":
+            result = verify_archive(
+                db_path=db_path,
+                limit=max(args.limit, 1),
+                min_quality=max(args.min_quality, 0),
+            )
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print(format_archive_verify(result))
+            return
+
         if command == "export":
             records = export_documents(
                 db_path=db_path,
@@ -1910,13 +2016,47 @@ def _cmd_archive(args):
                     print()
                     print(str(item.get("content", "")).strip())
                     print("\n---\n")
-            elif args.format == "rag-jsonl":
-                for item in records:
-                    print(json.dumps(item.get("rag", {}), ensure_ascii=False, sort_keys=True))
+            elif args.format.endswith("-jsonl") or args.format == "jsonl":
+                print(format_archive_export_jsonl(records, profile=args.format))
             else:
                 for item in records:
                     print(json.dumps(item, ensure_ascii=False, sort_keys=True))
             return
+
+        if command == "wiki":
+            wiki_command = getattr(args, "wiki_command", None)
+            if wiki_command == "build":
+                output_dir = args.output or str(Path.home() / ".guanlan" / "wiki")
+                result = build_archive_wiki(
+                    output_dir=output_dir,
+                    topic=args.topic,
+                    output_format=args.format,
+                    limit=max(args.limit, 1),
+                    min_quality=max(args.min_quality, 0),
+                    include_candidates=not args.no_candidates,
+                    db_path=db_path,
+                )
+                if args.json:
+                    print(json.dumps(result, ensure_ascii=False, indent=2))
+                else:
+                    print(format_wiki_build_summary(result))
+                return
+            if wiki_command == "context":
+                result = build_archive_wiki_context(
+                    args.query,
+                    limit=max(args.limit, 1),
+                    min_quality=max(args.min_quality, 0),
+                    max_chars=max(args.max_chars, 1),
+                    db_path=db_path,
+                )
+                output_format = "json" if args.json else args.format
+                if output_format == "json":
+                    print(json.dumps(result, ensure_ascii=False, indent=2))
+                else:
+                    print(result["context"])
+                return
+            print("Error: archive wiki command is required: build or context", file=sys.stderr)
+            sys.exit(2)
 
         if command in {"ingest-search", "ingest-research"}:
             result = ingest_search(
@@ -2187,10 +2327,21 @@ def _format_archive_ingest_summary(result: dict) -> str:
     return "\n".join(lines)
 
 
-def _format_archive_search_trace(records: list[dict]) -> str:
+def _format_archive_search_trace(records: list[dict], diagnostics: dict | None = None) -> str:
     lines = ["", "## Archive Search Trace"]
+    if diagnostics:
+        lines.append(f"- documents: {diagnostics.get('documents', 0)}")
+        lines.append(f"- query_terms: {', '.join(diagnostics.get('query_terms') or []) or 'none'}")
+        index = diagnostics.get("index") if isinstance(diagnostics.get("index"), dict) else {}
+        if index:
+            lines.append(
+                f"- index: {index.get('type', 'sqlite-fts5+like')} / FTS={index.get('fts', '')} / semantic={diagnostics.get('semantic', 'not-vector')}"
+            )
     if not records:
         lines.append("- 无命中；请先用 `guanlan archive list` 确认本地库是否已有文档。")
+        if diagnostics:
+            for step in diagnostics.get("guidance") or []:
+                lines.append(f"- 建议: {step}")
         return "\n".join(lines)
     for idx, item in enumerate(records[:10], start=1):
         trace = item.get("search_trace") or {}

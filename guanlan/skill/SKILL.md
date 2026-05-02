@@ -25,6 +25,7 @@ triggers:
   - web: 网页/链接/文章/公众号/微信文章/rss/读一下/打开这个
   - video: youtube/视频/播客/字幕/小宇宙/转录/yt
   - finance: 雪球/股票/stock/xueqiu/行情/基金
+  - archive/wiki/rag: 本地知识库/archive/RAG/向量库/Agent Wiki/知识底座
   - report: 报表/html report/可视化报告/汇报页/出个报告
 metadata:
   openclaw:
@@ -44,6 +45,7 @@ metadata:
 - `--advisor` 输出的是证据边界和写作规则，Agent 需要据此生成自然建议，不要机械复述固定小标题。
 - `research` 证据包会附带证据审计提示；遇到版本号、价格、参数量、发布日期冲突时，先说明不同来源分别怎么说，再给取舍依据。
 - `report html` 是旁支展示层，只把已有 JSON/stdin/demo 数据渲染成静态 HTML；不要用它替代 search/read/research/hotnews 主链路。
+- `archive wiki/context/pack` 是本地 archive 的旁支组织层：只使用已归档资料，不代表全网知识，不自动上传。
 - 更新观澜时必须全量更新，不要只跑增量 upgrade：优先 `uv tool install --force --upgrade guanlan`，注意 uv 只有 `--force` 可能重装旧锁定版本；Homebrew 用 `brew update && brew reinstall shenyangs/tap/guanlan`；pipx 用 `pipx install --force guanlan`。更新后运行 `hash -r`、`command -v guanlan`、`which -a guanlan`、`guanlan version`，再跑 `guanlan capabilities`、`guanlan doctor --install-check`、`guanlan doctor --trace`、`guanlan search "人工智能 政策" --profile china --limit 5 --trace`、`guanlan hotnews today --limit 5 --trends`。版本或路径不一致时停止配置 MCP。
 
 ## 路由表
@@ -109,6 +111,11 @@ guanlan archive ingest-research "query" --limit 80 --dry-run
 guanlan archive search "query" --format context --trace
 guanlan archive inspect 1
 guanlan archive reindex
+guanlan archive verify
+guanlan archive context "query" --limit 20
+guanlan archive wiki build --output ./guanlan-wiki
+guanlan archive wiki context "query"
+guanlan archive pack "query" --format langchain-jsonl --output guanlan-pack.jsonl
 guanlan archive export --format rag-jsonl
 guanlan mcp config --client codex
 guanlan serve --host 127.0.0.1 --port 8765

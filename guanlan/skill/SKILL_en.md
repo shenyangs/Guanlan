@@ -12,7 +12,7 @@ description: >
   "search reddit", "read this link", "bilibili", "douyin video",
   "wechat article", "wechat official account", "weibo", "V2EX",
   "xiaoyuzhou", "podcast", "xueqiu", "stock quote",
-  "install guanlan", "HTML report", "visual report".
+  "install guanlan", "archive", "RAG", "Agent Wiki", "HTML report", "visual report".
 metadata:
   openclaw:
     homepage: local-repo
@@ -26,6 +26,7 @@ Run `guanlan welcome` when a new user asks how to start using Guanlan with their
 Run `guanlan capabilities` when the user or agent needs to know what Guanlan can do.
 Run `guanlan doctor` to check which channels are available.
 `guanlan research` includes evidence-audit hints for version/name conflicts, source timelines, and follow-up verification.
+Use `guanlan archive verify`, `archive context`, `archive wiki`, and `archive pack` for local archive memory, Agent Wiki, RAG export, and local-model context. These commands only use local archived records.
 Use `guanlan report html` only as a sidecar renderer when the user asks for a static HTML report; it reads existing JSON/stdin/demo data and does not replace search/read/research/hotnews.
 
 ## ⚠️ Workspace Rules
@@ -53,6 +54,18 @@ mcporter call 'exa.get_code_context_exa(query: "code question", tokensNum: 3000)
 guanlan report html --input results.json --output report.html
 guanlan search "query" --json | guanlan report html --input - --output search-report.html
 guanlan report html --output demo-report.html
+```
+
+## Local Archive / Agent Wiki / RAG
+
+```bash
+guanlan archive verify
+guanlan archive context "query" --limit 20
+guanlan archive wiki build --output ./guanlan-wiki
+guanlan archive wiki context "query"
+guanlan archive pack "query" --format langchain-jsonl --output guanlan-pack.jsonl
+guanlan archive export --format llamaindex-jsonl
+guanlan archive export --format openwebui-jsonl
 ```
 
 ## Twitter/X (bird)

@@ -357,8 +357,10 @@ def _tool_definitions() -> list[dict]:
         {
             "name": "guanlan_archive_search",
             "description": (
-                "Search Guanlan's local Markdown archive. "
-                "Prefer a broad limit for agent context, then select the strongest evidence."
+                "Search Guanlan's local Markdown archive. This is Guanlan's local memory layer, not web search. "
+                "Prefer a broad limit for agent context, then select the strongest evidence. "
+                "If the user asks for RAG/local-model/Agent Wiki context, use guanlan_archive_context. "
+                "Before relying on archive as long-term memory, call guanlan_archive_verify."
             ),
             "inputSchema": {
                 "type": "object",
@@ -377,6 +379,45 @@ def _tool_definitions() -> list[dict]:
                         "default": False,
                         "description": "Include matched terms, fields, and retrieval boundary for archive search.",
                     },
+                },
+            },
+        },
+        {
+            "name": "guanlan_archive_context",
+            "description": (
+                "Build prompt-ready context from Guanlan's local archive for an Agent, LM Studio/Ollama, "
+                "RAG, or AI Agent Wiki workflow. Only uses already archived local documents; missing results "
+                "do not mean the wider web has no evidence."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string"},
+                    "limit": {
+                        "type": "integer",
+                        "default": 20,
+                        "minimum": 1,
+                        "maximum": MAX_ARCHIVE_SEARCH_LIMIT,
+                    },
+                    "min_quality": {"type": "integer", "default": 0, "minimum": 0, "maximum": 100},
+                    "max_chars": {"type": "integer", "default": 1200, "minimum": 120, "maximum": 8000},
+                    "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
+                },
+            },
+        },
+        {
+            "name": "guanlan_archive_verify",
+            "description": (
+                "Verify Guanlan archive health before using it as Agent memory, AI Agent Wiki, or RAG input. "
+                "Checks index consistency, empty content, sample recall, and RAG/Wiki readiness."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "default": 8, "minimum": 1, "maximum": 50},
+                    "min_quality": {"type": "integer", "default": 60, "minimum": 0, "maximum": 100},
+                    "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
                 },
             },
         },
@@ -698,6 +739,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
 
     if name == "guanlan_archive_search":
         from guanlan.archive import (
+            archive_search_diagnostics,
             format_archive_context,
             format_archive_markdown,
             search_documents,
@@ -709,11 +751,36 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             trace=bool(args.get("trace", False)),
         )
         output_format = str(args.get("format") or "context")
+        diagnostics = archive_search_diagnostics(str(args.get("query", "")).strip(), records=records) if args.get("trace") else None
         if output_format == "json":
-            return records
+            return {"records": records, "diagnostics": diagnostics} if diagnostics else records
         if output_format == "markdown":
             return format_archive_markdown(records, title=f"观澜本地知识库 / {args.get('query', '')}")
         return format_archive_context(records, title=f"观澜本地知识库上下文 / {args.get('query', '')}")
+
+    if name == "guanlan_archive_context":
+        from guanlan.archive_wiki import build_archive_wiki_context
+
+        result = build_archive_wiki_context(
+            str(args.get("query", "")).strip(),
+            limit=int(args.get("limit") or 20),
+            min_quality=int(args.get("min_quality") or 0),
+            max_chars=int(args.get("max_chars") or 1200),
+        )
+        if str(args.get("format") or "markdown") == "json":
+            return result
+        return result["context"]
+
+    if name == "guanlan_archive_verify":
+        from guanlan.archive import format_archive_verify, verify_archive
+
+        result = verify_archive(
+            limit=int(args.get("limit") or 8),
+            min_quality=int(args.get("min_quality") if args.get("min_quality") is not None else 60),
+        )
+        if str(args.get("format") or "markdown") == "json":
+            return result
+        return format_archive_verify(result)
 
     raise ValueError(f"Unknown tool: {name}")
 

@@ -184,12 +184,18 @@ RSS / feeds 是公开外部源，可能因源站或网络抖动超时。观澜�
 ```bash
 guanlan archive ingest-research "人工智能 政策 原文" --limit 80
 guanlan archive search "人工智能 政策" --format context --trace
+guanlan archive verify
+guanlan archive context "人工智能 政策" --limit 20
 ```
 
 导出给 RAG、向量库或个人知识库：
 
 ```bash
 guanlan archive export --format rag-jsonl > guanlan-rag.jsonl
+guanlan archive export --format llamaindex-jsonl > guanlan-llamaindex.jsonl
+guanlan archive export --format langchain-jsonl > guanlan-langchain.jsonl
+guanlan archive export --format openwebui-jsonl > guanlan-openwebui.jsonl
+guanlan archive pack "人工智能 政策" --format langchain-jsonl --output policy-pack.jsonl
 ```
 
 `rag-jsonl` 只包含 RAG 常用字段，便于导入；如果你的系统需要完整来源诊断、路线计划、阅读质量和原始元数据，请改用：
@@ -199,7 +205,16 @@ guanlan archive export --format jsonl > guanlan-full.jsonl
 ```
 
 Archive 保存在本机 `~/.guanlan/archive.db`，不会自动上传，也不会绕过高风险社交平台的批量保护。
-如果本地模型需要解释“为什么召回这条材料”，让 Agent 使用 `archive search --trace`；如果怀疑正文没有入库，用 `archive inspect 1`；如果迁移或升级后索引异常，用 `archive reindex`。
+如果本地模型需要解释“为什么召回这条材料”，让 Agent 使用 `archive search --trace`；如果怀疑正文没有入库，用 `archive inspect 1`；如果迁移或升级后索引异常，用 `archive reindex` 或 `archive verify`。
+
+如果你想把这批资料变成 AI Agent Wiki，而不是只导出 JSONL：
+
+```bash
+guanlan archive wiki build --output ./guanlan-wiki --format both
+guanlan archive wiki context "人工智能 政策"
+```
+
+Wiki 只反映本地 archive 中已有资料，不代表全网知识。低质量或正文较薄的材料会被标为 candidate，本地模型回答时应先说明证据边界。
 
 ## 六、安全边界
 

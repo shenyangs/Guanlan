@@ -41,6 +41,8 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "guanlan_pulse" in names
     assert "guanlan_feeds" in names
     assert "guanlan_archive_search" in names
+    assert "guanlan_archive_context" in names
+    assert "guanlan_archive_verify" in names
     research_tool = next(tool for tool in tools if tool["name"] == "guanlan_research")
     capabilities_tool = next(tool for tool in tools if tool["name"] == "guanlan_capabilities")
     hotnews_tool = next(tool for tool in tools if tool["name"] == "guanlan_hotnews")
@@ -63,6 +65,13 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert compare_tool["inputSchema"]["properties"]["subjects"]["minItems"] == 2
     assert "max_events" in timeline_tool["inputSchema"]["properties"]
     assert "source mix" in dossier_tool["description"]
+    archive_search_tool = next(tool for tool in tools if tool["name"] == "guanlan_archive_search")
+    archive_context_tool = next(tool for tool in tools if tool["name"] == "guanlan_archive_context")
+    archive_verify_tool = next(tool for tool in tools if tool["name"] == "guanlan_archive_verify")
+    assert "local memory layer" in archive_search_tool["description"]
+    assert "RAG/local-model/Agent Wiki" in archive_search_tool["description"]
+    assert "prompt-ready context" in archive_context_tool["description"]
+    assert "sample recall" in archive_verify_tool["description"]
 
 
 def test_mcp_config_outputs_copyable_server_config():
@@ -98,6 +107,7 @@ def test_mcp_tool_definitions_use_expanded_limits():
     feeds_limit = tools["guanlan_feeds"]["inputSchema"]["properties"]["limit"]
     archive_limit = tools["guanlan_archive_search"]["inputSchema"]["properties"]["limit"]
     archive_trace = tools["guanlan_archive_search"]["inputSchema"]["properties"]["trace"]
+    archive_context_limit = tools["guanlan_archive_context"]["inputSchema"]["properties"]["limit"]
 
     assert search_limit == {"type": "integer", "default": DEFAULT_SEARCH_LIMIT, "minimum": 1, "maximum": MAX_SEARCH_LIMIT}
     assert read_fallback == {
@@ -143,6 +153,12 @@ def test_mcp_tool_definitions_use_expanded_limits():
         "maximum": MAX_ARCHIVE_SEARCH_LIMIT,
     }
     assert archive_trace["type"] == "boolean"
+    assert archive_context_limit == {
+        "type": "integer",
+        "default": 20,
+        "minimum": 1,
+        "maximum": MAX_ARCHIVE_SEARCH_LIMIT,
+    }
 
 
 def test_mcp_search_context_uses_webtools(monkeypatch):
@@ -243,6 +259,41 @@ def test_mcp_archive_search_uses_archive(monkeypatch):
     assert "本地材料" in text
     assert calls[0]["limit"] == DEFAULT_ARCHIVE_SEARCH_LIMIT
     assert calls[0]["trace"] is True
+
+
+def test_mcp_archive_context_guides_local_model(monkeypatch):
+    calls = []
+
+    def fake_context(*_args, **kwargs):
+        calls.append(kwargs)
+        return {"context": "# Guanlan Local Archive Context\n\nAgent Wiki", "records": []}
+
+    monkeypatch.setattr("guanlan.archive_wiki.build_archive_wiki_context", fake_context)
+
+    text = mcp_server._run_tool("guanlan_archive_context", {"query": "Agent Wiki", "limit": 20})
+
+    assert "Local Archive Context" in text
+    assert calls[0]["limit"] == 20
+
+
+def test_mcp_archive_verify_explains_memory_readiness(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.archive.verify_archive",
+        lambda **_kwargs: {
+            "status": "ok",
+            "path": "/tmp/archive.db",
+            "documents": 1,
+            "issues": [],
+            "checks": {"sample_recall": "ok"},
+            "quality": {"rag_ready": 1, "documents": 1, "average_read_quality": 80, "low_quality": 0},
+            "next_steps": ["Archive 基础检索和导出状态正常。"],
+        },
+    )
+
+    text = mcp_server._run_tool("guanlan_archive_verify", {})
+
+    assert "本地知识库体检" in text
+    assert "Agent 提示" in text
 
 
 def test_mcp_pulse_uses_pulse(monkeypatch):

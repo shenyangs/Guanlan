@@ -223,7 +223,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.3.7`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.3.8`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -462,9 +462,17 @@ guanlan configure --from-browser chrome
 | `guanlan archive search "关键词" --trace` | 展示命中词、命中字段、排序分数和检索边界。 |
 | `guanlan archive inspect 1` | 查看单条归档的正文、元数据和内容诊断。 |
 | `guanlan archive reindex` | 重建 SQLite FTS 索引，修复索引/正文不一致。 |
+| `guanlan archive verify` | 体检本地库：索引一致性、空正文、样本召回、RAG/Wiki 就绪度。 |
+| `guanlan archive context "问题"` | 从本地库生成给 Agent/本地模型的证据上下文。 |
+| `guanlan archive wiki build --output ./guanlan-wiki` | 把本地库组织成静态 Markdown/HTML Agent Wiki。 |
+| `guanlan archive wiki context "问题"` | 从 Agent Wiki/本地库生成 prompt-ready 上下文。 |
+| `guanlan archive pack "问题" --format langchain-jsonl --output pack.jsonl` | 把本地命中资料打包给 RAG/本地模型加载器。 |
 | `guanlan archive stats --quality` | 查看本地库阅读质量、入库审计和 RAG-ready 概览。 |
 | `guanlan archive export --format jsonl --source-type 政府` | 按 domain/source_type/topic 导出 RAG 友好 JSONL。 |
 | `guanlan archive export --format rag-jsonl --min-quality 60` | 只导出达到阅读质量阈值的 RAG 材料。 |
+| `guanlan archive export --format llamaindex-jsonl` | 导出为 LlamaIndex 常见的 `text + metadata` JSONL。 |
+| `guanlan archive export --format langchain-jsonl` | 导出为 LangChain 常见的 `page_content + metadata` JSONL。 |
+| `guanlan archive export --format openwebui-jsonl` | 导出为 Open WebUI/通用导入更容易处理的 `content + metadata` JSONL。 |
 | `guanlan archive export --format rag-jsonl` | 只导出 RAG 载入常用字段：id/text/source/title/domain/source_type/topic。 |
 | `guanlan serve --host 127.0.0.1 --port 8765` | 启动本地只读 HTTP 服务。 |
 | `guanlan serve --print-token` | 生成一个只读 HTTP token，便于安全暴露给本机工作流。 |
@@ -846,11 +854,22 @@ guanlan archive search "人工智能 政策" --format context --trace
 guanlan archive inspect 1
 guanlan archive stats
 guanlan archive reindex
+guanlan archive verify
+guanlan archive context "人工智能 政策" --limit 20
+guanlan archive wiki build --output ./guanlan-wiki --format both
+guanlan archive wiki context "人工智能 政策"
+guanlan archive pack "人工智能 政策" --format langchain-jsonl --output guanlan-pack.jsonl
 guanlan archive export --format jsonl > guanlan-archive.jsonl
 guanlan archive export --format rag-jsonl > guanlan-rag.jsonl
+guanlan archive export --format llamaindex-jsonl > guanlan-llamaindex.jsonl
+guanlan archive export --format openwebui-jsonl > guanlan-openwebui.jsonl
 ```
 
-本地知识库默认保存在 `~/.guanlan/archive.db`。当前使用 SQLite FTS/LIKE 检索，不依赖外部 embedding 服务；`archive search` 会对中文短语和技术词做宽召回并排序，适合快速复用已读材料，但不是向量语义搜索。`archive search --trace` 会说明命中词、字段、排序分数和 `semantic=not-vector` 边界，方便 Agent 判断是否需要补搜。`archive ingest-search` / `archive ingest-research` 的行为是“联网研究并入库”，如果只想查本地库，请使用 `archive search`；写入前可用 `--dry-run` 预览。观澜会为每个候选生成 `ingest_audit`，解释相关性、平台首页、重复候选、正文厚度和漂移风险，跳过明显低相关或平台首页结果。归档元数据会保留 `source_card`、`read_quality`、`quality_report`、`route_plan`、`query_strategy` 和 `ingest_audit`，方便后续接 RAG 时知道材料的来源角色、正文质量、检索路径和入库理由。`rag-jsonl` 会把每条材料收束成 `id/text/source/title/domain/source_type/topic/updated_at`，适合导入轻量本地 RAG、向量库或个人知识库。它不是云同步，也不会自动上传内容。
+本地知识库默认保存在 `~/.guanlan/archive.db`。当前使用 SQLite FTS/LIKE 检索，不依赖外部 embedding 服务；`archive search` 会对中文短语和技术词做宽召回并排序，适合快速复用已读材料，但不是向量语义搜索。`archive search --trace` 会说明命中词、字段、排序分数和 `semantic=not-vector` 边界，方便 Agent 判断是否需要补搜。`archive verify` 会体检索引一致性、空正文、样本召回和 RAG/Wiki 就绪度，适合在把本地库交给 Agent 或 RAG 前先跑一遍。
+
+`archive ingest-search` / `archive ingest-research` 的行为是“联网研究并入库”，如果只想查本地库，请使用 `archive search` 或 `archive context`；写入前可用 `--dry-run` 预览。观澜会为每个候选生成 `ingest_audit`，解释相关性、平台首页、重复候选、正文厚度和漂移风险，跳过明显低相关或平台首页结果。归档元数据会保留 `source_card`、`read_quality`、`quality_report`、`route_plan`、`query_strategy` 和 `ingest_audit`，方便后续接 RAG 时知道材料的来源角色、正文质量、检索路径和入库理由。
+
+Agent Wiki 是 archive 的旁支组织层，不是全网知识库。`archive wiki build` 会把已归档资料导出成静态 Markdown/HTML，按 topic/source/domain 组织，并把低质量材料标为 candidate；`archive wiki context` 和 `archive context` 则更适合给 LM Studio、Ollama、Open WebUI 或其他 Agent 准备证据约束的上下文。`rag-jsonl` 会把每条材料收束成 `id/text/source/title/domain/source_type/topic/updated_at`；`llamaindex-jsonl`、`langchain-jsonl`、`openwebui-jsonl` 是面向常见本地 RAG/加载器的结构化导出。它不是云同步，也不会自动上传内容。
 
 ### 17. 质量闸门
 

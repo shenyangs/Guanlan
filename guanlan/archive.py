@@ -409,6 +409,36 @@ def search_documents(
     return [_row_to_record(row, query=query, trace=trace) for row in rows[:limit]]
 
 
+def archive_search_diagnostics(
+    query: str,
+    *,
+    records: list[dict[str, Any]] | None = None,
+    db_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Return retrieval diagnostics for local archive search."""
+    stats = archive_stats(db_path=db_path)
+    query_terms = _query_terms(query)[:16]
+    record_count = len(records or [])
+    index = stats.get("index") if isinstance(stats.get("index"), dict) else {}
+    guidance = []
+    if not stats.get("exists") or not stats.get("documents"):
+        guidance.append("本地库为空；先运行 `guanlan archive add URL` 或 `guanlan archive ingest-research \"关键词\"`。")
+    elif record_count == 0:
+        guidance.append("本地库有文档但本次无命中；可运行 `guanlan archive list` 看已有主题，或改用更短关键词。")
+        guidance.append("如怀疑索引异常，运行 `guanlan archive verify` 或 `guanlan archive reindex`。")
+    return {
+        "query": query,
+        "query_terms": query_terms,
+        "documents": stats.get("documents", 0),
+        "content_chars": stats.get("content_chars", 0),
+        "index": index,
+        "results": record_count,
+        "retrieval": "sqlite-fts5+like",
+        "semantic": index.get("semantic", "not-vector"),
+        "guidance": guidance,
+    }
+
+
 def list_documents(limit: int = DEFAULT_ARCHIVE_LIST_LIMIT, db_path: str | Path | None = None) -> list[dict[str, Any]]:
     """List recently updated archive documents."""
     with _connect(db_path) as conn:
@@ -487,6 +517,179 @@ def reindex_archive(db_path: str | Path | None = None) -> dict[str, Any]:
     }
 
 
+def verify_archive(
+    *,
+    db_path: str | Path | None = None,
+    limit: int = 8,
+    min_quality: int = 60,
+) -> dict[str, Any]:
+    """Verify archive index health, content quality, and basic recall."""
+    stats = archive_stats(db_path=db_path)
+    quality = archive_quality_summary(db_path=db_path, rag_min_quality=min_quality)
+    path = _db_path(db_path)
+    if not stats.get("exists") or not stats.get("documents"):
+        return {
+            "status": "empty",
+            "path": str(path),
+            "documents": 0,
+            "issues": ["archive_empty"],
+            "checks": {
+                "index_consistency": "skipped",
+                "content_presence": "skipped",
+                "sample_recall": "skipped",
+            },
+            "quality": quality,
+            "recall_samples": [],
+            "next_steps": ["用 `guanlan archive add URL` 或 `guanlan archive ingest-research \"关键词\"` 添加资料。"],
+        }
+
+    with _connect(db_path) as conn:
+        document_count = int(conn.execute("SELECT COUNT(*) AS count FROM documents").fetchone()["count"])
+        empty_content = int(
+            conn.execute("SELECT COUNT(*) AS count FROM documents WHERE TRIM(content) = ''").fetchone()["count"]
+        )
+        fts_enabled = _has_fts(conn)
+        fts_count = 0
+        if fts_enabled:
+            try:
+                fts_count = int(conn.execute("SELECT COUNT(*) AS count FROM documents_fts").fetchone()["count"])
+            except sqlite3.OperationalError:
+                fts_count = -1
+        rows = conn.execute(
+            """
+            SELECT id, title, content, url, domain
+            FROM documents
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ?
+            """,
+            (max(limit, 1),),
+        ).fetchall()
+
+    recall_samples = []
+    recall_failures = 0
+    for row in rows:
+        probes = _verification_probe_terms(str(row["title"] or ""), str(row["content"] or ""))
+        if not probes:
+            recall_samples.append({"id": row["id"], "title": row["title"], "status": "skipped", "probes": []})
+            continue
+        recalled = False
+        for probe in probes:
+            hits = search_documents(probe, limit=10, db_path=db_path)
+            if any(int(hit.get("id", -1)) == int(row["id"]) for hit in hits):
+                recalled = True
+                break
+        if not recalled:
+            recall_failures += 1
+        recall_samples.append(
+            {
+                "id": row["id"],
+                "title": row["title"],
+                "status": "ok" if recalled else "fail",
+                "probes": probes,
+            }
+        )
+
+    issues = []
+    if fts_enabled and fts_count != document_count:
+        issues.append("fts_document_count_mismatch")
+    if empty_content:
+        issues.append("empty_content")
+    if recall_failures:
+        issues.append("sample_recall_failed")
+    if quality.get("low_quality", 0):
+        issues.append("low_quality_documents")
+
+    critical = {"fts_document_count_mismatch", "empty_content", "sample_recall_failed"}
+    status = "fail" if critical & set(issues) else "warn" if issues else "ok"
+    next_steps = []
+    if "fts_document_count_mismatch" in issues or "sample_recall_failed" in issues:
+        next_steps.append("运行 `guanlan archive reindex` 后再执行 `guanlan archive verify`。")
+    if "low_quality_documents" in issues:
+        next_steps.append("导出 RAG/Wiki 时使用 `--min-quality`，或重新读取低质量页面。")
+    if not next_steps:
+        next_steps.append("Archive 基础检索和导出状态正常。")
+
+    return {
+        "status": status,
+        "path": str(path),
+        "documents": document_count,
+        "issues": issues,
+        "checks": {
+            "index_consistency": "ok" if not (fts_enabled and fts_count != document_count) else "fail",
+            "content_presence": "ok" if empty_content == 0 else "fail",
+            "sample_recall": "ok" if recall_failures == 0 else "fail",
+        },
+        "index": {
+            "fts": "enabled" if fts_enabled else "unavailable",
+            "fts_documents": fts_count,
+            "documents": document_count,
+            "semantic": "not-vector",
+        },
+        "quality": quality,
+        "recall_samples": recall_samples,
+        "next_steps": next_steps,
+    }
+
+
+def format_archive_verify(report: dict[str, Any]) -> str:
+    """Render archive verification as Markdown."""
+    lines = [
+        "# 观澜本地知识库体检",
+        "",
+        f"- 状态: {report.get('status', '')}",
+        f"- 路径: {report.get('path', '')}",
+        f"- 文档数: {report.get('documents', 0)}",
+    ]
+    issues = report.get("issues") or []
+    lines.append("- 问题: " + (", ".join(issues) if issues else "无"))
+    checks = report.get("checks") if isinstance(report.get("checks"), dict) else {}
+    if checks:
+        lines.extend(["", "## 检查项"])
+        for key, value in checks.items():
+            lines.append(f"- {key}: {value}")
+    index = report.get("index") if isinstance(report.get("index"), dict) else {}
+    if index:
+        lines.extend(
+            [
+                "",
+                "## 索引",
+                f"- FTS: {index.get('fts', '')}",
+                f"- FTS 文档数: {index.get('fts_documents', 0)} / {index.get('documents', 0)}",
+                f"- 语义边界: {index.get('semantic', 'not-vector')}",
+            ]
+        )
+    quality = report.get("quality") if isinstance(report.get("quality"), dict) else {}
+    if quality:
+        lines.extend(
+            [
+                "",
+                "## RAG / Wiki 就绪",
+                f"- RAG-ready: {quality.get('rag_ready', 0)} / {quality.get('documents', 0)}",
+                f"- 平均阅读质量: {quality.get('average_read_quality', 0)}",
+                f"- 低质量文档: {quality.get('low_quality', 0)}",
+            ]
+        )
+    samples = report.get("recall_samples") or []
+    if samples:
+        lines.extend(["", "## 召回样本"])
+        for item in samples[:12]:
+            probes = ", ".join(item.get("probes") or [])
+            lines.append(f"- [{item.get('status')}] #{item.get('id')} {item.get('title')} / probes: {probes}")
+    next_steps = report.get("next_steps") or []
+    if next_steps:
+        lines.extend(["", "## 下一步"])
+        lines.extend(f"- {step}" for step in next_steps)
+    lines.extend(
+        [
+            "",
+            "## Agent 提示",
+            "- 如果用户要长期记忆、AI Agent Wiki、RAG 或本地模型上下文，先确认本体检结果，再用 `archive context`、`archive wiki context` 或 `archive pack`。",
+            "- Archive/Wiki 只基于本地已归档材料；不要把无命中解释为全网没有证据。",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def export_documents(
     db_path: str | Path | None = None,
     *,
@@ -509,6 +712,35 @@ def export_documents(
             min_quality=min_quality,
         )
     ]
+
+
+def export_record_for_profile(record: dict[str, Any], profile: str = "jsonl") -> dict[str, Any]:
+    """Map one archive record to a common RAG/loader JSONL profile."""
+    normalized = (profile or "jsonl").lower()
+    metadata = _rag_metadata(record)
+    content = str(record.get("content") or "")
+    if normalized == "rag-jsonl":
+        return dict(record.get("rag") or {})
+    if normalized == "llamaindex-jsonl":
+        return {"text": content, "metadata": metadata}
+    if normalized == "langchain-jsonl":
+        return {"page_content": content, "metadata": metadata}
+    if normalized == "openwebui-jsonl":
+        return {
+            "content": content,
+            "title": record.get("title", ""),
+            "source": record.get("url", ""),
+            "metadata": metadata,
+        }
+    return record
+
+
+def format_archive_export_jsonl(records: list[dict[str, Any]], profile: str = "jsonl") -> str:
+    """Render archive records as one JSON object per line."""
+    return "\n".join(
+        json.dumps(export_record_for_profile(record, profile), ensure_ascii=False, sort_keys=True)
+        for record in records
+    )
 
 
 def archive_stats(db_path: str | Path | None = None) -> dict[str, Any]:
@@ -617,7 +849,14 @@ def format_archive_markdown(records: list[dict[str, Any]], title: str = "观澜�
 
 def format_archive_context(records: list[dict[str, Any]], title: str = "观澜本地知识库上下文") -> str:
     """Render archive records as compact prompt context."""
-    lines = [f"# {title}", "", "来源 | 标题 | 摘要 | 时间", "--- | --- | --- | ---"]
+    lines = [
+        f"# {title}",
+        "",
+        "Agent 提示：这是本地 archive 记忆层，只反映已归档资料；给本地模型/RAG/Wiki 用时，先说明这个边界。",
+        "",
+        "来源 | 标题 | 摘要 | 时间",
+        "--- | --- | --- | ---",
+    ]
     if not records:
         lines.append("无结果 | - | 可先运行 `guanlan archive list` 确认本地库，或用 `guanlan archive ingest-research` 联网研究并入库。 | -")
         return "\n".join(lines)
@@ -989,6 +1228,49 @@ def _quality_score(quality: dict[str, Any]) -> float | None:
         except (TypeError, ValueError):
             continue
     return None
+
+
+def _rag_metadata(record: dict[str, Any]) -> dict[str, Any]:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    return {
+        "id": f"guanlan-{record.get('id')}",
+        "source": record.get("url", ""),
+        "title": record.get("title", ""),
+        "domain": record.get("domain", ""),
+        "source_type": metadata.get("source_type", ""),
+        "topic": metadata.get("topic_key", ""),
+        "evidence_role": metadata.get("evidence_role", ""),
+        "updated_at": record.get("updated_at", 0),
+        "content_hash": record.get("content_hash", ""),
+        "tool": "guanlan",
+    }
+
+
+def _verification_probe_terms(title: str, content: str) -> list[str]:
+    """Choose stable probe terms that should recall the document itself."""
+    stopwords = {
+        "正文",
+        "内容",
+        "标题",
+        "关于",
+        "本文",
+        "介绍",
+        "材料",
+        "来源",
+        "https",
+        "http",
+    }
+    candidates = _query_terms(f"{title} {content[:1200]}")[:24]
+    output = []
+    for term in candidates:
+        if term.lower() in stopwords or term in stopwords:
+            continue
+        if len(term.strip()) < 2:
+            continue
+        output.append(term)
+        if len(output) >= 3:
+            break
+    return output
 
 
 def _normalize_url(url: str) -> str:

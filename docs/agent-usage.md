@@ -95,6 +95,11 @@
 | “解释本地库为什么命中/没命中” | `guanlan archive search "关键词" --trace` |
 | “确认一条归档是否真的有正文” | `guanlan archive inspect 1` |
 | “修复/重建本地索引” | `guanlan archive reindex` |
+| “体检 archive 能不能作为记忆/RAG 使用” | `guanlan archive verify` |
+| “从本地库给模型准备上下文” | `guanlan archive context "问题" --limit 20` |
+| “把归档整理成 AI Agent Wiki” | `guanlan archive wiki build --output ./guanlan-wiki` |
+| “从 Wiki/归档里取一个主题上下文” | `guanlan archive wiki context "问题"` |
+| “打包给 LangChain/LlamaIndex/Open WebUI” | `guanlan archive pack "问题" --format langchain-jsonl --output pack.jsonl` |
 | “导出给 RAG 系统” | `guanlan archive export --format rag-jsonl` |
 | “看跨源热点趋势” | `guanlan hotnews today --trends` |
 | “拿评估集比较搜索质量” | `guanlan eval scenarios --format jsonl` |
@@ -432,6 +437,11 @@ guanlan archive ingest-research "人工智能 政策" --limit 80
 guanlan archive search "人工智能 政策" --format context --trace
 guanlan archive inspect 1
 guanlan archive reindex
+guanlan archive verify
+guanlan archive context "人工智能 政策" --limit 20
+guanlan archive wiki build --output ./guanlan-wiki --format both
+guanlan archive wiki context "人工智能 政策"
+guanlan archive pack "人工智能 政策" --format langchain-jsonl --output guanlan-pack.jsonl
 ```
 
 导出给 RAG、向量库或其他本地系统：
@@ -439,9 +449,12 @@ guanlan archive reindex
 ```bash
 guanlan archive export --format jsonl
 guanlan archive export --format rag-jsonl
+guanlan archive export --format llamaindex-jsonl
+guanlan archive export --format langchain-jsonl
+guanlan archive export --format openwebui-jsonl
 ```
 
-Archive 默认保存在 `~/.guanlan/archive.db`。它只保存本机归档内容，不自动上传。当前本地检索是 SQLite FTS/LIKE 宽召回，不是向量语义搜索；`--trace` 会返回 matched terms、field hits、score 和 `semantic=not-vector`。`rag-jsonl` 会导出本地 RAG 常用的 `id/text/source/title/domain/source_type/topic` 字段；如果需要完整元数据，用普通 `jsonl`。批量归档仍遵守高风险社交域名保护；遇到微博、小红书、抖音、Twitter/X、LinkedIn 等平台时，不要绕过授权边界批量读取。
+Archive 默认保存在 `~/.guanlan/archive.db`。它只保存本机归档内容，不自动上传。当前本地检索是 SQLite FTS/LIKE 宽召回，不是向量语义搜索；`--trace` 会返回 matched terms、field hits、score 和 `semantic=not-vector`。`archive verify` 用来检查索引一致性、空正文、样本召回和 RAG/Wiki 就绪度；把 archive 交给长期 Agent 记忆前应先跑一遍。`archive wiki build` 只是把已有 archive records 组织成静态 Markdown/HTML Wiki，不代表全网知识；低质量资料会被标为 candidate。`rag-jsonl` 会导出本地 RAG 常用的 `id/text/source/title/domain/source_type/topic` 字段；`llamaindex-jsonl`、`langchain-jsonl`、`openwebui-jsonl` 适合常见本地加载器。如果需要完整元数据，用普通 `jsonl`。批量归档仍遵守高风险社交域名保护；遇到微博、小红书、抖音、Twitter/X、LinkedIn 等平台时，不要绕过授权边界批量读取。
 
 自定义 backend 只在显式调用时启用。配置示例：
 

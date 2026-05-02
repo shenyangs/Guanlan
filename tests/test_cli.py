@@ -116,6 +116,8 @@ class TestCLI:
         assert "guanlan route" in captured.out
         assert "guanlan research" in captured.out
         assert "助理视角" in captured.out
+        assert "查过资料不要丢" in captured.out
+        assert "archive context" in captured.out
 
     def test_capabilities_json_lists_mcp_tools(self, capsys):
         with patch("sys.argv", ["guanlan", "capabilities", "--json"]):
@@ -215,6 +217,7 @@ class TestCLI:
         assert "观澜已安装完成" in captured.out
         assert "你可以直接这样对 Agent 说" in captured.out
         assert "guanlan capabilities" in captured.out
+        assert "Agent Wiki / RAG / 本地模型" in captured.out
 
     def test_welcome_once_only_prints_first_time(self, capsys, tmp_path, monkeypatch):
         from guanlan.onboarding import show_welcome_once

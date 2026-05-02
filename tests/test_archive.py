@@ -60,6 +60,36 @@ def test_archive_search_trace_explains_matched_terms(tmp_path):
     assert trace["semantic"] == "not-vector"
 
 
+def test_archive_search_diagnostics_explain_empty_hits(tmp_path):
+    db = tmp_path / "archive.db"
+    archive.add_document("https://example.com/a", "# Alpha\n正文包含本地资料。", db_path=db)
+
+    diagnostics = archive.archive_search_diagnostics("不存在的主题", records=[], db_path=db)
+
+    assert diagnostics["documents"] == 1
+    assert diagnostics["results"] == 0
+    assert diagnostics["semantic"] == "not-vector"
+    assert diagnostics["guidance"]
+
+
+def test_archive_verify_checks_recall_and_quality(tmp_path):
+    db = tmp_path / "archive.db"
+    archive.add_document(
+        "https://example.com/kv-cache",
+        "# KV Cache 优化\n\nvLLM 与 SGLang 使用 PagedAttention 管理 KV Cache。",
+        metadata={"read_quality": {"label": "clean", "score": 80}},
+        db_path=db,
+    )
+
+    report = archive.verify_archive(db_path=db)
+    rendered = archive.format_archive_verify(report)
+
+    assert report["status"] == "ok"
+    assert report["checks"]["sample_recall"] == "ok"
+    assert report["recall_samples"][0]["status"] == "ok"
+    assert "本地知识库体检" in rendered
+
+
 def test_archive_updates_existing_url(tmp_path):
     db = tmp_path / "archive.db"
 
@@ -250,6 +280,45 @@ def test_archive_cli_export_rag_jsonl(tmp_path, capsys):
     assert payload["id"].startswith("guanlan-")
     assert payload["source"] == "https://gov.cn/a"
     assert payload["text"].startswith("# 政策原文")
+
+
+def test_archive_export_profiles_for_common_rag_loaders(tmp_path):
+    db = tmp_path / "archive.db"
+    archive.add_document(
+        "https://example.com/a",
+        "# 标题\n正文",
+        metadata={"source_type": "技术", "topic_key": "agent"},
+        db_path=db,
+    )
+    records = archive.export_documents(db_path=db)
+
+    llama = archive.export_record_for_profile(records[0], "llamaindex-jsonl")
+    langchain = archive.export_record_for_profile(records[0], "langchain-jsonl")
+    openwebui = archive.export_record_for_profile(records[0], "openwebui-jsonl")
+
+    assert llama["text"].startswith("# 标题")
+    assert llama["metadata"]["tool"] == "guanlan"
+    assert langchain["page_content"].startswith("# 标题")
+    assert openwebui["content"].startswith("# 标题")
+    assert "metadata" in openwebui
+
+
+def test_archive_cli_verify_and_context(tmp_path, capsys):
+    from guanlan.cli import main
+
+    db = tmp_path / "archive.db"
+    archive.add_document("https://example.com/a", "# AI Agent Wiki\n这是一个 Agent Wiki 资料。", db_path=db)
+
+    with patch("sys.argv", ["guanlan", "archive", "verify", "--db", str(db)]):
+        main()
+    verify_out = capsys.readouterr().out
+    assert "本地知识库体检" in verify_out
+
+    with patch("sys.argv", ["guanlan", "archive", "context", "Agent Wiki", "--db", str(db)]):
+        main()
+    context_out = capsys.readouterr().out
+    assert "Local Archive Context" in context_out
+    assert "AI Agent Wiki" in context_out
 
 
 def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkeypatch):

@@ -184,19 +184,38 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="archive",
         name="本地知识库",
-        description="把网页或研究结果保存成本地 Markdown 档案，并支持本地检索和导出。",
+        description="把网页或研究结果保存成本地 Markdown 档案，并支持本地检索、体检、Wiki、Prompt context 和 RAG 导出。",
         when_to_use="用户希望沉淀资料、复用已读材料，或给本地 RAG/长期项目准备语料。",
         cli=[
             "guanlan archive add \"URL\"",
             "guanlan archive ingest-research \"关键词\" --limit 80",
             "guanlan archive search \"关键词\" --format context --trace",
+            "guanlan archive verify",
             "guanlan archive inspect 1",
             "guanlan archive reindex",
             "guanlan archive export --format rag-jsonl",
+            "guanlan archive export --format llamaindex-jsonl",
+            "guanlan archive context \"问题\"",
         ],
         mcp="guanlan_archive_search",
         boundary="默认保存在本机；不上传档案内容。ingest-research 是联网研究并入库，archive search 才是本地库检索。",
         examples=["把这批资料存起来。", "在我之前归档里搜一下。"],
+    ),
+    Capability(
+        id="agent_wiki",
+        name="AI Agent Wiki",
+        description="把本地 archive 组织成静态 Markdown/HTML Wiki，或按问题输出给 Agent/本地模型的证据上下文。",
+        when_to_use="用户想把一次性调研沉淀成长期知识底座，或要把本地资料接到 Wiki、RAG、LM Studio/Ollama。",
+        cli=[
+            "guanlan archive wiki build --output ./guanlan-wiki",
+            "guanlan archive wiki build --format both --topic \"AI Agent\"",
+            "guanlan archive wiki context \"KV Cache 量化\"",
+            "guanlan archive pack \"主题\" --format langchain-jsonl --output pack.jsonl",
+        ],
+        mcp=None,
+        status="sidecar",
+        boundary="Wiki 只反映本地 archive 中已有资料，不代表全网知识；低质量材料会标为 candidate，需要回原文核验。",
+        examples=["把查过的资料整理成 Agent Wiki。", "把这个主题打包给本地模型。"],
     ),
     Capability(
         id="report",
@@ -263,6 +282,8 @@ def format_capabilities_markdown(capabilities: list[dict[str, Any]] | None = Non
         "- 要证据包：`guanlan research \"问题\" --profile china` 或 `guanlan research \"question\" --profile english`",
         "- 要对比/时间线/档案：`guanlan compare ...`、`guanlan timeline \"问题\"`、`guanlan dossier \"对象\"`",
         "- 要建议/下一步：`guanlan research \"问题\" --advisor`",
+        "- 查过资料不要丢：`guanlan archive ingest-research \"问题\" --limit 80`，之后用 `archive verify/context/wiki/pack` 复用",
+        "- 要本地模型/RAG/Wiki 上下文：`guanlan archive context \"问题\"` 或 `guanlan archive wiki context \"问题\"`",
         "- 要静态 HTML 报表：`guanlan report html --input results.json --output report.html`",
         "- 看今日热点：`guanlan hotnews today --limit 50`",
         "- 查可用状态：`guanlan status`",
@@ -283,7 +304,12 @@ def format_capabilities_markdown(capabilities: list[dict[str, Any]] | None = Non
         if item.get("examples"):
             lines.append("- 典型用户说法：" + "；".join(item["examples"]))
         lines.append("")
-    lines.append("Agent 规则：如果用户问“你能做什么/观澜有哪些功能/该怎么查”，先调用 capabilities；如果用户给出具体问题但信源不清，先 route，再 search/research。")
+    lines.append(
+        "Agent 规则：如果用户问“你能做什么/观澜有哪些功能/该怎么查”，先调用 capabilities；"
+        "如果用户给出具体问题但信源不清，先 route，再 search/research；"
+        "如果用户说“查过资料别丢/长期记忆/Wiki/RAG/本地模型上下文”，优先使用 archive verify/context/wiki/pack，"
+        "并说明它只基于本地 archive，不代表全网知识。"
+    )
     return "\n".join(lines).rstrip()
 
 

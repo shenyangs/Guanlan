@@ -54,6 +54,10 @@ guanlan hotnews v2ex --limit 50
 guanlan doctor --install-check
 guanlan doctor --trace
 guanlan archive ingest-research "query" --limit 80
+guanlan archive verify
+guanlan archive context "query" --limit 20
+guanlan archive wiki build --output ./guanlan-wiki
+guanlan archive pack "query" --format langchain-jsonl --output guanlan-pack.jsonl
 guanlan report html --input results.json --output report.html
 guanlan quality coverage
 guanlan eval benchmark
@@ -76,6 +80,8 @@ Safety rules:
 - Use `guanlan compare`, `guanlan timeline`, or `guanlan dossier` when the user asks for comparison, event chronology, or an entity dossier; these are structured views over evidence packets, not final truth.
 - Use `guanlan research ... --preset academic --read-top 0` for EI/SCI/Scopus, academic conference, paper submission, indexing, and university-recognition questions; read selected official URLs afterward if needed.
 - Use `guanlan read ... --quality-report` when deciding whether a page body is clean enough for downstream reasoning; use `--strict` when noisy page chrome would be harmful; use `--extract metadata` or `--extract links` for source/date/link checks.
+- Use `guanlan archive verify` before relying on archive as memory/RAG/Wiki; use `archive context` or `archive wiki context` when a local model needs evidence-bound context from stored materials.
+- Use `guanlan archive wiki build` only as a local sidecar export over existing archive records; it must not be treated as whole-web truth or cloud sync.
 - Use `guanlan report html ...` only as a sidecar renderer when the user asks for an HTML report; it reads existing JSON/stdin/demo data and must not replace the main search/read/research/hotnews flows.
 - Before release, run `guanlan quality coverage`, `guanlan quality regression`, and `guanlan eval benchmark` and do not ship if it fails; new versions must not silently shrink the default result pool or remove agent-facing evidence metadata.
 - Use `guanlan research ... --advisor` when the user asks for advice, implications, next steps, or "why they might be searching this"; treat the advisor block as evidence-bound writing rules for your answer, not as the user's true intent or a final decision.
