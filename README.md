@@ -212,7 +212,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.3.1`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.3.2`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -440,6 +440,9 @@ guanlan configure --from-browser chrome
 | `guanlan archive ingest-search "关键词"` | 联网 research 一次，并把精选代表证据自动沉淀进本地知识库；不是本地库内搜索。 |
 | `guanlan archive ingest-research "关键词"` | `ingest-search` 的语义别名，更适合 Agent 记忆“研究入库”。 |
 | `guanlan archive search "关键词"` | 在本地知识库中检索已归档材料。 |
+| `guanlan archive search "关键词" --trace` | 展示命中词、命中字段、排序分数和检索边界。 |
+| `guanlan archive inspect 1` | 查看单条归档的正文、元数据和内容诊断。 |
+| `guanlan archive reindex` | 重建 SQLite FTS 索引，修复索引/正文不一致。 |
 | `guanlan archive export --format jsonl --source-type 政府` | 按 domain/source_type/topic 导出 RAG 友好 JSONL。 |
 | `guanlan archive export --format rag-jsonl` | 只导出 RAG 载入常用字段：id/text/source/title/domain/source_type/topic。 |
 | `guanlan serve --host 127.0.0.1 --port 8765` | 启动本地只读 HTTP 服务。 |
@@ -782,15 +785,18 @@ curl -s http://127.0.0.1:8765/context \
 ```bash
 guanlan archive add "https://example.com/article"
 guanlan archive add batch urls.txt
+guanlan archive ingest-research "人工智能 政策" --limit 80 --dry-run
 guanlan archive ingest-research "人工智能 政策" --limit 80
 guanlan archive list --limit 20
-guanlan archive search "人工智能 政策" --format context
+guanlan archive search "人工智能 政策" --format context --trace
+guanlan archive inspect 1
 guanlan archive stats
+guanlan archive reindex
 guanlan archive export --format jsonl > guanlan-archive.jsonl
 guanlan archive export --format rag-jsonl > guanlan-rag.jsonl
 ```
 
-本地知识库默认保存在 `~/.guanlan/archive.db`。当前使用 SQLite FTS/LIKE 检索，不依赖外部 embedding 服务；`archive search` 会对中文短语和技术词做宽召回并排序，适合快速复用已读材料，但不是向量语义搜索。`archive ingest-search` / `archive ingest-research` 的行为是“联网研究并入库”，如果只想查本地库，请使用 `archive search`。归档元数据会保留 `source_card`、`read_quality`、`quality_report`、`route_plan` 和 `query_strategy`，方便后续接 RAG 时知道材料的来源角色、正文质量和检索路径。`rag-jsonl` 会把每条材料收束成 `id/text/source/title/domain/source_type/topic/updated_at`，适合导入轻量本地 RAG、向量库或个人知识库。它不是云同步，也不会自动上传内容。
+本地知识库默认保存在 `~/.guanlan/archive.db`。当前使用 SQLite FTS/LIKE 检索，不依赖外部 embedding 服务；`archive search` 会对中文短语和技术词做宽召回并排序，适合快速复用已读材料，但不是向量语义搜索。`archive search --trace` 会说明命中词、字段、排序分数和 `semantic=not-vector` 边界，方便 Agent 判断是否需要补搜。`archive ingest-search` / `archive ingest-research` 的行为是“联网研究并入库”，如果只想查本地库，请使用 `archive search`；写入前可用 `--dry-run` 预览，观澜会跳过明显低相关或平台首页结果。归档元数据会保留 `source_card`、`read_quality`、`quality_report`、`route_plan` 和 `query_strategy`，方便后续接 RAG 时知道材料的来源角色、正文质量和检索路径。`rag-jsonl` 会把每条材料收束成 `id/text/source/title/domain/source_type/topic/updated_at`，适合导入轻量本地 RAG、向量库或个人知识库。它不是云同步，也不会自动上传内容。
 
 ### 17. 质量闸门
 

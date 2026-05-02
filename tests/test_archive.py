@@ -44,6 +44,22 @@ def test_archive_search_recalls_chinese_technical_terms_without_exact_phrase(tmp
     assert "KIVI" in quant_results[0]["excerpt"]
 
 
+def test_archive_search_trace_explains_matched_terms(tmp_path):
+    db = tmp_path / "archive.db"
+    archive.add_document(
+        "https://example.com/kv-cache",
+        "# KV Cache 优化\n\nvLLM 与 SGLang 使用 PagedAttention 管理 KV Cache。",
+        db_path=db,
+    )
+
+    results = archive.search_documents("开源推理框架 vLLM SGLang", trace=True, db_path=db)
+
+    trace = results[0]["search_trace"]
+    assert "vLLM" in trace["matched_terms"]
+    assert "content" in trace["field_hits"]
+    assert trace["semantic"] == "not-vector"
+
+
 def test_archive_updates_existing_url(tmp_path):
     db = tmp_path / "archive.db"
 
@@ -91,6 +107,35 @@ def test_archive_cli_search_outputs_json(tmp_path, capsys):
 
     payload = json.loads(captured.out)
     assert payload[0]["title"] == "标题"
+
+
+def test_archive_cli_search_trace_outputs_reasoning(tmp_path, capsys):
+    from guanlan.cli import main
+
+    db = tmp_path / "archive.db"
+    archive.add_document("https://example.com/kv", "# KV Cache\nvLLM 和 SGLang", db_path=db)
+
+    with patch("sys.argv", ["guanlan", "archive", "search", "vLLM SGLang", "--db", str(db), "--trace"]):
+        main()
+    captured = capsys.readouterr()
+
+    assert "Archive Search Trace" in captured.out
+    assert "vLLM" in captured.out
+
+
+def test_archive_inspect_remove_and_reindex(tmp_path):
+    db = tmp_path / "archive.db"
+    record = archive.add_document("https://example.com/a", "# 标题\n正文", db_path=db)
+
+    inspected = archive.inspect_document(str(record["id"]), db_path=db)
+    reindexed = archive.reindex_archive(db_path=db)
+    removed = archive.remove_document(str(record["id"]), db_path=db)
+
+    assert inspected["content"].startswith("# 标题")
+    assert inspected["diagnostics"]["has_content"] is True
+    assert reindexed["documents"] == 1
+    assert removed["status"] == "removed"
+    assert archive.list_documents(db_path=db) == []
 
 
 def test_archive_cli_add_batch_respects_blocked_records(tmp_path, capsys, monkeypatch):
@@ -189,6 +234,42 @@ def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkey
     assert records[0]["metadata"]["route_plan"]["primary_intents"] == ["policy"]
     assert records[0]["metadata"]["read_quality"]["chars"] > 0
     assert records[0]["metadata"]["source_card"]["domain"] == "gov.cn"
+
+
+def test_archive_ingest_dry_run_and_low_value_filter(tmp_path, monkeypatch):
+    db = tmp_path / "archive.db"
+
+    monkeypatch.setattr(
+        "guanlan.webtools.build_research_packet",
+        lambda *args, **kwargs: {
+            "result_count": 2,
+            "preset": "tech",
+            "route_plan": {"primary_intents": ["tech"]},
+            "selected_evidence": [
+                {
+                    "title": "2019 Toyota Camry",
+                    "url": "https://example.com/camry",
+                    "snippet": "Used car listing",
+                    "source_type": "通用网页",
+                },
+                {
+                    "title": "vLLM 与 SGLang 推理框架对比",
+                    "url": "https://example.com/vllm",
+                    "snippet": "vLLM SGLang KV Cache 推理框架",
+                    "source_type": "科技/开发者社区",
+                },
+            ],
+            "readings": [],
+        },
+    )
+
+    result = archive.ingest_search("开源推理框架 vLLM SGLang", dry_run=True, db_path=db)
+
+    assert result["dry_run"] is True
+    assert result["archived_count"] == 0
+    assert result["skipped_count"] == 1
+    assert {item["status"] for item in result["records"]} == {"skipped", "preview"}
+    assert archive.list_documents(db_path=db) == []
 
 
 def test_archive_cli_ingest_research_alias(tmp_path, capsys, monkeypatch):

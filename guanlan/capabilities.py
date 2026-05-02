@@ -175,7 +175,9 @@ CAPABILITIES: tuple[Capability, ...] = (
         cli=[
             "guanlan archive add \"URL\"",
             "guanlan archive ingest-research \"关键词\" --limit 80",
-            "guanlan archive search \"关键词\" --format context",
+            "guanlan archive search \"关键词\" --format context --trace",
+            "guanlan archive inspect 1",
+            "guanlan archive reindex",
             "guanlan archive export --format rag-jsonl",
         ],
         mcp="guanlan_archive_search",

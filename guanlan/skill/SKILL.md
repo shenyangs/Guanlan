@@ -100,7 +100,10 @@ guanlan feeds list
 # 本地知识库
 guanlan archive add "URL"
 guanlan archive ingest-research "query" --limit 80
-guanlan archive search "query" --format context
+guanlan archive ingest-research "query" --limit 80 --dry-run
+guanlan archive search "query" --format context --trace
+guanlan archive inspect 1
+guanlan archive reindex
 guanlan archive export --format rag-jsonl
 guanlan mcp config --client codex
 guanlan serve --host 127.0.0.1 --port 8765

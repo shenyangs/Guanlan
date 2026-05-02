@@ -88,6 +88,7 @@ def test_mcp_tool_definitions_use_expanded_limits():
     pulse_limit = tools["guanlan_pulse"]["inputSchema"]["properties"]["limit"]
     feeds_limit = tools["guanlan_feeds"]["inputSchema"]["properties"]["limit"]
     archive_limit = tools["guanlan_archive_search"]["inputSchema"]["properties"]["limit"]
+    archive_trace = tools["guanlan_archive_search"]["inputSchema"]["properties"]["trace"]
 
     assert search_limit == {"type": "integer", "default": DEFAULT_SEARCH_LIMIT, "minimum": 1, "maximum": MAX_SEARCH_LIMIT}
     assert read_fallback == {
@@ -132,6 +133,7 @@ def test_mcp_tool_definitions_use_expanded_limits():
         "minimum": 1,
         "maximum": MAX_ARCHIVE_SEARCH_LIMIT,
     }
+    assert archive_trace["type"] == "boolean"
 
 
 def test_mcp_search_context_uses_webtools(monkeypatch):
@@ -226,11 +228,12 @@ def test_mcp_archive_search_uses_archive(monkeypatch):
         fake_search_documents,
     )
 
-    text = mcp_server._run_tool("guanlan_archive_search", {"query": "材料", "format": "context"})
+    text = mcp_server._run_tool("guanlan_archive_search", {"query": "材料", "format": "context", "trace": True})
 
     assert "观澜本地知识库上下文" in text
     assert "本地材料" in text
     assert calls[0]["limit"] == DEFAULT_ARCHIVE_SEARCH_LIMIT
+    assert calls[0]["trace"] is True
 
 
 def test_mcp_pulse_uses_pulse(monkeypatch):

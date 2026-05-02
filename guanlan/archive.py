@@ -200,6 +200,7 @@ def ingest_search(
     select_top: int = 8,
     preset: str = "general",
     profile: str | None = "china",
+    dry_run: bool = False,
     db_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Run Guanlan research and persist representative evidence into the archive."""
@@ -222,6 +223,16 @@ def ingest_search(
     for item in packet.get("selected_evidence") or packet.get("results", [])[:select_top]:
         url = str(item.get("url", "")).strip()
         if not url:
+            continue
+        if _is_low_value_ingest_candidate(query, item):
+            records.append(
+                {
+                    "url": url,
+                    "title": str(item.get("title") or url),
+                    "status": "skipped",
+                    "reason": "low_relevance_or_platform_homepage",
+                }
+            )
             continue
         reading = readings_by_url.get(url)
         if reading and reading.get("content"):
@@ -247,14 +258,30 @@ def ingest_search(
             "read_quality": reading.get("read_quality", {}) if isinstance(reading, dict) else {},
             "quality_report": reading.get("quality_report", {}) if isinstance(reading, dict) else {},
         }
+        if dry_run:
+            records.append(
+                {
+                    "url": url,
+                    "title": str(item.get("title", "")),
+                    "domain": _domain(url),
+                    "status": "preview",
+                    "chars": len(content),
+                    "source_type": item.get("source_type", ""),
+                    "evidence_role": item.get("evidence_role", ""),
+                    "snippet": _excerpt(content, max_chars=180),
+                }
+            )
+            continue
         try:
             records.append(add_document(url, content, title=str(item.get("title", "")), metadata=metadata, db_path=db_path))
         except Exception as exc:
             records.append({"url": url, "status": "error", "error": str(exc)})
     return {
         "query": query,
+        "dry_run": dry_run,
         "packet_result_count": packet.get("result_count", 0),
         "selected_count": len(packet.get("selected_evidence") or []),
+        "skipped_count": sum(1 for item in records if item.get("status") == "skipped"),
         "archived_count": sum(1 for item in records if item.get("status") in {"created", "updated", "unchanged"}),
         "records": records,
     }
@@ -287,6 +314,7 @@ def _enrich_archive_metadata(metadata: dict[str, Any], *, domain: str, content: 
 def search_documents(
     query: str,
     limit: int = DEFAULT_ARCHIVE_SEARCH_LIMIT,
+    trace: bool = False,
     db_path: str | Path | None = None,
 ) -> list[dict[str, Any]]:
     """Search the local archive with FTS when available and LIKE fallback."""
@@ -309,7 +337,7 @@ def search_documents(
                 rows.append(row)
                 if len(rows) >= limit:
                     break
-    return [_row_to_record(row, query=query) for row in rows[:limit]]
+    return [_row_to_record(row, query=query, trace=trace) for row in rows[:limit]]
 
 
 def list_documents(limit: int = DEFAULT_ARCHIVE_LIST_LIMIT, db_path: str | Path | None = None) -> list[dict[str, Any]]:
@@ -324,6 +352,70 @@ def list_documents(limit: int = DEFAULT_ARCHIVE_LIST_LIMIT, db_path: str | Path 
             (max(limit, 1),),
         ).fetchall()
     return [_row_to_record(row) for row in rows]
+
+
+def inspect_document(identifier: str, db_path: str | Path | None = None) -> dict[str, Any]:
+    """Return one archived document by id or URL, including content and diagnostics."""
+    value = str(identifier or "").strip()
+    if not value:
+        raise ValueError("identifier is required")
+    with _connect(db_path) as conn:
+        if value.isdigit():
+            row = conn.execute("SELECT * FROM documents WHERE id = ?", (int(value),)).fetchone()
+        else:
+            normalized = _normalize_url(value)
+            row = conn.execute(
+                "SELECT * FROM documents WHERE url = ? OR url_hash = ?",
+                (normalized, hashlib.sha256(normalized.encode("utf-8")).hexdigest()),
+            ).fetchone()
+    if not row:
+        raise ValueError(f"archive document not found: {identifier}")
+    record = _row_to_record(row, include_content=True, rag=True)
+    content = str(record.get("content") or "")
+    record["diagnostics"] = {
+        "chars": len(content),
+        "content_hash": record.get("content_hash", ""),
+        "has_content": bool(content.strip()),
+        "metadata_keys": sorted((record.get("metadata") or {}).keys()),
+    }
+    return record
+
+
+def remove_document(identifier: str, db_path: str | Path | None = None) -> dict[str, Any]:
+    """Remove one archived document by id or URL."""
+    record = inspect_document(identifier, db_path=db_path)
+    doc_id = int(record["id"])
+    with _connect(db_path) as conn:
+        conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+        if _has_fts(conn):
+            try:
+                conn.execute("DELETE FROM documents_fts WHERE rowid = ?", (doc_id,))
+            except sqlite3.OperationalError:
+                conn.execute("INSERT OR REPLACE INTO archive_meta (key, value) VALUES ('fts', '0')")
+        conn.commit()
+    return {"id": doc_id, "status": "removed", "url": record.get("url", ""), "title": record.get("title", "")}
+
+
+def reindex_archive(db_path: str | Path | None = None) -> dict[str, Any]:
+    """Rebuild the SQLite FTS index from stored documents."""
+    with _connect(db_path) as conn:
+        rows = conn.execute("SELECT id, title, content, url, domain FROM documents ORDER BY id ASC").fetchall()
+        fts_available = _has_fts(conn)
+        if fts_available:
+            conn.execute("DELETE FROM documents_fts")
+            for row in rows:
+                conn.execute(
+                    "INSERT INTO documents_fts (rowid, title, content, url, domain) VALUES (?, ?, ?, ?, ?)",
+                    (int(row["id"]), row["title"], row["content"], row["url"], row["domain"]),
+                )
+            conn.execute("INSERT OR REPLACE INTO archive_meta (key, value) VALUES ('fts', '1')")
+            conn.commit()
+    return {
+        "status": "ok" if fts_available else "warn",
+        "documents": len(rows),
+        "fts": "enabled" if fts_available else "unavailable",
+        "message": "FTS index rebuilt" if fts_available else "SQLite FTS5 unavailable; LIKE fallback will be used",
+    }
 
 
 def export_documents(
@@ -350,6 +442,15 @@ def archive_stats(db_path: str | Path | None = None) -> dict[str, Any]:
         return {"path": str(path), "exists": False, "documents": 0, "domains": []}
     with _connect(path) as conn:
         count = int(conn.execute("SELECT COUNT(*) AS count FROM documents").fetchone()["count"])
+        content_chars = int(conn.execute("SELECT COALESCE(SUM(LENGTH(content)), 0) AS chars FROM documents").fetchone()["chars"])
+        schema_row = conn.execute("SELECT value FROM archive_meta WHERE key = 'schema_version'").fetchone()
+        fts_enabled = _has_fts(conn)
+        fts_count = 0
+        if fts_enabled:
+            try:
+                fts_count = int(conn.execute("SELECT COUNT(*) AS count FROM documents_fts").fetchone()["count"])
+            except sqlite3.OperationalError:
+                fts_count = 0
         domains = conn.execute(
             """
             SELECT domain, COUNT(*) AS count
@@ -363,6 +464,15 @@ def archive_stats(db_path: str | Path | None = None) -> dict[str, Any]:
         "path": str(path),
         "exists": path.exists(),
         "documents": count,
+        "content_chars": content_chars,
+        "schema_version": schema_row["value"] if schema_row else "",
+        "index": {
+            "type": "sqlite-fts5+like",
+            "fts": "enabled" if fts_enabled else "unavailable",
+            "fts_documents": fts_count,
+            "fallback": "LIKE",
+            "semantic": "not-vector",
+        },
         "domains": [{"domain": row["domain"], "count": int(row["count"])} for row in domains],
     }
 
@@ -403,6 +513,15 @@ def format_archive_context(records: list[dict[str, Any]], title: str = "观澜�
 def format_archive_stats(stats: dict[str, Any]) -> str:
     """Render archive stats as Markdown."""
     lines = ["# 观澜本地知识库状态", "", f"- 路径: {stats.get('path', '')}", f"- 文档数: {stats.get('documents', 0)}"]
+    index = stats.get("index") or {}
+    if index:
+        lines.extend(
+            [
+                f"- 正文字符数: {stats.get('content_chars', 0)}",
+                f"- 索引: {index.get('type', '')} / FTS={index.get('fts', '')} / fallback={index.get('fallback', '')}",
+                f"- 语义边界: {index.get('semantic', '')}",
+            ]
+        )
     domains = stats.get("domains", [])
     if domains:
         lines.extend(["", "## 域名分布"])
@@ -546,13 +665,92 @@ def _search_like(conn: sqlite3.Connection, query: str, limit: int) -> list[sqlit
     ).fetchall()
 
 
+def _is_low_value_ingest_candidate(query: str, item: dict[str, Any]) -> bool:
+    """Avoid auto-archiving obvious drift or platform homepages."""
+    title = _collapse_ws(str(item.get("title") or ""))
+    url = str(item.get("url") or "")
+    snippet = _collapse_ws(str(item.get("snippet") or ""))
+    text = f"{title} {url} {snippet}".lower()
+    if _looks_like_platform_homepage(title, url, snippet):
+        return True
+    terms = _meaningful_query_terms(query)
+    if not terms:
+        return False
+    matched = [term for term in terms if term.lower() in text]
+    # For long, specific technical queries, zero overlap is usually search drift
+    # (for example a car page in an LLM inference-framework query).
+    return len(terms) >= 3 and not matched
+
+
+def _looks_like_platform_homepage(title: str, url: str, snippet: str) -> bool:
+    title_lower = title.strip().lower()
+    homepage_titles = {
+        "sciencedirect.com",
+        "ieee xplore",
+        "engineering village - quick search",
+        "engineering village | search and discovery platform",
+        "engineering village | search and discovery platform to ... - elsevier",
+    }
+    homepage_markers = ("quick search", "search and discovery platform")
+    if (title_lower in homepage_titles or any(marker in title_lower for marker in homepage_markers)) and len(snippet.strip()) < 160:
+        return True
+    parsed = urllib.parse.urlparse(url)
+    path = (parsed.path or "").strip("/")
+    return bool(path == "" and title.strip().lower() in {parsed.netloc.lower(), parsed.netloc.lower().removeprefix("www.")})
+
+
+def _meaningful_query_terms(query: str) -> list[str]:
+    stopwords = {
+        "这些",
+        "文章",
+        "提到",
+        "所有",
+        "具体",
+        "方法",
+        "名称",
+        "哪些",
+        "什么",
+        "相关",
+        "介绍",
+        "对比",
+    }
+    terms = []
+    for term in _query_terms(query):
+        if term in stopwords:
+            continue
+        if re.fullmatch(r"[\u4e00-\u9fff]{2}", term) and term in {"这些", "文章", "提到", "所有", "具体", "方法"}:
+            continue
+        terms.append(term)
+    return terms[:12]
+
+
+def _match_trace(query: str, fields: dict[str, str], *, match_score: float = 0.0) -> dict[str, Any]:
+    terms = _query_terms(query)[:16]
+    field_hits: dict[str, list[str]] = {}
+    for field, value in fields.items():
+        lower = str(value or "").lower()
+        hits = [term for term in terms if term.lower() in lower]
+        if hits:
+            field_hits[field] = hits
+    return {
+        "query_terms": terms,
+        "matched_terms": _unique_terms([term for hits in field_hits.values() for term in hits]),
+        "field_hits": field_hits,
+        "match_score": match_score,
+        "retrieval": "sqlite-fts5+like",
+        "semantic": "not-vector",
+    }
+
+
 def _row_to_record(
     row: sqlite3.Row,
     query: str = "",
     include_content: bool = False,
     rag: bool = False,
+    trace: bool = False,
 ) -> dict[str, Any]:
     data = dict(row)
+    content = str(data.get("content", ""))
     metadata_raw = data.pop("metadata_json", "{}")
     try:
         metadata = json.loads(metadata_raw)
@@ -563,14 +761,18 @@ def _row_to_record(
         "url": data.get("url", ""),
         "title": data.get("title", ""),
         "domain": data.get("domain", ""),
-        "excerpt": _snippet(str(data.get("content", "")), query) if query else data.get("excerpt", ""),
+        "excerpt": _snippet(content, query) if query else data.get("excerpt", ""),
         "content_hash": data.get("content_hash", ""),
         "added_at": data.get("added_at", 0),
         "updated_at": data.get("updated_at", 0),
         "metadata": metadata,
     }
+    if "match_score" in data:
+        record["match_score"] = data.get("match_score", 0)
+    if "rank" in data:
+        record["rank_score"] = data.get("rank", 0)
     if include_content:
-        record["content"] = data.get("content", "")
+        record["content"] = content
     if rag:
         metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
         record["rag"] = {
@@ -583,6 +785,17 @@ def _row_to_record(
             "topic": metadata.get("topic_key", ""),
             "updated_at": record.get("updated_at", 0),
         }
+    if trace and query:
+        record["search_trace"] = _match_trace(
+            query,
+            {
+                "title": str(record.get("title", "")),
+                "domain": str(record.get("domain", "")),
+                "url": str(record.get("url", "")),
+                "content": content,
+            },
+            match_score=float(record.get("match_score", 0) or 0),
+        )
     return record
 
 

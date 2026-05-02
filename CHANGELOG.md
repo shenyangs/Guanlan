@@ -8,6 +8,24 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.3.2 - 2026-05-02
+
+### Added
+
+- `archive search` 新增 `--trace`，输出 query terms、matched terms、命中字段、排序分数和 `semantic=not-vector` 边界，方便 Agent 判断本地知识库召回质量。
+- 新增 `archive inspect <id|url>`，查看单条归档正文、元数据、字符数和内容诊断，确认材料是否真实入库。
+- 新增 `archive remove <id|url>` 和 `archive reindex`，支持删除单条归档与重建 SQLite FTS 索引。
+- `archive ingest-search` / `archive ingest-research` 新增 `--dry-run`，可预览将入库的代表证据而不写入数据库。
+- MCP `guanlan_archive_search` 新增 `trace` 参数，Agent 可直接拿到本地库命中依据。
+
+### Changed
+
+- Archive 入库增加低相关/平台首页跳过逻辑，减少 Toyota Camry、平台首页等明显漂移内容自动沉淀进本地库。
+- `archive stats` 增加索引状态、正文字符数、schema version、FTS 文档数和检索边界说明。
+- `quality regression` 增加 Archive 技术词召回护栏，持续检查 KV Cache / vLLM / SGLang / KIVI 这类中文技术查询不会回退到 0 召回。
+- README、Agent 文档、Skill、本地模型指南和中文 README 同步 Archive 质量工作流：`list -> search --trace -> inspect -> reindex -> ingest-research --dry-run`。
+- 官网展示版本号同步到 `0.3.2`。
+
 ## v0.3.1 - 2026-05-02
 
 ### Fixed

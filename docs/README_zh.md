@@ -41,8 +41,8 @@
 - 来源分布诊断已经可用：`guanlan search "关键词" --source-chart`、`guanlan research "关键词" --source-chart`。
 - 安全版话题回响已经可用：`guanlan pulse "关键词" --format context`，默认只基于公开搜索样本输出倾向、置信度和边界提醒。
 - Jina Reader 已作为第一读取入口，但不是唯一依赖；读取不稳时可用 `guanlan read "URL" --backend direct` 直连原网页。
-- 本地知识库雏形已经可用：`guanlan archive add "URL"`、`guanlan archive search "关键词" --format context`、`guanlan archive export --format jsonl`。
+- 本地知识库已经可用：`guanlan archive add "URL"`、`guanlan archive search "关键词" --format context --trace`、`guanlan archive inspect 1`、`guanlan archive reindex`、`guanlan archive export --format rag-jsonl`。
 - 本地模型联网入口已经可用：`guanlan prompt "问题"`、`guanlan research "问题" --format prompt`、`guanlan mcp config --client codex`。
-- 进阶能力已经有第一版骨架：`guanlan serve` 本地只读 HTTP、`hotnews --trends` 趋势归并、`archive ingest-search` RAG 沉淀、`plugin register/template` 企业只读 connector、`eval scenarios` 评估集。
+- 进阶能力已经有第一版骨架：`guanlan serve` 本地只读 HTTP、`hotnews --trends` 趋势归并、`archive ingest-research --dry-run` RAG 沉淀、`plugin register/template` 企业只读 connector、`eval scenarios` 评估集。
 - 第一批原生热榜命令已经可用：`guanlan hotnews list`、`guanlan hotnews baidu --limit 50`、`guanlan hotnews v2ex --json`；`zhihu` 是 experimental 源，失败时使用搜索 fallback。
 - 观澜当前优先强化中文搜索、热榜聚合、社交口碑、视频、财经和开发者社区。

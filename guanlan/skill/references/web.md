@@ -103,16 +103,18 @@ guanlan archive add "https://example.com/article"
 guanlan archive add batch urls.txt
 
 # 检索本地归档，输出适合 prompt 的上下文
-guanlan archive search "关键词" --format context
+guanlan archive search "关键词" --format context --trace
 
 # 查看本地知识库状态
 guanlan archive stats
+guanlan archive inspect 1
+guanlan archive reindex
 
 # 导出给 RAG、向量库或其他本地系统
-guanlan archive export --format jsonl
+guanlan archive export --format rag-jsonl
 ```
 
-**适用场景**: 用户希望把查过、读过、核验过的中文材料沉淀下来，后续快速复用。Archive 默认保存在 `~/.guanlan/archive.db`，使用 SQLite + FTS/LIKE 检索，不依赖外部 embedding 服务；本地搜索会对中文短语和技术词做宽召回并排序，但不是向量语义搜索。批量归档仍遵守高风险社交域名保护。
+**适用场景**: 用户希望把查过、读过、核验过的中文材料沉淀下来，后续快速复用。Archive 默认保存在 `~/.guanlan/archive.db`，使用 SQLite + FTS/LIKE 检索，不依赖外部 embedding 服务；本地搜索会对中文短语和技术词做宽召回并排序，但不是向量语义搜索。`--trace` 可解释 matched terms、field hits、score 和检索边界；`inspect` 用于确认正文是否真实入库，`reindex` 用于重建索引。批量归档仍遵守高风险社交域名保护。
 
 ## 直接 Jina Reader
 

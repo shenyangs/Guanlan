@@ -448,6 +448,8 @@ def main():
                                   help="Output format")
     p_archive_search.add_argument("--json", action="store_true",
                                   help="Print normalized JSON instead of Markdown")
+    p_archive_search.add_argument("--trace", action="store_true",
+                                  help="Include matched terms, fields, score, and retrieval boundary")
     p_archive_search.add_argument("--db", default="", help="Optional archive database path")
 
     p_archive_list = archive_sub.add_parser("list", help="List recently archived documents")
@@ -462,6 +464,21 @@ def main():
     p_archive_stats.add_argument("--json", action="store_true",
                                  help="Print normalized JSON instead of Markdown")
     p_archive_stats.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_inspect = archive_sub.add_parser("inspect", help="Inspect one archived document by id or URL")
+    p_archive_inspect.add_argument("identifier", help="Archive id or URL")
+    p_archive_inspect.add_argument("--format", choices=["markdown", "json"], default="markdown",
+                                   help="Output format")
+    p_archive_inspect.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_remove = archive_sub.add_parser("remove", help="Remove one archived document by id or URL")
+    p_archive_remove.add_argument("identifier", help="Archive id or URL")
+    p_archive_remove.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_archive_remove.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_reindex = archive_sub.add_parser("reindex", help="Rebuild the local archive FTS index")
+    p_archive_reindex.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_archive_reindex.add_argument("--db", default="", help="Optional archive database path")
 
     p_archive_export = archive_sub.add_parser("export", help="Export archive records")
     p_archive_export.add_argument("--format", choices=["jsonl", "markdown", "rag-jsonl"], default="jsonl",
@@ -482,6 +499,8 @@ def main():
     p_archive_ingest.add_argument("--select-top", type=int, default=8, help="Representative evidence items to archive")
     p_archive_ingest.add_argument("--preset", default="general", help="Research preset")
     p_archive_ingest.add_argument("--profile", choices=VALID_PROFILES, default="china", help="Region profile")
+    p_archive_ingest.add_argument("--dry-run", action="store_true",
+                                  help="Preview what would be archived without writing to the local database")
     p_archive_ingest.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
     p_archive_ingest.add_argument("--db", default="", help="Optional archive database path")
 
@@ -1516,13 +1535,16 @@ def _cmd_archive(args):
         format_archive_markdown,
         format_archive_stats,
         ingest_search,
+        inspect_document,
         list_documents,
+        reindex_archive,
+        remove_document,
         search_documents,
     )
 
     command = getattr(args, "archive_command", None)
     if not command:
-        print("Error: archive command is required: add, ingest-search, ingest-research, search, list, stats, export", file=sys.stderr)
+        print("Error: archive command is required: add, ingest-search, ingest-research, search, list, inspect, remove, reindex, stats, export", file=sys.stderr)
         sys.exit(2)
     db_path = args.db or None
 
@@ -1562,14 +1584,18 @@ def _cmd_archive(args):
             return
 
         if command == "search":
-            records = search_documents(args.query, limit=max(args.limit, 1), db_path=db_path)
+            records = search_documents(args.query, limit=max(args.limit, 1), trace=args.trace, db_path=db_path)
             output_format = "json" if args.json else args.format
             if output_format == "json":
                 print(json.dumps(records, ensure_ascii=False, indent=2))
             elif output_format == "context":
                 print(format_archive_context(records, title=f"观澜本地知识库上下文 / {args.query}"))
+                if args.trace:
+                    print(_format_archive_search_trace(records))
             else:
                 print(format_archive_markdown(records, title=f"观澜本地知识库 / {args.query}"))
+                if args.trace:
+                    print(_format_archive_search_trace(records))
             return
 
         if command == "list":
@@ -1589,6 +1615,35 @@ def _cmd_archive(args):
                 print(json.dumps(stats, ensure_ascii=False, indent=2))
             else:
                 print(format_archive_stats(stats))
+            return
+
+        if command == "inspect":
+            record = inspect_document(args.identifier, db_path=db_path)
+            if args.format == "json":
+                print(json.dumps(record, ensure_ascii=False, indent=2))
+            else:
+                print(_format_archive_inspect(record))
+            return
+
+        if command == "remove":
+            result = remove_document(args.identifier, db_path=db_path)
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print(f"已移除: [{result.get('id')}] {result.get('title') or result.get('url')}")
+            return
+
+        if command == "reindex":
+            result = reindex_archive(db_path=db_path)
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print("# 观澜本地知识库重建索引")
+                print()
+                print(f"- 状态: {result.get('status')}")
+                print(f"- 文档数: {result.get('documents')}")
+                print(f"- FTS: {result.get('fts')}")
+                print(f"- 说明: {result.get('message')}")
             return
 
         if command == "export":
@@ -1623,6 +1678,7 @@ def _cmd_archive(args):
                 select_top=max(args.select_top, 1),
                 preset=args.preset,
                 profile=args.profile or None,
+                dry_run=args.dry_run,
                 db_path=db_path,
             )
             if args.json:
@@ -1810,13 +1866,55 @@ def _format_archive_ingest_summary(result: dict) -> str:
         "",
         f"- Query: {result.get('query', '')}",
         "- 行为: 联网 research 后归档精选代表证据；如需搜索已有本地库，请使用 `guanlan archive search`。",
+        f"- Dry run: {'是' if result.get('dry_run') else '否'}",
         f"- 搜索结果数: {result.get('packet_result_count', 0)}",
         f"- 精选数: {result.get('selected_count', 0)}",
+        f"- 跳过低相关: {result.get('skipped_count', 0)}",
         f"- 已归档: {result.get('archived_count', 0)}",
         "",
     ]
     for item in result.get("records", []):
-        lines.append(f"- [{item.get('status', 'unknown')}] {item.get('title') or item.get('url')}")
+        reason = f" ({item.get('reason')})" if item.get("reason") else ""
+        lines.append(f"- [{item.get('status', 'unknown')}] {item.get('title') or item.get('url')}{reason}")
+    return "\n".join(lines)
+
+
+def _format_archive_search_trace(records: list[dict]) -> str:
+    lines = ["", "## Archive Search Trace"]
+    if not records:
+        lines.append("- 无命中；请先用 `guanlan archive list` 确认本地库是否已有文档。")
+        return "\n".join(lines)
+    for idx, item in enumerate(records[:10], start=1):
+        trace = item.get("search_trace") or {}
+        lines.append(f"- {idx}. {item.get('title', '')}")
+        lines.append(f"  - score: {trace.get('match_score', item.get('match_score', 0))}")
+        lines.append(f"  - matched: {', '.join(trace.get('matched_terms') or []) or 'none'}")
+        fields = trace.get("field_hits") or {}
+        if fields:
+            field_text = "; ".join(f"{key}={','.join(value)}" for key, value in fields.items())
+            lines.append(f"  - fields: {field_text}")
+    lines.append("- retrieval: sqlite-fts5+like; semantic: not-vector")
+    return "\n".join(lines)
+
+
+def _format_archive_inspect(record: dict) -> str:
+    diagnostics = record.get("diagnostics") or {}
+    lines = [
+        "# 观澜归档详情",
+        "",
+        f"- ID: {record.get('id')}",
+        f"- 标题: {record.get('title', '')}",
+        f"- URL: {record.get('url', '')}",
+        f"- Domain: {record.get('domain', '')}",
+        f"- 字符数: {diagnostics.get('chars', 0)}",
+        f"- 元数据: {', '.join(diagnostics.get('metadata_keys') or []) or '无'}",
+        "",
+        "## 摘要",
+        str(record.get("excerpt", "")),
+    ]
+    content = str(record.get("content", ""))
+    if content:
+        lines.extend(["", "## 正文预览", content[:2000]])
     return "\n".join(lines)
 
 

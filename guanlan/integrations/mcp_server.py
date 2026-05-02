@@ -295,6 +295,11 @@ def _tool_definitions() -> list[dict]:
                         "maximum": MAX_ARCHIVE_SEARCH_LIMIT,
                     },
                     "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "context"},
+                    "trace": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Include matched terms, fields, and retrieval boundary for archive search.",
+                    },
                 },
             },
         },
@@ -545,6 +550,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         records = search_documents(
             str(args.get("query", "")).strip(),
             limit=int(args.get("limit") or DEFAULT_ARCHIVE_SEARCH_LIMIT),
+            trace=bool(args.get("trace", False)),
         )
         output_format = str(args.get("format") or "context")
         if output_format == "json":

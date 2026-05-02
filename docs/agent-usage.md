@@ -87,6 +87,9 @@
 | “把链接存入本地知识库” | `guanlan archive add "URL"` |
 | “联网查一轮并把代表证据入库” | `guanlan archive ingest-research "关键词" --limit 80` |
 | “搜索本地知识库” | `guanlan archive search "关键词" --format context` |
+| “解释本地库为什么命中/没命中” | `guanlan archive search "关键词" --trace` |
+| “确认一条归档是否真的有正文” | `guanlan archive inspect 1` |
+| “修复/重建本地索引” | `guanlan archive reindex` |
 | “导出给 RAG 系统” | `guanlan archive export --format rag-jsonl` |
 | “看跨源热点趋势” | `guanlan hotnews today --trends` |
 | “拿评估集比较搜索质量” | `guanlan eval scenarios --format jsonl` |
@@ -405,16 +408,19 @@ guanlan archive add "https://example.com/article"
 guanlan archive add batch urls.txt
 ```
 
-把一次 research 的代表证据直接沉淀下来。注意：这是联网研究并入库，不是在已有 archive 内部搜索：
+把一次 research 的代表证据直接沉淀下来。注意：这是联网研究并入库，不是在已有 archive 内部搜索。写入前可以先 dry-run：
 
 ```bash
+guanlan archive ingest-research "人工智能 政策" --limit 80 --dry-run
 guanlan archive ingest-research "人工智能 政策" --limit 80
 ```
 
 查询本地沉淀材料：
 
 ```bash
-guanlan archive search "人工智能 政策" --format context
+guanlan archive search "人工智能 政策" --format context --trace
+guanlan archive inspect 1
+guanlan archive reindex
 ```
 
 导出给 RAG、向量库或其他本地系统：
@@ -424,7 +430,7 @@ guanlan archive export --format jsonl
 guanlan archive export --format rag-jsonl
 ```
 
-Archive 默认保存在 `~/.guanlan/archive.db`。它只保存本机归档内容，不自动上传。`rag-jsonl` 会导出本地 RAG 常用的 `id/text/source/title/domain/source_type/topic` 字段；如果需要完整元数据，用普通 `jsonl`。批量归档仍遵守高风险社交域名保护；遇到微博、小红书、抖音、Twitter/X、LinkedIn 等平台时，不要绕过授权边界批量读取。
+Archive 默认保存在 `~/.guanlan/archive.db`。它只保存本机归档内容，不自动上传。当前本地检索是 SQLite FTS/LIKE 宽召回，不是向量语义搜索；`--trace` 会返回 matched terms、field hits、score 和 `semantic=not-vector`。`rag-jsonl` 会导出本地 RAG 常用的 `id/text/source/title/domain/source_type/topic` 字段；如果需要完整元数据，用普通 `jsonl`。批量归档仍遵守高风险社交域名保护；遇到微博、小红书、抖音、Twitter/X、LinkedIn 等平台时，不要绕过授权边界批量读取。
 
 自定义 backend 只在显式调用时启用。配置示例：
 

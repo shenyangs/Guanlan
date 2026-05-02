@@ -114,6 +114,7 @@ def run_regression_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any
     checks.extend(_check_feed_resilience_contract())
     checks.extend(_check_read_article_extraction_signal())
     checks.extend(_check_advisor_adapts_to_task())
+    checks.extend(_check_archive_technical_recall())
     if mode == "live":
         checks.extend(_check_live_coverage(limit=limit))
         checks.extend(_check_live(limit=min(limit, 8)))
@@ -333,6 +334,41 @@ def _check_archive_metadata_contract() -> list[dict[str, Any]]:
             "dimension": "coverage_guard",
             "status": "pass" if not missing else "fail",
             "message": "metadata keys=" + ",".join(sorted(metadata.keys())),
+        }
+    ]
+
+
+def _check_archive_technical_recall() -> list[dict[str, Any]]:
+    from guanlan import archive
+
+    db_path = None
+    try:
+        import tempfile
+        from pathlib import Path
+
+        db_path = Path(tempfile.mkdtemp()) / "archive.db"
+        archive.add_document(
+            "https://example.com/kv-cache",
+            "# KV Cache 优化\n\n本文讨论推理服务里的 PagedAttention，并介绍 vLLM 与 SGLang 如何管理 KV Cache。"
+            "KIVI 用于 KV Cache 量化，KVQuant 也属于相关优化方向。",
+            db_path=db_path,
+        )
+        framework = archive.search_documents("开源推理框架 vLLM SGLang", db_path=db_path, trace=True)
+        quant = archive.search_documents("KV Cache 量化方法 KIVI", db_path=db_path, trace=True)
+        ok = bool(framework and quant and framework[0].get("search_trace") and quant[0].get("search_trace"))
+        message = (
+            f"framework_hits={len(framework)}, quant_hits={len(quant)}, "
+            f"matched={(framework[0].get('search_trace') or {}).get('matched_terms') if framework else []}"
+        )
+    except Exception as exc:
+        ok = False
+        message = str(exc)
+    return [
+        {
+            "id": "regression_archive_recalls_technical_terms",
+            "dimension": "release_regression",
+            "status": "pass" if ok else "fail",
+            "message": message,
         }
     ]
 

@@ -160,7 +160,7 @@ RSS / feeds 是公开外部源，可能因源站或网络抖动超时。观澜�
 
 ```bash
 guanlan archive ingest-research "人工智能 政策 原文" --limit 80
-guanlan archive search "人工智能 政策" --format context
+guanlan archive search "人工智能 政策" --format context --trace
 ```
 
 导出给 RAG、向量库或个人知识库：
@@ -176,6 +176,7 @@ guanlan archive export --format jsonl > guanlan-full.jsonl
 ```
 
 Archive 保存在本机 `~/.guanlan/archive.db`，不会自动上传，也不会绕过高风险社交平台的批量保护。
+如果本地模型需要解释“为什么召回这条材料”，让 Agent 使用 `archive search --trace`；如果怀疑正文没有入库，用 `archive inspect 1`；如果迁移或升级后索引异常，用 `archive reindex`。
 
 ## 六、安全边界
 
