@@ -58,7 +58,7 @@ guanlan research --list-presets
 
 **需求路由**: 当你不确定应该查官方、垂类、社交、社区、财经还是开放网页时，先运行 `guanlan route "关键词"`。路由计划是软约束：它解释优先信源和证据角色，但不会把结果锁死在白名单里；除非用户显式指定 `--scope` 或 `--site`，`research` 会保留开放网页兜底。
 
-**本地服务与 RAG**: 不支持 MCP 的工具可启动 `guanlan serve --host 127.0.0.1 --port 8765`，只开放本机只读 HTTP。需要把一次调研沉淀为知识库时，用 `guanlan archive ingest-search "关键词" --limit 80`，再用 `guanlan archive export --format jsonl --source-type 政府` 导出给 RAG。
+**本地服务与 RAG**: 不支持 MCP 的工具可启动 `guanlan serve --host 127.0.0.1 --port 8765`，只开放本机只读 HTTP。需要把一次调研沉淀为知识库时，用 `guanlan archive ingest-research "关键词" --limit 80`，再用 `guanlan archive export --format rag-jsonl` 导出给 RAG。`ingest-research` 是联网研究并入库；只搜本地库时用 `guanlan archive search "关键词" --format context`。
 
 **助理视角规则**: 当用户希望你给建议、下一步、风险提醒、可能意图或“这意味着什么”时，使用 `--advisor`。它输出的是证据边界、可展开角度和写作约束；你需要据此生成自然建议，不要机械复述固定小标题，不要把它写成用户真实目的，也不要把搜索样本写成总体结论。
 
@@ -112,7 +112,7 @@ guanlan archive stats
 guanlan archive export --format jsonl
 ```
 
-**适用场景**: 用户希望把查过、读过、核验过的中文材料沉淀下来，后续快速复用。Archive 默认保存在 `~/.guanlan/archive.db`，使用 SQLite + FTS/LIKE 检索，不自动上传。批量归档仍遵守高风险社交域名保护。
+**适用场景**: 用户希望把查过、读过、核验过的中文材料沉淀下来，后续快速复用。Archive 默认保存在 `~/.guanlan/archive.db`，使用 SQLite + FTS/LIKE 检索，不依赖外部 embedding 服务；本地搜索会对中文短语和技术词做宽召回并排序，但不是向量语义搜索。批量归档仍遵守高风险社交域名保护。
 
 ## 直接 Jina Reader
 

@@ -8,6 +8,20 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.3.1 - 2026-05-02
+
+### Fixed
+
+- 修复 `archive search` 对中文长短语和技术词过度严格的问题：本地检索现在会保留精确短语，同时把长中文查询切成可召回片段，并按标题、域名、URL、正文命中权重排序。
+- 增加 KV Cache / vLLM / SGLang / KIVI 回归测试，防止“已归档但搜不到”的技术词场景再次退化。
+- `archive search` 无结果时给出 `archive list` 和 `archive ingest-research` 的下一步提示。
+
+### Changed
+
+- README、Agent 文档、Skill 和能力说明明确 `archive ingest-search` / `archive ingest-research` 是“联网研究并入库”，`archive search` 才是本地库检索。
+- README 明确 Archive 当前是 SQLite FTS/LIKE 宽召回检索，不包装成向量语义搜索。
+- 官网展示版本号同步到 `0.3.1`。
+
 ## v0.3.0 - 2026-05-02
 
 ### Added

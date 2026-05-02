@@ -25,6 +25,25 @@ def test_archive_add_document_and_search(tmp_path):
     assert results[0]["metadata"]["read_quality"]["chars"] > 0
 
 
+def test_archive_search_recalls_chinese_technical_terms_without_exact_phrase(tmp_path):
+    db = tmp_path / "archive.db"
+
+    archive.add_document(
+        "https://example.com/kv-cache",
+        "# KV Cache 优化\n\n本文讨论推理服务里的 PagedAttention，并介绍 vLLM 与 SGLang 如何管理 KV Cache。"
+        "KIVI 用于 KV Cache 量化，KVQuant 也属于相关优化方向。",
+        db_path=db,
+    )
+
+    framework_results = archive.search_documents("开源推理框架 vLLM SGLang", db_path=db)
+    quant_results = archive.search_documents("KV Cache 量化方法 KIVI", db_path=db)
+
+    assert framework_results[0]["title"] == "KV Cache 优化"
+    assert "vLLM" in framework_results[0]["excerpt"] or "SGLang" in framework_results[0]["excerpt"]
+    assert quant_results[0]["title"] == "KV Cache 优化"
+    assert "KIVI" in quant_results[0]["excerpt"]
+
+
 def test_archive_updates_existing_url(tmp_path):
     db = tmp_path / "archive.db"
 

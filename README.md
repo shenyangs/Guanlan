@@ -212,7 +212,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.3.0`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.3.1`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -437,7 +437,7 @@ guanlan configure --from-browser chrome
 | `guanlan read "URL" --watch` | 保存/比较本地快照，输出内容变化 diff。 |
 | `guanlan read "URL" --backend direct` | 绕过 Jina Reader，直接读取原网页。 |
 | `guanlan archive add "URL"` | 将网页读取为 Markdown 后沉淀进本地知识库。 |
-| `guanlan archive ingest-search "关键词"` | 把一次 research 的精选代表证据沉淀进本地知识库。 |
+| `guanlan archive ingest-search "关键词"` | 联网 research 一次，并把精选代表证据自动沉淀进本地知识库；不是本地库内搜索。 |
 | `guanlan archive ingest-research "关键词"` | `ingest-search` 的语义别名，更适合 Agent 记忆“研究入库”。 |
 | `guanlan archive search "关键词"` | 在本地知识库中检索已归档材料。 |
 | `guanlan archive export --format jsonl --source-type 政府` | 按 domain/source_type/topic 导出 RAG 友好 JSONL。 |
@@ -783,13 +783,14 @@ curl -s http://127.0.0.1:8765/context \
 guanlan archive add "https://example.com/article"
 guanlan archive add batch urls.txt
 guanlan archive ingest-research "人工智能 政策" --limit 80
+guanlan archive list --limit 20
 guanlan archive search "人工智能 政策" --format context
 guanlan archive stats
 guanlan archive export --format jsonl > guanlan-archive.jsonl
 guanlan archive export --format rag-jsonl > guanlan-rag.jsonl
 ```
 
-本地知识库默认保存在 `~/.guanlan/archive.db`。第一版使用 SQLite + FTS/LIKE 检索，保存 URL、标题、域名、Markdown 正文、摘要、更新时间和元数据。归档元数据会保留 `source_card`、`read_quality`、`quality_report`、`route_plan` 和 `query_strategy`，方便后续接 RAG 时知道材料的来源角色、正文质量和检索路径。`rag-jsonl` 会把每条材料收束成 `id/text/source/title/domain/source_type/topic/updated_at`，适合导入轻量本地 RAG、向量库或个人知识库。它不是云同步，也不会自动上传内容。
+本地知识库默认保存在 `~/.guanlan/archive.db`。当前使用 SQLite FTS/LIKE 检索，不依赖外部 embedding 服务；`archive search` 会对中文短语和技术词做宽召回并排序，适合快速复用已读材料，但不是向量语义搜索。`archive ingest-search` / `archive ingest-research` 的行为是“联网研究并入库”，如果只想查本地库，请使用 `archive search`。归档元数据会保留 `source_card`、`read_quality`、`quality_report`、`route_plan` 和 `query_strategy`，方便后续接 RAG 时知道材料的来源角色、正文质量和检索路径。`rag-jsonl` 会把每条材料收束成 `id/text/source/title/domain/source_type/topic/updated_at`，适合导入轻量本地 RAG、向量库或个人知识库。它不是云同步，也不会自动上传内容。
 
 ### 17. 质量闸门
 

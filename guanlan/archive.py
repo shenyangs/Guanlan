@@ -301,7 +301,7 @@ def search_documents(
             seen.add(int(row["id"]))
             rows.append(row)
         if len(rows) < limit:
-            for row in _search_like(conn, query, limit * 2):
+            for row in _search_like(conn, query, limit * 4):
                 row_id = int(row["id"])
                 if row_id in seen:
                     continue
@@ -372,6 +372,7 @@ def format_archive_markdown(records: list[dict[str, Any]], title: str = "观澜�
     lines = [f"# {title}", ""]
     if not records:
         lines.append("暂无本地归档结果。")
+        lines.append("可以先用 `guanlan archive list` 确认已有文档，或用 `guanlan archive ingest-research \"关键词\"` 联网研究并入库。")
         return "\n".join(lines)
     for idx, item in enumerate(records, start=1):
         item_title = _collapse_ws(str(item.get("title", "")))
@@ -387,7 +388,7 @@ def format_archive_context(records: list[dict[str, Any]], title: str = "观澜�
     """Render archive records as compact prompt context."""
     lines = [f"# {title}", "", "来源 | 标题 | 摘要 | 时间", "--- | --- | --- | ---"]
     if not records:
-        lines.append("无结果 | - | - | -")
+        lines.append("无结果 | - | 可先运行 `guanlan archive list` 确认本地库，或用 `guanlan archive ingest-research` 联网研究并入库。 | -")
         return "\n".join(lines)
     for item in records:
         domain = _pipe_safe(str(item.get("domain", "unknown")))
@@ -514,21 +515,31 @@ def _search_fts(conn: sqlite3.Connection, query: str, limit: int) -> list[sqlite
 
 
 def _search_like(conn: sqlite3.Connection, query: str, limit: int) -> list[sqlite3.Row]:
-    terms = _query_terms(query)
+    terms = _query_terms(query)[:16]
+    if not terms:
+        return []
     clauses = []
-    params: list[str] = []
+    where_params: list[str] = []
+    score_parts = []
+    score_params: list[str] = []
     for term in terms:
-        clauses.append("(title LIKE ? OR content LIKE ? OR url LIKE ? OR domain LIKE ?)")
         like = f"%{term}%"
-        params.extend([like, like, like, like])
-    where = " AND ".join(clauses) if clauses else "1 = 1"
-    params.append(str(max(limit, 1)))
+        clauses.append("(title LIKE ? OR content LIKE ? OR url LIKE ? OR domain LIKE ?)")
+        where_params.extend([like, like, like, like])
+        # Keep local search broad enough for Chinese phrases and technical
+        # terms, but rank title/domain hits above body-only incidental mentions.
+        for column, weight in (("title", 8), ("domain", 2), ("url", 2), ("content", 3)):
+            score_parts.append(f"CASE WHEN {column} LIKE ? THEN {weight} ELSE 0 END")
+            score_params.append(like)
+    where = " OR ".join(clauses)
+    score_expr = " + ".join(score_parts) or "0"
+    params = score_params + where_params + [str(max(limit, 1))]
     return conn.execute(
         f"""
-        SELECT *
+        SELECT *, ({score_expr}) AS match_score
         FROM documents
         WHERE {where}
-        ORDER BY updated_at DESC, id DESC
+        ORDER BY match_score DESC, updated_at DESC, id DESC
         LIMIT ?
         """,
         params,
@@ -642,8 +653,47 @@ def _snippet(content: str, query: str, radius: int = 100) -> str:
 
 
 def _query_terms(query: str) -> list[str]:
-    terms = [term.strip() for term in re.split(r"\s+", query) if term.strip()]
-    return terms or [query.strip()]
+    raw_terms = re.findall(
+        r"[A-Za-z][A-Za-z0-9_.+-]*|\d+(?:\.\d+)?|[\u4e00-\u9fff]{2,}",
+        query or "",
+        flags=re.I,
+    )
+    terms: list[str] = []
+    for raw in raw_terms:
+        term = raw.strip()
+        if not term:
+            continue
+        terms.append(term)
+        if re.fullmatch(r"[\u4e00-\u9fff]{4,}", term):
+            terms.extend(_cjk_chunks(term))
+    return _unique_terms(terms) or [query.strip()]
+
+
+def _cjk_chunks(value: str) -> list[str]:
+    """Split long Chinese phrases into recall terms for SQLite search."""
+    text = value.strip()
+    chunks: list[str] = []
+    idx = 0
+    while idx < len(text):
+        chunk = text[idx:idx + 2]
+        if len(chunk) == 2:
+            chunks.append(chunk)
+        idx += 2
+    if len(text) >= 5 and len(text) % 2 == 1:
+        chunks.append(text[-3:])
+    return chunks
+
+
+def _unique_terms(terms: list[str]) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for term in terms:
+        key = term.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(term)
+    return output
 
 
 def _fts_query(query: str) -> str:

@@ -174,12 +174,12 @@ CAPABILITIES: tuple[Capability, ...] = (
         when_to_use="用户希望沉淀资料、复用已读材料，或给本地 RAG/长期项目准备语料。",
         cli=[
             "guanlan archive add \"URL\"",
-            "guanlan archive ingest-search \"关键词\" --limit 80",
+            "guanlan archive ingest-research \"关键词\" --limit 80",
             "guanlan archive search \"关键词\" --format context",
-            "guanlan archive export --format jsonl",
+            "guanlan archive export --format rag-jsonl",
         ],
         mcp="guanlan_archive_search",
-        boundary="默认保存在本机；不上传档案内容。",
+        boundary="默认保存在本机；不上传档案内容。ingest-research 是联网研究并入库，archive search 才是本地库检索。",
         examples=["把这批资料存起来。", "在我之前归档里搜一下。"],
     ),
     Capability(

@@ -85,7 +85,7 @@
 | “看来源是否偏斜” | `guanlan search "关键词" --source-chart` |
 | “看研究路由是否偏斜” | `guanlan research "关键词" --route-chart` |
 | “把链接存入本地知识库” | `guanlan archive add "URL"` |
-| “把一次研究沉淀成本地知识” | `guanlan archive ingest-research "关键词" --limit 80` |
+| “联网查一轮并把代表证据入库” | `guanlan archive ingest-research "关键词" --limit 80` |
 | “搜索本地知识库” | `guanlan archive search "关键词" --format context` |
 | “导出给 RAG 系统” | `guanlan archive export --format rag-jsonl` |
 | “看跨源热点趋势” | `guanlan hotnews today --trends` |
@@ -405,7 +405,7 @@ guanlan archive add "https://example.com/article"
 guanlan archive add batch urls.txt
 ```
 
-把一次 research 的代表证据直接沉淀下来：
+把一次 research 的代表证据直接沉淀下来。注意：这是联网研究并入库，不是在已有 archive 内部搜索：
 
 ```bash
 guanlan archive ingest-research "人工智能 政策" --limit 80

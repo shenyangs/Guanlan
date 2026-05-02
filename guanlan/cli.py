@@ -474,7 +474,7 @@ def main():
     p_archive_ingest = archive_sub.add_parser(
         "ingest-search",
         aliases=["ingest-research"],
-        help="Research a query and archive representative evidence",
+        help="Run web research and archive representative evidence (not local archive search)",
     )
     p_archive_ingest.add_argument("query", help="Research query to ingest")
     p_archive_ingest.add_argument("--limit", type=int, default=DEFAULT_RESEARCH_LIMIT, help="Broad search pool size")
@@ -1806,9 +1806,10 @@ def _format_archive_add_summary(records: list[dict]) -> str:
 
 def _format_archive_ingest_summary(result: dict) -> str:
     lines = [
-        "# 观澜本地知识库 ingest-search",
+        "# 观澜本地知识库联网研究入库",
         "",
         f"- Query: {result.get('query', '')}",
+        "- 行为: 联网 research 后归档精选代表证据；如需搜索已有本地库，请使用 `guanlan archive search`。",
         f"- 搜索结果数: {result.get('packet_result_count', 0)}",
         f"- 精选数: {result.get('selected_count', 0)}",
         f"- 已归档: {result.get('archived_count', 0)}",
