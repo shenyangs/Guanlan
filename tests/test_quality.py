@@ -49,3 +49,24 @@ def test_quality_cli_coverage_outputs_json(capsys):
     assert payload["contract"]["search_min"] == 50
     assert payload["contract"]["feeds_min"] == 80
     assert payload["summary"]["fail"] == 0
+
+
+def test_regression_guard_checks_agent_visible_depth():
+    report = quality.run_regression_checks(mode="quick")
+
+    assert report["summary"]["fail"] == 0
+    assert any(item["id"] == "regression_feeds_can_mark_stale_cache" for item in report["checks"])
+    assert "feed_status" in quality.format_regression_report(report)
+
+
+def test_quality_cli_regression_outputs_json(capsys):
+    from guanlan.cli import main
+
+    with patch("sys.argv", ["guanlan", "quality", "regression", "--format", "json"]):
+        main()
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert payload["mode"] == "quick"
+    assert payload["summary"]["fail"] == 0
+    assert "minimum_pool" in payload["contract"]

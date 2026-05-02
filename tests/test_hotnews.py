@@ -228,6 +228,105 @@ def test_fetch_sspai_parses_public_rss(monkeypatch):
     assert items[0]["evidence_role"] == "tech_reading_signal"
 
 
+def test_fetch_xinzhiyuan_reads_wordpress_json(monkeypatch):
+    monkeypatch.setattr(
+        hotnews,
+        "_read_json",
+        lambda _url: [
+            {
+                "id": 42,
+                "date_gmt": "2026-05-02T06:00:00",
+                "link": "https://aiera.com.cn/ai-news",
+                "title": {"rendered": "新模型 &amp; 新应用"},
+                "excerpt": {"rendered": "<p>AI 产业摘要</p>"},
+            }
+        ],
+    )
+
+    items = hotnews.fetch_hotnews("xinzhiyuan", limit=1)
+
+    assert items[0]["source_id"] == "xinzhiyuan"
+    assert items[0]["title"] == "新模型 & 新应用"
+    assert items[0]["summary"] == "AI 产业摘要"
+    assert items[0]["metrics"]["post_id"] == 42
+    assert items[0]["evidence_role"] == "ai_news_signal"
+
+
+def test_fetch_youtube_ai_rss_parses_official_channel_feed(monkeypatch):
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:yt="http://www.youtube.com/xml/schemas/2015"
+          xmlns:media="http://search.yahoo.com/mrss/">
+      <entry>
+        <yt:videoId>abc123</yt:videoId>
+        <title>AI 产品访谈</title>
+        <link rel="alternate" href="https://www.youtube.com/watch?v=abc123"/>
+        <published>2026-05-02T05:00:00+00:00</published>
+        <media:group><media:description>视频摘要</media:description></media:group>
+      </entry>
+    </feed>
+    """
+    monkeypatch.setattr(hotnews, "YOUTUBE_AI_CHANNELS", (("Test Channel", "UC1"),))
+    monkeypatch.setattr(hotnews, "_read_text", lambda *_args, **_kwargs: xml)
+
+    items = hotnews.fetch_hotnews("youtube-ai-rss", limit=1)
+
+    assert items[0]["source_id"] == "youtube-ai-rss"
+    assert items[0]["title"] == "AI 产品访谈"
+    assert items[0]["url"] == "https://www.youtube.com/watch?v=abc123"
+    assert items[0]["metrics"]["channel"] == "Test Channel"
+    assert items[0]["evidence_role"] == "video_source_signal"
+
+
+def test_fetch_zeli_hn_reads_public_api(monkeypatch):
+    monkeypatch.setattr(
+        hotnews,
+        "_read_json",
+        lambda _url: {
+            "posts": [
+                {
+                    "id": "477",
+                    "title": "HN AI 讨论",
+                    "url": "https://news.ycombinator.com/item?id=477",
+                    "time": 1760000000,
+                }
+            ]
+        },
+    )
+
+    items = hotnews.fetch_hotnews("zeli-hn", limit=1)
+
+    assert items[0]["source_id"] == "zeli-hn"
+    assert items[0]["title"] == "HN AI 讨论"
+    assert items[0]["metrics"]["hn_id"] == "477"
+    assert items[0]["published_at"].startswith("2025-10-09")
+
+
+def test_fetch_buzzing_reads_structured_feed(monkeypatch):
+    monkeypatch.setattr(
+        hotnews,
+        "_read_json",
+        lambda _url: {
+            "items": [
+                {
+                    "title": "Global AI link",
+                    "url": "https://example.com/ai",
+                    "source": "example.com",
+                    "category": "ai",
+                    "date_published": "2026-05-02T04:00:00Z",
+                }
+            ]
+        },
+    )
+
+    items = hotnews.fetch_hotnews("buzzing", limit=1)
+
+    assert items[0]["source_id"] == "buzzing"
+    assert items[0]["title"] == "Global AI link"
+    assert items[0]["metrics"]["source"] == "example.com"
+    assert items[0]["evidence_role"] == "global_tech_signal"
+
+
 def test_fetch_today_round_robins_sources_and_tolerates_failures(monkeypatch):
     monkeypatch.setattr(
         hotnews,
@@ -507,6 +606,10 @@ def test_hotnews_cli_lists_sources(capsys):
     assert "bilibili-hot-search" in data
     assert "ithome" in data
     assert "sspai" in data
+    assert "xinzhiyuan" in data
+    assert "youtube-ai-rss" in data
+    assert "zeli-hn" in data
+    assert "buzzing" in data
     assert "zhihu" in data
     assert data["zhihu"]["status"] == "experimental"
     assert data["zhihu"]["verified"] is False

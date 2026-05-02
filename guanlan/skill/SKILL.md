@@ -65,7 +65,9 @@ mcporter call 'exa.web_search_exa(query: "query", numResults: 50)'
 guanlan welcome
 guanlan capabilities
 guanlan search "query" --limit 50
+guanlan search "EI会议 投稿 检索" --profile china --scope academic
 guanlan search "最近 query 热点" --profile china --trace
+guanlan search "中文问题" --profile china --limit 50 --trace  # 查看 Baidu/Bing/DDG 状态与 backend_recovery
 guanlan search "query" --site zhihu.com --limit 50
 guanlan search "query" --trace
 guanlan search "query" --cache-ttl 3600
@@ -75,7 +77,9 @@ guanlan search "query" --source-chart
 guanlan route "query"
 guanlan research "query" --profile china --advisor
 guanlan research "query" --profile china --format prompt
+guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
 guanlan prompt "query" --profile china --style evidence
+guanlan context "query" --profile china --style evidence
 guanlan research "product 用户评价" --preset reputation --read-top 0 --advisor
 guanlan pulse "query" --format context
 

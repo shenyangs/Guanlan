@@ -7,6 +7,7 @@ not require cookies, browser access, or Keychain integration.
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import re
@@ -30,6 +31,11 @@ from guanlan.source_taxonomy import source_card_for_domain
 _UA = "Mozilla/5.0"
 _TIMEOUT = 12
 DEFAULT_NEWSNOW_BASE_URL = "https://newsnow.busiyi.world"
+YOUTUBE_AI_CHANNELS: tuple[tuple[str, str], ...] = (
+    ("Peter Yang", "UCnpBg7yqNauHtlNSpOl5-cg"),
+    ("Lenny's Podcast", "UC6t1O76G0jYXOAoYCm153dA"),
+    ("20VC", "UCf0PBRjhf0rF8fWBIxTuoWA"),
+)
 
 
 @dataclass
@@ -107,7 +113,7 @@ def _clean_text(value: Any) -> str:
 
 
 def _strip_html(value: Any) -> str:
-    text = re.sub(r"<[^>]+>", " ", str(value or ""))
+    text = html.unescape(re.sub(r"<[^>]+>", " ", str(value or "")))
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -117,6 +123,13 @@ def _pick(raw: dict[str, Any], *keys: str) -> Any:
         if value not in (None, ""):
             return value
     return ""
+
+
+def _unix_time_iso(value: Any) -> str:
+    try:
+        return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
+    except (TypeError, ValueError, OSError):
+        return ""
 
 
 def _unique(values: list[Any]) -> list[str]:
@@ -451,6 +464,129 @@ def fetch_sspai(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
     return [item for item in results if item.title]
 
 
+def fetch_xinzhiyuan(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
+    """Fetch Xinzhiyuan posts from its public WordPress JSON API."""
+    page_size = min(max(int(limit), 1), 100)
+    payload = _read_json(f"https://aiera.com.cn/wp-json/wp/v2/posts?per_page={page_size}&page=1")
+    rows = payload if isinstance(payload, list) else []
+
+    results: list[HotNewsItem] = []
+    for idx, raw in enumerate(rows[:limit], start=1):
+        if not isinstance(raw, dict):
+            continue
+        title_obj = raw.get("title") if isinstance(raw.get("title"), dict) else {}
+        excerpt_obj = raw.get("excerpt") if isinstance(raw.get("excerpt"), dict) else {}
+        title = _strip_html(_pick(title_obj, "rendered") or _pick(raw, "title"))
+        url = _pick(raw, "link", "url")
+        if not title or not url:
+            continue
+        results.append(
+            _item(
+                source_id="xinzhiyuan",
+                title=title,
+                url=url,
+                summary=_strip_html(_pick(excerpt_obj, "rendered")),
+                published_at=_pick(raw, "date_gmt", "date", "modified_gmt"),
+                metrics={"post_id": _pick(raw, "id")},
+                rank=idx,
+            )
+        )
+    return [item for item in results if item.title]
+
+
+def fetch_youtube_ai_rss(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
+    """Fetch a small curated set of public YouTube AI channel RSS feeds."""
+    ns = {
+        "atom": "http://www.w3.org/2005/Atom",
+        "yt": "http://www.youtube.com/xml/schemas/2015",
+        "media": "http://search.yahoo.com/mrss/",
+    }
+    results: list[HotNewsItem] = []
+    per_channel = max(1, min(15, int(limit)))
+    for channel_name, channel_id in YOUTUBE_AI_CHANNELS:
+        if len(results) >= limit:
+            break
+        feed_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={urllib.parse.quote(channel_id)}"
+        try:
+            raw_xml = _read_text(feed_url, headers={"Accept": "application/atom+xml,application/xml,text/xml,*/*"})
+            root = ElementTree.fromstring(raw_xml)
+        except Exception:
+            continue
+        for entry in root.findall("atom:entry", ns)[:per_channel]:
+            if len(results) >= limit:
+                break
+            link_el = entry.find("atom:link[@rel='alternate']", ns)
+            if link_el is None:
+                link_el = entry.find("atom:link", ns)
+            media_group = entry.find("media:group", ns)
+            description = ""
+            if media_group is not None:
+                description = media_group.findtext("media:description", default="", namespaces=ns)
+            video_id = entry.findtext("yt:videoId", default="", namespaces=ns)
+            url = link_el.get("href", "") if link_el is not None else (f"https://www.youtube.com/watch?v={video_id}" if video_id else "")
+            results.append(
+                _item(
+                    source_id="youtube-ai-rss",
+                    title=entry.findtext("atom:title", default="", namespaces=ns),
+                    url=url,
+                    summary=_strip_html(description),
+                    published_at=entry.findtext("atom:published", default="", namespaces=ns),
+                    metrics={"channel": channel_name, "channel_id": channel_id, "video_id": video_id},
+                    rank=len(results) + 1,
+                    confidence="medium",
+                )
+            )
+    return [item for item in results if item.title]
+
+
+def fetch_zeli_hn(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
+    """Fetch Zeli's public Hacker News 24h selection."""
+    payload = _read_json("https://zeli.app/api/hacker-news?type=hot24h")
+    rows = payload.get("posts") if isinstance(payload, dict) else []
+
+    results: list[HotNewsItem] = []
+    for idx, raw in enumerate((rows or [])[:limit], start=1):
+        if not isinstance(raw, dict):
+            continue
+        results.append(
+            _item(
+                source_id="zeli-hn",
+                title=_pick(raw, "title"),
+                url=_pick(raw, "url"),
+                published_at=_unix_time_iso(_pick(raw, "time")),
+                metrics={"hn_id": _pick(raw, "id")},
+                rank=idx,
+                confidence="medium",
+            )
+        )
+    return [item for item in results if item.title]
+
+
+def fetch_buzzing(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
+    """Fetch Buzzing's public structured tech link feed."""
+    payload = _read_json("https://www.buzzing.cc/feed.json")
+    rows = payload.get("items") if isinstance(payload, dict) else []
+
+    results: list[HotNewsItem] = []
+    for idx, raw in enumerate((rows or [])[:limit], start=1):
+        if not isinstance(raw, dict):
+            continue
+        source_name = _pick(raw, "source", "site_name", "channel", "category") or _domain_from_url(_pick(raw, "url"))
+        results.append(
+            _item(
+                source_id="buzzing",
+                title=_pick(raw, "title"),
+                url=_pick(raw, "url"),
+                summary=_pick(raw, "summary", "description"),
+                published_at=_pick(raw, "date_published", "date_modified", "published_at"),
+                metrics={"source": source_name, "category": _pick(raw, "category")},
+                rank=idx,
+                confidence="medium",
+            )
+        )
+    return [item for item in results if item.title]
+
+
 def fetch_zhihu(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
     """Fetch Zhihu hot list using its public topstory endpoint."""
     url = (
@@ -583,6 +719,10 @@ def fetch_hotnews(
         "bilibili": fetch_bilibili,
         "ithome": fetch_ithome,
         "sspai": fetch_sspai,
+        "xinzhiyuan": fetch_xinzhiyuan,
+        "youtube-ai-rss": fetch_youtube_ai_rss,
+        "zeli-hn": fetch_zeli_hn,
+        "buzzing": fetch_buzzing,
         "zhihu": fetch_zhihu,
         "v2ex": fetch_v2ex,
     }

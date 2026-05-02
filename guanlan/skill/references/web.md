@@ -37,6 +37,7 @@ guanlan research "关键词" --profile china --limit 50 --read-top 2 --advisor
 # 给无联网本地模型生成完整 Prompt
 guanlan research "关键词" --profile china --limit 80 --format prompt
 guanlan prompt "关键词" --profile china
+guanlan context "关键词" --profile china
 
 # 只要搜索证据，不读取原文
 guanlan research "关键词" --profile china --read-top 0
@@ -61,7 +62,9 @@ guanlan research --list-presets
 
 **助理视角规则**: 当用户希望你给建议、下一步、风险提醒、可能意图或“这意味着什么”时，使用 `--advisor`。它输出的是证据边界、可展开角度和写作约束；你需要据此生成自然建议，不要机械复述固定小标题，不要把它写成用户真实目的，也不要把搜索样本写成总体结论。
 
-**本地模型联网**: 当用户使用 Ollama、LM Studio、Open WebUI 或其他没有联网能力的模型时，优先用 `guanlan prompt "问题"`，或给 `search/research/read` 加 `--format prompt`。这会输出“用户问题 + 观澜证据 + 回答规则”，可直接作为模型输入。
+**本地模型联网**: 当用户使用 Ollama、LM Studio、Open WebUI 或其他没有联网能力的模型时，优先用 `guanlan context "问题"` 或 `guanlan prompt "问题"`，也可以给 `search/research/read` 加 `--format prompt`。这会输出“用户问题 + 观澜证据 + 回答规则”，可直接作为模型输入；HTTP 服务也提供只读 `/context` 和 `/prompt`。
+
+**RSS 兜底**: `feeds` 是公开 RSS/OPML 线索源，外部源站可能超时。若输出出现 `feed_status=stale_cache` 或 `risk_tags=stale_cache`，说明观澜使用最近成功缓存保住阅读线索，不能当作实时热度。
 
 常用模板：`policy` 政策监管、`official` 官方表述、`industry` 产业研究、`ecommerce` 电商零售、`reputation` 产品口碑、`tech` 技术选型、`finance` 财经研究、`local` 地方研究。
 

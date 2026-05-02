@@ -70,6 +70,46 @@ def test_fetch_rss_feed_normalizes_entries(monkeypatch):
     assert items[0]["source_card"]["domain"] == "example.com"
     assert items[0]["freshness"] == "dated"
     assert items[0]["fetched_at"]
+    assert items[0]["feed_status"]["status"] == "fresh"
+
+
+def test_fetch_rss_feed_uses_stale_cache_on_timeout(monkeypatch, tmp_path):
+    raw = b"""<?xml version="1.0"?>
+    <rss version="2.0"><channel><title>Test Feed</title>
+      <item><title>Cached Article</title><link>https://example.com/a</link></item>
+    </channel></rss>"""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(feeds, "_read_bytes", lambda *_args, **_kwargs: raw)
+
+    fresh = feeds.fetch_rss_feed("https://example.com/rss", limit=3, source_id="demo")
+    assert fresh[0]["feed_status"]["status"] == "fresh"
+
+    def fail_read(*_args, **_kwargs):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(feeds, "_read_bytes", fail_read)
+    stale = feeds.fetch_rss_feed("https://example.com/rss", limit=3, source_id="demo")
+
+    assert stale[0]["title"] == "Cached Article"
+    assert stale[0]["feed_status"]["status"] == "stale_cache"
+    assert stale[0]["feed_status"]["stale"] is True
+    assert "stale_cache" in stale[0]["risk_tags"]
+    assert "缓存兜底" in feeds.format_feed_items_markdown(stale)
+
+
+def test_fetch_rss_feed_returns_diagnostic_item_without_cache(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    def fail_read(*_args, **_kwargs):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(feeds, "_read_bytes", fail_read)
+
+    items = feeds.fetch_rss_feed("https://example.com/rss", limit=3, source_id="demo")
+
+    assert items[0]["feed_status"]["status"] == "error"
+    assert "source_unavailable" in items[0]["risk_tags"]
+    assert "稍后重试" in items[0]["summary"]
 
 
 def test_curated_feed_omits_index_url_without_original_link(monkeypatch):
@@ -109,6 +149,23 @@ def test_curated_feed_prefers_original_link_from_summary(monkeypatch):
 
     assert items[0]["url"] == "https://original.example.com/post"
     assert items[0]["source_card"]["domain"] == "original.example.com"
+
+
+def test_curated_feed_ignores_wechat_avatar_url(monkeypatch):
+    raw = b"""<?xml version="1.0"?>
+    <rss version="2.0"><channel><title>Index Feed</title>
+      <item>
+        <title>Wechat Article</title>
+        <link>http://wx.qlogo.cn/mmhead/example/0</link>
+        <description>Useful summary without original URL.</description>
+      </item>
+    </channel></rss>"""
+    monkeypatch.setattr(feeds, "_read_bytes", lambda *_args, **_kwargs: raw)
+
+    items = feeds.fetch_rss_feed("https://example.com/rss", limit=1, source_id="curated")
+
+    assert items[0]["url"] == ""
+    assert "wx.qlogo.cn" not in feeds.format_feed_items_context(items)
 
 
 def test_list_curated_sources_reads_opml_catalog(monkeypatch):

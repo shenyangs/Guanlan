@@ -113,7 +113,7 @@ def main():
     p_install.add_argument("--dry-run", action="store_true",
                            help="Show what would be done without making any changes")
     p_install.add_argument("--profile", choices=VALID_PROFILES, default="",
-                           help="Region profile: global, china, or hybrid")
+                           help="Region profile: global, china, english, or hybrid")
     p_install.add_argument("--channels", default="",
                            help="Comma-separated optional channels to install "
                                 "(twitter,weibo,wechat,xiaoyuzhou,xueqiu,xiaohongshu,"
@@ -135,7 +135,7 @@ def main():
     # ── doctor ──
     p_doctor = sub.add_parser("doctor", help="Check platform availability")
     p_doctor.add_argument("--profile", choices=VALID_PROFILES, default="",
-                          help="Region profile: global, china, or hybrid")
+                          help="Region profile: global, china, english, or hybrid")
     p_doctor.add_argument(
         "--auth-check",
         action="store_true",
@@ -155,7 +155,7 @@ def main():
     # ── profile ──
     p_profile = sub.add_parser("profile", help="Show or set the region profile")
     p_profile.add_argument("action", choices=["show", "set"], help="Profile action")
-    p_profile.add_argument("value", nargs="?", help="Profile value: global, china, or hybrid")
+    p_profile.add_argument("value", nargs="?", help="Profile value: global, china, english, or hybrid")
 
     # ── uninstall ──
     p_uninstall = sub.add_parser("uninstall", help="Remove all 观澜 / Guanlan config, tokens, and skill files")
@@ -180,7 +180,7 @@ def main():
     # ── hotnews ──
     p_hotnews = sub.add_parser("hotnews", help="Fetch Chinese hotnews from native sources")
     p_hotnews.add_argument("source", nargs="?", default="today",
-                           help="Source id: today, snapshot, baidu, weibo, bilibili-hot-search, bilibili, ithome, sspai, zhihu, v2ex, newsnow:<id>, or list")
+                           help="Source id: today, snapshot, baidu, weibo, bilibili-hot-search, bilibili, ithome, sspai, xinzhiyuan, youtube-ai-rss, zeli-hn, buzzing, zhihu, v2ex, newsnow:<id>, or list")
     p_hotnews.add_argument("snapshot_source", nargs="?",
                            help="Source id when using `guanlan hotnews snapshot <source>`")
     p_hotnews.add_argument("--backend", choices=["auto", "native", "newsnow"], default="auto",
@@ -231,7 +231,7 @@ def main():
     p_search.add_argument("--backend", default="auto",
                           help="Search backend: auto, duckduckgo, bing, baidu, wechat-sogou, or plugin:name")
     p_search.add_argument("--profile", choices=VALID_PROFILES, default="",
-                          help="Region profile: global, china, or hybrid")
+                          help="Region profile: global, china, english, or hybrid")
     p_search.add_argument("--format", choices=["markdown", "json", "context", "prompt"], default="markdown",
                           help="Output format")
     p_search.add_argument("--json", action="store_true",
@@ -251,7 +251,7 @@ def main():
     p_research = sub.add_parser("research", help="Build an agent-ready research evidence packet")
     p_research.add_argument("query", nargs="?", default="", help="Research query")
     p_research.add_argument("--preset", default="general",
-                            help="Research preset: general, policy, official, industry, ecommerce, reputation, tech, finance, local")
+                            help="Research preset: general, policy, official, industry, ecommerce, reputation, tech, academic, finance, local, company, global_policy, global_reputation, global_industry")
     p_research.add_argument("--list-presets", action="store_true",
                             help="List research presets and exit")
     p_research.add_argument("--limit", type=int, default=None,
@@ -271,7 +271,7 @@ def main():
     p_research.add_argument("--max-read-chars", type=int, default=None,
                             help="Maximum characters per read excerpt; defaults to preset value")
     p_research.add_argument("--profile", choices=VALID_PROFILES, default="",
-                            help="Region profile: global, china, or hybrid; defaults to preset value")
+                            help="Region profile: global, china, english, or hybrid; defaults to preset value")
     p_research.add_argument("--format", choices=["markdown", "json", "context", "prompt"], default="markdown",
                             help="Output format")
     p_research.add_argument("--json", action="store_true",
@@ -288,10 +288,14 @@ def main():
                             help="How many representative evidence items to highlight from the broad pool")
 
     # ── prompt ──
-    p_prompt = sub.add_parser("prompt", help="Build a complete local-LLM prompt from Guanlan research evidence")
+    p_prompt = sub.add_parser(
+        "prompt",
+        aliases=["context"],
+        help="Build a complete local-LLM prompt from Guanlan research evidence",
+    )
     p_prompt.add_argument("query", nargs="?", default="", help="Question or research topic")
     p_prompt.add_argument("--preset", default="general",
-                          help="Research preset: general, policy, official, industry, ecommerce, reputation, tech, finance, local")
+                          help="Research preset: general, policy, official, industry, ecommerce, reputation, tech, academic, finance, local, company, global_policy, global_reputation, global_industry")
     p_prompt.add_argument("--limit", type=int, default=80,
                           help="Broad search pool size for local model context")
     p_prompt.add_argument("--site", default="", help="Restrict search to a domain")
@@ -508,6 +512,12 @@ def main():
     p_quality_coverage.add_argument("--limit", type=int, default=50,
                                     help="Live probe result limit")
     p_quality_coverage.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
+    p_quality_regression = quality_sub.add_parser("regression", help="Run release regression guards")
+    p_quality_regression.add_argument("--mode", choices=["quick", "live"], default="quick",
+                                      help="quick is deterministic; live performs network probes")
+    p_quality_regression.add_argument("--limit", type=int, default=50,
+                                      help="Live probe result limit")
+    p_quality_regression.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
 
     # ── mcp ──
     p_mcp = sub.add_parser("mcp", help="MCP helpers for agent integration")
@@ -607,7 +617,7 @@ def _dispatch_command(args):
         _cmd_search(args)
     elif args.command == "research":
         _cmd_research(args)
-    elif args.command == "prompt":
+    elif args.command in {"prompt", "context"}:
         _cmd_prompt(args)
     elif args.command == "pulse":
         _cmd_pulse(args)
@@ -1694,13 +1704,15 @@ def _cmd_quality(args):
         format_coverage_report,
         format_quality_jsonl,
         format_quality_report,
+        format_regression_report,
         run_coverage_checks,
         run_quality_checks,
+        run_regression_checks,
     )
 
     command = getattr(args, "quality_command", None)
-    if command not in {"run", "coverage"}:
-        print("Error: quality command is required: run or coverage", file=sys.stderr)
+    if command not in {"run", "coverage", "regression"}:
+        print("Error: quality command is required: run, coverage, or regression", file=sys.stderr)
         sys.exit(2)
     if command == "coverage":
         report = run_coverage_checks(mode=args.mode, limit=max(args.limit, 1))
@@ -1710,6 +1722,17 @@ def _cmd_quality(args):
             print(format_coverage_jsonl(report))
         else:
             print(format_coverage_report(report))
+        if report.get("summary", {}).get("fail", 0):
+            sys.exit(1)
+        return
+    if command == "regression":
+        report = run_regression_checks(mode=args.mode, limit=max(args.limit, 1))
+        if args.format == "json":
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        elif args.format == "jsonl":
+            print(format_coverage_jsonl(report))
+        else:
+            print(format_regression_report(report))
         if report.get("summary", {}).get("fail", 0):
             sys.exit(1)
         return

@@ -46,6 +46,19 @@ def test_serve_dispatch_feeds_uses_curated(monkeypatch):
     assert body["items"][0]["limit"] == 3
 
 
+def test_serve_dispatch_context_returns_prompt(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.webtools.build_research_packet",
+        lambda *args, **kwargs: {"query": args[0], "results": [], "selected_evidence": [], "readings": [], "guidance": []},
+    )
+
+    status, body = serve.dispatch_request("POST", "/context", {"query": "本地模型联网", "read_top": 0})
+
+    assert status == 200
+    assert body["format"] == "prompt"
+    assert "观澜本地模型联网 Prompt" in body["prompt"]
+
+
 def test_serve_dispatch_hotnews_compact_brief(monkeypatch):
     monkeypatch.setattr(
         "guanlan.hotnews.fetch_hotnews",

@@ -77,6 +77,22 @@ def test_search_quality_profile_detects_policy_intent():
     assert "政府/部委" in quality["preferred_source_types"]
 
 
+def test_search_quality_profile_detects_academic_intent():
+    quality = webtools.detect_search_quality_profile("EI会议 投稿 检索 要求", profile="china")
+
+    assert quality["intent"] == "academic"
+    assert "academic" in quality["preferred_scopes"]
+    assert "学术/论文检索" in quality["preferred_source_types"]
+
+
+def test_search_quality_profile_detects_english_company_intent():
+    quality = webtools.detect_search_quality_profile("OpenAI API pricing release notes", profile="english")
+
+    assert quality["intent"] == "company"
+    assert "company_primary" in quality["preferred_scopes"]
+    assert "公司一手资料" in quality["preferred_source_types"]
+
+
 def test_search_web_trace_includes_quality_profile(monkeypatch):
     monkeypatch.setattr(
         webtools,
@@ -99,6 +115,38 @@ def test_search_web_trace_includes_quality_profile(monkeypatch):
     assert results[0]["trace"]["route_plan"]["primary_intents"][0] == "policy"
     assert "gov" in results[0]["trace"]["route_plan"]["preferred_scopes"]
     assert results[0]["evidence_role"] == "official_primary"
+
+
+def test_search_web_trace_includes_english_source_roles(monkeypatch):
+    monkeypatch.setattr(
+        webtools,
+        "_search_duckduckgo",
+        lambda query, limit=10: [
+            webtools.SearchResult(
+                title="OpenAI API Pricing",
+                url="https://openai.com/api/pricing/",
+                snippet="Official pricing information and model rates.",
+                source="duckduckgo",
+                rank=1,
+            ),
+            webtools.SearchResult(
+                title="OpenAI pricing discussion",
+                url="https://www.reddit.com/r/OpenAI/comments/1",
+                snippet="Users discuss API pricing.",
+                source="duckduckgo",
+                rank=2,
+            ),
+        ],
+    )
+
+    results = webtools.search_web("OpenAI API pricing release notes", backend="duckduckgo", profile="english", trace=True)
+
+    assert results[0]["domain"] == "openai.com"
+    assert results[0]["source_type"] == "公司一手资料"
+    assert results[0]["matched_scope"] == "company_primary"
+    assert results[0]["evidence_role"] == "company_primary"
+    assert results[0]["trace"]["query_quality"]["intent"] == "company"
+    assert results[0]["score_parts"]["intent_fit"] > 0
 
 
 def test_search_trace_includes_route_plan(monkeypatch):
@@ -141,6 +189,42 @@ def test_query_strategy_builds_role_specific_variants():
     assert "review" in roles
     assert "fresh_news" in roles
     assert strategy["agent_hint"]
+
+
+def test_query_strategy_builds_academic_variants():
+    route = webtools.build_route_plan("EI会议 投稿 检索 要求", profile="china").to_dict()
+    strategy = webtools.build_query_strategy("EI会议 投稿 检索 要求", route_plan=route)
+
+    roles = {item["role"] for item in strategy["variants"]}
+    assert "database_official" in roles
+    assert "publisher_guideline" in roles
+    assert "institution_policy" in roles
+
+
+def test_academic_query_penalizes_ei_math_noise():
+    ranked = webtools.rank_results(
+        [
+            webtools.SearchResult(
+                title="What is operatorname Ei(x)?",
+                url="https://math.stackexchange.com/questions/1",
+                snippet="Ei is a special function.",
+                source="bing",
+                rank=1,
+            ),
+            webtools.SearchResult(
+                title="Engineering Village Databases Compendex Elsevier",
+                url="https://www.elsevier.com/products/engineering-village/databases/compendex",
+                snippet="Compendex is an engineering-focused database.",
+                source="duckduckgo",
+                rank=2,
+            ),
+        ],
+        query="EI会议 投稿 检索 要求",
+        quality=webtools.detect_search_quality_profile("EI会议 投稿 检索 要求", profile="china"),
+    )
+
+    assert ranked[0].domain == "elsevier.com"
+    assert ranked[-1].score_parts["semantic_noise_penalty"] < 0
 
 
 def test_format_search_trace_shows_query_quality(monkeypatch):
@@ -381,6 +465,24 @@ def test_search_web_uses_china_backend_order():
     assert webtools.backend_order("auto", "china") == ["baidu", "bing", "duckduckgo"]
 
 
+def test_search_web_resolves_cjk_ai_query_to_china_profile(monkeypatch):
+    requested = []
+
+    def fake_baidu(query, limit=10):
+        requested.append(("baidu", query))
+        return [webtools.SearchResult(title="AI 中文结果", url="https://example.cn/ai", source="baidu")]
+
+    monkeypatch.setattr(webtools, "_search_baidu", fake_baidu)
+    monkeypatch.setattr(webtools, "_search_bing", lambda query, limit=10: [])
+    monkeypatch.setattr(webtools, "_search_duckduckgo", lambda query, limit=10: [])
+
+    results = webtools.search_web("AI 相关内容", trace=True)
+
+    assert requested and requested[0][0] == "baidu"
+    assert results[0]["trace"]["backend_order"] == ["baidu", "bing", "duckduckgo"]
+    assert results[0]["trace"]["query_quality"]["profile"] == "china"
+
+
 def test_search_web_adds_wechat_sogou_only_for_wechat_site():
     assert webtools.backend_order("auto", "china", site="mp.weixin.qq.com") == [
         "baidu",
@@ -393,6 +495,83 @@ def test_search_web_adds_wechat_sogou_only_for_wechat_site():
         "bing",
         "duckduckgo",
     ]
+
+
+def test_search_web_trace_records_backend_fallback(monkeypatch):
+    def parser_miss_baidu(query, limit=10):
+        return []
+
+    def blocked_bing(query, limit=10):
+        raise RuntimeError("captcha_or_verification: b_captcha")
+
+    def ok_duckduckgo(query, limit=10):
+        return [
+            webtools.SearchResult(
+                title="Fallback result",
+                url="https://example.com/a",
+                snippet="public result",
+                source="duckduckgo",
+                rank=1,
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_baidu", parser_miss_baidu)
+    monkeypatch.setattr(webtools, "_search_bing", blocked_bing)
+    monkeypatch.setattr(webtools, "_search_duckduckgo", ok_duckduckgo)
+
+    results = webtools.search_web("中文检索", profile="china", trace=True)
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+    rendered = webtools.format_search_trace(results)
+
+    assert [item["status"] for item in diagnostics] == ["parser_miss", "blocked", "ok"]
+    assert results[0]["trace"]["backend_summary"]["fallback_used"] is True
+    recovery = results[0]["trace"]["backend_recovery"]
+    assert recovery["status"] == "degraded"
+    assert recovery["auto_downgrade"] is True
+    assert "duckduckgo" in recovery["active_backends"]
+    assert any("--backend duckduckgo" in command for command in recovery["followup_commands"])
+    assert "backend_status: baidu=parser_miss, bing=blocked, duckduckgo=ok(1)" in rendered
+    assert "backend_recovery: status=degraded" in rendered
+    assert "backend_warning" in rendered
+    assert "疑似触发验证/反爬" in rendered
+    assert "解析器待修而非没有资料" in rendered
+
+
+def test_search_recovery_plan_productizes_baidu_block(monkeypatch):
+    def blocked_baidu(query, limit=10):
+        raise RuntimeError("captcha_or_verification: 百度安全验证")
+
+    def ok_bing(query, limit=10):
+        return [
+            webtools.SearchResult(
+                title="国务院政策",
+                url="https://www.gov.cn/zhengce/a.htm",
+                snippet="政策原文",
+                source="bing",
+                rank=1,
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_baidu", blocked_baidu)
+    monkeypatch.setattr(webtools, "_search_bing", ok_bing)
+    monkeypatch.setattr(webtools, "_search_duckduckgo", lambda query, limit=10: [])
+
+    results = webtools.search_web("人工智能 政策", profile="china", trace=True)
+    recovery = results[0]["trace"]["backend_recovery"]
+    rendered = webtools.format_search_trace(results)
+
+    assert recovery["blocked_backends"] == ["baidu"]
+    assert recovery["active_backends"] == ["bing"]
+    assert any("不要自动重试" in item for item in recovery["guidance"])
+    assert any("--backend bing" in command for command in recovery["followup_commands"])
+    assert any("--scope gov" in command for command in recovery["followup_commands"])
+    assert "backend_status: baidu=blocked, bing=ok(1), duckduckgo=no_results_or_parser_miss" in rendered
+    assert "Baidu 当前被安全验证/反爬拦截" in rendered
+
+
+def test_search_block_detector_marks_captcha_pages():
+    with pytest.raises(RuntimeError, match="captcha_or_verification"):
+        webtools._raise_for_search_block("<html>百度安全验证 请输入验证码</html>", "baidu")
 
 
 def test_search_web_applies_scope(monkeypatch):
@@ -432,6 +611,43 @@ def test_search_web_prefers_requested_scope_for_overlapping_domains(monkeypatch)
 
     assert results[0]["source_type"] == "电商/零售垂类"
     assert results[0]["matched_scope"] == "ecommerce"
+
+
+def test_research_english_profile_adapts_legacy_tech_preset(monkeypatch):
+    def fake_search(query, limit=10, site=None, scope=None, backend="auto", profile=None, **kwargs):
+        return [
+            {
+                "title": f"{scope or site or 'open'} result",
+                "url": f"https://{site or 'github.com'}/repo",
+                "snippet": query,
+                "source": "fixture",
+                "rank": 1,
+                "domain": site or "github.com",
+                "source_type": "英文开发者/开源",
+                "matched_scope": scope or "developer",
+                "trust_level": 4,
+                "evidence_role": "technical_primary",
+                "score": 3.0,
+                "topic_key": "a",
+                "topic_role": "single",
+                "topic_size": 1,
+                "trace": {},
+            }
+        ]
+
+    monkeypatch.setattr(webtools, "search_web", fake_search)
+
+    packet = webtools.build_research_packet(
+        "OpenAI SDK release notes",
+        preset="tech",
+        profile="english",
+        read_top=0,
+    )
+
+    assert packet["profile"] == "english"
+    assert "developer" in packet["scopes"]
+    assert "tech_dev" not in packet["scopes"]
+    assert packet["route_plan"]["recommended_commands"]
 
 
 def test_search_web_parses_bing_html(monkeypatch):
@@ -939,6 +1155,25 @@ def test_prompt_cli_passes_prompt_style(capsys):
     assert "当前输出风格: decision" in captured.out
 
 
+def test_context_cli_alias_builds_local_llm_prompt(capsys):
+    from guanlan.cli import main
+
+    packet = {
+        "query": "本地模型联网",
+        "results": [],
+        "selected_evidence": [],
+        "readings": [],
+        "guidance": [],
+    }
+    with patch("guanlan.webtools.build_research_packet", return_value=packet) as mocked:
+        with patch("sys.argv", ["guanlan", "context", "本地模型联网", "--read-top", "0"]):
+            main()
+    captured = capsys.readouterr()
+
+    assert "观澜本地模型联网 Prompt" in captured.out
+    assert mocked.call_args.kwargs["read_top"] == 0
+
+
 def test_read_cli_outputs_text(capsys):
     from guanlan.cli import main
 
@@ -1084,6 +1319,28 @@ def test_read_cli_quality_report_uses_trace_packet(capsys):
 
     assert "阅读质量报告" in captured.out
     assert "阅读 Trace" not in captured.out
+
+
+def test_direct_article_extractor_uses_paragraph_density_when_container_is_noisy():
+    raw = """
+    <html><body>
+      <div class="nav">首页 登录 注册 推荐阅读</div>
+      <div class="layout"><div class="left">热门推荐 打开APP</div>
+      <div class="weird-box">
+        <p>第一段正文介绍政策背景，包含发布主体、适用范围和执行目标。</p>
+        <p>第二段正文继续说明产业影响、地方落实路径和企业需要关注的事项。</p>
+        <p>第三段正文给出后续安排，强调公开信息、权威来源和时间节点。</p>
+      </div></div>
+      <div class="footer">版权声明 联系我们</div>
+    </body></html>
+    """
+
+    text = webtools._extract_article_text(raw)
+
+    assert "第一段正文" in text
+    assert "地方落实路径" in text
+    assert "登录 注册" not in text
+    assert "版权声明" not in text
 
 
 def test_rank_results_merges_duplicate_sources():
@@ -1342,6 +1599,36 @@ def test_build_research_packet_selects_diverse_representative_evidence(monkeypat
         "https://gov.cn/policy",
         "https://weibo.com/a",
     ]
+
+
+def test_selected_evidence_does_not_promote_low_relevance_representative_noise():
+    selected = webtools._select_representative_evidence(
+        [
+            {
+                "rank": 1,
+                "title": "EI会议投稿要求",
+                "url": "https://example.com/ei",
+                "source_type": "通用网页",
+                "domain": "example.com",
+                "score": 2.5,
+                "topic_key": "topic-1",
+                "topic_role": "single",
+            },
+            {
+                "rank": 9,
+                "title": "Spelling ie or ei",
+                "url": "https://usingenglish.com/ei",
+                "source_type": "通用网页",
+                "domain": "usingenglish.com",
+                "score": 0.8,
+                "topic_key": "topic-2",
+                "topic_role": "representative",
+            },
+        ],
+        select_top=1,
+    )
+
+    assert selected[0]["url"] == "https://example.com/ei"
 
 
 def test_build_research_packet_applies_preset_defaults(monkeypatch):

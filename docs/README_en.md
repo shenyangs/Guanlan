@@ -2,7 +2,7 @@
 
 > Observe the current, trace the source, keep the boundary clear.
 
-Guanlan is an agent-first search and source-routing tool for the Chinese internet. It helps AI agents search public web pages, read URLs, inspect Chinese hot lists, and reason about source type before summarizing information for users.
+Guanlan is an agent-first search and source-routing tool that started with the Chinese internet and now also includes an English web source map. It helps AI agents search public web pages, read URLs, inspect Chinese hot lists, and reason about source type before summarizing information for users.
 
 The canonical documentation is maintained in Chinese:
 
@@ -18,6 +18,9 @@ The canonical documentation is maintained in Chinese:
 guanlan search "keyword" --profile china --limit 50
 guanlan search "keyword" --profile china --scope party_central
 guanlan search "keyword" --profile china --scope ecommerce
+guanlan search "OpenAI API pricing" --profile english --scope company_primary
+guanlan research "AI regulation NIST standard" --preset global_policy --profile english
+guanlan research "Product reviews Reddit G2" --preset global_reputation --profile english --read-top 0
 guanlan read "https://example.com/article"
 guanlan read "https://example.com/article" --backend direct
 guanlan hotnews baidu --limit 50

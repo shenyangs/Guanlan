@@ -8,6 +8,23 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.2.7 - 2026-05-02
+
+### Added
+
+- 新增 `guanlan quality regression`，把默认结果池、防缩水字段、来源多样性、RSS 缓存兜底、正文抽取信号和 advisor 动态性纳入发版回归闸门。
+- `guanlan prompt` 增加 `context` 命令别名，可用 `guanlan context "问题"` 直接生成适合 Ollama、LM Studio、Open WebUI 和本地 Agent 的联网 Prompt。
+- 只读 HTTP 服务新增 `/context` 和 `/prompt`，本地模型或本地工作流可以通过 HTTP 直接获取观澜整理后的 Prompt。
+- 新增 `academic` 学术/论文检索 scope，覆盖 EI/Scopus/Web of Science/CNKI/万方/维普等论文索引、出版商规范和高校认定场景。
+
+### Changed
+
+- `feeds` 外部 RSS/OPML 成功拉取后会写入本地缓存；后续遇到超时或源站抖动时，优先返回最近一次成功结果并显式标记 `feed_status=stale_cache` 和 `risk_tags=stale_cache`。
+- `read --backend direct` 增加段落密度兜底，面对不规则中文新闻、政务或转载页时，更倾向保留连续正文、过滤导航和页脚。
+- `research --advisor` 的助理视角增加 `natural_guidance`，给下游 Agent 更自然的表达提示，同时继续保持“证据边界/非最终结论”的口径。
+- README、Agent 文档、Skill 文档和质量计划同步 `context`、RSS 缓存兜底与 `quality regression` 用法。
+- 官网展示版本号同步到 `0.2.7`。
+
 ## v0.2.6 - 2026-05-02
 
 ### Added

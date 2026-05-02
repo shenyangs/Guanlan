@@ -77,6 +77,27 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 advisor=bool(payload.get("advisor", False)),
             )
             return 200, packet
+        if method == "POST" and route in {"/prompt", "/context"}:
+            from guanlan.webtools import build_research_packet, format_research_prompt
+
+            packet = build_research_packet(
+                str(payload.get("query", "")),
+                preset=payload.get("preset") or "general",
+                limit=_optional_int(payload.get("limit")) or 80,
+                site=payload.get("site") or None,
+                sites=payload.get("sites") if isinstance(payload.get("sites"), list) else None,
+                scope=payload.get("scope") or None,
+                search_backend=str(payload.get("search_backend") or "auto"),
+                profile=payload.get("profile") or "china",
+                read_top=_optional_int(payload.get("read_top")),
+                advisor=bool(payload.get("advisor", True)),
+                advisor_style=str(payload.get("advisor_style") or "brief"),
+            )
+            return 200, {
+                "query": packet.get("query", ""),
+                "format": "prompt",
+                "prompt": format_research_prompt(packet, style=str(payload.get("style") or "deep")),
+            }
         if method == "POST" and route == "/read":
             from guanlan.webtools import read_url
 

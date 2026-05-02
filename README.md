@@ -17,6 +17,7 @@
 </p>
 
 <p align="center">
+  <a href="#tldr30-秒上手">TL;DR</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#使用场景与案例">使用案例</a> ·
   <a href="#当前能力图谱">能力图谱</a> ·
@@ -35,12 +36,44 @@
 
 观澜不追求把网页一股脑堆给 Agent，而是先辨水势：谁在说、在哪里说、何时说、能支持什么结论、还缺什么证据。Agent 拿到的不是一包来源不明的链接，而是一份可以继续推理的中文互联网证据。
 
+## TL;DR（30 秒上手）
+
+安装（任选一种）：
+
+```bash
+brew tap shenyangs/tap && brew install guanlan
+```
+
+```bash
+uv tool install guanlan
+```
+
+```bash
+pipx install guanlan
+```
+
+验证：
+
+```bash
+guanlan version
+guanlan doctor
+```
+
+常用三条命令：
+
+```bash
+guanlan search "关键词" --profile china
+guanlan read "https://example.com/article"
+guanlan hotnews today --brief
+```
+
 ## 当前最稳能力
 
 这些是当前最敢承诺、最适合作为默认工作流的能力：
 
 - **公开网页搜索**：`guanlan search "关键词" --profile china`
 - **中文信源白名单**：`--scope party_central/gov/local_official/ecommerce`
+- **英文互联网信源路由**：`guanlan search "OpenAI API pricing" --profile english --scope company_primary`
 - **网页阅读与降级**：`guanlan read "URL"`，Jina Reader、直连 HTML、搜索兜底组合使用。
 - **热榜观察**：原生多源入口 `guanlan hotnews today`，覆盖百度、微博、B站、IT之家、V2EX；NewsNow 可选增强源 `guanlan hotnews newsnow:36kr-quick`
 - **研究证据包**：`guanlan research "关键词" --format context`
@@ -81,7 +114,7 @@
 | 网页阅读 | 普通网页正文提取、Markdown 化阅读 | 可用 |
 | RSS | RSS/Atom 订阅源解析 | 可用 |
 | GitHub | 公开仓库、Issue、PR、搜索；认证后可访问更多能力 | 可用 |
-| 搜索 | Baidu/Bing/DuckDuckGo 多后端聚合、去重、信源分类、可信度评分、中文白名单 scope | 可用，持续优化 |
+| 搜索 | Baidu/Bing/DuckDuckGo 多后端聚合、去重、信源分类、可信度评分、中文/英文 scope | 可用，持续优化 |
 | 视频 | YouTube、B站字幕与元信息读取 | 可用 |
 | 开发者社区 | V2EX 热门、节点、帖子与回复 | 可用 |
 | 微博 | 热搜、搜索、用户与话题读取 | best-effort，按环境和授权波动 |
@@ -175,7 +208,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.2.6`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.2.7`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -339,18 +372,23 @@ guanlan configure --from-browser chrome
 | `guanlan search "关键词" --backend plugin:my_company_api` | 显式调用本地自定义只读搜索 backend。 |
 | `guanlan search "关键词" --scope party_central` | 在党央媒与中央重点媒体白名单内搜索。 |
 | `guanlan search "关键词" --scope ecommerce` | 在电商/零售垂类媒体白名单内搜索。 |
+| `guanlan search "EI会议 投稿 检索" --scope academic` | 在学术数据库、出版商和论文检索相关信源内搜索。 |
+| `guanlan search "OpenAI API pricing" --profile english --scope company_primary` | 在英文公司一手资料、文档、价格页和发布说明中搜索。 |
+| `guanlan search "AI regulation NIST standard" --profile english --scope global_official` | 在英文官方、监管、标准和公共机构信源中搜索。 |
 | `guanlan research "关键词"` | 生成 Agent 可直接使用的研究证据包，并附带版本/叫法冲突、来源时间线和核验建议。 |
 | `guanlan research "关键词" --profile china` | 自动路由并按证据角色拆 query，合并 scope/site/open web 候选池。 |
+| `guanlan research "OpenAI API pricing release notes" --preset company --profile english` | 用英文公司/产品一手资料模板生成研究证据包。 |
 | `guanlan research --list-presets` | 查看研究模板和默认 scope/site 策略。 |
 | `guanlan research "关键词" --format context` | 输出适合直接放进 prompt 的研究上下文。 |
 | `guanlan research "关键词" --format prompt --prompt-style evidence` | 输出本地模型联网 Prompt，可指定证据型/决策型等风格。 |
 | `guanlan research "关键词" --advisor` | 在证据包后追加助理视角规则，帮助 Agent 基于证据生成建议。 |
 | `guanlan research "关键词" --advisor --advisor-style risk` | 按风险/决策/策略等风格生成更自然的 Agent 作答骨架。 |
 | `guanlan prompt "问题"` | 快速生成 Ollama / LM Studio / Open WebUI 可用的联网 Prompt。 |
+| `guanlan context "问题"` | `prompt` 的别名，适合在本地 Agent 工作流里表达“给模型上下文”。 |
 | `guanlan prompt "问题" --style decision` | 为本地模型生成决策型/证据型/简洁型/深度型联网 Prompt。 |
 | `guanlan research "关键词" --sites zhihu.com,weibo.com` | 按多个指定站点生成平台定向证据块。 |
 | `guanlan pulse "关键词"` | 安全版话题回响分析，输出讨论倾向、关键词信号和明确边界。 |
-| `guanlan feeds curated --limit 80` | 读取公开精品 RSS，发现技术、AI、产品和商业科技内容。 |
+| `guanlan feeds curated --limit 80` | 读取公开精品 RSS，发现技术、AI、产品和商业科技内容；外部源超时时会优先返回最近成功缓存并标记 `stale_cache`。 |
 | `guanlan feeds curated --category ai --min-score 85` | 按分类和评分筛选高质量内容。 |
 | `guanlan feeds baidu-rss --limit 80` | 读取动态百度实时热点 RSS，补充热榜词和热度信号。 |
 | `guanlan feeds wechat-rss --limit 80` | 读取动态微信热门文章 RSS，补充公众号热文线索。 |
@@ -377,6 +415,7 @@ guanlan configure --from-browser chrome
 | `guanlan eval scenarios --format jsonl` | 输出中文语境搜索质量评估集。 |
 | `guanlan quality run` | 一键跑搜索/阅读/热榜/advisor 质量闸门。 |
 | `guanlan quality coverage` | 发版前检查默认结果池和证据字段没有缩水。 |
+| `guanlan quality regression` | 发版前检查结果池、来源多样性、RSS 兜底、正文抽取和 advisor 动态性没有退化。 |
 | `guanlan hotnews today --limit 50` | 拉取原生多源中文热榜。 |
 | `guanlan profile set china` | 切换到中文场景画像。 |
 | `guanlan configure --from-browser chrome` | 显式从浏览器提取支持平台的 Cookie。 |
@@ -481,7 +520,18 @@ guanlan research "Python Agent 框架 对比" --preset tech --read-top 2
 guanlan search "LangGraph AutoGen CrewAI 对比" --profile china --scope tech_dev --format context
 ```
 
-### 8. 读取单篇文章或网页
+### 8. 查学术会议、投稿和检索要求
+
+适合 EI/SCI/Scopus、学术会议、论文投稿、数据库检索、会议 CFP 和学校/单位认定口径。
+
+```bash
+guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
+guanlan search "EI会议 投稿 检索" --profile china --scope academic --format context
+```
+
+这类问题会优先区分数据库/出版商口径、会议 CFP、学校或单位认定口径和经验帖；不要把 SEO 代投文章当成最终标准。
+
+### 9. 读取单篇文章或网页
 
 适合用户给你一个 URL，希望你读完再总结。默认会先尝试更干净的阅读路径，再按情况降级。
 
@@ -520,7 +570,7 @@ guanlan read "https://example.com/article" --backend direct --extract links
 
 `metadata` 适合核验标题、摘要、作者、发布时间；`links` 适合让 Agent 看页面里真正指向了哪些原文或相关材料。
 
-### 9. 批量读取一组链接
+### 10. 批量读取一组链接
 
 适合 Agent 已经搜到一批材料，需要统一读成上下文。
 
@@ -535,7 +585,7 @@ guanlan read batch urls.txt --format context --cache-ttl 3600
 
 批量读取会对微博、小红书、抖音、Twitter/X、LinkedIn 等高风险社交域名保留更谨慎的边界，避免不透明地触碰登录态。
 
-### 10. 追踪网页变化
+### 11. 追踪网页变化
 
 适合政策页、公告页、价格页、项目 README 这类“今天和上次有什么不同”的任务。
 
@@ -546,7 +596,7 @@ guanlan read "https://github.com/shenyangs/Guanlan" --watch
 
 第一次运行会保存本地快照；之后再次运行，会输出内容变化 diff。
 
-### 11. 看中文热榜，再顺藤摸瓜
+### 12. 看中文热榜，再顺藤摸瓜
 
 适合“今天有什么热点”“国内讨论在往哪里流”。
 
@@ -593,7 +643,7 @@ guanlan search "热点关键词" --site zhihu.com --profile china --limit 50
 guanlan research "热榜里的关键词" --profile china --format context
 ```
 
-### 12. 解释搜索结果为什么这样排
+### 13. 解释搜索结果为什么这样排
 
 适合排查“为什么这个结果在前面”“有没有缓存”“是不是 scope 生效了”。
 
@@ -608,7 +658,7 @@ guanlan search "最新 人工智能 政策" --profile china --cluster-threshold 
 
 从 `0.2.5` 开始，每条搜索结果还会带 `evidence_role`，例如 `official_primary`、`authoritative_report`、`user_sample`、`industry_report`。如果结果池缺少某类关键证据，`search --trace` 会给出“缺什么信源、建议补什么”的提示。
 
-### 13. 给 AI Agent 的最短工作流
+### 14. 给 AI Agent 的最短工作流
 
 如果你是在另一个 Agent、MCP 客户端或自动化脚本里调用观澜，优先使用这几类输出：
 
@@ -627,7 +677,7 @@ guanlan hotnews today --trends
 
 CLI 是默认主路径；如果当前 Agent 或平台支持 MCP，可以把 `guanlan-mcp` 作为可选集成接进去，让 Agent 直接调用 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search` 和 `guanlan_status`。
 
-### 14. 本地大模型联网
+### 15. 本地大模型联网
 
 很多本地模型本身没有搜索网页和读取网页的能力，例如通过 Ollama、LM Studio、llama.cpp、Jan、Open WebUI 或本地 Agent 运行的模型。观澜可以作为它们的联网前置器：先由观澜搜索、阅读和整理中文互联网证据，再把证据包交给本地模型回答。
 
@@ -635,6 +685,13 @@ CLI 是默认主路径；如果当前 Agent 或平台支持 MCP，可以把 `gua
 
 ```bash
 guanlan prompt "最近 AI 眼镜 在中国市场有什么变化？" --profile china > context.md
+ollama run qwen3:latest < context.md
+```
+
+`guanlan context` 是同一个能力的别名，更适合在 Agent 脚本里表达“先取联网上下文，再交给本地模型”：
+
+```bash
+guanlan context "今天中文互联网有哪些 AI 技术文章值得读？" --profile china --read-top 1 > context.md
 ollama run qwen3:latest < context.md
 ```
 
@@ -669,14 +726,23 @@ guanlan mcp config --client openwebui
 guanlan serve --host 127.0.0.1 --port 8765
 ```
 
-服务默认只监听本机，提供 `/search`、`/research`、`/read`、`/hotnews`、`/feeds`、`/route` 和 `/archive/search` 等只读接口，不提供发布、评论、点赞、私信等写操作。对本地模型来说，推荐工作流是：
+服务默认只监听本机，提供 `/search`、`/research`、`/read`、`/hotnews`、`/feeds`、`/route`、`/context`、`/prompt` 和 `/archive/search` 等只读接口，不提供发布、评论、点赞、私信等写操作。对本地模型来说，推荐工作流是：
 
 1. 用 `hotnews --brief` 或 `route` 判断该去哪找。
 2. 用 `search/research --format context` 拿证据表。
 3. 用 `read --quality-report` 或 `read --trace` 检查关键原文质量。
 4. 把 `prompt` 或 `context` 交给本地模型，让它基于来源回答。
 
-### 15. 把读过的网页沉淀成本地知识库
+如果你的本地工具能发 HTTP 请求，可以直接取 Prompt：
+
+```bash
+curl -s http://127.0.0.1:8765/context \
+  -H 'content-type: application/json' \
+  -d '{"query":"最近 AI Agent 在中国的产品化进展","profile":"china","read_top":1}' \
+  | python -c 'import json,sys; print(json.load(sys.stdin)["prompt"])'
+```
+
+### 16. 把读过的网页沉淀成本地知识库
 
 适合把 Agent 搜过、读过、核验过的材料保存下来，后续不用重复请求上游，也能导出给 RAG 系统。
 
@@ -690,7 +756,7 @@ guanlan archive export --format jsonl > guanlan-archive.jsonl
 
 本地知识库默认保存在 `~/.guanlan/archive.db`。第一版使用 SQLite + FTS/LIKE 检索，保存 URL、标题、域名、Markdown 正文、摘要、更新时间和元数据。`v0.2.5` 起，归档元数据会保留 `source_card`、`read_quality`、`quality_report` 和 `route_plan`，方便后续接 RAG 时知道材料的来源角色、正文质量和检索路径。它不是云同步，也不会自动上传内容。
 
-### 16. 质量闸门
+### 17. 质量闸门
 
 适合维护者和高级用户在发版前快速检查“观澜是不是真的更好了”。
 
@@ -699,6 +765,7 @@ guanlan quality run
 guanlan quality run --format json
 guanlan quality run --coverage
 guanlan quality coverage
+guanlan quality regression
 guanlan quality run --mode live --limit 5
 ```
 
@@ -706,7 +773,9 @@ guanlan quality run --mode live --limit 5
 
 `quality coverage` 是给发版用的防缩水护栏：检查 `search/research/archive/hotnews/read fallback` 的默认结果池下限，检查搜索结果是否保留 `evidence_role`，检查 research/read/archive 是否保留质量元数据。它不保证每个网络请求都成功，但能防止一次更新把 Agent 赖以判断的信息面悄悄变窄。
 
-### 17. 安全检查和授权边界
+`quality regression` 是更完整的发版回归闸门：除默认结果池外，还检查来源多样性、RSS 缓存兜底元数据、正文主体抽取信号和 advisor 是否会随任务变化。它的目标很朴素：每次更新，都不能让下游 Agent 拿到的材料突然变少、变窄、变脏。
+
+### 18. 安全检查和授权边界
 
 如果你担心配置里误存了 Cookie、Token、API key 或代理凭据，先跑：
 
@@ -821,3 +890,5 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 观澜采用 MIT License。
 
 本项目在设计和工程上参考了若干开源项目，来源集中记录在 [docs/SOURCE_ATTRIBUTION.md](docs/SOURCE_ATTRIBUTION.md)。除来源说明外，项目文档和产品表达以观澜自身定位为准。
+
+如在项目中复用本项目思路或代码，欢迎在文档中注明来源并附仓库链接。

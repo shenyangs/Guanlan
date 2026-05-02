@@ -210,7 +210,7 @@ def format_report(results: Dict[str, dict], profile: str | None = None) -> str:
     lines = []
     lines.append("[bold cyan]观澜 / Guanlan 状态[/bold cyan]")
     if profile:
-        profile_name = {"global": "全球默认", "china": "中文场景", "hybrid": "混合"}.get(
+        profile_name = {"global": "全球默认", "china": "中文场景", "english": "英文场景", "hybrid": "混合"}.get(
             profile, profile
         )
         lines.append(f"[cyan]Profile: {escape(profile_name)}[/cyan]")

@@ -8,7 +8,7 @@ from typing import Optional
 from guanlan.config import Config
 
 DEFAULT_PROFILE = "global"
-VALID_PROFILES = ("global", "china", "hybrid")
+VALID_PROFILES = ("global", "china", "english", "hybrid")
 
 
 def normalize_profile(profile: Optional[str]) -> str:

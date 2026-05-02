@@ -18,6 +18,13 @@ guanlan prompt "最近 AI 眼镜在中国市场的主要趋势是什么？" --pr
 ollama run qwen3:latest < prompt.md
 ```
 
+`guanlan context` 是 `prompt` 的别名，适合脚本或 Agent 工作流：
+
+```bash
+guanlan context "今天中文互联网有哪些 AI 技术文章值得读？" --profile china --read-top 1 > context.md
+ollama run qwen3:latest < context.md
+```
+
 可以按任务选择 Prompt 风格：
 
 ```bash
@@ -102,6 +109,7 @@ guanlan mcp config --client openwebui --format json
 - `guanlan_research`
 - `guanlan_read`
 - `guanlan_hotnews`
+- `guanlan_feeds`
 - `guanlan_pulse`
 - `guanlan_archive_search`
 - `guanlan_status`
@@ -120,7 +128,10 @@ guanlan serve --host 127.0.0.1 --port 8765
 - `POST /route`
 - `POST /search`
 - `POST /research`
+- `POST /context`
+- `POST /prompt`
 - `POST /read`
+- `GET /feeds?source=curated&limit=80`
 - `GET /hotnews?source=today&limit=50&trends=1`
 - `POST /archive/search`
 
@@ -131,6 +142,17 @@ curl -s http://127.0.0.1:8765/research \
   -H 'content-type: application/json' \
   -d '{"query":"AI 眼镜 中国市场 趋势","profile":"china","limit":80,"advisor":true}'
 ```
+
+直接取本地模型 Prompt：
+
+```bash
+curl -s http://127.0.0.1:8765/context \
+  -H 'content-type: application/json' \
+  -d '{"query":"AI Agent 在中国的产品化进展","profile":"china","read_top":1}' \
+  | python -c 'import json,sys; print(json.load(sys.stdin)["prompt"])'
+```
+
+RSS / feeds 是公开外部源，可能因源站或网络抖动超时。观澜会优先返回最近成功缓存，并在结果里标记 `feed_status=stale_cache`；本地模型回答时应把这类结果当作阅读线索，而不是实时排名。
 
 ## 五、安全边界
 

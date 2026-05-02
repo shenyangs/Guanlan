@@ -92,6 +92,16 @@ _SCOPE_DEFAULTS: dict[str, dict[str, Any]] = {
         "sample_value": 0.72,
         "freshness_value": 0.62,
     },
+    "academic": {
+        "authority_role": "academic_index_or_publisher",
+        "content_roles": ("publisher_guideline", "index_database", "scholarly_context"),
+        "fit_tags": ("academic", "paper", "conference", "indexing", "publisher"),
+        "risk_tags": ("paywall", "metadata_only", "version_sensitive"),
+        "authority_score": 0.78,
+        "sample_value": 0.22,
+        "freshness_value": 0.46,
+        "stability": "best_effort",
+    },
     "finance": {
         "authority_role": "finance_media",
         "content_roles": ("market_news", "analysis", "filing_context", "quote"),
@@ -111,13 +121,80 @@ _SCOPE_DEFAULTS: dict[str, dict[str, Any]] = {
         "freshness_value": 0.78,
         "stability": "best_effort",
     },
+    "global_official": {
+        "authority_role": "public_institution",
+        "content_roles": ("primary_source", "regulation", "standard", "public_data"),
+        "fit_tags": ("policy", "regulation", "official", "data", "standards"),
+        "risk_tags": ("legalese", "slow_update"),
+        "authority_score": 0.94,
+        "sample_value": 0.05,
+        "freshness_value": 0.48,
+        "stability": "stable",
+    },
+    "company_primary": {
+        "authority_role": "company_primary",
+        "content_roles": ("official_specs", "release_note", "pricing", "status", "company_statement"),
+        "fit_tags": ("company", "product", "pricing", "release", "official", "tech"),
+        "risk_tags": ("vendor_framing", "marketing_language"),
+        "authority_score": 0.78,
+        "sample_value": 0.12,
+        "freshness_value": 0.72,
+        "stability": "stable",
+    },
+    "developer": {
+        "authority_role": "developer_source",
+        "content_roles": ("source_code", "documentation", "issue", "release", "developer_discussion"),
+        "fit_tags": ("tech", "developer", "opensource", "evidence_primary", "product_feedback"),
+        "risk_tags": ("version_sensitive", "project_bias"),
+        "authority_score": 0.66,
+        "sample_value": 0.72,
+        "freshness_value": 0.68,
+        "stability": "stable",
+    },
+    "global_news": {
+        "authority_role": "news_media",
+        "content_roles": ("report", "timeline", "interview", "public_context"),
+        "fit_tags": ("news", "industry", "policy", "company", "fresh"),
+        "risk_tags": ("editorial_framing", "paywall", "source_bias"),
+        "authority_score": 0.62,
+        "sample_value": 0.24,
+        "freshness_value": 0.82,
+        "stability": "stable",
+    },
+    "industry_analysis": {
+        "authority_role": "industry_analysis",
+        "content_roles": ("analysis", "market_context", "forecast", "thesis"),
+        "fit_tags": ("industry", "business", "strategy", "market", "company"),
+        "risk_tags": ("opinionated", "paywall", "methodology_gap"),
+        "authority_score": 0.5,
+        "sample_value": 0.32,
+        "freshness_value": 0.58,
+    },
+    "community_sample": {
+        "authority_role": "community_platform",
+        "content_roles": ("user_sample", "public_discussion", "developer_discussion", "commentary"),
+        "fit_tags": ("reputation", "developer", "social", "sentiment", "product_feedback"),
+        "risk_tags": ("sample_bias", "not_representative", "platform_framing"),
+        "authority_score": 0.22,
+        "sample_value": 0.9,
+        "freshness_value": 0.78,
+    },
+    "market_review": {
+        "authority_role": "review_platform",
+        "content_roles": ("user_sample", "review", "buyer_feedback", "rating"),
+        "fit_tags": ("reputation", "consumer", "saas", "purchase_advice", "product_feedback"),
+        "risk_tags": ("sample_bias", "commercial_incentive", "review_manipulation"),
+        "authority_score": 0.24,
+        "sample_value": 0.82,
+        "freshness_value": 0.62,
+    },
 }
 
 
 _DOMAIN_OVERRIDES: dict[str, dict[str, Any]] = {
     "github.com": {
-        "source_type": "代码/开源平台",
-        "scope_id": "tech_dev",
+        "source_type": "英文开发者/开源",
+        "scope_id": "developer",
         "authority_role": "code_host",
         "content_roles": ("source_code", "issue", "release", "discussion"),
         "fit_tags": ("tech", "developer", "opensource", "evidence_primary"),
@@ -126,6 +203,37 @@ _DOMAIN_OVERRIDES: dict[str, dict[str, Any]] = {
         "sample_value": 0.7,
         "freshness_value": 0.7,
         "stability": "stable",
+    },
+    "docs.github.com": {
+        "source_type": "英文开发者/开源",
+        "scope_id": "developer",
+        "authority_role": "developer_source",
+        "content_roles": ("documentation", "official_specs", "technical_note"),
+        "fit_tags": ("tech", "developer", "official", "documentation"),
+        "authority_score": 0.82,
+        "sample_value": 0.32,
+        "stability": "stable",
+    },
+    "sec.gov": {
+        "content_roles": ("primary_source", "filing", "regulation", "public_data"),
+        "fit_tags": ("official", "finance", "company", "regulation"),
+        "authority_score": 0.97,
+    },
+    "openai.com": {
+        "content_roles": ("official_specs", "release_note", "pricing", "documentation", "company_statement"),
+        "fit_tags": ("company", "product", "pricing", "release", "ai", "official"),
+        "authority_score": 0.84,
+        "freshness_value": 0.78,
+    },
+    "stackoverflow.com": {
+        "content_roles": ("developer_discussion", "technical_note", "question_answer"),
+        "fit_tags": ("tech", "developer", "practice"),
+        "risk_tags": ("version_sensitive", "answer_age", "sample_bias"),
+    },
+    "reddit.com": {
+        "content_roles": ("user_sample", "public_discussion", "commentary"),
+        "fit_tags": ("reputation", "social", "consumer", "developer"),
+        "risk_tags": ("sample_bias", "not_representative", "platform_framing"),
     },
     "zhihu.com": {
         "content_roles": ("question_answer", "public_discussion", "user_sample"),
@@ -150,6 +258,17 @@ _DOMAIN_OVERRIDES: dict[str, dict[str, Any]] = {
     "csdn.net": {
         "risk_tags": ("seo_content", "quality_variance", "version_sensitive"),
         "authority_score": 0.32,
+    },
+    "engineeringvillage.com": {
+        "content_roles": ("index_database", "primary_source", "scholarly_context"),
+        "fit_tags": ("academic", "ei", "compendex", "indexing", "official"),
+        "risk_tags": ("login_wall", "metadata_only"),
+        "authority_score": 0.9,
+    },
+    "elsevier.com": {
+        "content_roles": ("publisher_guideline", "index_database", "official_context"),
+        "fit_tags": ("academic", "ei", "scopus", "publisher", "official"),
+        "authority_score": 0.86,
     },
     "caixin.com": {
         "authority_score": 0.72,
@@ -205,7 +324,7 @@ def normalize_domain(domain: str) -> str:
 
 
 def _domain_override(domain: str) -> dict[str, Any]:
-    for candidate, override in _DOMAIN_OVERRIDES.items():
+    for candidate, override in sorted(_DOMAIN_OVERRIDES.items(), key=lambda row: len(row[0]), reverse=True):
         if domain == candidate or domain.endswith("." + candidate):
             return dict(override)
     return {}

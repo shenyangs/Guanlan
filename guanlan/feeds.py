@@ -6,13 +6,16 @@ from __future__ import annotations
 import html
 import json
 import re
+import time
 import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
+from guanlan import __version__
 from guanlan.limits import DEFAULT_FEEDS_LIMIT
 from guanlan.source_registry import get_source_metadata
 from guanlan.source_registry import list_feed_sources as list_feed_source_metadata
@@ -20,6 +23,8 @@ from guanlan.source_taxonomy import source_card_for_domain
 
 _UA = "Mozilla/5.0"
 _TIMEOUT = 15
+_CACHE_VERSION = 1
+FEEDS_CACHE_TTL_SECONDS = 24 * 60 * 60
 
 _CURATED_HOST = "best" + "blogs"
 _CURATED_OPML_OWNER = "gino" + "befun"
@@ -69,6 +74,7 @@ class FeedItem:
     freshness: str = ""
     fetched_at: str = ""
     risk_tags: list[str] = field(default_factory=list)
+    feed_status: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -150,6 +156,115 @@ def _read_bytes(url: str, timeout: int = _TIMEOUT) -> bytes:
         return resp.read()
 
 
+def feed_cache_dir() -> Path:
+    """Return the local cache directory for public RSS/OPML discovery."""
+    return Path.home() / ".guanlan" / "cache" / "feeds"
+
+
+def _feed_cache_key(kind: str, payload: dict[str, Any]) -> str:
+    raw = json.dumps(
+        {"kind": kind, "version": _CACHE_VERSION, "app": __version__, **payload},
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    import hashlib
+
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _feed_cache_path(kind: str, key: str) -> Path:
+    return feed_cache_dir() / kind / f"{key}.json"
+
+
+def _feed_cache_get(kind: str, key: str, ttl: int = FEEDS_CACHE_TTL_SECONDS) -> dict[str, Any] | None:
+    path = _feed_cache_path(kind, key)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    created_at = float(data.get("created_at", 0) or 0)
+    if ttl > 0 and time.time() - created_at > ttl:
+        return None
+    payload = data.get("payload")
+    return payload if isinstance(payload, dict) else None
+
+
+def _feed_cache_get_any(kind: str, key: str) -> dict[str, Any] | None:
+    return _feed_cache_get(kind, key, ttl=0)
+
+
+def _feed_cache_set(kind: str, key: str, payload: dict[str, Any]) -> None:
+    path = _feed_cache_path(kind, key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "version": _CACHE_VERSION,
+        "created_at": time.time(),
+        "kind": kind,
+        "payload": payload,
+    }
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _annotate_feed_status(
+    rows: list[dict[str, Any]],
+    status: str,
+    *,
+    source_id: str,
+    error: str = "",
+    stale: bool = False,
+) -> list[dict[str, Any]]:
+    annotated: list[dict[str, Any]] = []
+    for rank, item in enumerate(rows, 1):
+        row = dict(item)
+        row["rank"] = rank
+        row["feed_status"] = {
+            "status": status,
+            "source_id": source_id,
+            "stale": bool(stale),
+            "error": error,
+        }
+        if stale:
+            risk_tags = [str(tag) for tag in row.get("risk_tags", []) if tag]
+            if "stale_cache" not in risk_tags:
+                risk_tags.append("stale_cache")
+            row["risk_tags"] = risk_tags
+            row.setdefault("freshness", "cached")
+        annotated.append(row)
+    return annotated
+
+
+def _feed_failure_item(
+    *,
+    url: str,
+    source_id: str,
+    category: str,
+    content_direction: str,
+    error: str,
+) -> dict[str, Any]:
+    """Return a diagnostic row when a public feed is unavailable on cold start."""
+    source_card = _source_card_for_feed(url, source_id)
+    item = FeedItem(
+        title=f"{_source_title(source_id, source_id)} 暂时不可用",
+        url=url,
+        source_id=source_id,
+        source_title=_source_title(source_id, source_id),
+        category=category or "source_status",
+        content_direction=content_direction,
+        summary="公开 RSS/OPML 源本次请求失败，且本机还没有最近成功缓存。请稍后重试，或改用 search/research/hotnews 兜底。",
+        rank=1,
+        source_confidence=str(FEED_SOURCE_CATALOG.get(source_id, {}).get("confidence") or "low"),
+        evidence_role="source_availability_signal",
+        source_card=source_card,
+        freshness="unavailable",
+        fetched_at=_now_iso(),
+        risk_tags=_unique(_feed_risk_tags(source_id, source_card) + ["source_unavailable", "no_cache"]),
+        feed_status={"status": "error", "source_id": source_id, "stale": False, "error": error},
+    )
+    return item.to_dict()
+
+
 def _clean_text(value: Any, max_chars: int = 0) -> str:
     if value is None:
         return ""
@@ -187,7 +302,13 @@ def _is_hidden_curated_url(url: Any) -> bool:
 
 
 def _is_likely_asset_url(url: str) -> bool:
-    path = urllib.parse.urlparse(url).path.lower()
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.netloc.lower()
+    path = parsed.path.lower()
+    if host.endswith(("qlogo.cn", "qpic.cn", "mmbiz.qpic.cn", "wx.qlogo.cn")):
+        return True
+    if re.search(r"/(?:avatar|image|img|logo|icon|cover|thumb|thumbnail)/", path):
+        return True
     return path.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico", ".avif"))
 
 
@@ -212,7 +333,7 @@ def _candidate_entry_urls(entry: Any) -> list[str]:
 
 def _original_entry_url(entry: Any, fallback: Any) -> str:
     fallback_url = _clean_text(fallback)
-    if fallback_url and not _is_hidden_curated_url(fallback_url):
+    if fallback_url and not _is_hidden_curated_url(fallback_url) and not _is_likely_asset_url(fallback_url):
         return fallback_url
     for url in _candidate_entry_urls(entry):
         if not _is_hidden_curated_url(url) and not _is_likely_asset_url(url):
@@ -330,6 +451,7 @@ def _normalize_feed_entries(
             freshness=_feed_freshness(source_id, published_at),
             fetched_at=_now_iso(),
             risk_tags=_feed_risk_tags(source_id, source_card),
+            feed_status={"status": "fresh", "source_id": source_id, "stale": False, "error": ""},
         )
         items.append(item.to_dict())
     return items
@@ -349,22 +471,54 @@ def fetch_rss_feed(
     content_direction: str = "",
 ) -> list[dict[str, Any]]:
     """Fetch and normalize one RSS/Atom feed."""
+    cache_key = _feed_cache_key(
+        "rss",
+        {
+            "url": url,
+            "source_id": source_id,
+            "category": category,
+            "content_direction": content_direction,
+        },
+    )
     try:
         import feedparser
     except ImportError as exc:  # pragma: no cover - dependency is declared, message helps external installs.
         raise RuntimeError("RSS support requires feedparser. Install with `pip install feedparser`.") from exc
 
-    raw = _read_bytes(url)
-    parsed = feedparser.parse(raw)
-    if getattr(parsed, "bozo", False) and not getattr(parsed, "entries", []):
-        raise RuntimeError(f"Could not parse RSS feed: {getattr(parsed, 'bozo_exception', 'unknown error')}")
-    return _normalize_feed_entries(
-        parsed,
-        source_id=source_id,
-        limit=limit,
-        category=category,
-        content_direction=content_direction,
-    )
+    try:
+        raw = _read_bytes(url)
+        parsed = feedparser.parse(raw)
+        if getattr(parsed, "bozo", False) and not getattr(parsed, "entries", []):
+            raise RuntimeError(f"Could not parse RSS feed: {getattr(parsed, 'bozo_exception', 'unknown error')}")
+        rows = _normalize_feed_entries(
+            parsed,
+            source_id=source_id,
+            limit=max(limit, DEFAULT_FEEDS_LIMIT),
+            category=category,
+            content_direction=content_direction,
+        )
+        rows = _annotate_feed_status(rows, "fresh", source_id=source_id)
+        _feed_cache_set("rss", cache_key, {"items": rows, "url": url, "source_id": source_id})
+        return rows[: max(limit, 1)]
+    except Exception as exc:
+        cached = _feed_cache_get_any("rss", cache_key)
+        if cached and isinstance(cached.get("items"), list):
+            return _annotate_feed_status(
+                [dict(item) for item in cached["items"][: max(limit, 1)]],
+                "stale_cache",
+                source_id=source_id,
+                error=str(exc),
+                stale=True,
+            )
+        return [
+            _feed_failure_item(
+                url=url,
+                source_id=source_id,
+                category=category,
+                content_direction=content_direction,
+                error=str(exc),
+            )
+        ]
 
 
 def build_curated_rss_url(
@@ -487,8 +641,38 @@ def list_curated_sources(
     opml_url: str = CURATED_OPML_URL,
 ) -> list[dict[str, Any]]:
     """Fetch the public OPML catalog and return feed sources."""
-    raw = _read_bytes(opml_url)
-    root = ElementTree.fromstring(raw)
+    cache_key = _feed_cache_key("opml", {"opml_url": opml_url, "query": query or ""})
+    try:
+        raw = _read_bytes(opml_url)
+        root = ElementTree.fromstring(raw)
+    except Exception as exc:
+        cached = _feed_cache_get_any("opml", cache_key)
+        if cached and isinstance(cached.get("sources"), list):
+            sources = [dict(item) for item in cached["sources"][: max(limit, 1)]]
+            for source in sources:
+                risk_tags = [str(tag) for tag in source.get("risk_tags", []) if tag]
+                if "stale_cache" not in risk_tags:
+                    risk_tags.append("stale_cache")
+                source["risk_tags"] = risk_tags
+                source["feed_status"] = {
+                    "status": "stale_cache",
+                    "source_id": "curated:source",
+                    "stale": True,
+                    "error": str(exc),
+                }
+            return sources
+        return [
+            FeedSource(
+                title="精品 RSS 源目录暂时不可用",
+                url=opml_url,
+                source_id="curated:source",
+                category="source_status",
+                content_direction="公开 OPML 源本次请求失败，且本机还没有最近成功缓存。",
+                rank=1,
+                source_confidence="low",
+                risk_tags=["source_unavailable", "no_cache"],
+            ).to_dict()
+        ]
     query_text = (query or "").strip().lower()
     sources: list[dict[str, Any]] = []
     for outline in root.findall(".//outline"):
@@ -518,6 +702,7 @@ def list_curated_sources(
         sources.append(source.to_dict())
         if len(sources) >= max(limit, 1):
             break
+    _feed_cache_set("opml", cache_key, {"sources": sources, "opml_url": opml_url, "query": query or ""})
     return sources
 
 
@@ -564,6 +749,11 @@ def format_feed_items_markdown(items: list[dict[str, Any]], title: str = "观澜
             meta.append(f"热度: {item['metrics']['heat']}")
         if item.get("evidence_role"):
             meta.append(f"证据角色: {item['evidence_role']}")
+        feed_status = item.get("feed_status") or {}
+        if feed_status.get("status") == "stale_cache":
+            meta.append("缓存兜底: 是")
+        elif feed_status.get("status") == "error":
+            meta.append("信源状态: 暂不可用")
         if meta:
             lines.append("   " + " | ".join(meta))
         if item.get("summary"):
@@ -589,6 +779,13 @@ def format_feed_items_context(items: list[dict[str, Any]], title: str = "观澜�
             lines.append(f"  evidence_role: {item['evidence_role']}")
         if item.get("freshness"):
             lines.append(f"  freshness: {item['freshness']}")
+        feed_status = item.get("feed_status") or {}
+        if feed_status:
+            lines.append(f"  feed_status: {feed_status.get('status', '')}")
+            if feed_status.get("stale"):
+                lines.append("  boundary: 当前条目来自最近成功缓存，外部 RSS 源本次请求失败。")
+            elif feed_status.get("status") == "error":
+                lines.append("  boundary: 外部 RSS 源本次请求失败，且本机没有可用缓存。")
         source_card = item.get("source_card") or {}
         if source_card:
             lines.append(f"  source_type: {source_card.get('source_type', '')}")
@@ -633,6 +830,7 @@ def compact_feed_items(items: list[dict[str, Any]], summary_chars: int = 140) ->
             "evidence_role": item.get("evidence_role"),
             "freshness": item.get("freshness"),
             "risk_tags": item.get("risk_tags") or [],
+            "feed_status": item.get("feed_status") or {},
         }
         if item.get("summary"):
             row["summary"] = _clean_text(item.get("summary"))[: max(summary_chars, 0)]

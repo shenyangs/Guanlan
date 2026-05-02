@@ -31,6 +31,70 @@ def test_route_plan_detects_policy_and_avoids_social_primary():
     assert plan.read_top >= 2
 
 
+def test_route_plan_detects_academic_indexing_need():
+    plan = build_route_plan("EI会议的所有标准和要求", profile="china")
+
+    assert "academic" in plan.primary_intents + plan.secondary_intents
+    assert "academic" in plan.preferred_scopes
+    assert "elsevier.com" in plan.target_sites
+    assert any("--preset academic" in command for command in plan.recommended_commands)
+    assert any("学术会议" in warning or "检索" in warning for warning in plan.warnings)
+
+
+def test_route_plan_detects_english_company_primary_need():
+    plan = build_route_plan("OpenAI API pricing release notes", profile="english")
+
+    assert plan.primary_intents[0] == "company_primary"
+    assert "company_primary" in plan.preferred_scopes
+    assert "developer" in plan.preferred_scopes
+    assert "company_primary" in plan.evidence_roles
+    assert any("--preset company --profile english" in command for command in plan.recommended_commands)
+
+
+def test_route_plan_keeps_cjk_ai_query_in_china_context_without_explicit_profile():
+    plan = build_route_plan("AI 相关内容")
+
+    assert plan.backend_hint == ["baidu", "bing", "duckduckgo"]
+    assert any("--profile china" in command for command in plan.recommended_commands)
+
+
+def test_route_plan_detects_english_policy_need():
+    plan = build_route_plan("AI regulation NIST standard policy", profile="english")
+
+    assert "global_policy" in plan.primary_intents + plan.secondary_intents
+    assert "global_official" in plan.preferred_scopes
+    assert "global_news" in plan.preferred_scopes
+    assert any("--preset global_policy --profile english" in command for command in plan.recommended_commands)
+
+
+def test_route_plan_detects_standards_compliance_need():
+    plan = build_route_plan("SOC2 合规认证标准和审计要求", profile="china")
+
+    assert "standards_compliance" in plan.primary_intents + plan.secondary_intents
+    assert "global_official" in plan.preferred_scopes
+    assert "standard_original" in plan.evidence_roles
+    assert "厂商单方合规声明" in plan.avoid_as_primary
+    assert any("--scope global_official" in command for command in plan.recommended_commands)
+
+
+def test_route_plan_detects_medical_health_need():
+    plan = build_route_plan("某药品 FDA 临床治疗指南和副作用", profile="china")
+
+    assert "medical_health" in plan.primary_intents + plan.secondary_intents
+    assert plan.risk_level == "high"
+    assert "clinical_guideline" in plan.evidence_roles
+    assert any("医疗健康" in warning for warning in plan.warnings)
+
+
+def test_route_plan_detects_legal_judicial_need():
+    plan = build_route_plan("合同侵权诉讼 判决依据和司法解释", profile="china")
+
+    assert "legal_judicial" in plan.primary_intents + plan.secondary_intents
+    assert plan.risk_level == "high"
+    assert "statute_original" in plan.evidence_roles
+    assert "gov" in plan.preferred_scopes
+
+
 def test_route_plan_recommends_rss_sources_by_need():
     wechat = build_route_plan("今天微信公众号有什么 AI 热文", profile="china")
     reading = build_route_plan("最近有什么值得读的 Agent 技术文章", profile="china")

@@ -51,6 +51,26 @@ _WEAK_READ_MARKERS = (
     "请先登录",
 )
 
+_SEARCH_BLOCK_MARKERS: dict[str, tuple[str, ...]] = {
+    "baidu": (
+        "百度安全验证",
+        "请输入验证码",
+        "wappass.baidu.com",
+        "百度安全中心",
+    ),
+    "bing": (
+        "unusual traffic",
+        "verify you are human",
+        "captcha",
+        "b_captcha",
+        "our systems have detected",
+    ),
+    "duckduckgo": (
+        "captcha",
+        "verify you are human",
+    ),
+}
+
 _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
     "policy": {
         "name": "政策/官方口径",
@@ -59,6 +79,73 @@ _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
         "preferred_source_types": ("政府/部委", "党央媒"),
         "caution_source_types": ("社交/内容平台",),
         "guidance": "优先政府/部委原文和党央媒权威报道，媒体解读只能作为背景。",
+    },
+    "global_policy": {
+        "name": "英文政策/监管",
+        "terms": (
+            "regulation",
+            "regulatory",
+            "policy",
+            "law",
+            "rules",
+            "compliance",
+            "standard",
+            "standards",
+            "sec",
+            "fda",
+            "ftc",
+            "nist",
+            "eu",
+        ),
+        "preferred_scopes": ("global_official", "global_news"),
+        "preferred_source_types": ("英文官方/监管", "国际主流媒体"),
+        "caution_source_types": ("英文社区样本", "评价/消费样本"),
+        "guidance": "优先政府、监管机构、标准组织和公开数据原文，媒体报道作为背景。",
+    },
+    "standards_compliance": {
+        "name": "标准/合规/认证",
+        "terms": ("标准", "认证", "合规", "审计", "等保", "iso", "iec", "nist", "soc2", "gdpr", "hipaa", "compliance", "certification", "standards"),
+        "preferred_scopes": ("global_official", "gov", "company_primary", "academic"),
+        "preferred_source_types": ("英文官方/监管", "政府/部委", "公司一手资料", "学术/论文检索"),
+        "caution_source_types": ("社交/内容平台", "英文社区样本", "商业/产业媒体"),
+        "guidance": "优先标准组织、监管机构和官方合规材料；实施经验和厂商声明需要标注立场。",
+    },
+    "medical_health": {
+        "name": "医疗/健康高影响信息",
+        "terms": ("医疗", "疾病", "药", "药品", "治疗", "诊断", "症状", "临床", "指南", "fda", "cdc", "who", "medical", "clinical", "treatment"),
+        "preferred_scopes": ("global_official", "gov", "academic"),
+        "preferred_source_types": ("英文官方/监管", "政府/部委", "学术/论文检索"),
+        "caution_source_types": ("社交/内容平台", "英文社区样本", "商业/产业媒体"),
+        "guidance": "优先公共卫生机构、药监/监管、临床指南和同行评议材料；不要输出诊疗结论。",
+    },
+    "legal_judicial": {
+        "name": "法律/司法高影响信息",
+        "terms": ("法律", "诉讼", "判决", "合同", "律师", "侵权", "司法解释", "法院", "裁判文书", "条例", "law", "legal", "court", "lawsuit"),
+        "preferred_scopes": ("gov", "global_official", "local_official", "academic"),
+        "preferred_source_types": ("政府/部委", "英文官方/监管", "地方官媒", "学术/论文检索"),
+        "caution_source_types": ("社交/内容平台", "英文社区样本", "商业/产业媒体"),
+        "guidance": "优先法律条文、司法解释、裁判文书和权威机构材料；律师文章只能作为观点。",
+    },
+    "company": {
+        "name": "公司/产品一手资料",
+        "terms": (
+            "pricing",
+            "release notes",
+            "release note",
+            "changelog",
+            "docs",
+            "documentation",
+            "status page",
+            "official blog",
+            "api",
+            "sdk",
+            "terms of service",
+            "investor relations",
+        ),
+        "preferred_scopes": ("company_primary", "developer"),
+        "preferred_source_types": ("公司一手资料", "英文开发者/开源"),
+        "caution_source_types": ("英文社区样本", "评价/消费样本"),
+        "guidance": "优先公司官网、文档、发布说明、状态页和投资者关系材料，再补社区/媒体样本。",
     },
     "local": {
         "name": "地方政策/区域研究",
@@ -87,16 +174,62 @@ _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
     "tech": {
         "name": "技术/开发者",
         "terms": ("技术", "开源", "框架", "模型", "api", "sdk", "github", "开发者", "部署", "bug", "benchmark"),
-        "preferred_scopes": ("tech_dev",),
-        "preferred_source_types": ("科技/开发者社区",),
+        "preferred_scopes": ("tech_dev", "developer"),
+        "preferred_source_types": ("科技/开发者社区", "英文开发者/开源"),
         "caution_source_types": (),
         "guidance": "优先官方文档、代码仓库、开发者社区和可复现反馈。",
     },
+    "academic": {
+        "name": "学术/论文检索",
+        "terms": (
+            "ei",
+            "sci",
+            "ssci",
+            "scopus",
+            "compendex",
+            "engineering index",
+            "会议",
+            "学术会议",
+            "投稿",
+            "检索",
+            "收录",
+            "论文",
+            "期刊",
+            "审稿",
+            "conference",
+            "proceedings",
+        ),
+        "preferred_scopes": ("academic",),
+        "preferred_source_types": ("学术/论文检索",),
+        "caution_source_types": ("社交/内容平台",),
+        "guidance": "优先数据库/出版商官方说明、会议 CFP 和学校/单位认定口径；商业代投内容只能作线索。",
+    },
     "reputation": {
         "name": "口碑/公开讨论",
-        "terms": ("口碑", "评价", "体验", "吐槽", "避雷", "测评", "推荐", "小红书", "微博", "知乎", "b站", "bilibili"),
-        "preferred_scopes": ("social_web", "tech_dev", "business"),
-        "preferred_source_types": ("社交/内容平台", "科技/开发者社区", "商业/产业媒体"),
+        "terms": (
+            "口碑",
+            "评价",
+            "体验",
+            "吐槽",
+            "避雷",
+            "测评",
+            "推荐",
+            "小红书",
+            "微博",
+            "知乎",
+            "b站",
+            "bilibili",
+            "review",
+            "reviews",
+            "reddit",
+            "hacker news",
+            "trustpilot",
+            "g2",
+            "capterra",
+            "complaints",
+        ),
+        "preferred_scopes": ("social_web", "community_sample", "market_review", "tech_dev", "developer", "business"),
+        "preferred_source_types": ("社交/内容平台", "英文社区样本", "评价/消费样本", "科技/开发者社区", "英文开发者/开源", "商业/产业媒体"),
         "caution_source_types": (),
         "guidance": "社交结果适合发现样本线索，不能直接代表总体比例。",
     },
@@ -188,6 +321,18 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "max_read_chars": 2800,
         "guidance": ["优先提取版本、限制、真实使用反馈和可复现依据。"],
     },
+    "academic": {
+        "name": "学术检索",
+        "description": "优先学术数据库、出版商和会议/高校口径，适合 EI/SCI/Scopus、投稿、收录和认定要求。",
+        "profile": "china",
+        "scope": "academic",
+        "scopes": ["academic", "tech_dev", "business"],
+        "sites": ["elsevier.com", "engineeringvillage.com", "ieee.org", "cnki.net", "xueshu.baidu.com"],
+        "limit": DEFAULT_RESEARCH_LIMIT,
+        "read_top": 3,
+        "max_read_chars": 3200,
+        "guidance": ["把数据库官方说明、出版商/会议要求、高校或单位认定口径和经验帖分开写，不要混成单一标准。"],
+    },
     "finance": {
         "name": "财经研究",
         "description": "优先财经与资本市场信源，适合公司、股票、市场和宏观金融。",
@@ -211,6 +356,54 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "read_top": 3,
         "max_read_chars": 2800,
         "guidance": ["注意地方口径、区域边界和政策适用范围。"],
+    },
+    "global_policy": {
+        "name": "英文政策监管",
+        "description": "优先英文官方、监管机构、标准组织和主流新闻，适合政策、法规、合规和标准核验。",
+        "profile": "english",
+        "scope": "global_official",
+        "scopes": ["global_official", "global_news"],
+        "sites": [],
+        "limit": DEFAULT_RESEARCH_LIMIT,
+        "read_top": 3,
+        "max_read_chars": 3200,
+        "guidance": ["优先引用官方/监管/标准组织原文，新闻和分析只作为背景。"],
+    },
+    "company": {
+        "name": "英文公司与产品",
+        "description": "优先公司官网、官方文档、发布说明、价格页、状态页和开发者资料。",
+        "profile": "english",
+        "scope": "company_primary",
+        "scopes": ["company_primary", "developer", "global_news"],
+        "sites": [],
+        "limit": DEFAULT_RESEARCH_LIMIT,
+        "read_top": 3,
+        "max_read_chars": 3200,
+        "guidance": ["把公司一手资料、媒体转述、社区反馈和测评样本分开写。"],
+    },
+    "global_reputation": {
+        "name": "英文口碑样本",
+        "description": "优先 Reddit、Hacker News、G2、Trustpilot 等公开社区和评价样本。",
+        "profile": "english",
+        "scope": "community_sample",
+        "scopes": ["community_sample", "market_review", "global_news", "company_primary"],
+        "sites": ["reddit.com", "news.ycombinator.com", "g2.com", "trustpilot.com"],
+        "limit": DEFAULT_RESEARCH_LIMIT,
+        "read_top": 1,
+        "max_read_chars": 2400,
+        "guidance": ["英文口碑材料偏样本线索，注意商业激励、平台偏差和幸存者偏差。"],
+    },
+    "global_industry": {
+        "name": "英文产业分析",
+        "description": "优先产业分析、主流新闻和公司一手资料，适合市场结构、竞品和趋势研究。",
+        "profile": "english",
+        "scope": "industry_analysis",
+        "scopes": ["industry_analysis", "global_news", "company_primary", "community_sample"],
+        "sites": [],
+        "limit": DEFAULT_RESEARCH_LIMIT,
+        "read_top": 3,
+        "max_read_chars": 3000,
+        "guidance": ["区分事实、分析、预测和商业立场；关键事实回到公司或官方一手来源核验。"],
     },
 }
 
@@ -319,6 +512,15 @@ def backend_order(
     return order
 
 
+def resolve_query_profile(query: str, profile: str | None = None) -> str | None:
+    """Keep English expansion opt-in while preserving China defaults for CJK queries."""
+    if profile:
+        return profile
+    if _contains_cjk(query):
+        return "china"
+    return profile
+
+
 def cache_dir() -> Path:
     """Return the Guanlan cache directory."""
     return Path.home() / ".guanlan" / "cache"
@@ -387,6 +589,7 @@ def search_web(
     query = original_query
     if not original_query:
         raise ValueError("query is required")
+    profile = resolve_query_profile(original_query, profile)
     recency = detect_recency_intent(original_query)
     quality = detect_search_quality_profile(original_query, scope=scope, site=site, profile=profile)
     route_plan = build_route_plan(
@@ -456,25 +659,53 @@ def search_web(
     errors: list[str] = []
     results: list[SearchResult] = []
     order = backend_order(backend, profile, site=site, query=original_query)
+    backend_diagnostics: list[dict[str, Any]] = []
     for name in order:
+        attempt: dict[str, Any] = {
+            "backend": name,
+            "status": "unknown",
+            "result_count": 0,
+            "error": "",
+            "note": "",
+        }
         try:
+            batch: list[SearchResult]
             if name == "duckduckgo":
-                results.extend(_search_duckduckgo(query, limit=limit))
+                batch = _search_duckduckgo(query, limit=limit)
             elif name == "bing":
-                results.extend(_search_bing(query, limit=limit))
+                batch = _search_bing(query, limit=limit)
             elif name == "baidu":
-                results.extend(_search_baidu(query, limit=limit))
+                batch = _search_baidu(query, limit=limit)
             elif name == "wechat-sogou":
                 if backend == "auto" and len(_dedupe_results(results)) >= limit:
+                    attempt.update(
+                        {
+                            "status": "skipped",
+                            "note": "已有足够候选，跳过高摩擦微信公众号后端。",
+                        }
+                    )
                     continue
-                results.extend(_search_wechat_sogou(original_query, limit=limit))
+                batch = _search_wechat_sogou(original_query, limit=limit)
             elif name.startswith("plugin:"):
-                results.extend(_search_plugin_backend(name, query, limit=limit))
+                batch = _search_plugin_backend(name, query, limit=limit)
             else:
                 raise ValueError(f"unknown backend: {name}")
+            attempt["result_count"] = len(batch)
+            attempt["status"] = "ok" if batch else _zero_result_backend_status(name)
+            if not batch:
+                attempt["note"] = _zero_result_backend_note(name)
+            results.extend(batch)
         except Exception as e:
             errors.append(f"{name}: {e}")
-            continue
+            attempt.update(
+                {
+                    "status": _exception_backend_status(str(e)),
+                    "error": str(e),
+                    "note": _backend_error_note(name, str(e)),
+                }
+            )
+        finally:
+            backend_diagnostics.append(attempt)
 
     if not results and errors:
         fatal_errors = [
@@ -484,6 +715,15 @@ def search_web(
         ]
         if fatal_errors:
             raise RuntimeError("; ".join(fatal_errors))
+    backend_summary = _backend_diagnostic_summary(backend_diagnostics)
+    backend_recovery = build_search_recovery_plan(
+        original_query,
+        diagnostics=backend_diagnostics,
+        route_plan=route_plan.to_dict(),
+        profile=profile,
+        backend=backend,
+        limit=limit,
+    )
     ranked = rank_results(
         results,
         query=original_query,
@@ -509,6 +749,9 @@ def search_web(
                 "query_strategy": query_strategy,
                 "query_quality": quality,
                 "quality_summary": quality_summary,
+                "backend_diagnostics": backend_diagnostics,
+                "backend_summary": backend_summary,
+                "backend_recovery": backend_recovery,
                 "errors": list(errors),
             }
         )
@@ -569,6 +812,178 @@ def rank_results(
     return ranked
 
 
+def _zero_result_backend_status(backend: str) -> str:
+    if backend in {"baidu", "bing"}:
+        return "parser_miss"
+    if backend == "duckduckgo":
+        return "no_results_or_parser_miss"
+    return "no_results"
+
+
+def _zero_result_backend_note(backend: str) -> str:
+    notes = {
+        "baidu": "Baidu 页面可访问但结果解析器未抓到条目；这通常意味着 HTML 结构/区域化模板变了，应视为解析器待修而非没有资料。",
+        "bing": "Bing 页面可访问但结果解析器未抓到条目；这通常意味着 HTML 结构/区域化模板变了，应视为解析器待修而非没有资料。",
+        "duckduckgo": "DuckDuckGo 未产出结果；可能是无结果、结构变化或查询限制过窄，建议换 query 或补充 scope/site。",
+        "wechat-sogou": "WechatSogou 返回 0 条结果，可能是验证码、关键词过窄或库版本不兼容。",
+    }
+    return notes.get(backend, "该后端未产出结果。")
+
+
+def _exception_backend_status(error: str) -> str:
+    lowered = error.lower()
+    if "captcha" in lowered or "verification" in lowered or "安全验证" in error or "验证码" in error:
+        return "blocked"
+    return "error"
+
+
+def _backend_error_note(backend: str, error: str) -> str:
+    lowered = error.lower()
+    if "captcha" in lowered or "verification" in lowered or "安全验证" in error or "验证码" in error:
+        return f"{backend} 疑似触发验证/反爬；不要把它当作无相关资料，应改用其他后端或 scope 补搜。"
+    if "timed out" in lowered or "timeout" in lowered:
+        return f"{backend} 请求超时；建议稍后重试或降低并发。"
+    if "http error 403" in lowered or "forbidden" in lowered:
+        return f"{backend} 返回访问拒绝；建议换后端或用站点定向。"
+    return f"{backend} 后端异常；保留后续后端兜底结果。"
+
+
+def _backend_diagnostic_summary(diagnostics: list[dict[str, Any]]) -> dict[str, Any]:
+    ok = [item["backend"] for item in diagnostics if item.get("status") == "ok"]
+    parser_miss = [item["backend"] for item in diagnostics if item.get("status") == "parser_miss"]
+    zero_results = [
+        item["backend"]
+        for item in diagnostics
+        if item.get("status") in {"no_results", "no_results_or_parser_miss"}
+    ]
+    blocked = [item["backend"] for item in diagnostics if item.get("status") == "blocked"]
+    errors = [item["backend"] for item in diagnostics if item.get("status") == "error"]
+    first_ok_index = next((idx for idx, item in enumerate(diagnostics) if item.get("status") == "ok"), None)
+    fallback_used = bool(
+        first_ok_index is not None
+        and any(
+            item.get("status") in {"parser_miss", "no_results", "no_results_or_parser_miss", "blocked", "error"}
+            for item in diagnostics[:first_ok_index]
+        )
+    )
+    return {
+        "ok": ok,
+        "parser_miss": parser_miss,
+        "zero_results": zero_results,
+        "blocked": blocked,
+        "errors": errors,
+        "fallback_used": fallback_used,
+        "primary_backend": diagnostics[0]["backend"] if diagnostics else "",
+        "primary_status": diagnostics[0]["status"] if diagnostics else "",
+    }
+
+
+def build_search_recovery_plan(
+    query: str,
+    *,
+    diagnostics: list[dict[str, Any]],
+    route_plan: dict[str, Any] | None = None,
+    profile: str | None = None,
+    backend: str = "auto",
+    limit: int = DEFAULT_SEARCH_LIMIT,
+) -> dict[str, Any]:
+    """Build agent-facing recovery guidance for degraded search backends."""
+    if not diagnostics:
+        return {}
+    route_plan = route_plan or {}
+    problem_statuses = {"parser_miss", "no_results", "no_results_or_parser_miss", "blocked", "error"}
+    problems = [item for item in diagnostics if item.get("status") in problem_statuses]
+    ok_backends = [str(item.get("backend")) for item in diagnostics if item.get("status") == "ok"]
+    if not problems:
+        return {
+            "status": "ok",
+            "active_backends": ok_backends,
+            "auto_downgrade": False,
+            "guidance": ["所有搜索后端均产出可用候选，无需恢复动作。"],
+            "followup_commands": [],
+        }
+
+    first_ok_index = next((idx for idx, item in enumerate(diagnostics) if item.get("status") == "ok"), None)
+    auto_downgrade = bool(
+        first_ok_index is not None
+        and any(item.get("status") in problem_statuses for item in diagnostics[:first_ok_index])
+    )
+    blocked = [str(item.get("backend")) for item in problems if item.get("status") == "blocked"]
+    parser_miss = [str(item.get("backend")) for item in problems if item.get("status") == "parser_miss"]
+    errors = [str(item.get("backend")) for item in problems if item.get("status") == "error"]
+
+    guidance: list[str] = []
+    if "baidu" in blocked:
+        guidance.append("Baidu 当前被安全验证/反爬拦截；不要自动重试或尝试破解验证码，把它当作本轮不可用。")
+    if parser_miss:
+        guidance.append(f"{', '.join(parser_miss)} 页面可访问但解析器未抓到结果，应视为解析器/模板问题而非资料不存在。")
+    if auto_downgrade and ok_backends:
+        guidance.append(f"已自动降级到 {', '.join(ok_backends)}，当前结果仍可继续使用，但应补充定向信源核验。")
+    if errors and not ok_backends:
+        guidance.append(f"{', '.join(errors)} 后端异常，建议稍后重试或改用可选搜索服务。")
+
+    commands = _search_recovery_commands(
+        query,
+        route_plan=route_plan,
+        profile=profile,
+        ok_backends=ok_backends,
+        limit=limit,
+    )
+    return {
+        "status": "degraded" if ok_backends else "failed",
+        "active_backends": ok_backends,
+        "blocked_backends": blocked,
+        "parser_miss_backends": parser_miss,
+        "error_backends": errors,
+        "auto_downgrade": auto_downgrade,
+        "guidance": _unique_keep_order(guidance),
+        "followup_commands": commands,
+    }
+
+
+def _search_recovery_commands(
+    query: str,
+    *,
+    route_plan: dict[str, Any],
+    profile: str | None,
+    ok_backends: list[str],
+    limit: int,
+) -> list[str]:
+    quoted = _shell_quote_for_command(query)
+    profile_part = f" --profile {profile}" if profile in {"china", "english", "hybrid"} else ""
+    command_limit = max(limit, 50)
+    commands: list[str] = []
+    for backend_name in ("bing", "duckduckgo"):
+        if backend_name in ok_backends:
+            commands.append(f"guanlan search {quoted}{profile_part} --backend {backend_name} --limit {command_limit} --trace")
+            break
+    for scope_id in route_plan.get("preferred_scopes") or []:
+        if scope_id:
+            commands.append(f"guanlan search {quoted}{profile_part} --scope {scope_id} --limit {command_limit} --trace")
+        if len(commands) >= 3:
+            break
+    for command in route_plan.get("recommended_commands") or []:
+        commands.append(str(command))
+        if len(commands) >= 4:
+            break
+    if not any("guanlan research" in command for command in commands):
+        commands.append(f"guanlan research {quoted}{profile_part} --limit {command_limit} --read-top 0")
+    return _unique_keep_order(commands)[:5]
+
+
+def _shell_quote_for_command(value: str) -> str:
+    escaped = (value or "").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _raise_for_search_block(page: str, backend: str) -> None:
+    markers = _SEARCH_BLOCK_MARKERS.get(backend, ())
+    page_lower = page.lower()
+    for marker in markers:
+        if marker.lower() in page_lower:
+            raise RuntimeError(f"captcha_or_verification: {marker}")
+
+
 def _search_duckduckgo(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchResult]:
     url = "https://duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
     req = urllib.request.Request(
@@ -580,6 +995,7 @@ def _search_duckduckgo(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[Se
     )
     with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
         page = resp.read().decode("utf-8", errors="replace")
+    _raise_for_search_block(page, "duckduckgo")
 
     parser = _DuckDuckGoHTMLParser()
     parser.feed(page)
@@ -597,6 +1013,7 @@ def _search_bing(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchRe
     )
     with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
         page = resp.read().decode("utf-8", errors="replace")
+    _raise_for_search_block(page, "bing")
 
     results: list[SearchResult] = []
     for block in re.findall(r'<li class="b_algo".*?</li>', page, flags=re.S):
@@ -634,6 +1051,7 @@ def _search_baidu(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchR
     )
     with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
         page = resp.read().decode("utf-8", errors="replace")
+    _raise_for_search_block(page, "baidu")
 
     results: list[SearchResult] = []
     blocks = re.findall(r'<div class="result c-container.*?(?=<div class="result c-container|\Z)', page, flags=re.S)
@@ -1287,11 +1705,12 @@ def build_research_packet(
     preset_config = resolve_research_preset(preset)
     effective_limit = max(limit if limit is not None else preset_config["limit"], 1)
     effective_profile = profile or preset_config["profile"]
+    preset_config = _research_preset_for_profile(preset_config, effective_profile)
     explicit_scope = scope if scope not in (None, "") else None
     explicit_sites = _normalize_sites(([site] if site else []) + (sites or []))
     route_plan = build_route_plan(
         query,
-        preset=preset_config["id"],
+        preset=_route_preset_for_profile(preset_config["id"], effective_profile),
         scope=explicit_scope,
         site=site,
         sites=explicit_sites,
@@ -1723,6 +2142,85 @@ def _research_scopes(
     return [primary] if primary else []
 
 
+def _research_preset_for_profile(preset_config: dict[str, Any], profile: str | None) -> dict[str, Any]:
+    """Adapt legacy China presets to the English source map when requested."""
+    if profile != "english":
+        return preset_config
+    preset_id = str(preset_config.get("id") or "")
+    replacements: dict[str, dict[str, Any]] = {
+        "policy": {
+            "scope": "global_official",
+            "scopes": ["global_official", "global_news"],
+            "sites": [],
+            "guidance": ["优先英文官方/监管/标准组织原文，新闻报道只作为背景。"],
+        },
+        "official": {
+            "scope": "global_official",
+            "scopes": ["global_official", "global_news"],
+            "sites": [],
+            "guidance": ["优先英文官方、监管机构、标准组织或公司一手声明。"],
+        },
+        "industry": {
+            "scope": "industry_analysis",
+            "scopes": ["industry_analysis", "global_news", "company_primary"],
+            "sites": [],
+            "guidance": ["英文产业研究需区分事实、分析、预测和商业立场。"],
+        },
+        "ecommerce": {
+            "scope": "industry_analysis",
+            "scopes": ["industry_analysis", "global_news", "company_primary", "market_review"],
+            "sites": [],
+            "guidance": ["英文电商/零售问题优先公司、主流新闻、产业分析和评价样本交叉验证。"],
+        },
+        "reputation": {
+            "scope": "community_sample",
+            "scopes": ["community_sample", "market_review", "global_news", "company_primary"],
+            "sites": ["reddit.com", "news.ycombinator.com", "g2.com", "trustpilot.com"],
+            "guidance": ["英文口碑材料偏样本线索，不要直接代表总体比例。"],
+        },
+        "tech": {
+            "scope": "developer",
+            "scopes": ["developer", "company_primary", "community_sample"],
+            "sites": ["github.com", "stackoverflow.com", "docs.github.com"],
+            "guidance": ["优先官方文档、代码仓库、release notes、issue 和可复现开发者反馈。"],
+        },
+        "finance": {
+            "scope": "global_official",
+            "scopes": ["global_official", "global_news", "company_primary", "industry_analysis"],
+            "sites": ["sec.gov", "reuters.com", "bloomberg.com"],
+            "guidance": ["英文财经问题注意时效和风险，优先公告、监管文件、财报和主流财经报道。"],
+        },
+        "local": {
+            "scope": "global_official",
+            "scopes": ["global_official", "global_news"],
+            "sites": [],
+            "guidance": ["英文地域/公共政策问题优先对应政府、监管或公共机构原文。"],
+        },
+    }
+    replacement = replacements.get(preset_id)
+    if not replacement:
+        return preset_config
+    adapted = dict(preset_config)
+    adapted.update(replacement)
+    adapted["profile"] = "english"
+    return adapted
+
+
+def _route_preset_for_profile(preset_id: str, profile: str | None) -> str:
+    if profile != "english":
+        return preset_id
+    mapping = {
+        "policy": "global_policy",
+        "official": "global_policy",
+        "industry": "global_industry",
+        "ecommerce": "global_industry",
+        "reputation": "global_reputation",
+        "finance": "global_policy",
+        "company": "company",
+    }
+    return mapping.get(preset_id, preset_id)
+
+
 def _research_sites(
     preset_config: dict[str, Any],
     site: str | None = None,
@@ -1811,15 +2309,41 @@ def _query_for_research_job(
     if job_type == "scope":
         if target in {"gov", "party_central", "local_official"}:
             role_preferences = ["official_primary", "authoritative_report", "fresh_news"]
+        elif target == "global_official":
+            role_preferences = ["official_primary", "authoritative_report", "fresh_news", "base"]
+        elif target == "company_primary":
+            role_preferences = ["company_primary", "technical_primary", "fresh_news", "base"]
+        elif target == "developer":
+            role_preferences = ["technical_primary", "developer_discussion", "base"]
+        elif target in {"community_sample", "market_review"}:
+            role_preferences = ["user_sample", "review", "fresh_news", "base"]
+        elif target in {"global_news", "industry_analysis"}:
+            role_preferences = ["industry_report", "company_context", "fresh_news", "base"]
         elif target in {"social_web", "tech_dev"}:
             role_preferences = ["user_sample", "developer_discussion", "review"]
         elif target in {"business", "ecommerce", "finance"}:
             role_preferences = ["industry_report", "fresh_news"]
+        elif target == "academic":
+            role_preferences = ["database_official", "publisher_guideline", "institution_policy", "base"]
+        elif target in {"global_official"}:
+            role_preferences = [
+                "standard_original",
+                "regulator_guidance",
+                "clinical_guideline",
+                "official_primary",
+                "base",
+            ]
     elif job_type == "site":
         if any(site in target for site in ("zhihu", "weibo", "xiaohongshu", "bilibili")):
             role_preferences = ["user_sample", "review", "fresh_news"]
         elif any(site in target for site in ("gov.cn", "people", "xinhuanet", "cctv")):
             role_preferences = ["official_primary", "authoritative_report"]
+        elif any(site in target for site in ("reddit", "ycombinator", "g2.com", "trustpilot", "capterra")):
+            role_preferences = ["user_sample", "review", "fresh_news"]
+        elif any(site in target for site in ("github", "stackoverflow", "docs.")):
+            role_preferences = ["technical_primary", "developer_discussion", "base"]
+        elif any(site in target for site in ("openai", "anthropic", "microsoft", "google", "amazon", "meta")):
+            role_preferences = ["company_primary", "technical_primary", "fresh_news"]
     elif job_type == "general":
         role_preferences = ["fresh_news", "base"]
     for role in role_preferences:
@@ -1879,13 +2403,13 @@ def _select_representative_evidence(results: list[dict[str, Any]], select_top: i
         source_type = str(item.get("source_type") or "")
         domain = str(item.get("domain") or "")
         if item.get("topic_role") == "representative":
-            score += 8
+            score += 1.2
         if topic and topic not in seen_topics:
-            score += 6
+            score += 1.0
         if source_type and source_type not in seen_source_types:
-            score += 4
+            score += 0.6
         if domain and domain not in seen_domains:
-            score += 2
+            score += 0.3
         rank = int(item.get("rank") or 9999)
         return score, -rank
 
@@ -2311,6 +2835,7 @@ def build_advisor_view(packet: dict[str, Any], style: str = "brief") -> dict[str
         "stance": "以下内容用于指导 Agent 生成建议：它只约束如何基于当前证据思考，不代表用户真实目的，也不构成最终结论。",
         "briefing": _advisor_briefing(query, preset, source_mix, supports, limits, next_steps, style=style),
         "answer_frame": answer_frame,
+        "natural_guidance": _advisor_natural_guidance(query, preset, source_mix, supports, limits, next_steps, style=style),
         "synthesis_rules": _advisor_synthesis_rules(preset, query, source_mix),
         "suggested_angles": intents,
         "possible_intents": intents,
@@ -2330,6 +2855,7 @@ def format_advisor_markdown(advisor: dict[str, Any]) -> str:
         lines.extend(["", stance])
     sections = [
         ("自然作答骨架", advisor.get("answer_frame") or []),
+        ("自然表达提示", advisor.get("natural_guidance") or []),
         ("给 Agent 的写作规则", advisor.get("synthesis_rules") or []),
         ("可展开的判断方向", advisor.get("suggested_angles") or advisor.get("possible_intents") or []),
         ("当前证据能支持", advisor.get("evidence_supports") or []),
@@ -2358,6 +2884,7 @@ def format_advisor_context(advisor: dict[str, Any]) -> str:
         lines.append("briefing: " + briefing)
     for key, title in (
         ("answer_frame", "自然作答骨架"),
+        ("natural_guidance", "自然表达提示"),
         ("synthesis_rules", "写作规则"),
         ("suggested_angles", "可展开方向"),
         ("evidence_supports", "适合支持"),
@@ -2436,6 +2963,37 @@ def _advisor_answer_frame(
     if next_steps:
         frame.append(f"结尾给一个可执行动作：{next_steps[0]}。")
     return frame[:5]
+
+
+def _advisor_natural_guidance(
+    query: str,
+    preset: str,
+    source_mix: dict[str, int],
+    supports: list[str],
+    limits: list[str],
+    next_steps: list[str],
+    style: str = "brief",
+) -> list[str]:
+    """Return short, non-final phrasing hints for the calling agent."""
+    angle = _advisor_primary_angle(preset, query)
+    source_phrase = _advisor_source_phrase(source_mix)
+    lead_map = {
+        "brief": f"可以用一句话先定调：这是一份关于“{angle}”的初步观察，不是全网结论。",
+        "decision": f"可以先把选择摆出来：现在更适合继续核验、谨慎推进，还是先暂停，取决于“{angle}”里哪些证据最硬。",
+        "risk": f"可以先提醒误判风险：当前材料能帮助看见“{angle}”，但不能替代权威核验或完整样本。",
+        "strategy": f"可以按“现状-机会-风险-下一步”写，让“{angle}”从材料堆变成行动路线。",
+    }
+    hints = [
+        lead_map.get(style, lead_map["brief"]),
+        f"写来源结构时不要说“网上都说”，改成“当前样本{source_phrase}”。",
+    ]
+    if supports:
+        hints.append(f"能展开的部分优先围绕：{supports[0]}。")
+    if limits:
+        hints.append(f"必须顺手交代边界：{limits[0]}。")
+    if next_steps:
+        hints.append(f"结尾不要空泛，可以落到：{next_steps[0]}。")
+    return _unique_keep_order(hints)[:5]
 
 
 def _advisor_source_phrase(source_mix: dict[str, int]) -> str:
@@ -2876,6 +3434,50 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
     quality_summary = (results[0].get("trace") or {}).get("quality_summary") or {}
     route_plan = (results[0].get("trace") or {}).get("route_plan") or {}
     query_strategy = (results[0].get("trace") or {}).get("query_strategy") or {}
+    backend_diagnostics = (results[0].get("trace") or {}).get("backend_diagnostics") or []
+    backend_summary = (results[0].get("trace") or {}).get("backend_summary") or {}
+    backend_recovery = (results[0].get("trace") or {}).get("backend_recovery") or {}
+    if backend_diagnostics:
+        parts = []
+        for item in backend_diagnostics:
+            backend_name = item.get("backend", "")
+            status = item.get("status", "")
+            count = item.get("result_count", 0)
+            if status == "ok":
+                parts.append(f"{backend_name}=ok({count})")
+            elif status == "parser_miss":
+                parts.append(f"{backend_name}=parser_miss")
+            elif status == "no_results_or_parser_miss":
+                parts.append(f"{backend_name}=no_results_or_parser_miss")
+            elif status == "no_results":
+                parts.append(f"{backend_name}=no_results")
+            elif status == "blocked":
+                parts.append(f"{backend_name}=blocked")
+            elif status == "error":
+                parts.append(f"{backend_name}=error")
+            elif status == "skipped":
+                parts.append(f"{backend_name}=skipped")
+            else:
+                parts.append(f"{backend_name}={status or 'unknown'}")
+        lines.append("- backend_status: " + ", ".join(parts))
+        if backend_summary.get("fallback_used"):
+            lines.append("  backend_warning: 前置后端未产出有效结果，当前结果依赖后续后端兜底。")
+        for item in backend_diagnostics:
+            note = str(item.get("note") or "")
+            if note and item.get("status") in {"parser_miss", "no_results", "no_results_or_parser_miss", "blocked", "error"}:
+                lines.append(f"  backend_note:{item.get('backend')} => {note}")
+    if backend_recovery and backend_recovery.get("status") != "ok":
+        active = ",".join(backend_recovery.get("active_backends") or []) or "none"
+        lines.append(
+            "- backend_recovery: "
+            f"status={backend_recovery.get('status', 'unknown')} "
+            f"auto_downgrade={backend_recovery.get('auto_downgrade', False)} "
+            f"active={active}"
+        )
+        for item in backend_recovery.get("guidance") or []:
+            lines.append(f"  recovery: {item}")
+        for command in backend_recovery.get("followup_commands") or []:
+            lines.append(f"  followup: `{command}`")
     if route_plan:
         lines.append(
             "- route_plan: "
@@ -3024,6 +3626,8 @@ def detect_search_quality_profile(
     preferred_source_types = list(data.get("preferred_source_types", []))
     if profile == "china" and intent == "general":
         reasons.append("profile:china")
+    if profile == "english" and intent == "general":
+        reasons.append("profile:english")
     if site:
         reasons.append(f"site:{site}")
 
@@ -3150,12 +3754,20 @@ def _source_gap_suggestion(
 
 def _role_gap_suggestion(role: str) -> str:
     mapping = {
-        "official_primary": "缺少官方原文/主管部门口径，建议补搜 `--scope gov` 或 `--scope party_central`。",
+        "official_primary": "缺少官方原文/主管部门口径，建议补搜 `--scope gov`、`--scope party_central` 或 `--scope global_official`。",
         "authoritative_report": "缺少权威报道，建议补搜党央媒或核心地方官媒。",
         "user_sample": "缺少公开用户样本，建议补搜知乎、微博、小红书、B站等公开页，并标明样本偏差。",
         "industry_report": "缺少产业/垂类材料，建议补搜商业媒体、电商垂类或行业报告。",
         "fresh_news": "缺少近期材料，建议加入最近/今日/本周等时效词并开启 trace 核对时间线。",
         "developer_discussion": "缺少开发者实践反馈，建议补搜 GitHub、V2EX、掘金或技术社区。",
+        "company_primary": "缺少公司一手资料，建议补搜 `--scope company_primary` 或官方文档/价格/发布说明。",
+        "technical_primary": "缺少技术一手资料，建议补搜 `--scope developer`、官方文档、GitHub release 或 issue。",
+        "review": "缺少评价样本，建议补搜 Reddit、Hacker News、G2、Trustpilot 等公开样本并说明偏差。",
+        "standard_original": "缺少标准原文/标准组织材料，建议补搜 `--scope global_official` 或指定 ISO/IEC/NIST 等站点。",
+        "regulator_guidance": "缺少监管解释或主管机构材料，建议补搜 `--scope gov` 或 `--scope global_official`。",
+        "clinical_guideline": "缺少临床指南/专业机构材料，建议补搜 WHO、CDC、FDA、卫健委或学术数据库。",
+        "statute_original": "缺少法律条文原文，建议补搜 `--scope gov` 或指定人大、法院、司法部等站点。",
+        "case_record": "缺少案例/裁判文书材料，建议补搜法院、裁判文书或权威法律数据库。",
     }
     return mapping.get(role, f"缺少 `{role}` 角色证据，建议补充对应信源后再下判断。")
 
@@ -3279,13 +3891,38 @@ def build_query_strategy(
     if {"policy", "official_position", "local"} & set(intents):
         add("official_primary", f"{clean_query} 官方 原文 通知", "政策/官方问题先找一手口径")
         add("authoritative_report", f"{clean_query} 人民日报 新华社 央视", "补党央媒与权威报道")
+    if "global_policy" in intents:
+        add("official_primary", f"{clean_query} official regulation standard primary source", "英文政策/监管问题先找官方或标准组织原文")
+        add("authoritative_report", f"{clean_query} Reuters AP BBC analysis timeline", "补主流新闻时间线和背景")
+    if "company_primary" in intents:
+        add("company_primary", f"{clean_query} official docs pricing release notes", "公司/产品问题优先找一手资料")
+        add("technical_primary", f"{clean_query} github changelog status documentation", "补开发者文档、release 和状态页")
     if {"reputation", "purchase_advice"} & set(intents):
         add("user_sample", f"{clean_query} 用户评价 吐槽 体验", "口碑问题先找用户样本语言")
         add("review", f"{clean_query} 测评 优缺点 值不值得买", "补评测和购买决策材料")
+    if "global_reputation" in intents:
+        add("user_sample", f"{clean_query} reddit hacker news user review complaints", "英文口碑问题先找公开社区样本")
+        add("review", f"{clean_query} G2 Trustpilot Capterra review", "补评价站点样本并标注偏差")
     if {"industry", "ecommerce", "finance"} & set(intents):
         add("industry_report", f"{clean_query} 行业 趋势 公司 案例", "产业/商业问题补行业材料")
+    if "global_industry" in intents:
+        add("industry_report", f"{clean_query} market analysis competitive landscape analyst report", "英文产业问题补分析和市场结构材料")
+        add("company_context", f"{clean_query} investor relations annual report official", "补公司一手资料和投资者关系材料")
     if "tech" in intents:
         add("developer_discussion", f"{clean_query} github issue benchmark 开源", "技术问题补开发者与可复现线索")
+    if "academic" in intents:
+        add("database_official", f"{clean_query} Compendex Engineering Village Elsevier official", "学术检索问题先找数据库/出版商口径")
+        add("publisher_guideline", f"{clean_query} CFP author guidelines proceedings", "补会议 CFP、作者指南和论文集要求")
+        add("institution_policy", f"{clean_query} 学校 研究生院 认定 要求", "补国内高校或单位认定口径")
+    if "standards_compliance" in intents:
+        add("standard_original", f"{clean_query} official standard regulator guidance", "标准/合规问题先找标准组织或监管原文")
+        add("implementation_context", f"{clean_query} implementation checklist audit requirement", "补实施和审计语境，但不替代原文")
+    if "medical_health" in intents:
+        add("clinical_guideline", f"{clean_query} clinical guideline regulator official", "医疗健康问题先找指南、监管和专业机构")
+        add("peer_review", f"{clean_query} systematic review clinical evidence", "补同行评议或综述证据")
+    if "legal_judicial" in intents:
+        add("statute_original", f"{clean_query} 法律 条文 司法解释 官方", "法律问题先找条文和司法解释")
+        add("case_record", f"{clean_query} 裁判文书 案例 法院", "补裁判文书或案例材料")
     if recency.get("enabled") or "hot_trend" in intents:
         add("fresh_news", _apply_recency_query(f"{clean_query} 最新 进展", recency), "近期/热点问题收束时间窗口")
     if roles and len(variants) == 1:
@@ -3416,17 +4053,19 @@ def _infer_evidence_role(
     source_type = str(item.source_type or "")
     title_blob = f"{item.title} {item.snippet}".lower()
     route_roles = {str(role) for role in (quality or {}).get("route_evidence_roles") or []}
-    if scope == "gov" or "primary_source" in roles or "regulation" in roles or "notice" in roles:
+    if scope in {"gov", "global_official"} or "primary_source" in roles or "regulation" in roles or "notice" in roles:
         return "official_primary"
     if scope in {"party_central", "local_official"} or "authoritative_report" in roles:
         return "authoritative_report"
-    if "source_code" in roles or "release" in roles:
+    if scope == "company_primary" or roles & {"official_specs", "pricing", "company_statement"}:
+        return "company_primary"
+    if "source_code" in roles or "release" in roles or "documentation" in roles:
         return "technical_primary"
-    if roles & {"practice", "discussion", "technical_note", "issue"}:
+    if roles & {"practice", "discussion", "technical_note", "issue", "developer_discussion"}:
         return "developer_discussion"
     if roles & {"user_sample", "public_discussion", "consumer_note", "social_post", "question_answer"}:
         return "user_sample"
-    if roles & {"vertical_report", "report", "analysis", "case", "market_news", "filing_context"}:
+    if roles & {"vertical_report", "report", "analysis", "case", "market_news", "filing_context", "market_context"}:
         return "market_context" if "finance" in fit_tags else "industry_report"
     if "fresh_news" in route_roles or re.search(r"最新|今日|今天|刚刚|发布|快讯|热榜|热点", title_blob):
         return "fresh_news"
@@ -3436,6 +4075,10 @@ def _infer_evidence_role(
         return "authoritative_report"
     if "社交" in source_type:
         return "user_sample"
+    if "英文社区" in source_type or "评价/消费" in source_type:
+        return "user_sample"
+    if "公司一手" in source_type:
+        return "company_primary"
     return "open_web_context"
 
 
@@ -3582,9 +4225,9 @@ def _score_result_parts(
     authority_score = float(source_card.get("authority_score") or 0.0)
     sample_value = float(source_card.get("sample_value") or 0.0)
     freshness_value = float(source_card.get("freshness_value") or 0.0)
-    if route_intents & {"policy", "official_position", "local", "finance"}:
+    if route_intents & {"policy", "official_position", "local", "finance", "global_policy", "company_primary"}:
         parts["authority_fit"] = authority_score * 0.45
-    if route_intents & {"reputation", "purchase_advice", "tech"}:
+    if route_intents & {"reputation", "global_reputation", "purchase_advice", "tech"}:
         parts["sample_fit"] = sample_value * 0.42
     if route_intents & {"hot_trend"} or (recency and recency.get("enabled")):
         parts["freshness_fit"] = freshness_value * 0.32
@@ -3592,7 +4235,7 @@ def _score_result_parts(
         parts["intent_fit"] += 0.18
     if risk_tags & {"soft_article", "sponsored_content", "seo_content", "commercial_content"}:
         parts["source_risk_penalty"] -= 0.18
-    if risk_tags & {"sample_bias", "not_representative"} and route_intents & {"policy", "finance"}:
+    if risk_tags & {"sample_bias", "not_representative"} and route_intents & {"policy", "global_policy", "finance"}:
         parts["source_risk_penalty"] -= 0.22
     title_text = (item.title + " " + item.snippet).lower()
     terms = [t.lower() for t in re.split(r"\s+", query) if t and not t.startswith("site:")]
@@ -3615,6 +4258,8 @@ def _score_result_parts(
         parts["language_mismatch_penalty"] = -0.75
     if _is_low_relevance_ai_noise(item, query):
         parts["semantic_noise_penalty"] = -1.4
+    if _is_low_relevance_academic_noise(item, query, quality):
+        parts["semantic_noise_penalty"] = min(parts["semantic_noise_penalty"], -2.0)
     if recency and recency.get("enabled"):
         metrics = _result_recency_metrics(item, recency)
         if metrics["result_date"] and metrics["age_days"] is not None:
@@ -3681,15 +4326,99 @@ def _is_low_relevance_ai_noise(item: SearchResult, query: str) -> bool:
     return has_calendar_signal and not has_ai_signal
 
 
+def _is_low_relevance_academic_noise(
+    item: SearchResult,
+    query: str,
+    quality: dict[str, Any] | None = None,
+) -> bool:
+    """Penalize lexical EI noise when the query is about academic indexing."""
+    combined_query = _collapse_ws(query).lower()
+    quality = quality or {}
+    is_academic = "academic" in str(quality.get("intent") or "")
+    academic_query_terms = (
+        "ei会议",
+        "ei 会议",
+        "ei检索",
+        "ei 检索",
+        "compendex",
+        "scopus",
+        "学术会议",
+        "投稿",
+        "收录",
+        "论文",
+        "conference",
+        "proceedings",
+    )
+    if not (is_academic or any(term in combined_query for term in academic_query_terms)):
+        return False
+    title_snippet = _collapse_ws(f"{item.title} {item.snippet}").lower()
+    noisy_phrases = (
+        "exponential integral",
+        "e^i",
+        "e^{i",
+        "'ie' or 'ei'",
+        "spelling- 'ie'",
+        "esl worksheet",
+    )
+    if any(phrase in title_snippet for phrase in noisy_phrases):
+        return True
+    domain = item.domain or _domain(item.url)
+    if domain.endswith(("math.stackexchange.com", "usingenglish.com")):
+        strong_academic_terms = (
+            "engineering index",
+            "compendex",
+            "scopus",
+            "conference",
+            "proceedings",
+            "paper",
+            "journal",
+            "会议",
+            "检索",
+            "收录",
+            "论文",
+            "投稿",
+            "期刊",
+            "审稿",
+        )
+        return not any(term in title_snippet for term in strong_academic_terms)
+    academic_result_terms = (
+        "ei",
+        "engineering index",
+        "compendex",
+        "scopus",
+        "conference",
+        "proceedings",
+        "paper",
+        "journal",
+        "会议",
+        "检索",
+        "收录",
+        "论文",
+        "投稿",
+        "期刊",
+        "审稿",
+    )
+    if any(term in title_snippet for term in academic_result_terms):
+        return False
+    return False
+
+
 def _source_quality_weight(source_type: str) -> float:
     weights = {
         "政府/部委": 0.35,
         "党央媒": 0.35,
+        "英文官方/监管": 0.35,
+        "公司一手资料": 0.3,
         "地方官媒": 0.24,
+        "国际主流媒体": 0.22,
         "财经/资本市场": 0.2,
+        "英文开发者/开源": 0.18,
+        "英文产业/分析": 0.16,
         "电商/零售垂类": 0.16,
         "商业/产业媒体": 0.14,
         "科技/开发者社区": 0.12,
+        "评价/消费样本": 0.06,
+        "英文社区样本": 0.05,
         "社交/内容平台": 0.04,
         "通用网页": 0.0,
     }
@@ -4015,8 +4744,57 @@ def _extract_article_text(raw: str) -> str:
         seen.add(key)
         lines.append(line)
     if not lines:
-        return _strip_tags(raw)
-    return "\n\n".join(lines)
+        return _extract_density_text(raw) or _strip_tags(raw)
+    text = "\n\n".join(lines)
+    density_text = _extract_density_text(raw)
+    if density_text and _text_body_score(density_text) > _text_body_score(text) * 1.15:
+        return density_text
+    return text
+
+
+def _extract_density_text(raw: str) -> str:
+    """Fallback extractor based on paragraph density for irregular Chinese pages."""
+    body = re.sub(r"<!--.*?-->", " ", raw or "", flags=re.S)
+    body = re.sub(r"<(script|style|noscript|svg|canvas|iframe|form)[^>]*>.*?</\1>", " ", body, flags=re.S | re.I)
+    blocks: list[str] = []
+    for match in re.finditer(r"<(h[1-3]|p|li|blockquote)\b[^>]*>(.*?)</\1>", body, flags=re.S | re.I):
+        text = _collapse_ws(_strip_tags(match.group(2)))
+        if _is_noise_content_line(text):
+            continue
+        if len(text) < 12 and not re.search(r"[\u4e00-\u9fff].{4,}", text):
+            continue
+        blocks.append(text)
+    if not blocks:
+        return ""
+    # Keep the densest contiguous window so sidebars with scattered text do not dominate.
+    best: list[str] = []
+    best_score = -1
+    for start in range(len(blocks)):
+        window: list[str] = []
+        for line in blocks[start : start + 14]:
+            window.append(line)
+            score = _text_body_score("\n".join(window))
+            if score > best_score:
+                best_score = score
+                best = list(window)
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for line in best:
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(line)
+    return "\n\n".join(cleaned)
+
+
+def _text_body_score(text: str) -> float:
+    cjk = len(re.findall(r"[\u4e00-\u9fff]", text or ""))
+    punctuation = len(re.findall(r"[，。；：、！？,.!?]", text or ""))
+    noise = sum(1 for term in ("登录", "注册", "打开APP", "推荐阅读", "相关阅读", "版权声明") if term in (text or ""))
+    lines = [line for line in (text or "").splitlines() if line.strip()]
+    avg_len = len(_collapse_ws(text)) / max(len(lines), 1)
+    return cjk * 2 + punctuation * 8 + avg_len - noise * 80
 
 
 def _extract_html_metadata(raw: str, url: str = "") -> str:

@@ -105,6 +105,52 @@ def run_coverage_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any]:
     }
 
 
+def run_regression_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any]:
+    """Run release regression guards for agent-visible output volume and depth."""
+    mode = mode if mode in {"quick", "live"} else "quick"
+    checks: list[dict[str, Any]] = []
+    checks.extend(run_coverage_checks(mode="quick", limit=limit)["checks"])
+    checks.extend(_check_result_pool_diversity())
+    checks.extend(_check_feed_resilience_contract())
+    checks.extend(_check_read_article_extraction_signal())
+    checks.extend(_check_advisor_adapts_to_task())
+    if mode == "live":
+        checks.extend(_check_live_coverage(limit=limit))
+        checks.extend(_check_live(limit=min(limit, 8)))
+    passed = sum(1 for item in checks if item["status"] == "pass")
+    warned = sum(1 for item in checks if item["status"] == "warn")
+    failed = sum(1 for item in checks if item["status"] == "fail")
+    return {
+        "mode": mode,
+        "summary": {
+            "total": len(checks),
+            "pass": passed,
+            "warn": warned,
+            "fail": failed,
+            "score": round((passed + warned * 0.5) / max(len(checks), 1) * 100, 1),
+        },
+        "checks": checks,
+        "contract": {
+            "principle": "每次更新不得让 Agent 默认拿到的内容大面积变少、变窄或变脏。",
+            "minimum_pool": {
+                "search": 50,
+                "research": 50,
+                "hotnews": 50,
+                "feeds": 80,
+                "read_fallback": 20,
+            },
+            "depth_fields": [
+                "evidence_role",
+                "source_card",
+                "read_quality",
+                "quality_report",
+                "feed_status",
+                "advisor.answer_frame",
+            ],
+        },
+    }
+
+
 def format_quality_report(report: dict[str, Any]) -> str:
     """Render a quality report as Markdown."""
     summary = report.get("summary") or {}
@@ -147,6 +193,28 @@ def format_coverage_report(report: dict[str, Any]) -> str:
         "",
         "## 检查项",
     ]
+    for item in report.get("checks") or []:
+        lines.append(f"- [{item.get('status')}] {item.get('id')}: {item.get('message')}")
+    return "\n".join(lines)
+
+
+def format_regression_report(report: dict[str, Any]) -> str:
+    """Render release regression guard checks as Markdown."""
+    summary = report.get("summary") or {}
+    contract = report.get("contract") or {}
+    lines = [
+        "# 观澜 Release Regression Guard",
+        "",
+        f"- 模式: {report.get('mode', 'quick')}",
+        f"- 总分: {summary.get('score', 0)}",
+        f"- 结果: pass={summary.get('pass', 0)} warn={summary.get('warn', 0)} fail={summary.get('fail', 0)}",
+        f"- 原则: {contract.get('principle', '')}",
+        "",
+        "## 必须保留的深度字段",
+    ]
+    for field in contract.get("depth_fields") or []:
+        lines.append(f"- {field}")
+    lines.extend(["", "## 检查项"])
     for item in report.get("checks") or []:
         lines.append(f"- [{item.get('status')}] {item.get('id')}: {item.get('message')}")
     return "\n".join(lines)
@@ -265,6 +333,101 @@ def _check_archive_metadata_contract() -> list[dict[str, Any]]:
             "dimension": "coverage_guard",
             "status": "pass" if not missing else "fail",
             "message": "metadata keys=" + ",".join(sorted(metadata.keys())),
+        }
+    ]
+
+
+def _check_result_pool_diversity() -> list[dict[str, Any]]:
+    rows = [
+        {"title": "国务院政策原文", "url": "https://www.gov.cn/zhengce/a.htm", "source_type": "政府/部委", "evidence_role": "official_primary"},
+        {"title": "人民网权威报道", "url": "https://people.com.cn/a", "source_type": "党央媒", "evidence_role": "official_amplifier"},
+        {"title": "亿邦动力产业观察", "url": "https://ebrun.com/a", "source_type": "电商/零售垂类", "evidence_role": "industry_signal"},
+        {"title": "知乎用户评价", "url": "https://zhihu.com/question/1", "source_type": "社交/内容平台", "evidence_role": "social_sample"},
+    ]
+    source_types = {str(item.get("source_type")) for item in rows if item.get("source_type")}
+    roles = {str(item.get("evidence_role")) for item in rows if item.get("evidence_role")}
+    return [
+        {
+            "id": "regression_result_pool_keeps_source_diversity",
+            "dimension": "release_regression",
+            "status": "pass" if len(source_types) >= 4 and len(roles) >= 4 else "fail",
+            "message": f"source_types={len(source_types)}, evidence_roles={len(roles)}",
+        }
+    ]
+
+
+def _check_feed_resilience_contract() -> list[dict[str, Any]]:
+    item = {
+        "title": "缓存文章",
+        "url": "https://example.com/a",
+        "source_id": "curated",
+        "risk_tags": ["stale_cache"],
+        "feed_status": {"status": "stale_cache", "stale": True, "error": "timed out"},
+    }
+    ok = item["feed_status"]["status"] == "stale_cache" and "stale_cache" in item["risk_tags"]
+    return [
+        {
+            "id": "regression_feeds_can_mark_stale_cache",
+            "dimension": "release_regression",
+            "status": "pass" if ok else "fail",
+            "message": "feeds should expose stale/cache status instead of failing silently",
+        }
+    ]
+
+
+def _check_read_article_extraction_signal() -> list[dict[str, Any]]:
+    raw = """
+    <html><body><nav>登录 注册 首页</nav><main class="article-content">
+    <h1>政策标题</h1><p>这是第一段正文，包含政策背景、发布主体和适用范围。</p>
+    <p>这是第二段正文，继续说明执行路径、影响对象和后续安排。</p>
+    </main><footer>版权声明 推荐阅读</footer></body></html>
+    """
+    text = webtools._extract_article_text(raw)  # noqa: SLF001 - quality gate intentionally checks extractor behavior.
+    quality = webtools.assess_read_quality(text)
+    report = webtools.build_read_quality_report(text, quality=quality)
+    ok = "登录" not in text and "版权声明" not in text and report.get("body_ratio", 0) >= 0.75
+    return [
+        {
+            "id": "regression_read_keeps_main_body_signal",
+            "dimension": "release_regression",
+            "status": "pass" if ok else "fail",
+            "message": f"body_ratio={report.get('body_ratio')}, noise={quality.get('noise_hits')}",
+        }
+    ]
+
+
+def _check_advisor_adapts_to_task() -> list[dict[str, Any]]:
+    policy_packet = {
+        "query": "低空经济 广东 政策 官方口径",
+        "preset": "policy",
+        "result_count": 6,
+        "topic_count": 3,
+        "source_mix": {"政府/部委": 3, "地方官媒": 2, "党央媒": 1},
+        "results": [{"source_type": "政府/部委", "title": "政策原文"}],
+        "readings": [{"status": "ok", "content": "政策正文" * 80}],
+        "read_top": 1,
+    }
+    reputation_packet = {
+        "query": "某产品 用户评价 值不值得买",
+        "preset": "reputation",
+        "result_count": 8,
+        "topic_count": 4,
+        "source_mix": {"社交/内容平台": 5, "商业/产业媒体": 3},
+        "results": [{"source_type": "社交/内容平台", "title": "用户评价"}],
+        "readings": [],
+        "read_top": 0,
+    }
+    policy = webtools.build_advisor_view(policy_packet, style="risk")
+    reputation = webtools.build_advisor_view(reputation_packet, style="decision")
+    policy_text = json.dumps(policy, ensure_ascii=False)
+    reputation_text = json.dumps(reputation, ensure_ascii=False)
+    ok = "官方口径" in policy_text and "用户" in reputation_text and policy_text != reputation_text
+    return [
+        {
+            "id": "regression_advisor_changes_with_task",
+            "dimension": "release_regression",
+            "status": "pass" if ok else "fail",
+            "message": "advisor should adapt to policy vs reputation tasks",
         }
     ]
 

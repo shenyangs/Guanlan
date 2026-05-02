@@ -34,17 +34,22 @@
 | “观澜能做什么/我该用哪个能力” | `guanlan capabilities` |
 | “查一下/搜一下” | `guanlan search "关键词" --limit 50` |
 | “查中文互联网/国内资料” | `guanlan search "关键词" --profile china --limit 50` |
+| “查英文互联网/全球资料” | `guanlan search "query" --profile english --limit 50` |
 | “查近期/最近/热点/最新进展” | `guanlan search "最近 关键词 热点" --profile china --trace` |
 | “只搜某个网站” | `guanlan search "关键词" --site zhihu.com --limit 50` |
 | “搜微信公众号文章” | `guanlan search "关键词" --site mp.weixin.qq.com --profile china --limit 50`，结果按 best-effort 处理 |
 | “查官方/央媒表述” | `guanlan search "关键词" --profile china --scope party_central` |
 | “查地方官媒/区域政策” | `guanlan search "关键词" --profile china --scope local_official` |
 | “查电商/零售/产业带” | `guanlan search "关键词" --profile china --scope ecommerce` |
+| “查英文公司官网/文档/价格/发布说明” | `guanlan research "OpenAI API pricing release notes" --preset company --profile english` |
+| “查英文政策/监管/标准原文” | `guanlan research "AI regulation NIST standard" --preset global_policy --profile english` |
+| “查英文社区/评价样本” | `guanlan research "Product reviews Reddit G2" --preset global_reputation --profile english --read-top 0` |
 | “我该去哪搜/怎么分信源/该跑哪个命令” | `guanlan route "关键词"`，先看 `recommended_commands` |
 | “帮我查清楚并给依据” | `guanlan research "关键词" --profile china` |
 | “查完后给建议/下一步/可能原因” | `guanlan research "关键词" --profile china --advisor` |
 | “查政策/监管/官方通知” | `guanlan research "关键词" --preset policy` |
 | “查产品口碑/用户评价” | `guanlan research "关键词" --preset reputation` |
+| “查 EI/SCI/Scopus、学术会议、投稿/检索/收录要求” | `guanlan research "关键词" --preset academic --read-top 0` |
 | “查产品口碑并给购买/处理建议” | `guanlan research "关键词" --preset reputation --read-top 0 --advisor` |
 | “指定多个平台查口碑” | `guanlan research "关键词" --preset reputation --sites zhihu.com,weibo.com,xiaohongshu.com` |
 | “看话题是被夸还是被骂” | `guanlan pulse "关键词" --format context` |
@@ -68,7 +73,7 @@
 | “解释为什么这条排第一” | `guanlan search "关键词" --trace` |
 | “重复查同一题，减少请求” | `guanlan search "关键词" --cache-ttl 3600` |
 | “把搜索结果直接塞进 prompt” | `guanlan search "关键词" --format context` |
-| “给没有联网能力的本地模型准备输入” | `guanlan prompt "关键词" --profile china --style evidence` |
+| “给没有联网能力的本地模型准备输入” | `guanlan context "关键词" --profile china --style evidence` |
 | “把研究证据包直接喂给本地模型” | `guanlan research "关键词" --format prompt` |
 | “生成 MCP 客户端配置” | `guanlan mcp config --client codex` |
 | “本地工具不支持 MCP，但能调 HTTP” | `guanlan serve --host 127.0.0.1 --port 8765` |
@@ -119,6 +124,17 @@ guanlan search "某个主题" --limit 50
 
 ```bash
 guanlan search "某个主题" --profile china --limit 50
+```
+
+如果 trace 里出现 `baidu=blocked`，这表示百度安全验证/反爬拦截，不是“没有搜索结果”。
+不要反复重试百度，也不要尝试自动破解验证码；观澜会自动降级到后续后端，并在
+`backend_recovery` 里给出可执行的多源补搜命令：
+
+```bash
+guanlan search "某个主题" --profile china --limit 50 --trace
+guanlan search "某个主题" --profile china --backend bing --limit 50 --trace
+guanlan search "某个主题" --profile china --scope gov --limit 50 --trace
+guanlan research "某个主题" --profile china --limit 50 --read-top 0
 ```
 
 需要更可信的中文信源时使用白名单 scope：
@@ -215,6 +231,8 @@ guanlan research "某主题" --profile china --limit 50 --read-top 2
 
 `route` 会输出主要意图、证据角色、优先 scope、推荐站点、兜底 scope、查询改写和边界提醒。不要把 route 当成硬过滤：除非用户显式指定 `--scope` 或 `--site`，否则 `research` 会同时保留开放网页兜底，避免只在白名单里打转。
 
+`feeds` 依赖真实外部 RSS/OPML 源，默认会缓存最近一次成功结果。若源站超时，输出中可能出现 `feed_status=stale_cache` 和 `risk_tags=stale_cache`；这代表“用最近成功缓存保住线索”，不是实时状态，回答时要说明边界。
+
 如果用户需要你在证据包之外给一个谨慎的“助理视角”，加 `--advisor`：
 
 ```bash
@@ -236,6 +254,7 @@ Preset 会自动选择一个或多个 scope，并可包含平台定向站点。�
 | `ecommerce` | `ecommerce` + `business`；亿邦动力、网经社、雨果跨境 | 电商、零售、跨境、品牌和产业带。 |
 | `reputation` | `social_web` + `tech_dev` + `business`；知乎、微博、小红书、B站 | 产品口碑、用户评价、社交平台公开讨论。 |
 | `tech` | `tech_dev` + `social_web`；V2EX、掘金、SegmentFault、GitHub | 技术选型、开发者社区、工程实践。 |
+| `academic` | `academic` + `tech_dev` + `business`；Elsevier、Engineering Village、IEEE、CNKI、百度学术 | EI/SCI/Scopus、学术会议、论文投稿、数据库检索和高校认定口径。 |
 | `finance` | `finance` + `business`；财联社、东方财富、雪球 | 财经、资本市场、公司和宏观金融。 |
 | `local` | `local_official` + `gov` + `party_central` | 地方政策、区域产业、城市治理。 |
 
