@@ -21,6 +21,8 @@ def test_archive_add_document_and_search(tmp_path):
     assert record["title"] == "人工智能政策"
     assert results[0]["title"] == "人工智能政策"
     assert "人工智能" in results[0]["excerpt"]
+    assert results[0]["metadata"]["source_card"]["domain"] == "example.com"
+    assert results[0]["metadata"]["read_quality"]["chars"] > 0
 
 
 def test_archive_updates_existing_url(tmp_path):
@@ -144,3 +146,6 @@ def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkey
     assert result["archived_count"] == 1
     assert records[0]["title"] == "政策原文"
     assert records[0]["metadata"]["source_type"] == "政府/部委"
+    assert records[0]["metadata"]["route_plan"]["primary_intents"] == ["policy"]
+    assert records[0]["metadata"]["read_quality"]["chars"] > 0
+    assert records[0]["metadata"]["source_card"]["domain"] == "gov.cn"

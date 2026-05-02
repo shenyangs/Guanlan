@@ -8,6 +8,27 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.2.5 - 2026-05-02
+
+### Added
+
+- 新增 `guanlan quality coverage`，作为发版前 Coverage Guard，检查 `search/research/hotnews/archive/read fallback` 默认候选池下限，防止下游 Agent 因更新拿到的材料大面积变少。
+- `guanlan quality run --coverage` 可把 Coverage Guard 合并进常规质量闸门。
+- `read` 新增 `--quality-report`，输出正文质量、噪声命中、正文占比、可用性和补读建议；JSON 输出同步包含 `quality_report`。
+- 搜索结果新增 `evidence_role`，把信源身份压缩为 Agent 可直接使用的证据角色，例如官方原文、权威报道、用户样本、产业材料、开发者讨论等。
+- `search --trace` 的质量摘要会给出“缺什么信源，建议补什么”的补搜建议。
+- `research` 的原文摘读记录增加 `read_quality`、`quality_report` 和整体 `read_quality_summary`。
+- `archive` 归档元数据默认保留 `source_card`、`read_quality`、`quality_report`、`route_plan` 和 `query_strategy`，便于后续接 RAG 时保留来源角色和阅读质量。
+- 发布 workflow 增加 Homebrew tap 真实安装验证，降低 tap 已更新但用户装到旧版本的风险。
+- `doctor`、`welcome`、`check-update` 增加轻量更新提醒，安装后优先校验当前版本。
+
+### Changed
+
+- 直连正文抽取加强中文站点识别，优先 `js_content`、`rich_media_content`、正文/稿件/详情/文章等容器，并提取作者、来源和发布时间线索。
+- README 补充 Coverage Guard、阅读质量报告、证据角色、归档元数据和安装后版本校验说明。
+- AGENTS 使用说明补充发版质量护栏和 Agent 默认使用大结果池的规则。
+- 官网展示版本号同步到 `0.2.5`。
+
 ## v0.2.4 - 2026-05-02
 
 ### Added

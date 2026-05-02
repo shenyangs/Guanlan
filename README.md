@@ -109,16 +109,20 @@
 ```text
 请帮我安装观澜 CLI，并验证基础功能可用。
 
-优先使用 Homebrew：
-brew tap shenyangs/tap && brew install guanlan
+优先使用 Homebrew（先刷新 tap，避免装到旧公式）：
+brew update
+brew tap shenyangs/tap
+brew reinstall shenyangs/tap/guanlan
 
 如果当前环境没有 Homebrew，请改用 PyPI + uv：
-uv tool install guanlan
+uv tool install --force guanlan
 
 如果没有 uv，请先按当前系统安装 uv，然后再安装观澜。
 安装完成后请运行：
 guanlan version
 guanlan doctor
+
+如果 `guanlan version` 不是 README 标注的当前版本，请不要继续配置 MCP 或可选渠道，先改用 `uv tool install --force guanlan` 重新安装。
 
 安全要求：不要读取浏览器 Cookie，不要触发登录授权，不要请求钥匙串权限。
 ```
@@ -147,8 +151,9 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 **第二步：安装观澜（任选一种）**
 
 ```bash
+brew update
 brew tap shenyangs/tap
-brew install guanlan
+brew reinstall shenyangs/tap/guanlan
 ```
 
 或（PyPI + `uv`）：
@@ -170,7 +175,22 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.2.4`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.2.5`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+
+如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
+
+```bash
+brew update
+brew reinstall shenyangs/tap/guanlan
+guanlan version
+```
+
+如果仍然不是当前版本，请临时改用 PyPI + `uv`：
+
+```bash
+uv tool install --force guanlan
+guanlan version
+```
 
 以后更新观澜：
 
@@ -333,6 +353,7 @@ guanlan configure --from-browser chrome
 | `guanlan hotnews today --brief` | 生成今日水势简报、来源分布、边界提醒和后续查询建议。 |
 | `guanlan read "URL"` | 读取网页并转成 Markdown。 |
 | `guanlan read "URL" --trace` | 展示 Jina/direct/fallback 路径和正文质量评分。 |
+| `guanlan read "URL" --quality-report` | 输出正文占比、噪声、可用性和后续补读建议。 |
 | `guanlan read "URL" --strict` | 宁可触发 fallback，也尽量不把脏正文直接交给 Agent。 |
 | `guanlan read "URL" --backend direct --extract metadata` | 只提取标题、摘要、作者、发布时间等网页元信息。 |
 | `guanlan read "URL" --format prompt --question "问题"` | 把网页正文包装成本地模型 Prompt。 |
@@ -348,12 +369,13 @@ guanlan configure --from-browser chrome
 | `guanlan plugin template my_company_api` | 生成企业内部只读搜索 connector 模板。 |
 | `guanlan eval scenarios --format jsonl` | 输出中文语境搜索质量评估集。 |
 | `guanlan quality run` | 一键跑搜索/阅读/热榜/advisor 质量闸门。 |
+| `guanlan quality coverage` | 发版前检查默认结果池和证据字段没有缩水。 |
 | `guanlan hotnews today --limit 50` | 拉取原生多源中文热榜。 |
 | `guanlan profile set china` | 切换到中文场景画像。 |
 | `guanlan configure --from-browser chrome` | 显式从浏览器提取支持平台的 Cookie。 |
 | `guanlan skill --install` | 将观澜使用说明安装到 Agent skills 目录。 |
 
-默认候选池从 `v0.1.10` 起按 Agent 研究场景放大：`search`、`research`、`archive search` 默认 50 条，`hotnews` 默认 50 条且 MCP 最高 100 条，`read` 的搜索兜底默认 20 条。
+默认候选池从 `v0.1.10` 起按 Agent 研究场景放大：`search`、`research`、`archive search` 默认 50 条，`hotnews` 默认 50 条且 MCP 最高 100 条，`read` 的搜索兜底默认 20 条。`v0.2.5` 增加 Coverage Guard，发版前会检查这些下限和关键证据字段，避免下游 Agent 因更新拿到的材料大面积变少。
 
 ## 使用场景与案例
 
@@ -577,6 +599,8 @@ guanlan search "最新 人工智能 政策" --profile china --cluster-threshold 
 
 从 `0.2.4` 开始，trace 还会显示 `query_strategy`：观澜会把一个问题拆成官方原文、权威报道、用户样本、行业材料、近期进展等不同证据角色。`research` 会用这些 query 变体分头搜索，再合并去重，避免一个宽泛 query 把水面看窄。
 
+从 `0.2.5` 开始，每条搜索结果还会带 `evidence_role`，例如 `official_primary`、`authoritative_report`、`user_sample`、`industry_report`。如果结果池缺少某类关键证据，`search --trace` 会给出“缺什么信源、建议补什么”的提示。
+
 ### 13. 给 AI Agent 的最短工作流
 
 如果你是在另一个 Agent、MCP 客户端或自动化脚本里调用观澜，优先使用这几类输出：
@@ -642,7 +666,7 @@ guanlan serve --host 127.0.0.1 --port 8765
 
 1. 用 `hotnews --brief` 或 `route` 判断该去哪找。
 2. 用 `search/research --format context` 拿证据表。
-3. 用 `read --trace` 检查关键原文质量。
+3. 用 `read --quality-report` 或 `read --trace` 检查关键原文质量。
 4. 把 `prompt` 或 `context` 交给本地模型，让它基于来源回答。
 
 ### 15. 把读过的网页沉淀成本地知识库
@@ -657,7 +681,7 @@ guanlan archive stats
 guanlan archive export --format jsonl > guanlan-archive.jsonl
 ```
 
-本地知识库默认保存在 `~/.guanlan/archive.db`。第一版使用 SQLite + FTS/LIKE 检索，保存 URL、标题、域名、Markdown 正文、摘要、更新时间和元数据。它不是云同步，也不会自动上传内容。
+本地知识库默认保存在 `~/.guanlan/archive.db`。第一版使用 SQLite + FTS/LIKE 检索，保存 URL、标题、域名、Markdown 正文、摘要、更新时间和元数据。`v0.2.5` 起，归档元数据会保留 `source_card`、`read_quality`、`quality_report` 和 `route_plan`，方便后续接 RAG 时知道材料的来源角色、正文质量和检索路径。它不是云同步，也不会自动上传内容。
 
 ### 16. 质量闸门
 
@@ -666,10 +690,14 @@ guanlan archive export --format jsonl > guanlan-archive.jsonl
 ```bash
 guanlan quality run
 guanlan quality run --format json
+guanlan quality run --coverage
+guanlan quality coverage
 guanlan quality run --mode live --limit 5
 ```
 
 默认 `quick` 模式不依赖网络，会检查搜索排序、中文错配、正文质量评分、趋势归并和 advisor 自然度；`live` 模式会额外跑少量真实网络探测。
+
+`quality coverage` 是给发版用的防缩水护栏：检查 `search/research/archive/hotnews/read fallback` 的默认结果池下限，检查搜索结果是否保留 `evidence_role`，检查 research/read/archive 是否保留质量元数据。它不保证每个网络请求都成功，但能防止一次更新把 Agent 赖以判断的信息面悄悄变窄。
 
 ### 17. 安全检查和授权边界
 

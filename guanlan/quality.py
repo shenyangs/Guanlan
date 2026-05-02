@@ -8,6 +8,13 @@ from typing import Any
 
 from guanlan import hotnews, webtools
 from guanlan.evaluation import list_evaluation_scenarios
+from guanlan.limits import (
+    DEFAULT_ARCHIVE_SEARCH_LIMIT,
+    DEFAULT_HOTNEWS_LIMIT,
+    DEFAULT_READ_FALLBACK_LIMIT,
+    DEFAULT_RESEARCH_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+)
 
 SEARCH_RANKING_FIXTURES: list[dict[str, Any]] = [
     {
@@ -33,7 +40,7 @@ SEARCH_RANKING_FIXTURES: list[dict[str, Any]] = [
 ]
 
 
-def run_quality_checks(mode: str = "quick", limit: int = 5) -> dict[str, Any]:
+def run_quality_checks(mode: str = "quick", limit: int = 5, coverage: bool = False) -> dict[str, Any]:
     """Run quick deterministic checks, with optional live network probes."""
     mode = mode if mode in {"quick", "live"} else "quick"
     checks: list[dict[str, Any]] = []
@@ -41,6 +48,8 @@ def run_quality_checks(mode: str = "quick", limit: int = 5) -> dict[str, Any]:
     checks.extend(_check_read_quality())
     checks.extend(_check_trend_quality())
     checks.extend(_check_advisor_quality())
+    if coverage:
+        checks.extend(run_coverage_checks(mode="quick", limit=limit)["checks"])
     if mode == "live":
         checks.extend(_check_live(limit=limit))
     passed = sum(1 for item in checks if item["status"] == "pass")
@@ -57,6 +66,40 @@ def run_quality_checks(mode: str = "quick", limit: int = 5) -> dict[str, Any]:
         },
         "evaluation_scenarios": list_evaluation_scenarios(),
         "checks": checks,
+    }
+
+
+def run_coverage_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any]:
+    """Guard against releases that shrink downstream agent context."""
+    mode = mode if mode in {"quick", "live"} else "quick"
+    checks: list[dict[str, Any]] = []
+    checks.extend(_check_default_limits())
+    checks.extend(_check_search_context_coverage())
+    checks.extend(_check_research_packet_coverage())
+    checks.extend(_check_archive_metadata_contract())
+    if mode == "live":
+        checks.extend(_check_live_coverage(limit=limit))
+    passed = sum(1 for item in checks if item["status"] == "pass")
+    warned = sum(1 for item in checks if item["status"] == "warn")
+    failed = sum(1 for item in checks if item["status"] == "fail")
+    return {
+        "mode": mode,
+        "summary": {
+            "total": len(checks),
+            "pass": passed,
+            "warn": warned,
+            "fail": failed,
+            "score": round((passed + warned * 0.5) / max(len(checks), 1) * 100, 1),
+        },
+        "checks": checks,
+        "contract": {
+            "search_min": 50,
+            "research_min": 50,
+            "hotnews_min": 50,
+            "archive_search_min": 50,
+            "read_fallback_min": 20,
+            "principle": "新版本不得让 Agent 默认拿到的候选池、证据字段或归档元数据大面积缩水。",
+        },
     }
 
 
@@ -80,9 +123,163 @@ def format_quality_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def format_coverage_report(report: dict[str, Any]) -> str:
+    """Render coverage guard checks as Markdown."""
+    summary = report.get("summary") or {}
+    contract = report.get("contract") or {}
+    lines = [
+        "# 观澜 Coverage Guard",
+        "",
+        f"- 模式: {report.get('mode', 'quick')}",
+        f"- 总分: {summary.get('score', 0)}",
+        f"- 结果: pass={summary.get('pass', 0)} warn={summary.get('warn', 0)} fail={summary.get('fail', 0)}",
+        f"- 原则: {contract.get('principle', '')}",
+        "",
+        "## 下限契约",
+        f"- search >= {contract.get('search_min', 50)}",
+        f"- research >= {contract.get('research_min', 50)}",
+        f"- hotnews >= {contract.get('hotnews_min', 50)}",
+        f"- archive search >= {contract.get('archive_search_min', 50)}",
+        f"- read fallback >= {contract.get('read_fallback_min', 20)}",
+        "",
+        "## 检查项",
+    ]
+    for item in report.get("checks") or []:
+        lines.append(f"- [{item.get('status')}] {item.get('id')}: {item.get('message')}")
+    return "\n".join(lines)
+
+
 def format_quality_jsonl(report: dict[str, Any]) -> str:
     """Render checks as JSONL for external harnesses."""
     return "\n".join(json.dumps(item, ensure_ascii=False, sort_keys=True) for item in report.get("checks") or [])
+
+
+def format_coverage_jsonl(report: dict[str, Any]) -> str:
+    """Render coverage guard checks as JSONL."""
+    return "\n".join(json.dumps(item, ensure_ascii=False, sort_keys=True) for item in report.get("checks") or [])
+
+
+def _check_default_limits() -> list[dict[str, Any]]:
+    checks = [
+        ("coverage_search_default_limit", "search", DEFAULT_SEARCH_LIMIT, 50),
+        ("coverage_research_default_limit", "research", DEFAULT_RESEARCH_LIMIT, 50),
+        ("coverage_hotnews_default_limit", "hotnews", DEFAULT_HOTNEWS_LIMIT, 50),
+        ("coverage_archive_search_default_limit", "archive", DEFAULT_ARCHIVE_SEARCH_LIMIT, 50),
+        ("coverage_read_fallback_default_limit", "read", DEFAULT_READ_FALLBACK_LIMIT, 20),
+    ]
+    return [
+        {
+            "id": check_id,
+            "dimension": "coverage_guard",
+            "status": "pass" if value >= minimum else "fail",
+            "message": f"{name} default={value}, expected >= {minimum}",
+        }
+        for check_id, name, value, minimum in checks
+    ]
+
+
+def _check_search_context_coverage() -> list[dict[str, Any]]:
+    ranked = webtools.rank_results(
+        [
+            webtools.SearchResult(title="国务院政策原文", url="https://www.gov.cn/zhengce/a.htm", snippet="政策 原文 通知", rank=1),
+            webtools.SearchResult(title="人民网权威报道", url="https://people.com.cn/a", snippet="权威报道", rank=2),
+            webtools.SearchResult(title="知乎用户评价", url="https://zhihu.com/question/1", snippet="用户评价 体验", rank=3),
+            webtools.SearchResult(title="亿邦动力产业观察", url="https://ebrun.com/a", snippet="电商 行业 案例", rank=4),
+        ],
+        query="人工智能 政策 用户评价 产业",
+    )
+    rows = [item.to_dict() for item in ranked]
+    roles = {row.get("evidence_role") for row in rows}
+    gap_summary = webtools.search_quality_summary(
+        [
+            {
+                "title": "通用网页",
+                "url": "https://example.com/a",
+                "source_type": "通用网页",
+                "domain": "example.com",
+                "evidence_role": "open_web_context",
+            }
+        ],
+        quality={
+            "route_evidence_roles": ["official_primary"],
+            "preferred_scopes": ["gov"],
+            "preferred_source_types": ["政府/部委"],
+        },
+    )
+    return [
+        {
+            "id": "coverage_search_results_keep_evidence_roles",
+            "dimension": "coverage_guard",
+            "status": "pass" if len(roles - {None, ""}) >= 3 else "fail",
+            "message": f"evidence_roles={sorted(role for role in roles if role)}",
+        },
+        {
+            "id": "coverage_search_quality_reports_gaps",
+            "dimension": "coverage_guard",
+            "status": "pass" if gap_summary.get("missing_roles") and gap_summary.get("suggestions") else "fail",
+            "message": f"missing={gap_summary.get('missing_roles')}, suggestions={len(gap_summary.get('suggestions') or [])}",
+        },
+    ]
+
+
+def _check_research_packet_coverage() -> list[dict[str, Any]]:
+    reading = {
+        "rank": 1,
+        "title": "政策原文",
+        "url": "https://gov.cn/a",
+        "source_type": "政府/部委",
+        "status": "ok",
+        "content": "这是连续的中文正文。" * 30,
+    }
+    quality = webtools.assess_read_quality(str(reading["content"]))
+    record = {
+        **reading,
+        "read_quality": quality,
+        "quality_report": webtools.build_read_quality_report(str(reading["content"]), quality=quality),
+    }
+    ok = bool(record["read_quality"].get("score", 0) >= 55 and record["quality_report"].get("recommendations"))
+    return [
+        {
+            "id": "coverage_research_readings_keep_quality_metadata",
+            "dimension": "coverage_guard",
+            "status": "pass" if ok else "fail",
+            "message": f"read_quality={record['read_quality'].get('label')}/{record['read_quality'].get('score')}",
+        }
+    ]
+
+
+def _check_archive_metadata_contract() -> list[dict[str, Any]]:
+    content = "# 标题\n\n这是归档正文。" * 20
+    quality = webtools.assess_read_quality(content)
+    source_card = webtools.source_card_for_domain("gov.cn").to_dict()
+    metadata = {"read_quality": quality, "source_card": source_card, "route_plan": {"primary_intents": ["policy"]}}
+    required = {"read_quality", "source_card", "route_plan"}
+    missing = sorted(required - set(metadata))
+    return [
+        {
+            "id": "coverage_archive_keeps_route_source_read_metadata",
+            "dimension": "coverage_guard",
+            "status": "pass" if not missing else "fail",
+            "message": "metadata keys=" + ",".join(sorted(metadata.keys())),
+        }
+    ]
+
+
+def _check_live_coverage(limit: int = 50) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    try:
+        results = webtools.search_web("今日 人工智能 政策 热点", profile="china", limit=max(limit, 50))
+        checks.append(
+            {
+                "id": "live_coverage_search_returns_broad_pool",
+                "dimension": "coverage_guard",
+                "status": "pass" if len(results) >= min(limit, 20) else "warn",
+                "message": f"results={len(results)}",
+            }
+        )
+    except Exception as exc:
+        checks.append({"id": "live_coverage_search_returns_broad_pool", "dimension": "coverage_guard", "status": "warn", "message": str(exc)})
+    return checks
 
 
 def _check_search_ranking() -> list[dict[str, Any]]:

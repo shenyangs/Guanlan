@@ -126,6 +126,7 @@ def add_document(
     url_hash = hashlib.sha256(normalized_url.encode("utf-8")).hexdigest()
     metadata = dict(metadata or {})
     domain = _domain(normalized_url)
+    _enrich_archive_metadata(metadata, domain=domain, content=content)
 
     with _connect(db_path) as conn:
         existing = conn.execute(
@@ -235,11 +236,16 @@ def ingest_search(
             "preset": packet.get("preset", preset),
             "source_type": item.get("source_type", ""),
             "source": item.get("source", ""),
+            "evidence_role": item.get("evidence_role", ""),
             "topic_key": item.get("topic_key", ""),
             "topic_role": item.get("topic_role", ""),
             "rank": item.get("rank", 0),
             "score": item.get("score", 0),
             "route_plan": packet.get("route_plan", {}),
+            "query_strategy": packet.get("query_strategy", {}),
+            "source_card": (item.get("trace") or {}).get("source_card", {}),
+            "read_quality": reading.get("read_quality", {}) if isinstance(reading, dict) else {},
+            "quality_report": reading.get("quality_report", {}) if isinstance(reading, dict) else {},
         }
         try:
             records.append(add_document(url, content, title=str(item.get("title", "")), metadata=metadata, db_path=db_path))
@@ -252,6 +258,30 @@ def ingest_search(
         "archived_count": sum(1 for item in records if item.get("status") in {"created", "updated", "unchanged"}),
         "records": records,
     }
+
+
+def _enrich_archive_metadata(metadata: dict[str, Any], *, domain: str, content: str) -> None:
+    """Attach stable source/read metadata without changing the SQLite schema."""
+    try:
+        from guanlan.source_taxonomy import source_card_for_domain
+
+        if not metadata.get("source_card"):
+            metadata["source_card"] = source_card_for_domain(domain).to_dict()
+    except Exception:
+        if not metadata.get("source_card"):
+            metadata["source_card"] = {"domain": domain}
+    try:
+        from guanlan.webtools import assess_read_quality, build_read_quality_report
+
+        quality = metadata.get("read_quality") if isinstance(metadata.get("read_quality"), dict) else {}
+        if not quality:
+            quality = assess_read_quality(content)
+            metadata["read_quality"] = quality
+        if not metadata.get("quality_report"):
+            metadata["quality_report"] = build_read_quality_report(content, url="", quality=quality)
+    except Exception:
+        metadata.setdefault("read_quality", {})
+        metadata.setdefault("quality_report", {})
 
 
 def search_documents(

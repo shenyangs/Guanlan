@@ -365,6 +365,8 @@ def main():
                         help="Compare this read with the saved local snapshot and output a diff")
     p_read.add_argument("--trace", action="store_true",
                         help="Show read backend attempts and content quality score")
+    p_read.add_argument("--quality-report", action="store_true",
+                        help="Append a stable readability/noise report for agent diagnostics")
     p_read.add_argument("--strict", action="store_true",
                         help="Prefer failing/fallback over returning noisy extracted text")
     p_read.add_argument("--extract", choices=["article", "text", "metadata", "links"], default="article",
@@ -463,7 +465,15 @@ def main():
                                help="quick is deterministic; live performs network probes")
     p_quality_run.add_argument("--limit", type=int, default=5,
                                help="Live probe result limit")
+    p_quality_run.add_argument("--coverage", action="store_true",
+                               help="Also run coverage guards that prevent agent context shrinkage")
     p_quality_run.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
+    p_quality_coverage = quality_sub.add_parser("coverage", help="Run context coverage guards")
+    p_quality_coverage.add_argument("--mode", choices=["quick", "live"], default="quick",
+                                    help="quick is deterministic; live performs network probes")
+    p_quality_coverage.add_argument("--limit", type=int, default=50,
+                                    help="Live probe result limit")
+    p_quality_coverage.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
 
     # ── mcp ──
     p_mcp = sub.add_parser("mcp", help="MCP helpers for agent integration")
@@ -1230,6 +1240,7 @@ def _cmd_read(args):
         format_read_batch_prompt,
         format_read_context,
         format_read_prompt,
+        format_read_quality_report,
         format_read_trace,
         read_batch,
         read_url,
@@ -1266,7 +1277,7 @@ def _cmd_read(args):
             print("Error: URL is required", file=sys.stderr)
             sys.exit(2)
         read_packet = None
-        if args.trace:
+        if args.trace or args.quality_report:
             read_packet = read_url_with_trace(
                 args.url,
                 max_chars=args.max_chars or None,
@@ -1298,17 +1309,26 @@ def _cmd_read(args):
             print(json.dumps(payload, ensure_ascii=False, indent=2))
         elif args.format == "context":
             print(format_read_context(content, url=args.url))
-            if read_packet is not None:
+            if args.quality_report and read_packet is not None:
+                print()
+                print(format_read_quality_report(read_packet))
+            if args.trace and read_packet is not None:
                 print()
                 print(format_read_trace(read_packet))
         elif args.format == "prompt":
             print(format_read_prompt(content, query=args.question, url=args.url))
-            if read_packet is not None:
+            if args.quality_report and read_packet is not None:
+                print()
+                print(format_read_quality_report(read_packet))
+            if args.trace and read_packet is not None:
                 print()
                 print(format_read_trace(read_packet))
         else:
             print(content)
-            if read_packet is not None:
+            if args.quality_report and read_packet is not None:
+                print()
+                print(format_read_quality_report(read_packet))
+            if args.trace and read_packet is not None:
                 print()
                 print(format_read_trace(read_packet))
     except Exception as e:
@@ -1542,12 +1562,32 @@ def _cmd_eval(args):
 
 def _cmd_quality(args):
     """Run Guanlan quality gates."""
-    from guanlan.quality import format_quality_jsonl, format_quality_report, run_quality_checks
+    from guanlan.quality import (
+        format_coverage_jsonl,
+        format_coverage_report,
+        format_quality_jsonl,
+        format_quality_report,
+        run_coverage_checks,
+        run_quality_checks,
+    )
 
-    if getattr(args, "quality_command", None) != "run":
-        print("Error: quality command is required: run", file=sys.stderr)
+    command = getattr(args, "quality_command", None)
+    if command not in {"run", "coverage"}:
+        print("Error: quality command is required: run or coverage", file=sys.stderr)
         sys.exit(2)
-    report = run_quality_checks(mode=args.mode, limit=max(args.limit, 1))
+    if command == "coverage":
+        report = run_coverage_checks(mode=args.mode, limit=max(args.limit, 1))
+        if args.format == "json":
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        elif args.format == "jsonl":
+            print(format_coverage_jsonl(report))
+        else:
+            print(format_coverage_report(report))
+        if report.get("summary", {}).get("fail", 0):
+            sys.exit(1)
+        return
+
+    report = run_quality_checks(mode=args.mode, limit=max(args.limit, 1), coverage=getattr(args, "coverage", False))
     if args.format == "json":
         print(json.dumps(report, ensure_ascii=False, indent=2))
     elif args.format == "jsonl":
@@ -2574,8 +2614,23 @@ def _cmd_doctor(args):
         rprint(format_config_scan(scan_config(config)))
     if skip_sensitive:
         rprint("[dim]提示：已跳过认证/登录态深度探测。使用 `guanlan doctor --auth-check` 可启用深度检查。[/dim]")
+    _print_update_notice_if_available(rprint)
 
     # Keep doctor read-only. Skill installation is explicit via `guanlan skill --install`.
+
+
+def _print_update_notice_if_available(printer=print) -> None:
+    """Print a best-effort update notice without affecting command success."""
+    try:
+        from guanlan import __version__
+        from guanlan.update_check import format_update_notice, get_update_info
+
+        info = get_update_info(__version__)
+        if info:
+            printer("")
+            printer(format_update_notice(info))
+    except Exception:
+        return
 
 
 def _cmd_profile(args):
@@ -2782,16 +2837,17 @@ def _github_get_with_retry(url, timeout=10, retries=3, sleeper=time.sleep):
 def _cmd_check_update():
     """Check for newer versions when a public release repo is configured."""
     from guanlan import __version__
+    from guanlan.update_check import format_update_notice, get_update_info
 
     print(f"当前版本: v{__version__}")
     repo = os.environ.get("GUANLAN_UPDATE_REPO", "").strip()
     if not repo:
-        print("当前未配置公开发布源。")
-        print("本地源码阶段请在仓库根目录更新：")
-        print("  pipx install --force .")
-        print("  # 或")
-        print("  pip install --upgrade .")
-        return "local_only"
+        info = get_update_info(__version__, timeout=3.0)
+        if info:
+            print(format_update_notice(info))
+            return "update_available"
+        print("✅ 已是最新版本，或暂时无法访问 PyPI。")
+        return "up_to_date"
 
     release_url = f"https://api.github.com/repos/{repo}/releases/latest"
     commit_url = f"https://api.github.com/repos/{repo}/commits/main"

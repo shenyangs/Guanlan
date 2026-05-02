@@ -26,3 +26,24 @@ def test_quality_cli_outputs_json(capsys):
 
     assert payload["mode"] == "quick"
     assert payload["summary"]["fail"] == 0
+
+
+def test_coverage_guard_checks_default_contract():
+    report = quality.run_coverage_checks(mode="quick")
+
+    assert report["summary"]["fail"] == 0
+    assert any(item["id"] == "coverage_search_default_limit" for item in report["checks"])
+    assert "不得让 Agent" in quality.format_coverage_report(report)
+
+
+def test_quality_cli_coverage_outputs_json(capsys):
+    from guanlan.cli import main
+
+    with patch("sys.argv", ["guanlan", "quality", "coverage", "--format", "json"]):
+        main()
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert payload["mode"] == "quick"
+    assert payload["contract"]["search_min"] == 50
+    assert payload["summary"]["fail"] == 0

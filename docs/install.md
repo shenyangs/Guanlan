@@ -43,6 +43,31 @@ guanlan doctor
 uvx --from git+https://github.com/shenyangs/Guanlan.git guanlan version
 ```
 
+如果用户明确要求用 Homebrew，必须先刷新 tap，并在安装后校验版本：
+
+```bash
+brew update
+brew tap shenyangs/tap
+brew reinstall shenyangs/tap/guanlan
+guanlan version
+guanlan doctor
+```
+
+如果 `guanlan version` 低于 README 或发布说明中的当前版本，不要继续配置 MCP、可选渠道或登录态。先尝试：
+
+```bash
+brew update
+brew reinstall shenyangs/tap/guanlan
+guanlan version
+```
+
+如果仍然拿到旧版本，说明 Homebrew tap 尚未同步到最新发布；改用 GitHub/uv 安装路径：
+
+```bash
+uv tool install --force git+https://github.com/shenyangs/Guanlan.git
+guanlan version
+```
+
 如果已经克隆 GitHub 仓库，也可以在仓库根目录执行：
 
 ```bash
@@ -191,6 +216,7 @@ guanlan skill --install
 最后运行：
 
 ```bash
+guanlan version
 guanlan doctor --trace
 ```
 
@@ -203,6 +229,7 @@ scripts/release_smoke.sh
 向用户报告：
 
 - 当前哪些基础渠道可用。
+- 当前 `guanlan version` 是否与 README/发布说明一致。
 - 哪些可选渠道需要登录、Cookie、代理或 API Key。
 - 是否触发过敏感权限提示。
 - 后续最适合使用的命令，例如 `search`、`read`、`hotnews`、`research`。

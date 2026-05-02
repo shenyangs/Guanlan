@@ -39,21 +39,21 @@ GitHub 侧 workflow 已使用 OIDC（`id-token: write`），无需保存 PyPI AP
 
 流程：
 
-1. 更新版本号，例如 `0.2.3 -> 0.2.4`。
+1. 更新版本号，例如 `0.2.4 -> 0.2.5`。
 2. 更新 `CHANGELOG.md`。
 3. 运行基础质量检查和安装 smoke，例如 `ruff`、`pytest`、`uv build`、`scripts/release_smoke.sh`。
 4. 提交代码并推送到 `main`。
 5. 打 tag 并推送，例如：
 
 ```bash
-git tag v0.2.4
+git tag v0.2.5
 git push origin main
-git push origin v0.2.4
+git push origin v0.2.5
 ```
 
 6. 等待 `release` workflow 完成：
    - Job `publish-pypi`：发布到 PyPI。
-   - Job `update-homebrew-tap`：更新 tap 仓库公式。
+   - Job `update-homebrew-tap`：更新 tap 仓库公式，并从 tap 真实安装一次确认版本。
 
 ## 用户安装方式
 
@@ -66,9 +66,13 @@ uv tool install guanlan
 Homebrew：
 
 ```bash
+brew update
 brew tap shenyangs/tap
-brew install guanlan
+brew reinstall shenyangs/tap/guanlan
+guanlan version
 ```
+
+如果 Homebrew 安装出的版本低于本次 tag，说明 tap 没同步或用户本地 tap 缓存滞后。不要把这类结果当作成功安装；先刷新 tap，仍失败时临时建议用户使用 PyPI/uv。
 
 ## 故障排查
 
@@ -77,3 +81,4 @@ brew install guanlan
 - `update-homebrew-tap` 失败：
   - 检查 `HOMEBREW_TAP_GITHUB_TOKEN` 是否有效，且对 `homebrew-tap` 具有写权限。
   - 检查 `shenyangs/homebrew-tap` 是否存在、默认分支是否正常。
+  - 检查 workflow 末尾的 Homebrew 真实安装验证；它会捕捉“公式提交成功但用户实际装到旧版本”的问题。

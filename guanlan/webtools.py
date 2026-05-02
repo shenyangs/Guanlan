@@ -226,6 +226,7 @@ class SearchResult:
     source_type: str = "通用网页"
     matched_scope: str = ""
     trust_level: int = 1
+    evidence_role: str = "open_web_context"
     score: float = 0.0
     score_parts: dict[str, float] = field(default_factory=dict)
     topic_key: str = ""
@@ -544,10 +545,12 @@ def rank_results(
         item.source_type = meta["source_type"]
         item.matched_scope = meta["matched_scope"]
         item.trust_level = meta["trust_level"]
-        item.trace["source_card"] = source_card_for_domain(
+        source_card = source_card_for_domain(
             item.domain,
             preferred_scope=preferred_scope,
-        ).to_dict()
+        )
+        item.trace["source_card"] = source_card.to_dict()
+        item.evidence_role = _infer_evidence_role(item, source_card.to_dict(), quality=quality)
         item.score_parts = _score_result_parts(
             item,
             query=query,
@@ -878,10 +881,11 @@ def read_url_with_trace(
         cached = _cache_get("read", cache_key, ttl=cache_ttl)
         if cached is not None:
             text = str(cached.get("text", ""))
-            return {
+            quality = assess_read_quality(text)
+            packet = {
                 "url": url,
                 "content": text,
-                "quality": assess_read_quality(text),
+                "quality": quality,
                 "trace": {
                     "backend": backend,
                     "selected_backend": str(cached.get("selected_backend") or "cache"),
@@ -893,6 +897,8 @@ def read_url_with_trace(
                     "fallback_search": False,
                 },
             }
+            packet["quality_report"] = build_read_quality_report(text, url=url, quality=quality, trace=packet["trace"])
+            return packet
 
     backend = (backend or "auto").lower()
     errors: list[str] = []
@@ -973,7 +979,9 @@ def read_url_with_trace(
             cache_key,
             {"text": text, "selected_backend": selected_backend or backend, "attempts": attempts},
         )
-    return {"url": url, "content": text, "quality": quality, "trace": trace_payload}
+    packet = {"url": url, "content": text, "quality": quality, "trace": trace_payload}
+    packet["quality_report"] = build_read_quality_report(text, url=url, quality=quality, trace=trace_payload)
+    return packet
 
 
 def assess_read_quality(text: str) -> dict[str, Any]:
@@ -1033,6 +1041,76 @@ def assess_read_quality(text: str) -> dict[str, Any]:
         "noise_ratio": noise_ratio,
         "strict_pass": bool(label == "clean" and score >= 70),
     }
+
+
+def build_read_quality_report(
+    text: str,
+    *,
+    url: str = "",
+    quality: dict[str, Any] | None = None,
+    trace: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a stable read-quality payload for CLI, research, and archive."""
+    quality = dict(quality or assess_read_quality(text))
+    trace = dict(trace or {})
+    normalized = text or ""
+    lines = [line.strip() for line in normalized.splitlines() if line.strip()]
+    short_lines = sum(1 for line in lines if len(_collapse_ws(line)) <= 18)
+    link_like_lines = sum(1 for line in lines if re.search(r"https?://|阅读原文|点击|打开APP|下载", line, flags=re.I))
+    body_ratio = round(max(0.0, 1.0 - min(quality.get("noise_ratio", 0) * 3 + link_like_lines / max(len(lines), 1), 0.95)), 3)
+    blocked_markers = [marker for marker in _WEAK_READ_MARKERS if marker in _collapse_ws(normalized).lower()]
+    usable = bool(quality.get("score", 0) >= 55 and quality.get("chars", 0) >= 160 and not blocked_markers)
+    recommendations: list[str] = []
+    if quality.get("fallback"):
+        recommendations.append("当前内容来自搜索兜底，只能作为线索，建议补读原文或更稳定转载页。")
+    if blocked_markers:
+        recommendations.append("疑似登录墙/安全验证/访问限制，建议改用公开转载、官方来源或人工授权后的平台能力。")
+    if quality.get("noise_hits"):
+        recommendations.append("正文中仍有导航、登录或推荐阅读噪音，回答时优先引用连续正文段落。")
+    if quality.get("chars", 0) < 500:
+        recommendations.append("正文较短，可能只读到摘要或页面片段，建议扩大 read 或补充 search/research。")
+    if not recommendations:
+        recommendations.append("正文可用度较好，可作为证据摘读；仍建议和搜索结果中的来源身份交叉验证。")
+    return {
+        "url": url,
+        "label": quality.get("label", "unknown"),
+        "score": quality.get("score", 0),
+        "usable": usable,
+        "body_ratio": body_ratio,
+        "chars": quality.get("chars", 0),
+        "cjk_chars": quality.get("cjk_chars", 0),
+        "line_count": quality.get("line_count", 0),
+        "avg_line_len": quality.get("avg_line_len", 0),
+        "short_line_count": short_lines,
+        "link_like_line_count": link_like_lines,
+        "noise_hits": quality.get("noise_hits", []),
+        "blocked_markers": blocked_markers,
+        "selected_backend": trace.get("selected_backend", ""),
+        "cache": trace.get("cache", "disabled"),
+        "recommendations": recommendations,
+    }
+
+
+def format_read_quality_report(report_or_packet: dict[str, Any]) -> str:
+    """Render a read quality report as compact Markdown."""
+    report = dict(report_or_packet.get("quality_report") or report_or_packet)
+    lines = [
+        "## 阅读质量报告",
+        f"- label: {report.get('label', 'unknown')} score={report.get('score', 0)} usable={report.get('usable', False)}",
+        f"- chars: {report.get('chars', 0)} cjk={report.get('cjk_chars', 0)} lines={report.get('line_count', 0)} body_ratio={report.get('body_ratio', 0)}",
+        f"- backend/cache: {report.get('selected_backend', '') or '-'} / {report.get('cache', 'disabled')}",
+    ]
+    noise = report.get("noise_hits") or []
+    if noise:
+        lines.append(f"- noise: {', '.join(str(item) for item in noise)}")
+    blocked = report.get("blocked_markers") or []
+    if blocked:
+        lines.append(f"- blocked_markers: {', '.join(str(item) for item in blocked)}")
+    recommendations = report.get("recommendations") or []
+    if recommendations:
+        lines.append("- 建议:")
+        lines.extend(f"  - {item}" for item in recommendations[:4])
+    return "\n".join(lines)
 
 
 def _contains_cjk(text: str) -> bool:
@@ -1272,7 +1350,16 @@ def build_research_packet(
                 fallback_limit=DEFAULT_READ_FALLBACK_LIMIT,
                 profile=effective_profile,
             )
-            readings.append(_reading_record(item, status="ok", content=content))
+            read_quality = assess_read_quality(content)
+            readings.append(
+                _reading_record(
+                    item,
+                    status="ok",
+                    content=content,
+                    read_quality=read_quality,
+                    quality_report=build_read_quality_report(content, url=str(item.get("url", "")), quality=read_quality),
+                )
+            )
         except Exception as e:
             readings.append(_reading_record(item, status="error", error=str(e)))
 
@@ -1299,6 +1386,7 @@ def build_research_packet(
         "results": results,
         "selected_evidence": _select_representative_evidence(results, effective_select_top),
         "readings": readings,
+        "read_quality_summary": _read_quality_summary(readings),
         "guidance": list(preset_config.get("guidance", [])) + [
             "这是一份证据上下文，不是最终结论。",
             "先看“精选代表证据”，再回到完整搜索池补充细节；不要只凭第一条结果下判断。",
@@ -1406,6 +1494,14 @@ def format_research_markdown(packet: dict[str, Any]) -> str:
             status = str(item.get("status", ""))
             source_type = str(item.get("source_type", "通用网页"))
             lines.extend(["", f"### [{status}] {title}", f"- URL: {url}", f"- 信源类型: {source_type}"])
+            read_quality = item.get("read_quality") or {}
+            if isinstance(read_quality, dict) and read_quality:
+                lines.append(
+                    "- 阅读质量: "
+                    f"{read_quality.get('label', 'unknown')} "
+                    f"score={read_quality.get('score', 0)} "
+                    f"chars={read_quality.get('chars', 0)}"
+                )
             if item.get("error"):
                 lines.append(f"- 读取错误: {item['error']}")
             content = str(item.get("content", "")).strip()
@@ -1763,6 +1859,7 @@ def _result_from_dict(item: dict[str, Any]) -> SearchResult:
         topic_size=int(item.get("topic_size") or 1),
         topic_role=str(item.get("topic_role", "single")),
         trace=dict(item.get("trace") or {}),
+        evidence_role=str(item.get("evidence_role", "open_web_context")),
     )
 
 
@@ -1828,6 +1925,8 @@ def _reading_record(
     status: str,
     content: str = "",
     error: str = "",
+    read_quality: dict[str, Any] | None = None,
+    quality_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "rank": item.get("rank", 0),
@@ -1836,10 +1935,26 @@ def _reading_record(
         "source_type": item.get("source_type", "通用网页"),
         "topic_key": item.get("topic_key", ""),
         "topic_role": item.get("topic_role", ""),
+        "evidence_role": item.get("evidence_role", ""),
         "status": status,
         "content": content,
         "error": error,
+        "read_quality": dict(read_quality or {}),
+        "quality_report": dict(quality_report or {}),
     }
+
+
+def _read_quality_summary(readings: list[dict[str, Any]]) -> dict[str, Any]:
+    qualities = [item.get("read_quality") for item in readings if isinstance(item.get("read_quality"), dict) and item.get("read_quality")]
+    if not qualities:
+        return {"count": 0, "usable_count": 0, "avg_score": 0, "labels": {}}
+    labels: dict[str, int] = {}
+    for quality in qualities:
+        label = str(quality.get("label") or "unknown")
+        labels[label] = labels.get(label, 0) + 1
+    usable = [quality for quality in qualities if quality.get("score", 0) >= 55 and quality.get("chars", 0) >= 160]
+    avg_score = round(sum(float(quality.get("score") or 0) for quality in qualities) / max(len(qualities), 1), 1)
+    return {"count": len(qualities), "usable_count": len(usable), "avg_score": avg_score, "labels": labels}
 
 
 def build_evidence_audit(packet: dict[str, Any]) -> dict[str, Any]:
@@ -2718,7 +2833,9 @@ def format_search_markdown(results: list[dict[str, Any]], title: str = "观澜�
         topic_label = ""
         if isinstance(topic_size, int) and topic_size > 1:
             topic_label = f" topic={topic_role}/{topic_size}"
-        lines.append(f"{rank}. [{source}/{source_type}{score_label}{topic_label}] {item_title}")
+        evidence_role = str(item.get("evidence_role", "")).strip()
+        role_label = f" role={evidence_role}" if evidence_role else ""
+        lines.append(f"{rank}. [{source}/{source_type}{score_label}{topic_label}{role_label}] {item_title}")
         if url:
             lines.append(f"   {url}")
         if snippet:
@@ -2733,7 +2850,11 @@ def format_search_context(results: list[dict[str, Any]], title: str = "观澜搜
         lines.append("无结果 | - | - | - | -")
         return "\n".join(lines)
     for idx, item in enumerate(results, start=1):
-        source = _pipe_safe(str(item.get("source_type") or item.get("source") or "web"))
+        evidence_role = str(item.get("evidence_role") or "")
+        source_label = str(item.get("source_type") or item.get("source") or "web")
+        if evidence_role:
+            source_label = f"{source_label}/{evidence_role}"
+        source = _pipe_safe(source_label)
         title_text = _pipe_safe(_collapse_ws(str(item.get("title", ""))))
         snippet = _pipe_safe(_collapse_ws(str(item.get("snippet", "")))[:140])
         score = item.get("score", 0)
@@ -2784,6 +2905,8 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
         )
         for warning in quality_summary.get("warnings", []):
             lines.append(f"  warning: {warning}")
+        for suggestion in quality_summary.get("suggestions", []):
+            lines.append(f"  suggestion: {suggestion}")
     for idx, item in enumerate(results, start=1):
         title = _collapse_ws(str(item.get("title", "")))
         parts = item.get("score_parts") or {}
@@ -2977,12 +3100,25 @@ def search_quality_summary(
         if item.get("url")
     }
     warnings: list[str] = []
+    suggestions: list[str] = []
     if preferred_types and not preferred_hits:
         warnings.append("未命中当前意图偏好的信源类型，建议补充 scope 或站点定向搜索。")
+        suggestions.append(_source_gap_suggestion(quality, preferred_types, preferred_scopes))
     if len(source_mix) <= 1 and len(results) >= 4:
         warnings.append("来源类型较单一，可能需要扩大信源面。")
+        suggestions.append("补充开放网页或相邻 scope，避免只看单一信源类型。")
     if len(domains) <= 1 and len(results) >= 3:
         warnings.append("域名集中度较高，注意同源转载或单站偏差。")
+        suggestions.append("补充 2-3 个不同域名结果，尤其是原文、权威报道和社区样本的交叉来源。")
+    role_counts: dict[str, int] = {}
+    for item in results:
+        role = str(item.get("evidence_role") or "")
+        if role:
+            role_counts[role] = role_counts.get(role, 0) + 1
+    route_roles = [str(role) for role in quality.get("route_evidence_roles") or [] if str(role)]
+    missing_roles = [role for role in route_roles if role not in role_counts]
+    for role in missing_roles[:3]:
+        suggestions.append(_role_gap_suggestion(role))
 
     return {
         "intent": quality.get("intent", "general"),
@@ -2991,8 +3127,37 @@ def search_quality_summary(
         "source_type_count": len(source_mix),
         "domain_count": len(domains),
         "source_mix": source_mix,
+        "role_counts": dict(sorted(role_counts.items(), key=lambda row: (-row[1], row[0]))),
+        "missing_roles": missing_roles,
         "warnings": warnings,
+        "suggestions": _unique_keep_order([item for item in suggestions if item]),
     }
+
+
+def _source_gap_suggestion(
+    quality: dict[str, Any],
+    preferred_types: set[str],
+    preferred_scopes: set[str],
+) -> str:
+    if preferred_scopes:
+        scope_hint = ",".join(sorted(preferred_scopes))
+        return f"建议补搜 `--scope {scope_hint.split(',')[0]}` 或指定相关官方/垂类站点。"
+    if preferred_types:
+        return "建议补充 " + "、".join(sorted(preferred_types)[:3]) + " 类型信源。"
+    intent = str(quality.get("intent") or "general")
+    return f"建议根据 {intent} 意图补充更贴近问题的第一手信源。"
+
+
+def _role_gap_suggestion(role: str) -> str:
+    mapping = {
+        "official_primary": "缺少官方原文/主管部门口径，建议补搜 `--scope gov` 或 `--scope party_central`。",
+        "authoritative_report": "缺少权威报道，建议补搜党央媒或核心地方官媒。",
+        "user_sample": "缺少公开用户样本，建议补搜知乎、微博、小红书、B站等公开页，并标明样本偏差。",
+        "industry_report": "缺少产业/垂类材料，建议补搜商业媒体、电商垂类或行业报告。",
+        "fresh_news": "缺少近期材料，建议加入最近/今日/本周等时效词并开启 trace 核对时间线。",
+        "developer_discussion": "缺少开发者实践反馈，建议补搜 GitHub、V2EX、掘金或技术社区。",
+    }
+    return mapping.get(role, f"缺少 `{role}` 角色证据，建议补充对应信源后再下判断。")
 
 
 def _quality_term_matches(text: str, term: str) -> bool:
@@ -3237,6 +3402,41 @@ def _result_quality_trace(item: SearchResult, quality: dict[str, Any] | None = N
         "preferred_source_types": list(preferred_types),
         "guidance": quality.get("guidance", ""),
     }
+
+
+def _infer_evidence_role(
+    item: SearchResult,
+    source_card: dict[str, Any],
+    quality: dict[str, Any] | None = None,
+) -> str:
+    """Map source taxonomy roles to one compact role for downstream agents."""
+    roles = {str(role) for role in source_card.get("content_roles") or []}
+    fit_tags = {str(tag) for tag in source_card.get("fit_tags") or []}
+    scope = str(item.matched_scope or source_card.get("scope_id") or "")
+    source_type = str(item.source_type or "")
+    title_blob = f"{item.title} {item.snippet}".lower()
+    route_roles = {str(role) for role in (quality or {}).get("route_evidence_roles") or []}
+    if scope == "gov" or "primary_source" in roles or "regulation" in roles or "notice" in roles:
+        return "official_primary"
+    if scope in {"party_central", "local_official"} or "authoritative_report" in roles:
+        return "authoritative_report"
+    if "source_code" in roles or "release" in roles:
+        return "technical_primary"
+    if roles & {"practice", "discussion", "technical_note", "issue"}:
+        return "developer_discussion"
+    if roles & {"user_sample", "public_discussion", "consumer_note", "social_post", "question_answer"}:
+        return "user_sample"
+    if roles & {"vertical_report", "report", "analysis", "case", "market_news", "filing_context"}:
+        return "market_context" if "finance" in fit_tags else "industry_report"
+    if "fresh_news" in route_roles or re.search(r"最新|今日|今天|刚刚|发布|快讯|热榜|热点", title_blob):
+        return "fresh_news"
+    if "政府" in source_type:
+        return "official_primary"
+    if "党央媒" in source_type or "地方官媒" in source_type:
+        return "authoritative_report"
+    if "社交" in source_type:
+        return "user_sample"
+    return "open_web_context"
 
 
 def _result_recency_metrics(item: SearchResult, recency: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -3771,12 +3971,18 @@ def _read_direct(url: str, extract: str = "article") -> str:
 def _html_to_markdownish(raw: str, url: str = "") -> str:
     title_match = re.search(r"<title[^>]*>(.*?)</title>", raw, re.S | re.I)
     title = _strip_tags(title_match.group(1)) if title_match else ""
+    metadata = _extract_article_metadata(raw)
     text = _extract_article_text(raw)
     lines = []
     if title:
         lines.extend([f"Title: {title}", ""])
     if url:
         lines.extend([f"URL Source: {url}", ""])
+    for key, value in metadata.items():
+        if value and value != title:
+            lines.append(f"{key}: {value}")
+    if metadata:
+        lines.append("")
     lines.append("Markdown Content:")
     lines.append(text)
     return "\n".join(lines)
@@ -3918,17 +4124,58 @@ def _prefer_main_content(body: str) -> str:
 def _content_candidates(body: str) -> list[str]:
     candidates: list[str] = []
     attr_pattern = (
-        r"(?:article|content|main|正文|post|entry|detail|news|rich_media_content|"
-        r"article-content|article_body|articleBody)"
+        r"(?:article|content|main|正文|内容|稿件|文章|详情|post|entry|detail|news|"
+        r"rich_media_content|js_content|main-content|article-content|article_content|"
+        r"article_body|articleBody|content_area|contentArea|detailContent|text_content|"
+        r"TRS_Editor|zoom|con_txt|news_txt|pages_content)"
     )
     for pattern in (
         r"<article\b[^>]*>(.*?)</article>",
         r"<main\b[^>]*>(.*?)</main>",
+        r"<div\b[^>]*(?:id|class)=['\"][^'\"]*(?:js_content|rich_media_content)[^'\"]*['\"][^>]*>(.*?)</div>",
         rf"<div\b[^>]*(?:id|class)=['\"][^'\"]*{attr_pattern}[^'\"]*['\"][^>]*>(.*?)</div>",
         rf"<section\b[^>]*(?:id|class)=['\"][^'\"]*{attr_pattern}[^'\"]*['\"][^>]*>(.*?)</section>",
     ):
         candidates.extend(match.group(1) for match in re.finditer(pattern, body, flags=re.S | re.I))
     return candidates
+
+
+def _extract_article_metadata(raw: str) -> dict[str, str]:
+    """Extract publication hints often used by Chinese news sites."""
+    html_text = raw or ""
+    metadata: dict[str, str] = {}
+    meta_keys = {
+        "author": "Author",
+        "article:author": "Author",
+        "source": "Source",
+        "mediaid": "Source",
+        "article:published_time": "Published",
+        "pubdate": "Published",
+        "publishdate": "Published",
+        "date": "Published",
+        "weixin:author": "Author",
+        "og:article:author": "Author",
+    }
+    for match in re.finditer(r"<meta\b([^>]+)>", html_text, flags=re.I | re.S):
+        attrs = _html_attrs(match.group(1))
+        raw_key = (attrs.get("property") or attrs.get("name") or attrs.get("itemprop") or "").lower().strip()
+        value = _collapse_ws(attrs.get("content") or "")
+        label = meta_keys.get(raw_key)
+        if label and value and label not in metadata:
+            metadata[label] = value[:120]
+    visible_patterns = (
+        ("Published", r"(?:发布时间|发布日期|发稿时间|时间)[:：]\s*([0-9]{4}[-年/\.]\d{1,2}[-月/\.]\d{1,2}(?:\s+\d{1,2}:\d{2})?)"),
+        ("Source", r"(?:来源|稿源)[:：]\s*([^<\n\r]{2,40})"),
+        ("Author", r"(?:作者|记者|编辑)[:：]\s*([^<\n\r]{2,40})"),
+    )
+    stripped = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html_text, flags=re.S | re.I)
+    for label, pattern in visible_patterns:
+        if label in metadata:
+            continue
+        match = re.search(pattern, stripped, flags=re.I)
+        if match:
+            metadata[label] = _strip_tags(match.group(1))[:120]
+    return metadata
 
 
 def _content_score(html_fragment: str) -> int:
@@ -3997,6 +4244,9 @@ def _is_noise_content_line(line: str) -> bool:
     if re.fullmatch(r"[\W_]+", line):
         return True
     if len(line) <= 18 and re.search(r"(首页|新闻|财经|科技|娱乐|体育|视频|图片|专题|登录|注册)", line):
+        return True
+    punctuation = len(re.findall(r"[，。；：、,.!?！？]", line))
+    if len(line) <= 36 and punctuation == 0 and re.search(r"(客户端|专题|频道|订阅|投稿|爆料|更多|排行|热搜)", line):
         return True
     return False
 

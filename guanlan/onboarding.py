@@ -53,31 +53,39 @@ def mark_welcome_shown() -> None:
 
 def format_welcome_card() -> str:
     """Render a compact welcome card for non-technical users."""
-    return "\n".join(
-        [
-            "观澜已安装完成。",
-            "",
-            "它是给 AI Agent 用的中文互联网检索工具，可以帮 Agent：",
-            "1. 搜索中文互联网资料，并区分官方、媒体、社区、电商等信源",
-            "2. 阅读网页/文章，把内容整理成 Agent 可用的证据",
-            "3. 查看百度、微博、B站、IT之家、V2EX 等热榜",
-            "4. 做 research 证据包，需要时给出谨慎的“助理视角”建议",
-            "",
-            "你可以直接这样对 Agent 说：",
-            "",
-            "- 用观澜查一下「低空经济 最新政策」",
-            "- 用观澜读这个链接：https://example.com/article",
-            "- 用观澜看今天中文互联网热点",
-            "- 用观澜查这个产品的用户评价，查完给我建议",
-            "- 先用观澜判断这个问题应该查哪些信源",
-            "",
-            "安全边界：",
-            "观澜默认只读公开信息，不会自动读取浏览器 Cookie，不会发帖、点赞、评论或私信。",
-            "",
-            "想看完整能力：",
-            "guanlan capabilities",
-        ]
-    )
+    lines = [
+        "观澜已安装完成。",
+        "",
+        "它是给 AI Agent 用的中文互联网检索工具，可以帮 Agent：",
+        "1. 搜索中文互联网资料，并区分官方、媒体、社区、电商等信源",
+        "2. 阅读网页/文章，把内容整理成 Agent 可用的证据",
+        "3. 查看百度、微博、B站、IT之家、V2EX 等热榜",
+        "4. 做 research 证据包，需要时给出谨慎的“助理视角”建议",
+        "",
+        "你可以直接这样对 Agent 说：",
+        "",
+        "- 用观澜查一下「低空经济 最新政策」",
+        "- 用观澜读这个链接：https://example.com/article",
+        "- 用观澜看今天中文互联网热点",
+        "- 用观澜查这个产品的用户评价，查完给我建议",
+        "- 先用观澜判断这个问题应该查哪些信源",
+        "",
+        "安全边界：",
+        "观澜默认只读公开信息，不会自动读取浏览器 Cookie，不会发帖、点赞、评论或私信。",
+        "",
+        "想看完整能力：",
+        "guanlan capabilities",
+    ]
+    try:
+        from guanlan import __version__
+        from guanlan.update_check import format_update_notice, get_update_info
+
+        info = get_update_info(__version__)
+        if info:
+            lines.extend(["", format_update_notice(info)])
+    except Exception:
+        pass
+    return "\n".join(lines)
 
 
 def show_welcome_once() -> bool:

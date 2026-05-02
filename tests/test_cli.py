@@ -364,12 +364,11 @@ class TestCheckUpdateRetry:
         assert "网络超时" in captured.out
         assert "已重试 3 次" in captured.out
 
-    def test_check_update_local_only_when_no_repo(self, capsys, monkeypatch):
+    def test_check_update_uses_pypi_when_no_github_repo(self, capsys, monkeypatch):
         monkeypatch.delenv("GUANLAN_UPDATE_REPO", raising=False)
-
-        result = cli._cmd_check_update()
+        with patch("guanlan.update_check.get_update_info", return_value=None):
+            result = cli._cmd_check_update()
 
         captured = capsys.readouterr()
-        assert result == "local_only"
-        assert "当前未配置公开发布源" in captured.out
-        assert "pipx install --force ." in captured.out
+        assert result == "up_to_date"
+        assert "已是最新版本" in captured.out

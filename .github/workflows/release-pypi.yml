@@ -52,6 +52,7 @@ jobs:
     runs-on: macos-latest
     env:
       HOMEBREW_TAP_REPO: shenyangs/homebrew-tap
+      HOMEBREW_TAP_NAME: shenyangs/tap
       FORMULA_PATH: Formula/guanlan.rb
       PACKAGE_NAME: guanlan
       FORMULA_CLASS: Guanlan
@@ -221,3 +222,19 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "guanlan ${GITHUB_REF_NAME#v}"
           git push
+
+      - name: Verify Homebrew tap install
+        env:
+          RAW_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          expected="${RAW_TAG#v}"
+          brew untap "${HOMEBREW_TAP_NAME}" 2>/dev/null || true
+          brew tap "${HOMEBREW_TAP_NAME}" "https://github.com/${HOMEBREW_TAP_REPO}.git"
+          brew install "${HOMEBREW_TAP_NAME}/${PACKAGE_NAME}"
+          output="$(guanlan --version)"
+          echo "$output"
+          if ! grep -Fq "$expected" <<<"$output"; then
+            echo "Expected Guanlan ${expected} from Homebrew tap, got: ${output}"
+            exit 1
+          fi

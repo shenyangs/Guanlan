@@ -98,6 +98,7 @@ def test_search_web_trace_includes_quality_profile(monkeypatch):
     assert results[0]["score_parts"]["intent_fit"] > 0
     assert results[0]["trace"]["route_plan"]["primary_intents"][0] == "policy"
     assert "gov" in results[0]["trace"]["route_plan"]["preferred_scopes"]
+    assert results[0]["evidence_role"] == "official_primary"
 
 
 def test_search_trace_includes_route_plan(monkeypatch):
@@ -122,6 +123,7 @@ def test_search_trace_includes_route_plan(monkeypatch):
     assert "reputation" in trace
     assert "query_strategy" in trace
     assert results[0]["trace"]["source_card"]["sample_value"] > results[0]["trace"]["source_card"]["authority_score"]
+    assert results[0]["evidence_role"] == "user_sample"
 
 
 def test_query_strategy_builds_role_specific_variants():
@@ -159,6 +161,28 @@ def test_format_search_trace_shows_query_quality(monkeypatch):
 
     assert "query_quality: intent=policy" in trace
     assert "quality_fit=True" in trace
+
+
+def test_search_quality_summary_suggests_missing_roles():
+    summary = webtools.search_quality_summary(
+        [
+            {
+                "title": "通用网页",
+                "url": "https://example.com/a",
+                "source_type": "通用网页",
+                "domain": "example.com",
+                "evidence_role": "open_web_context",
+            }
+        ],
+        quality={
+            "preferred_source_types": ["政府/部委"],
+            "preferred_scopes": ["gov"],
+            "route_evidence_roles": ["official_primary"],
+        },
+    )
+
+    assert summary["missing_roles"] == ["official_primary"]
+    assert any("scope gov" in item for item in summary["suggestions"])
 
 
 def test_search_web_detects_recency_intent():
@@ -1038,6 +1062,30 @@ def test_read_cli_passes_backend():
     )
 
 
+def test_read_cli_quality_report_uses_trace_packet(capsys):
+    from guanlan.cli import main
+
+    packet = {
+        "url": "https://example.com",
+        "content": "这是正文内容。" * 30,
+        "quality": webtools.assess_read_quality("这是正文内容。" * 30),
+        "trace": {"selected_backend": "direct", "cache": "disabled"},
+    }
+    packet["quality_report"] = webtools.build_read_quality_report(
+        packet["content"],
+        url=packet["url"],
+        quality=packet["quality"],
+        trace=packet["trace"],
+    )
+    with patch("guanlan.webtools.read_url_with_trace", return_value=packet):
+        with patch("sys.argv", ["guanlan", "read", "https://example.com", "--quality-report"]):
+            main()
+    captured = capsys.readouterr()
+
+    assert "阅读质量报告" in captured.out
+    assert "阅读 Trace" not in captured.out
+
+
 def test_rank_results_merges_duplicate_sources():
     results = webtools.rank_results(
         [
@@ -1248,6 +1296,8 @@ def test_build_research_packet_reads_representative_results(monkeypatch):
         "https://gov.cn/c",
     ]
     assert packet["readings"][0]["content"] == "READ https://example.com/a"
+    assert packet["readings"][0]["read_quality"]["chars"] > 0
+    assert packet["read_quality_summary"]["count"] == 2
 
 
 def test_build_research_packet_selects_diverse_representative_evidence(monkeypatch):
@@ -1659,6 +1709,28 @@ def test_format_research_markdown():
     assert "## 信源概览" in md
     assert "党央媒: 1" in md
     assert "正文摘录" in md
+
+
+def test_html_to_markdownish_prefers_chinese_article_body():
+    html = """
+    <html><head><title>标题</title><meta name="source" content="新华社">
+    <meta property="article:published_time" content="2026-05-02"></head>
+    <body>
+      <nav>首页 新闻 财经 科技 登录 注册</nav>
+      <div class="side recommend">推荐阅读 登录 下载APP</div>
+      <div id="js_content">
+        <p>这是第一段正文，介绍政策背景和核心事实。</p>
+        <p>这是第二段正文，包含更多连续信息和分析。</p>
+      </div>
+      <footer>版权所有 联系我们</footer>
+    </body></html>
+    """
+    text = webtools._html_to_markdownish(html, url="https://example.com/a")
+
+    assert "Source: 新华社" in text
+    assert "Published: 2026-05-02" in text
+    assert "这是第一段正文" in text
+    assert "下载APP" not in text
 
 
 def test_format_research_markdown_includes_advisor_block():
