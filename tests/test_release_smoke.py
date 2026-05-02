@@ -41,7 +41,8 @@ def test_agent_update_docs_require_full_reinstall_and_smoke():
 
     combined = "\n".join([agents, update_doc, readme])
 
-    assert "uv tool install --force guanlan" in combined
+    assert "uv tool install --force --upgrade guanlan" in combined
+    assert "只写 `uv tool install --force guanlan`" in combined or "only --force" in combined
     assert "brew reinstall shenyangs/tap/guanlan" in combined
     assert "pipx install --force guanlan" in combined
     assert "which -a guanlan" in combined

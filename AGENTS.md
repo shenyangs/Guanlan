@@ -4,8 +4,10 @@ This repository is designed as a CLI-first search productivity tool for AI agent
 
 Install/update rule: after installing or upgrading Guanlan, always do a full reinstall, not an
 incremental upgrade, before configuring MCP, optional channels, or auth. Prefer one clean path:
-`uv tool install --force guanlan`; if the user explicitly wants Homebrew, run
+`uv tool install --force --upgrade guanlan`; if the user explicitly wants Homebrew, run
 `brew update && brew reinstall shenyangs/tap/guanlan`; for pipx, run `pipx install --force guanlan`.
+For uv, `--force` alone is not enough because it can reinstall the previously locked version; include
+`--upgrade`.
 Then refresh shell command lookup with `hash -r` when available, run `command -v guanlan` and
 `which -a guanlan` (or the platform equivalent), and run `guanlan version`. If the version does not
 match README/release notes, stop and report the path/version mismatch instead of configuring MCP or

@@ -77,7 +77,8 @@ def format_update_notice(info: UpdateInfo) -> str:
         [
             f"版本提醒：当前 v{info.current}，{info.source} 最新 v{info.latest}。",
             "建议先做全量更新，再配置 MCP、可选渠道或登录态。不要混用旧的全局 guanlan：",
-            "  uv tool install --force guanlan",
+            "  uv tool install --force --upgrade guanlan",
+            "  # uv 必须带 --upgrade；只有 --force 可能重装旧锁定版本。",
             "  # 如果使用 Homebrew：",
             "  brew update && brew reinstall shenyangs/tap/guanlan",
             "  # 如果使用 pipx：",

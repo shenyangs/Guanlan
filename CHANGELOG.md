@@ -8,6 +8,15 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.2.9 - 2026-05-02
+
+### Changed
+
+- 安装与更新文档进一步明确 `uv tool install --force --upgrade guanlan`，避免只用 `--force` 时重装旧锁定版本。
+- README、Agent 指南、Skill 文档和更新提醒同步 `--force --upgrade` 口径。
+- README 增加观澜面向 AI Agent 的中文互联网研究底座流程图。
+- 更新 release smoke / update-check 测试，防止后续文档回退到容易误导的旧安装命令。
+
 ## v0.2.8 - 2026-05-02
 
 ### Changed

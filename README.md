@@ -24,6 +24,10 @@
   <a href="#设计原则">设计原则</a>
 </p>
 
+<p align="center">
+  <img src="docs/assets/guanlan-overview.png" alt="观澜 Guanlan 面向 AI Agent 的中文互联网研究底座流程图">
+</p>
+
 观澜当前是一个 CLI-first 的中文互联网研究工具。公开搜索、网页阅读、热榜观察和研究证据包已经可用；部分平台能力仍处于 best-effort 或实验阶段，按需依赖外部后端、授权或额外配置。
 
 它首先想把这几件事做好：
@@ -148,14 +152,14 @@ brew tap shenyangs/tap
 brew reinstall shenyangs/tap/guanlan
 
 如果当前环境没有 Homebrew，请改用 PyPI + uv：
-uv tool install --force guanlan
+uv tool install --force --upgrade guanlan
 
 如果没有 uv，请先按当前系统安装 uv，然后再安装观澜。
 安装完成后请运行：
 guanlan version
 guanlan doctor
 
-如果 `guanlan version` 不是 README 标注的当前版本，请不要继续配置 MCP 或可选渠道，先改用 `uv tool install --force guanlan` 重新安装。
+如果 `guanlan version` 不是 README 标注的当前版本，请不要继续配置 MCP 或可选渠道，先改用 `uv tool install --force --upgrade guanlan` 重新安装。
 
 安全要求：不要读取浏览器 Cookie，不要触发登录授权，不要请求钥匙串权限。
 ```
@@ -208,7 +212,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.2.8`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.2.9`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -221,7 +225,7 @@ guanlan version
 如果仍然不是当前版本，请临时改用 PyPI + `uv`：
 
 ```bash
-uv tool install --force guanlan
+uv tool install --force --upgrade guanlan
 guanlan version
 ```
 
@@ -229,8 +233,11 @@ guanlan version
 `guanlan` 可执行文件、旧 Homebrew 公式或旧 pipx/uv tool 入口继续被 Agent 调用。
 
 ```bash
-uv tool install --force guanlan
+uv tool install --force --upgrade guanlan
 ```
+
+注意：`uv tool install --force guanlan` 只保证重装，可能继续使用旧的锁定版本；更新时必须带
+`--upgrade`。
 
 如果你明确使用 Homebrew：
 
@@ -259,7 +266,7 @@ guanlan hotnews today --limit 5 --trends
 ```
 
 如果 `guanlan version` 不是 README 标注的当前版本，或 `which -a guanlan` 显示 Agent 会优先
-调用旧路径，请不要继续配置 MCP 或可选渠道，先改用 `uv tool install --force guanlan` 重新安装。
+调用旧路径，请不要继续配置 MCP 或可选渠道，先改用 `uv tool install --force --upgrade guanlan` 重新安装。
 
 ### Agent / 开发者安装
 

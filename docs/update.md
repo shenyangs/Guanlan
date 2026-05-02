@@ -11,7 +11,10 @@
 
 ```bash
 # 1) 选择一个安装路径。优先 uv，避免 Homebrew tap 缓存滞后。
-uv tool install --force guanlan
+uv tool install --force --upgrade guanlan
+
+# 注意：uv 更新必须同时带 --force 和 --upgrade。
+# 只写 `uv tool install --force guanlan` 可能只是重装旧锁定版本。
 
 # 如果用户明确要求 Homebrew：
 brew update
