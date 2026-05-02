@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="观澜 Guanlan 是 AI Agent 的中文互联网研究底座：路由信源、阅读网页、观察热榜、整理证据，让 Agent 看懂中文互联网。"
+    />
+    <meta property="og:site_name" content="观澜 Guanlan" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="观澜 Guanlan | 让 AI Agent 看懂中文互联网" />
+    <meta
+      property="og:description"
+      content="不只是搜索，而是中文互联网研究底座：路由信源、阅读网页、观察热榜，把材料整理成 Agent 可推理的证据包。"
+    />
+    <meta property="og:url" content="https://Guanlan.xin/" />
+    <meta property="og:image" content="https://Guanlan.xin/assets/guanlan-logo.png" />
+    <meta property="og:image:secure_url" content="https://Guanlan.xin/assets/guanlan-logo.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1024" />
+    <meta property="og:image:height" content="1024" />
+    <meta property="og:image:alt" content="观澜 Guanlan 朱砂方印 logo" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="观澜 Guanlan | 让 AI Agent 看懂中文互联网" />
+    <meta
+      name="twitter:description"
+      content="不只是搜索，而是中文互联网研究底座：路由信源、阅读网页、观察热榜，把材料整理成 Agent 可推理的证据包。"
+    />
+    <meta name="twitter:image" content="https://Guanlan.xin/assets/guanlan-logo.png" />
+    <title>观澜 Guanlan | 让 AI Agent 看懂中文互联网</title>
+    <link rel="icon" href="./assets/guanlan-logo.svg" type="image/svg+xml" />
+    <link rel="icon" href="./assets/guanlan-logo-512.png" type="image/png" sizes="512x512" />
+    <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <canvas id="signal-canvas" aria-hidden="true"></canvas>
+
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="观澜首页">
+        <img src="./assets/guanlan-logo.svg" alt="" />
+        <span>观澜</span>
+        <span>Guanlan</span>
+      </a>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="#commands">命令</a>
+        <a href="#matrix">能力</a>
+        <a href="#sources">信源</a>
+        <a href="#safety">边界</a>
+      </nav>
+      <a class="header-action" href="https://github.com/shenyangs/Guanlan" aria-label="GitHub">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M12 2C6.48 2 2 6.59 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.09.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.36 1.12 2.93.85.09-.67.35-1.12.63-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.28 9.28 0 0 1 12 6.96c.85 0 1.7.12 2.5.34 1.9-1.33 2.74-1.05 2.74-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.59.69.49A10.15 10.15 0 0 0 22 12.25C22 6.59 17.52 2 12 2Z"
+          />
+        </svg>
+      </a>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">China-aware research substrate for AI agents</p>
+          <h1 id="hero-title">观澜 Guanlan</h1>
+          <p class="hero-line">让 AI Agent 看懂中文互联网。</p>
+          <p class="hero-description">
+            普通搜索让 Agent 看见网页，观澜让 Agent 看懂来源、平台、语境和边界。它不是搜索框，而是面向中文互联网的信源路由、网页阅读、热榜观察与证据包工具。
+          </p>
+          <div class="hero-points" aria-label="观澜核心卖点">
+            <span>信源身份清楚</span>
+            <span>中文孤岛路由</span>
+            <span>Agent-ready 证据包</span>
+            <span>默认只读明源</span>
+            <span>本地模型联网</span>
+          </div>
+          <div class="hero-actions" aria-label="主要操作">
+            <a class="primary-action" href="#install">开始安装</a>
+            <a class="secondary-action" href="#extreme">看核心能力</a>
+          </div>
+        </div>
+
+        <div class="hero-console" id="composer" aria-label="观澜命令生成器">
+          <div class="console-top">
+            <span>Agent Command Composer</span>
+            <span class="status-dot">live</span>
+          </div>
+          <div class="intent-grid" role="group" aria-label="选择任务意图">
+            <button class="intent-button is-active" type="button" data-command='guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 50 --trace'>
+              权威搜索
+            </button>
+            <button class="intent-button" type="button" data-command='guanlan research "跨境电商 AI" --preset ecommerce --limit 80 --read-top 2 --advisor'>
+              产业研究
+            </button>
+            <button class="intent-button" type="button" data-command='guanlan research "某产品 用户评价" --preset reputation --limit 80 --read-top 0 --advisor'>
+              口碑回响
+            </button>
+            <button class="intent-button" type="button" data-command='guanlan prompt "今天中文互联网 AI 热点" --profile china --style evidence'>
+              本地模型
+            </button>
+            <button class="intent-button" type="button" data-command='guanlan hotnews today --limit 50 --trends --brief'>
+              热榜观察
+            </button>
+          </div>
+          <pre><code id="command-output">guanlan search "人工智能 新质生产力" --profile china --scope party_central --limit 50 --trace</code></pre>
+          <button class="copy-button" type="button" id="copy-command">复制命令</button>
+        </div>
+      </section>
+
+      <section class="command-rail" id="commands" aria-label="常用命令">
+        <article>
+          <span>search</span>
+          <code>guanlan search "query" --limit 50 --trace</code>
+        </article>
+        <article>
+          <span>route</span>
+          <code>guanlan route "中文研究需求" --json</code>
+        </article>
+        <article>
+          <span>research</span>
+          <code>guanlan research "关键词" --profile china --limit 80</code>
+        </article>
+        <article>
+          <span>local llm</span>
+          <code>guanlan prompt "问题" --style evidence</code>
+        </article>
+      </section>
+
+      <section class="section-block extreme-block" id="extreme">
+        <div class="section-heading">
+          <p class="eyebrow">Why Guanlan</p>
+          <h2>它的极致点，不是平台数量，而是中文互联网语境。</h2>
+        </div>
+        <div class="extreme-grid">
+          <article>
+            <span>01</span>
+            <h3>从链接到证据包</h3>
+            <p>观澜把搜索结果、来源身份、证据角色、阅读质量和边界提醒组织成 Agent 可继续推理的上下文。</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>把“谁说的”工程化</h3>
+            <p>政策、党央媒、地方官媒、垂类媒体、社区样本、热榜水势不是同一种信息；观澜保留这些差异。</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>知道去哪找中文信息</h3>
+            <p>政策看官方，口碑看社区，技术看开发者，产业看垂类媒体，热点先巡视热榜，再进入 research。</p>
+          </article>
+          <article>
+            <span>04</span>
+            <h3>给本地模型接上网络</h3>
+            <p>Ollama、LM Studio、Open WebUI 等无联网模型，可以通过 CLI、MCP 或本地只读 HTTP 获得中文互联网证据。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section-block matrix-block" id="matrix">
+        <div class="section-heading">
+          <p class="eyebrow">Capability Matrix</p>
+          <h2>把分散的平台能力，压进 Agent 能直接调用的上下文。</h2>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <span class="feature-index">01</span>
+            <h3>信源路由</h3>
+            <p>Profile、scope、站点定向与信源分类共同工作，让 Agent 先判断去哪找，而不是只发一个宽泛 query。</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-index">02</span>
+            <h3>网页阅读</h3>
+            <p>Jina Reader、直连 HTML 与搜索兜底组合成读取链路，尽量过滤导航、广告和页面噪声。</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-index">03</span>
+            <h3>热榜水势</h3>
+            <p>微博、B站、IT之家、V2EX、百度等公开入口被统一成可读、可引用、带边界的趋势信号。</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-index">04</span>
+            <h3>本地知识库</h3>
+            <p>把链接收入 archive，之后用搜索、质量视图与 JSONL 导出接入自己的 RAG、报告或长期研究流。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section-block source-block" id="sources">
+        <div class="section-heading">
+          <p class="eyebrow">Signal Routing</p>
+          <h2>观其流，辨其源，取其要。</h2>
+        </div>
+        <div class="source-layout">
+          <div class="source-map" aria-label="信源路线图">
+            <div class="source-node core">Agent</div>
+            <div class="source-node source-web">网页</div>
+            <div class="source-node source-official">官方</div>
+            <div class="source-node source-social">社交</div>
+            <div class="source-node source-video">视频</div>
+            <div class="source-node source-dev">开发者</div>
+            <div class="source-node source-finance">财经</div>
+            <span class="line line-web"></span>
+            <span class="line line-official"></span>
+            <span class="line line-social"></span>
+            <span class="line line-video"></span>
+            <span class="line line-dev"></span>
+            <span class="line line-finance"></span>
+          </div>
+          <div class="source-copy">
+            <h3>Profile + Channel + Backend</h3>
+            <p>
+              Profile 负责语境，Channel 负责任务类型，Backend 负责实际执行。每个后端都可替换，输出尽量保留来源、链接、抓取时间和可信度。
+            </p>
+            <ul class="signal-list">
+              <li><span>party_central</span> 党央媒与中央重点媒体</li>
+              <li><span>gov</span> 政府、部委与法规原文</li>
+              <li><span>ecommerce</span> 电商、零售、跨境与产业带</li>
+              <li><span>tech_dev</span> V2EX、GitHub、掘金等工程社区</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-block workflow-block">
+        <div class="section-heading">
+          <p class="eyebrow">Agent Workflow</p>
+          <h2>从一次查询到一组可交付依据。</h2>
+        </div>
+        <div class="workflow">
+          <article>
+            <span>01</span>
+            <h3>Search</h3>
+            <p>多后端聚合、URL 去重、同题聚类。</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>Read</h3>
+            <p>读取原文，失败时保留可核验线索。</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>Research</h3>
+            <p>混合官方、行业、社区和社交视角。</p>
+          </article>
+          <article>
+            <span>04</span>
+            <h3>Answer</h3>
+            <p>结论、来源、置信度和边界一起交付。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section-block safety-block" id="safety">
+        <div class="safety-copy">
+          <p class="eyebrow">Read-first Boundary</p>
+          <h2>默认只读、低扰、明源。</h2>
+          <p>
+            观澜不会在默认诊断中读取浏览器 Cookie、钥匙串或登录态；需要授权的动作由用户显式开启。发布、评论、点赞、私信等写操作不自动执行。
+          </p>
+        </div>
+        <div class="safety-meters" aria-label="安全原则">
+          <div style="--level: 92%"><span></span><strong>明源</strong></div>
+          <div style="--level: 86%"><span></span><strong>低扰</strong></div>
+          <div style="--level: 78%"><span></span><strong>可换</strong></div>
+        </div>
+      </section>
+
+      <section class="install-block" id="install">
+        <div>
+          <p class="eyebrow">Install</p>
+          <h2>任选一种方式进入中文互联网工作流。</h2>
+        </div>
+        <div class="install-options">
+          <article>
+            <span>Homebrew</span>
+            <button class="install-copy" type="button" data-copy-target="brew" aria-label="复制 Homebrew 命令" title="复制命令">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-1v1a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3h1V7Zm2 1h3a3 3 0 0 1 3 3v3h1a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v1Zm-3 2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H7Z"/>
+              </svg>
+            </button>
+            <pre><code>brew tap shenyangs/tap
+brew install guanlan
+guanlan doctor</code></pre>
+          </article>
+          <article>
+            <span>uv tool</span>
+            <button class="install-copy" type="button" data-copy-target="uv" aria-label="复制 uv 命令" title="复制命令">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-1v1a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3h1V7Zm2 1h3a3 3 0 0 1 3 3v3h1a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v1Zm-3 2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H7Z"/>
+              </svg>
+            </button>
+            <pre><code>uv tool install guanlan
+guanlan doctor</code></pre>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>Guanlan v0.3.6</span>
+      <a href="../README.md">README</a>
+      <a href="../docs/agent-usage.md">Agent Guide</a>
+      <a href="../docs/install.md">Install</a>
+    </footer>
+
+    <script src="./main.js"></script>
+  </body>
+</html>

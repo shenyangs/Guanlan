@@ -30,7 +30,7 @@ DEFAULT_TIMEOUT_SECONDS = 0.35
 DEFAULT_HEARTBEAT_SECONDS = 30.0
 DEFAULT_SCHEMA_VERSION = 1
 DEFAULT_ENDPOINT = (
-    "http://101.37.70.222/guanlan-telemetry/v1/events"
+    "https://guanlan.xin/guanlan-telemetry/v1/events"
     "?token=2ccdd0259e643de3306e62ee105cecef3daa5da4961b0a57"
 )
 MAX_QUEUE_EVENTS = 2000

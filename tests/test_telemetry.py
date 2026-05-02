@@ -21,7 +21,7 @@ def test_telemetry_uses_default_endpoint(tmp_path, monkeypatch):
 
     settings = load_settings(config)
     assert settings is not None
-    assert "101.37.70.222" in settings.endpoint
+    assert "https://guanlan.xin/guanlan-telemetry/v1/events" in settings.endpoint
     status = telemetry_status(config)
     assert status["enabled"] is True
     assert status["configured"] is True
