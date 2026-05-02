@@ -41,6 +41,7 @@ metadata:
 - 如果新用户问“装好了怎么用/怎么让 Agent 用观澜”，先运行 `guanlan welcome`。
 - 如果用户或 Agent 不知道观澜有哪些功能、该用哪个命令，先运行 `guanlan capabilities`；MCP 模式下调用 `guanlan_capabilities`。
 - `--advisor` 输出的是证据边界和写作规则，Agent 需要据此生成自然建议，不要机械复述固定小标题。
+- `research` 证据包会附带证据审计提示；遇到版本号、价格、参数量、发布日期冲突时，先说明不同来源分别怎么说，再给取舍依据。
 
 ## 路由表
 
@@ -74,12 +75,14 @@ guanlan search "query" --source-chart
 guanlan route "query"
 guanlan research "query" --profile china --advisor
 guanlan research "query" --profile china --format prompt
-guanlan prompt "query" --profile china
+guanlan prompt "query" --profile china --style evidence
 guanlan research "product 用户评价" --preset reputation --read-top 0 --advisor
 guanlan pulse "query" --format context
 
 # 通用网页阅读
 guanlan read "URL" --max-chars 12000
+guanlan read "URL" --strict --trace
+guanlan read "URL" --backend direct --extract metadata
 guanlan read batch urls.txt --format context
 guanlan read "URL" --watch
 

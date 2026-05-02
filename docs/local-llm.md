@@ -18,12 +18,23 @@ guanlan prompt "最近 AI 眼镜在中国市场的主要趋势是什么？" --pr
 ollama run qwen3:latest < prompt.md
 ```
 
+可以按任务选择 Prompt 风格：
+
+```bash
+guanlan prompt "这个产品现在值不值得买？" --preset reputation --style decision > prompt.md
+guanlan prompt "新质生产力 最新政策影响" --preset policy --style evidence > prompt.md
+guanlan prompt "今天中文互联网 AI 相关热点" --style concise > prompt.md
+```
+
+`decision` 偏行动建议，`evidence` 偏证据表和来源，`concise` 适合上下文较小的模型，默认 `deep` 适合完整调研。
+
 `guanlan prompt` 默认会：
 
 - 使用较大的候选池，默认 `--limit 80`。
 - 精选 8 条代表证据。
 - 摘读 2 条代表 URL。
 - 加入助理视角规则，提醒模型保留证据边界。
+- 加入查询策略和信源诊断，帮助模型区分官方、媒体、社区、用户样本和近期进展。
 
 如果只想看公开搜索，不读正文：
 

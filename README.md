@@ -170,7 +170,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.2.3`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.2.4`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -310,6 +310,7 @@ guanlan configure --from-browser chrome
 | `guanlan search "关键词"` | 搜索网页，输出适合 Agent 阅读的结果列表。 |
 | `guanlan search "关键词" --trace` | 展示评分因子、后端顺序、聚类阈值和缓存命中状态。 |
 | `guanlan search "最近 关键词 热点" --trace` | 自动识别时效性意图，收束到近期窗口，并在 trace 中解释结果日期。 |
+| `guanlan search "关键词" --trace` | 同时展示查询策略：原始问题会如何拆成官方、媒体、社区、用户样本等证据角色。 |
 | `guanlan search "关键词" --cache-ttl 3600` | 一小时内复用同条件搜索结果，降低上游扰动。 |
 | `guanlan search "关键词" --format context` | 输出紧凑的 LLM-friendly 证据表格。 |
 | `guanlan search "关键词" --format prompt` | 输出可直接喂给本地模型的完整 Prompt。 |
@@ -317,19 +318,23 @@ guanlan configure --from-browser chrome
 | `guanlan search "关键词" --backend plugin:my_company_api` | 显式调用本地自定义只读搜索 backend。 |
 | `guanlan search "关键词" --scope party_central` | 在党央媒与中央重点媒体白名单内搜索。 |
 | `guanlan search "关键词" --scope ecommerce` | 在电商/零售垂类媒体白名单内搜索。 |
-| `guanlan research "关键词"` | 生成 Agent 可直接使用的研究证据包。 |
+| `guanlan research "关键词"` | 生成 Agent 可直接使用的研究证据包，并附带版本/叫法冲突、来源时间线和核验建议。 |
+| `guanlan research "关键词" --profile china` | 自动路由并按证据角色拆 query，合并 scope/site/open web 候选池。 |
 | `guanlan research --list-presets` | 查看研究模板和默认 scope/site 策略。 |
 | `guanlan research "关键词" --format context` | 输出适合直接放进 prompt 的研究上下文。 |
-| `guanlan research "关键词" --format prompt` | 输出本地模型联网 Prompt。 |
+| `guanlan research "关键词" --format prompt --prompt-style evidence` | 输出本地模型联网 Prompt，可指定证据型/决策型等风格。 |
 | `guanlan research "关键词" --advisor` | 在证据包后追加助理视角规则，帮助 Agent 基于证据生成建议。 |
 | `guanlan research "关键词" --advisor --advisor-style risk` | 按风险/决策/策略等风格生成更自然的 Agent 作答骨架。 |
 | `guanlan prompt "问题"` | 快速生成 Ollama / LM Studio / Open WebUI 可用的联网 Prompt。 |
+| `guanlan prompt "问题" --style decision` | 为本地模型生成决策型/证据型/简洁型/深度型联网 Prompt。 |
 | `guanlan research "关键词" --sites zhihu.com,weibo.com` | 按多个指定站点生成平台定向证据块。 |
 | `guanlan pulse "关键词"` | 安全版话题回响分析，输出讨论倾向、关键词信号和明确边界。 |
 | `guanlan hotnews today --trends` | 多源热榜归并成趋势簇，观察中文互联网当日水势。 |
 | `guanlan hotnews today --brief` | 生成今日水势简报、来源分布、边界提醒和后续查询建议。 |
 | `guanlan read "URL"` | 读取网页并转成 Markdown。 |
 | `guanlan read "URL" --trace` | 展示 Jina/direct/fallback 路径和正文质量评分。 |
+| `guanlan read "URL" --strict` | 宁可触发 fallback，也尽量不把脏正文直接交给 Agent。 |
+| `guanlan read "URL" --backend direct --extract metadata` | 只提取标题、摘要、作者、发布时间等网页元信息。 |
 | `guanlan read "URL" --format prompt --question "问题"` | 把网页正文包装成本地模型 Prompt。 |
 | `guanlan read batch urls.txt --format context` | 批量读取 URL 列表并输出紧凑上下文。 |
 | `guanlan mcp config --client codex` | 输出可复制的 MCP 客户端配置。 |
@@ -471,6 +476,21 @@ guanlan read "https://example.com/article" --format json --trace
 
 `--trace` 会显示 Jina、direct、search fallback 的尝试顺序、最终选中的后端、正文质量标签（`clean/noisy/weak/fallback`）、噪声命中和乱码判断。
 
+如果你宁可少给，也不想让 Agent 吃进导航、登录按钮、页脚和广告，可以打开严格模式：
+
+```bash
+guanlan read "https://example.com/article" --strict --trace
+```
+
+直连读取还可以只抽某一类信息：
+
+```bash
+guanlan read "https://example.com/article" --backend direct --extract metadata
+guanlan read "https://example.com/article" --backend direct --extract links
+```
+
+`metadata` 适合核验标题、摘要、作者、发布时间；`links` 适合让 Agent 看页面里真正指向了哪些原文或相关材料。
+
 ### 9. 批量读取一组链接
 
 适合 Agent 已经搜到一批材料，需要统一读成上下文。
@@ -522,6 +542,8 @@ guanlan hotnews today --limit 50 --trends --brief
 
 `--brief` 会输出来源分布、边界提醒、值得追踪的趋势，以及每个趋势后续可交给 `research` 的查询建议。
 
+`--trends` 会额外标出跨平台共振、单平台孤岛风险和可继续追踪的 research 命令。观澜不会把单平台水花直接说成全网趋势。
+
 `newsnow:<source>` 是可选增强后端，适合补 36氪、B站热搜、财联社、华尔街见闻等更多来源；稳定性取决于 NewsNow BASE_URL、Cloudflare 和上游抓取状态。公共站不稳时可配置自己的 NewsNow：
 
 ```bash
@@ -553,6 +575,8 @@ guanlan search "最新 人工智能 政策" --profile china --cluster-threshold 
 
 `--trace` 会展示后端顺序、缓存命中、评分因子、query_quality、topic 聚类、来源分类和时效性判断，方便 Agent 把检索过程讲清楚。
 
+从 `0.2.4` 开始，trace 还会显示 `query_strategy`：观澜会把一个问题拆成官方原文、权威报道、用户样本、行业材料、近期进展等不同证据角色。`research` 会用这些 query 变体分头搜索，再合并去重，避免一个宽泛 query 把水面看窄。
+
 ### 13. 给 AI Agent 的最短工作流
 
 如果你是在另一个 Agent、MCP 客户端或自动化脚本里调用观澜，优先使用这几类输出：
@@ -582,6 +606,16 @@ CLI 是默认主路径；如果当前 Agent 或平台支持 MCP，可以把 `gua
 guanlan prompt "最近 AI 眼镜 在中国市场有什么变化？" --profile china > context.md
 ollama run qwen3:latest < context.md
 ```
+
+如果你希望本地模型按不同方式输出，可以选择 Prompt 风格：
+
+```bash
+guanlan prompt "这个产品现在值不值得买？" --preset reputation --style decision > prompt.md
+guanlan prompt "新质生产力 最新政策影响" --preset policy --style evidence > prompt.md
+guanlan prompt "今天中文互联网 AI 相关热点" --style concise > prompt.md
+```
+
+`decision` 更适合行动建议，`evidence` 更适合证据表，`concise` 更适合短上下文模型，默认 `deep` 更适合完整调研。
 
 如果你想自己控制证据包，可以用 `--format prompt`：
 
@@ -745,7 +779,7 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 - 可运行 `guanlan doctor --check-config` 检查配置中是否有明文 Cookie、Token、Key 或代理凭据。
 - 如果使用共享电脑，检查配置文件权限是否为仅本人可读写。
 - 不确定是否需要授权时，先运行 `guanlan doctor --trace`。
-- 匿名遥测默认无 endpoint 不工作；如需自托管统计，需要显式配置 `guanlan configure telemetry-endpoint ...`，且只发送命令生命周期元数据，不发送 query、URL、正文或凭据。
+- 匿名遥测默认发送命令生命周期元数据，用于聚合使用量与并发统计；不发送 query、URL、正文或凭据。可用 `guanlan configure telemetry off` 或 `GUANLAN_TELEMETRY=0` 关闭；如需自托管统计，可配置 `guanlan configure telemetry-endpoint ...`。
 
 ## 许可证与来源
 

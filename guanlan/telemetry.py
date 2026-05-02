@@ -14,9 +14,11 @@ import json
 import os
 import platform
 import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterator
 from urllib import request
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -25,9 +27,17 @@ from guanlan import __version__
 from guanlan.config import Config
 
 DEFAULT_TIMEOUT_SECONDS = 0.35
+DEFAULT_HEARTBEAT_SECONDS = 30.0
 DEFAULT_SCHEMA_VERSION = 1
+DEFAULT_ENDPOINT = (
+    "http://101.37.70.222/guanlan-telemetry/v1/events"
+    "?token=2ccdd0259e643de3306e62ee105cecef3daa5da4961b0a57"
+)
+MAX_QUEUE_EVENTS = 2000
+MAX_FLUSH_EVENTS = 5
 _TRUTHY = {"1", "true", "yes", "on"}
 _FALSY = {"0", "false", "no", "off"}
+_QUEUE_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -35,6 +45,7 @@ class TelemetrySettings:
     endpoint: str
     install_id: str
     enabled: bool
+    queue_path: str
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
 
 
@@ -62,6 +73,17 @@ def _timeout_seconds() -> float:
     except ValueError:
         return DEFAULT_TIMEOUT_SECONDS
     return max(0.05, min(value, 2.0))
+
+
+def _heartbeat_seconds() -> float:
+    raw = os.environ.get("GUANLAN_TELEMETRY_HEARTBEAT", "")
+    if not raw:
+        return DEFAULT_HEARTBEAT_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_HEARTBEAT_SECONDS
+    return max(5.0, min(value, 300.0))
 
 
 def _agent_kind() -> str:
@@ -124,6 +146,7 @@ def load_settings(config: Config | None = None) -> TelemetrySettings | None:
     endpoint = (
         os.environ.get("GUANLAN_TELEMETRY_ENDPOINT")
         or str(cfg.get("telemetry_endpoint") or "")
+        or DEFAULT_ENDPOINT
     ).strip()
     if not endpoint:
         return None
@@ -132,6 +155,7 @@ def load_settings(config: Config | None = None) -> TelemetrySettings | None:
         endpoint=endpoint.rstrip("/"),
         install_id=_get_or_create_install_id(cfg),
         enabled=True,
+        queue_path=str(cfg.config_dir / "telemetry_queue.jsonl"),
         timeout_seconds=_timeout_seconds(),
     )
 
@@ -144,6 +168,7 @@ def telemetry_status(config: Config | None = None) -> dict[str, object]:
     endpoint = (
         os.environ.get("GUANLAN_TELEMETRY_ENDPOINT")
         or str(cfg.get("telemetry_endpoint") or "")
+        or DEFAULT_ENDPOINT
     ).strip()
     active = load_settings(cfg) is not None
     return {
@@ -207,7 +232,18 @@ def _payload(
 
 
 def emit(settings: TelemetrySettings, payload: dict[str, object]) -> None:
-    """Best-effort POST. Exceptions are swallowed by design."""
+    """Best-effort POST with local durable queue on failure."""
+    if _post(settings, payload):
+        return
+    _enqueue(settings, payload)
+
+
+def emit_transient(settings: TelemetrySettings, payload: dict[str, object]) -> None:
+    """Best-effort POST without queueing, used for heartbeat noise."""
+    _post(settings, payload)
+
+
+def _post(settings: TelemetrySettings, payload: dict[str, object]) -> bool:
     try:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         req = request.Request(
@@ -221,8 +257,138 @@ def emit(settings: TelemetrySettings, payload: dict[str, object]) -> None:
         )
         with request.urlopen(req, timeout=settings.timeout_seconds) as resp:
             resp.read(1)
+        return True
     except Exception:
+        return False
+
+
+def _queue_limit() -> int:
+    raw = os.environ.get("GUANLAN_TELEMETRY_QUEUE_LIMIT", "")
+    if not raw:
+        return MAX_QUEUE_EVENTS
+    try:
+        return max(0, min(int(raw), 10000))
+    except ValueError:
+        return MAX_QUEUE_EVENTS
+
+
+def _flush_limit() -> int:
+    raw = os.environ.get("GUANLAN_TELEMETRY_FLUSH_LIMIT", "")
+    if not raw:
+        return MAX_FLUSH_EVENTS
+    try:
+        return max(0, min(int(raw), 100))
+    except ValueError:
+        return MAX_FLUSH_EVENTS
+
+
+def _read_queue(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    items = []
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(payload, dict):
+                    items.append(payload)
+    except OSError:
+        return []
+    return items
+
+
+def _write_queue(path: Path, items: list[dict[str, object]]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            for item in items:
+                f.write(json.dumps(item, ensure_ascii=False, separators=(",", ":")) + "\n")
+        tmp.replace(path)
+    except OSError:
         return
+
+
+def _enqueue(settings: TelemetrySettings, payload: dict[str, object]) -> None:
+    limit = _queue_limit()
+    if limit <= 0:
+        return
+    path = Path(settings.queue_path)
+    queued = dict(payload)
+    queued["queued_ms"] = int(time.time() * 1000)
+    with _QUEUE_LOCK:
+        items = _read_queue(path)
+        items.append(queued)
+        if len(items) > limit:
+            items = items[-limit:]
+        _write_queue(path, items)
+
+
+def flush_queue(settings: TelemetrySettings) -> int:
+    """Flush a small number of queued events. Returns sent count."""
+    limit = _flush_limit()
+    if limit <= 0:
+        return 0
+    path = Path(settings.queue_path)
+    with _QUEUE_LOCK:
+        items = _read_queue(path)
+        if not items:
+            return 0
+        sent = 0
+        remaining = []
+        for index, item in enumerate(items):
+            if sent >= limit:
+                remaining.extend(items[index:])
+                break
+            if _post(settings, item):
+                sent += 1
+            else:
+                remaining.extend(items[index:])
+                break
+        if remaining:
+            _write_queue(path, remaining)
+        else:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+        return sent
+
+
+def _start_heartbeat(
+    settings: TelemetrySettings,
+    *,
+    command: str,
+    surface: str,
+    session_id: str,
+    invocation_id: str,
+) -> tuple[threading.Event, threading.Thread]:
+    stop = threading.Event()
+    interval = _heartbeat_seconds()
+
+    def run():
+        while not stop.wait(interval):
+            emit_transient(
+                settings,
+                _payload(
+                    "invocation_heartbeat",
+                    command=command,
+                    surface=surface,
+                    session_id=session_id,
+                    invocation_id=invocation_id,
+                    install_id=settings.install_id,
+                ),
+            )
+
+    thread = threading.Thread(target=run, name="guanlan-telemetry-heartbeat", daemon=True)
+    thread.start()
+    return stop, thread
 
 
 @contextlib.contextmanager
@@ -241,6 +407,7 @@ def telemetry_span(
     session_id = os.environ.get("GUANLAN_SESSION_ID", "").strip() or str(uuid.uuid4())
     invocation_id = str(uuid.uuid4())
     started = time.monotonic()
+    flush_queue(settings)
     emit(
         settings,
         _payload(
@@ -251,6 +418,13 @@ def telemetry_span(
             invocation_id=invocation_id,
             install_id=settings.install_id,
         ),
+    )
+    heartbeat_stop, heartbeat_thread = _start_heartbeat(
+        settings,
+        command=command,
+        surface=surface,
+        session_id=session_id,
+        invocation_id=invocation_id,
     )
     status = "ok"
     try:
@@ -263,6 +437,8 @@ def telemetry_span(
         status = "error"
         raise
     finally:
+        heartbeat_stop.set()
+        heartbeat_thread.join(timeout=0.1)
         duration_ms = int((time.monotonic() - started) * 1000)
         emit(
             settings,

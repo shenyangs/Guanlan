@@ -251,9 +251,12 @@ def test_hotnews_build_trend_report_merges_cross_source_topics():
     assert report["trend_count"] == 2
     assert report["trends"][0]["source_count"] == 2
     assert {"baidu", "weibo"} <= set(report["trends"][0]["sources"])
+    assert report["trends"][0]["resonance"] == "two-source"
+    assert report["trends"][0]["research_commands"]
     md = hotnews.format_trend_report_markdown(report)
     assert "观澜趋势归并" in md
     assert "AI 眼镜新品发布" in md
+    assert "共振" in md
 
 
 def test_hotnews_trend_report_avoids_generic_bigram_false_merge():
@@ -279,6 +282,7 @@ def test_hotnews_brief_includes_followup_queries():
 
     assert brief["sample_count"] == 2
     assert brief["highlights"][0]["research_queries"]
+    assert "resonance" in brief["highlights"][0]
     assert "观澜今日水势简报" in md
     assert "继续查" in md
 

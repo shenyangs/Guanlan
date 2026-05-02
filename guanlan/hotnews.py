@@ -650,6 +650,10 @@ def build_trend_report(items: list[dict[str, Any]], limit: int = 20) -> dict[str
         cluster["source_count"] = len(cluster.get("sources", []))
         cluster["item_count"] = len(items_for_cluster)
         cluster["heat_score"] = _cluster_heat_score(items_for_cluster)
+        cluster["resonance"] = _trend_resonance(cluster)
+        cluster["island_risk"] = _trend_island_risk(cluster)
+        cluster["timeline"] = _trend_timeline(items_for_cluster)
+        cluster["research_commands"] = [f'guanlan research "{query}" --profile china --advisor' for query in _trend_research_queries(str(cluster.get("title", "")), list(cluster.get("sources") or []))[:2]]
         cluster.pop("_signature", None)
     clusters.sort(key=lambda row: (-int(row.get("source_count", 0)), -float(row.get("heat_score", 0)), str(row.get("title", ""))))
     return {
@@ -670,12 +674,22 @@ def format_trend_report_markdown(report: dict[str, Any], title: str = "观澜趋
     for idx, trend in enumerate(trends, start=1):
         sources = ", ".join(trend.get("sources") or [])
         lines.append(f"{idx}. {trend.get('title', '')}")
-        lines.append(f"   来源: {sources or 'unknown'} | 条目: {trend.get('item_count', 0)} | 热度: {trend.get('heat_score', 0)}")
+        lines.append(
+            f"   来源: {sources or 'unknown'} | 条目: {trend.get('item_count', 0)} | "
+            f"热度: {trend.get('heat_score', 0)} | 共振: {trend.get('resonance', 'single-source')}"
+        )
+        if trend.get("island_risk"):
+            lines.append("   边界: 主要是单平台水花，不应直接写成全网趋势。")
+        timeline = trend.get("timeline") or []
+        if timeline:
+            lines.append("   时间线: " + "；".join(f"{item.get('time')} {item.get('source')}" for item in timeline[:3]))
         for item in (trend.get("items") or [])[:3]:
             source = _clean_text(item.get("source_id", "unknown"))
             url = _clean_text(item.get("url", ""))
             item_title = _clean_text(item.get("title", ""))
             lines.append(f"   - [{source}] {item_title}" + (f" {url}" if url else ""))
+        for command in trend.get("research_commands") or []:
+            lines.append(f"   继续查: `{command}`")
     return "\n".join(lines)
 
 
@@ -701,6 +715,9 @@ def build_hotnews_brief(items: list[dict[str, Any]], trend_report: dict[str, Any
                 "source_count": int(trend.get("source_count") or 0),
                 "item_count": int(trend.get("item_count") or 0),
                 "heat_score": trend.get("heat_score", 0),
+                "resonance": trend.get("resonance", "single-source"),
+                "island_risk": bool(trend.get("island_risk")),
+                "timeline": list(trend.get("timeline") or []),
                 "research_queries": _trend_research_queries(title, sources),
             }
         )
@@ -739,11 +756,45 @@ def format_hotnews_brief_markdown(brief: dict[str, Any], title: str = "观澜今
         for idx, item in enumerate(highlights, start=1):
             sources = ", ".join(item.get("sources") or [])
             lines.append(f"{idx}. {item.get('title', '')}")
-            lines.append(f"   来源: {sources or 'unknown'} | 条目: {item.get('item_count', 0)} | 热度: {item.get('heat_score', 0)}")
+            lines.append(
+                f"   来源: {sources or 'unknown'} | 条目: {item.get('item_count', 0)} | "
+                f"热度: {item.get('heat_score', 0)} | 共振: {item.get('resonance', 'single-source')}"
+            )
+            if item.get("island_risk"):
+                lines.append("   边界: 单平台信号，适合追踪，不宜直接定调。")
             queries = item.get("research_queries") or []
             if queries:
                 lines.append("   继续查: " + "；".join(queries[:2]))
     return "\n".join(lines)
+
+
+def _trend_resonance(cluster: dict[str, Any]) -> str:
+    sources = set(cluster.get("sources") or [])
+    if len(sources) >= 3:
+        return "cross-platform"
+    if len(sources) == 2:
+        return "two-source"
+    return "single-source"
+
+
+def _trend_island_risk(cluster: dict[str, Any]) -> bool:
+    return len(set(cluster.get("sources") or [])) <= 1 and int(cluster.get("item_count") or 0) <= 2
+
+
+def _trend_timeline(items: list[dict[str, Any]]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for item in items:
+        when = _clean_text(item.get("published_at") or item.get("fetched_at") or "")
+        if not when:
+            continue
+        rows.append(
+            {
+                "time": when[:16],
+                "source": _clean_text(item.get("source_id") or item.get("platform") or "unknown"),
+                "title": _clean_text(item.get("title") or "")[:80],
+            }
+        )
+    return sorted(rows, key=lambda row: row["time"])[:5]
 
 
 def _trend_research_queries(title: str, sources: list[str]) -> list[str]:

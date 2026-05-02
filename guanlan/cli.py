@@ -274,6 +274,8 @@ def main():
                             help="Append a cautious assistant view with intent hypotheses and next steps")
     p_research.add_argument("--advisor-style", choices=["brief", "decision", "risk", "strategy"], default="brief",
                             help="Advisor guidance style when --advisor is enabled")
+    p_research.add_argument("--prompt-style", choices=["concise", "deep", "evidence", "decision"], default="deep",
+                            help="Prompt style when --format prompt is used")
     p_research.add_argument("--select-top", type=int, default=None,
                             help="How many representative evidence items to highlight from the broad pool")
 
@@ -300,6 +302,8 @@ def main():
                           help="Include advisor writing rules in the prompt")
     p_prompt.add_argument("--advisor-style", choices=["brief", "decision", "risk", "strategy"], default="brief",
                           help="Advisor guidance style")
+    p_prompt.add_argument("--style", choices=["concise", "deep", "evidence", "decision"], default="deep",
+                          help="Local LLM prompt style")
     p_prompt.add_argument("--select-top", type=int, default=8,
                           help="Representative evidence items to include")
 
@@ -361,6 +365,10 @@ def main():
                         help="Compare this read with the saved local snapshot and output a diff")
     p_read.add_argument("--trace", action="store_true",
                         help="Show read backend attempts and content quality score")
+    p_read.add_argument("--strict", action="store_true",
+                        help="Prefer failing/fallback over returning noisy extracted text")
+    p_read.add_argument("--extract", choices=["article", "text", "metadata", "links"], default="article",
+                        help="Direct-read extraction target")
     p_read.add_argument("--interval", default="",
                         help="Accepted for watch workflows; this CLI stores one snapshot per run")
 
@@ -1081,6 +1089,7 @@ def _cmd_research(args):
     from guanlan.webtools import (
         build_research_packet,
         format_advisor_context,
+        format_evidence_audit_context,
         format_research_markdown,
         format_research_prompt,
         format_search_context,
@@ -1122,13 +1131,16 @@ def _cmd_research(args):
     elif output_format == "context":
         evidence = packet.get("selected_evidence") or packet.get("results", [])
         print(format_search_context(evidence, title=f"观澜研究上下文 / {args.query}"))
+        if isinstance(packet.get("evidence_audit"), dict):
+            print()
+            print(format_evidence_audit_context(packet["evidence_audit"]))
         if args.advisor and isinstance(packet.get("advisor"), dict):
             print()
             print(format_advisor_context(packet["advisor"]))
         if args.source_chart:
             print(format_source_chart(packet.get("results", [])))
     elif output_format == "prompt":
-        print(format_research_prompt(packet))
+        print(format_research_prompt(packet, style=args.prompt_style))
     else:
         print(format_research_markdown(packet))
         if args.source_chart:
@@ -1165,7 +1177,7 @@ def _cmd_prompt(args):
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    print(format_research_prompt(packet))
+    print(format_research_prompt(packet, style=args.style))
 
 
 def _cmd_pulse(args):
@@ -1239,6 +1251,7 @@ def _cmd_read(args):
                 fallback_limit=max(args.fallback_limit, 1),
                 profile=args.profile or None,
                 cache_ttl=max(args.cache_ttl, 0),
+                **_read_quality_kwargs(args),
             )
             if args.format == "json":
                 print(json.dumps(records, ensure_ascii=False, indent=2))
@@ -1264,6 +1277,7 @@ def _cmd_read(args):
                 cache_ttl=max(args.cache_ttl, 0),
                 use_cache=not args.no_cache,
                 watch=args.watch,
+                **_read_quality_kwargs(args),
             )
             content = str(read_packet.get("content", ""))
         else:
@@ -1277,6 +1291,7 @@ def _cmd_read(args):
                 cache_ttl=max(args.cache_ttl, 0),
                 use_cache=not args.no_cache,
                 watch=args.watch,
+                **_read_quality_kwargs(args),
             )
         if args.format == "json":
             payload = read_packet if read_packet is not None else {"url": args.url, "content": content}
@@ -1299,6 +1314,15 @@ def _cmd_read(args):
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+
+
+def _read_quality_kwargs(args) -> dict[str, object]:
+    kwargs: dict[str, object] = {}
+    if getattr(args, "strict", False):
+        kwargs["strict"] = True
+    if getattr(args, "extract", "article") != "article":
+        kwargs["extract"] = args.extract
+    return kwargs
 
 
 def _cmd_archive(args):

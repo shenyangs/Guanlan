@@ -29,7 +29,7 @@ BIND_PORT = int(os.environ.get("GUANLAN_PORT", "8080"))
 ADMIN_USER = os.environ.get("GUANLAN_ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.environ.get("GUANLAN_ADMIN_PASSWORD", "")
 INGEST_TOKEN = os.environ.get("GUANLAN_INGEST_TOKEN", "")
-ACTIVE_TTL_SECONDS = int(os.environ.get("GUANLAN_ACTIVE_TTL_SECONDS", "600"))
+ACTIVE_TTL_SECONDS = int(os.environ.get("GUANLAN_ACTIVE_TTL_SECONDS", "180"))
 MAX_BODY_BYTES = 16 * 1024
 
 
@@ -52,6 +52,7 @@ def db_connect():
         os.makedirs(parent)
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     return conn
@@ -103,6 +104,10 @@ def init_db():
         ensure_column(conn, "events", "agent_id", "TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "active_invocations", "agent_id", "TEXT NOT NULL DEFAULT ''")
         backfill_agent_ids(conn)
+        dedupe_events(conn)
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_event_invocation ON events(event, invocation_id)"
+        )
         conn.commit()
     finally:
         conn.close()
@@ -132,6 +137,19 @@ def backfill_agent_ids(conn):
             )
 
 
+def dedupe_events(conn):
+    conn.execute(
+        """
+        DELETE FROM events
+        WHERE id NOT IN (
+            SELECT MIN(id)
+            FROM events
+            GROUP BY event, invocation_id
+        )
+        """
+    )
+
+
 def prune_active(conn, current_ms):
     cutoff = current_ms - ACTIVE_TTL_SECONDS * 1000
     conn.execute("DELETE FROM active_invocations WHERE last_seen_ms < ?", (cutoff,))
@@ -140,7 +158,7 @@ def prune_active(conn, current_ms):
 def record_event(payload, remote_addr):
     current = now_ms()
     event = clamp_text(payload.get("event"), 64)
-    if event not in ("invocation_start", "invocation_end"):
+    if event not in ("invocation_start", "invocation_heartbeat", "invocation_end"):
         return False
 
     row = {
@@ -173,9 +191,38 @@ def record_event(payload, remote_addr):
     conn = db_connect()
     try:
         prune_active(conn, current)
+        if event == "invocation_heartbeat":
+            cursor = conn.execute(
+                "UPDATE active_invocations SET last_seen_ms = ? WHERE invocation_id = ?",
+                (current, row["invocation_id"]),
+            )
+            if cursor.rowcount == 0:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO active_invocations (
+                        invocation_id, install_id, session_id, surface, command,
+                        version, agent_kind, agent_id, started_ms, last_seen_ms
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row["invocation_id"],
+                        row["install_id"],
+                        row["session_id"],
+                        row["surface"],
+                        row["command"],
+                        row["version"],
+                        row["agent_kind"],
+                        row["agent_id"],
+                        current,
+                        current,
+                    ),
+                )
+            conn.commit()
+            return True
+
         conn.execute(
             """
-            INSERT INTO events (
+            INSERT OR IGNORE INTO events (
                 ts_ms, received_ms, event, install_id, session_id, invocation_id,
                 surface, command, version, agent_kind, agent_id, platform, python, status,
                 duration_ms, remote_addr
@@ -408,6 +455,11 @@ def summary():
         )
         orphan_starts_24h = query_orphan_starts(conn, day, current)
         data = {
+            "generated_ms": current,
+            "last_event_age_ms": max(
+                0,
+                current - (query_one(conn, "SELECT MAX(received_ms) FROM events") or current),
+            ),
             "active_now": query_one(conn, "SELECT COUNT(*) FROM active_invocations"),
             "calls_24h": calls_24h,
             "calls_7d": calls_7d,
@@ -502,6 +554,7 @@ def render_dashboard():
     session_24h = data["session_24h"]
     cards = [
         ("当前并发", data["active_now"]),
+        ("最近事件", fmt_ms(data["last_event_age_ms"]) + " 前"),
         ("24h 调用", data["calls_24h"]),
         ("7d 调用", data["calls_7d"]),
         ("24h 独立 Agent", data["unique_agents_24h"]),
@@ -570,12 +623,17 @@ def render_dashboard():
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="20">
+  <meta http-equiv="refresh" content="5">
   <title>Guanlan Telemetry</title>
+  <link rel="icon" href="/assets/guanlan-logo.svg" type="image/svg+xml">
   <style>
     body {{ margin:0; font:14px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif; background:#f6f7f9; color:#20242a; }}
-    header {{ background:#111827; color:white; padding:22px 28px; }}
-    h1 {{ margin:0; font-size:22px; }}
+    header {{ background:#111827; color:white; padding:18px 28px; }}
+    .brand {{ display:flex; align-items:center; gap:12px; }}
+    .brand img {{ width:38px; height:38px; border-radius:8px; }}
+    .brand-title {{ display:flex; flex-direction:column; }}
+    .brand-title strong {{ font-size:20px; letter-spacing:0; }}
+    .brand-title span {{ color:#b8c2d6; font-size:12px; }}
     main {{ padding:22px 28px 40px; max-width:1180px; margin:0 auto; }}
     .cards {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; }}
     .card, section {{ background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,.04); }}
@@ -592,7 +650,15 @@ def render_dashboard():
   </style>
 </head>
 <body>
-  <header><h1>Guanlan Telemetry</h1></header>
+  <header>
+    <div class="brand">
+      <img src="/assets/guanlan-logo.svg" alt="">
+      <div class="brand-title">
+        <strong>观澜遥测面板</strong>
+        <span>Guanlan Telemetry</span>
+      </div>
+    </div>
+  </header>
   <main>
     <div class="cards">{cards}</div>
     <div class="grid">
@@ -640,6 +706,7 @@ class Handler(BaseHTTPRequestHandler):
         body = text.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

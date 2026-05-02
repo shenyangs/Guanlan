@@ -24,6 +24,7 @@
 - Agent 调用时应尽量多取结果再筛选：普通任务保持 50，复杂研究可设到 80-100；只有用户明确要求“小样本/快速看一下”时才降低 limit。
 - 用户需要建议、影响判断、下一步行动，或询问“为什么会搜这个”时，优先使用 `research --advisor`，但把助理视角当作证据边界和写作规则，由你结合用户问题生成自然建议；不要机械复述模板，也不要当作用户真实意图。
 - 不确定该查哪些信源时，先用 `guanlan route "关键词"` 看需求路由；路由计划是软约束，优先源用于提高适配度，开放网页兜底用于防止信源池过窄。
+- `research` 会附带证据审计提示：如果同一模型、版本号、价格、参数量或发布时间出现不同说法，先把冲突和来源日期讲清楚，再给取舍依据；不要把观澜的冲突提示当成最终裁决。
 
 ## 最小命令集
 
@@ -51,6 +52,8 @@
 | “只要证据包，不读原文” | `guanlan research "关键词" --read-top 0` |
 | “读这个链接” | `guanlan read "URL"` |
 | “Jina 读不了/读取不完整” | `guanlan read "URL" --backend direct` |
+| “页面噪声太多，宁可少给” | `guanlan read "URL" --strict --trace` |
+| “只核验标题/发布时间/链接” | `guanlan read "URL" --backend direct --extract metadata` 或 `--extract links` |
 | “只读原文，不要兜底搜索” | `guanlan read "URL" --no-fallback-search` |
 | “今天有什么热点” | `guanlan hotnews today --limit 50` |
 | “技术社区在讨论什么” | `guanlan hotnews v2ex --limit 50` |
@@ -60,7 +63,7 @@
 | “解释为什么这条排第一” | `guanlan search "关键词" --trace` |
 | “重复查同一题，减少请求” | `guanlan search "关键词" --cache-ttl 3600` |
 | “把搜索结果直接塞进 prompt” | `guanlan search "关键词" --format context` |
-| “给没有联网能力的本地模型准备输入” | `guanlan prompt "关键词" --profile china` |
+| “给没有联网能力的本地模型准备输入” | `guanlan prompt "关键词" --profile china --style evidence` |
 | “把研究证据包直接喂给本地模型” | `guanlan research "关键词" --format prompt` |
 | “生成 MCP 客户端配置” | `guanlan mcp config --client codex` |
 | “本地工具不支持 MCP，但能调 HTTP” | `guanlan serve --host 127.0.0.1 --port 8765` |
@@ -335,11 +338,13 @@ guanlan doctor --profile china --trace
 guanlan doctor --check-config
 ```
 
-需要解释搜索排序时，使用 `--trace`。它会展示评分因子、query_quality、topic 信息、缓存状态、后端顺序和时效性判断，适合排查“为什么 A 在 B 前面”。
+需要解释搜索排序时，使用 `--trace`。它会展示评分因子、query_quality、query_strategy、topic 信息、缓存状态、后端顺序和时效性判断，适合排查“为什么 A 在 B 前面”。
 
 ```bash
 guanlan search "最新 AI 政策" --profile china --trace
 ```
+
+严肃研究不要只依赖一个宽泛 query。`research` 会按路由计划把问题拆成官方原文、权威报道、用户样本、行业材料、近期进展等 query variant，再按 scope/site/open web 合并去重；Agent 回答时应保留这些证据角色差异。
 
 同一个 query 需要反复查时，可以加 TTL 缓存，默认缓存落在 `~/.guanlan/cache/`：
 

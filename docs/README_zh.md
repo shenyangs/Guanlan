@@ -28,7 +28,7 @@
 | [发布自动化](release-automation.md) | 维护者配置 PyPI 自动发布与 Homebrew tap 自动更新。 |
 | [依赖锁定](dependency-locking.md) | 维护者更新依赖约束和复现实验环境。 |
 | [MCP 配置示例](examples/mcporter.json) | 可选第三方 MCP 工具配置样例，不是观澜默认运行配置。 |
-| [匿名遥测](telemetry.md) | 自托管统计时配置命令生命周期元数据采集。 |
+| [匿名遥测](telemetry.md) | 命令生命周期元数据采集、关闭方式与自托管配置。 |
 
 ## 当前重点
 

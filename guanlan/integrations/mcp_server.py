@@ -345,6 +345,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         from guanlan.webtools import (
             build_research_packet,
             format_advisor_context,
+            format_evidence_audit_context,
             format_research_markdown,
             format_research_prompt,
             format_search_context,
@@ -373,6 +374,8 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
                 packet.get("selected_evidence") or packet.get("results", []),
                 title=f"观澜研究上下文 / {args.get('query', '')}",
             )
+            if isinstance(packet.get("evidence_audit"), dict):
+                text += "\n\n" + format_evidence_audit_context(packet["evidence_audit"])
             if isinstance(packet.get("advisor"), dict):
                 text += "\n\n" + format_advisor_context(packet["advisor"])
             return text

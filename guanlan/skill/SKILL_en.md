@@ -25,6 +25,7 @@ Upstream tools for 17 platforms. Call them directly.
 Run `guanlan welcome` when a new user asks how to start using Guanlan with their agent.
 Run `guanlan capabilities` when the user or agent needs to know what Guanlan can do.
 Run `guanlan doctor` to check which channels are available.
+`guanlan research` includes evidence-audit hints for version/name conflicts, source timelines, and follow-up verification.
 
 ## ⚠️ Workspace Rules
 

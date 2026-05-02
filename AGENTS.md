@@ -19,8 +19,10 @@ guanlan search "电商零售问题" --profile china --scope ecommerce
 guanlan search --list-scopes
 guanlan route "中文研究需求" --json
 guanlan read "https://example.com/article" --max-chars 12000
+guanlan read "https://example.com/article" --strict --trace
 guanlan research "query" --profile china --advisor
 guanlan research "产品 用户评价" --preset reputation --read-top 0 --advisor
+guanlan prompt "query" --profile china --style evidence
 guanlan hotnews today --limit 50
 guanlan hotnews today --limit 50 --trends
 guanlan hotnews weibo --limit 50
@@ -44,4 +46,6 @@ Safety rules:
 - Use `guanlan welcome` when a new user asks how to start using Guanlan with their agent.
 - Use `guanlan capabilities` when the user asks what Guanlan can do, which Guanlan command/tool to use, or why the tool is relevant.
 - Use `guanlan route "query"` when deciding which source pools, sites, evidence roles, and caveats fit a request; route plans are soft guidance, not hard filters.
+- Use `guanlan search ... --trace` or `guanlan research ...` when you need query_strategy, source diagnostics, and evidence-role query rewrites; do not rely on one broad query for serious research.
+- Use `guanlan read ... --strict` when noisy page chrome would harm downstream reasoning; use `--extract metadata` or `--extract links` for source/date/link checks.
 - Use `guanlan research ... --advisor` when the user asks for advice, implications, next steps, or "why they might be searching this"; treat the advisor block as evidence-bound writing rules for your answer, not as the user's true intent or a final decision.

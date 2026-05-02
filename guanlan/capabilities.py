@@ -83,7 +83,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="research",
         name="研究证据包",
-        description="把搜索、路由、代表证据、可选原文摘录和来源分布整理成一份 Agent-ready evidence packet。",
+        description="把搜索、路由、代表证据、可选原文摘录、来源分布和证据审计整理成一份 Agent-ready evidence packet。",
         when_to_use="用户希望查清楚、给依据、整理资料、做研究，不只是要几个链接。",
         cli=[
             "guanlan research \"关键词\" --profile china",
@@ -92,6 +92,16 @@ CAPABILITIES: tuple[Capability, ...] = (
         ],
         mcp="guanlan_research",
         examples=["帮我查清楚这个行业趋势。", "整理一下这个产品的公开口碑。"],
+    ),
+    Capability(
+        id="evidence_audit",
+        name="证据审计",
+        description="在 research 证据包里标出版本号/叫法冲突、来源时间线和需要继续核验的结构化事实。",
+        when_to_use="多篇材料对同一模型、价格、参数、发布时间等说法不一致，或用户需要交叉验证时。",
+        cli=["guanlan research \"2026 April LLM release\" --profile china", "guanlan research \"模型 发布 价格 参数\" --format prompt"],
+        mcp="guanlan_research",
+        boundary="只提示冲突和核验路径，不直接裁定哪个说法一定正确。",
+        examples=["这几篇文章版本号对不上，帮我标出来。", "按发布时间帮我核验这些模型发布说法。"],
     ),
     Capability(
         id="advisor",

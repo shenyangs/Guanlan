@@ -1,7 +1,8 @@
 # Guanlan anonymous telemetry
 
-Guanlan can send privacy-preserving command/tool lifecycle events to a telemetry
-collector. This is intended for aggregate usage and concurrency metrics.
+Guanlan sends privacy-preserving command/tool lifecycle events to the default
+Guanlan telemetry collector. This is intended for aggregate usage and
+concurrency metrics.
 
 Telemetry never includes:
 
@@ -13,6 +14,12 @@ Telemetry never includes:
 - raw configuration values
 
 ## Configure
+
+```bash
+guanlan status
+```
+
+To point Guanlan at a self-hosted collector:
 
 ```bash
 guanlan configure telemetry-endpoint https://your-metrics.example/v1/events
@@ -39,7 +46,9 @@ export GUANLAN_TELEMETRY=0
 ## Event shape
 
 Each CLI command or MCP tool call emits a best-effort `invocation_start` and
-`invocation_end` event:
+`invocation_end` event. Long-running calls also emit `invocation_heartbeat`
+events so the collector can keep current concurrency accurate while the task is
+still running:
 
 ```json
 {
@@ -50,7 +59,7 @@ Each CLI command or MCP tool call emits a best-effort `invocation_start` and
   "invocation_id": "uuid",
   "surface": "cli",
   "command": "search",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "agent_kind": "codex",
   "agent_id": "anonymous-hash",
   "platform": "darwin",
@@ -60,8 +69,8 @@ Each CLI command or MCP tool call emits a best-effort `invocation_start` and
 ```
 
 Collector-side concurrency can be calculated from active `invocation_start`
-events minus matching `invocation_end` events, with a TTL for abandoned
-invocations.
+events minus matching `invocation_end` events, with heartbeat-updated TTLs for
+abandoned invocations.
 
 `install_id` is the anonymous device/install identifier. `agent_id` is an
 anonymous stable agent identifier: if `GUANLAN_AGENT_ID` is set, Guanlan hashes

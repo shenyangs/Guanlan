@@ -396,6 +396,12 @@ def search_web(
         limit=limit,
     )
     quality = _quality_with_route_plan(quality, route_plan.to_dict(), explicit_scope=scope, site=site)
+    query_strategy = build_query_strategy(
+        original_query,
+        route_plan=route_plan.to_dict(),
+        recency=recency,
+        quality=quality,
+    )
     if scope:
         from guanlan.search_sources import resolve_scope, scoped_query
 
@@ -499,6 +505,7 @@ def search_web(
                 "cluster_threshold": cluster_threshold,
                 "query_recency": recency,
                 "route_plan": route_plan.to_dict(),
+                "query_strategy": query_strategy,
                 "query_quality": quality,
                 "quality_summary": quality_summary,
                 "errors": list(errors),
@@ -808,6 +815,8 @@ def read_url(
     cache_ttl: int = 0,
     use_cache: bool = True,
     watch: bool = False,
+    strict: bool = False,
+    extract: str = "article",
 ) -> str:
     """Read a URL with Jina/direct fallbacks and optional search context."""
     return str(
@@ -821,6 +830,8 @@ def read_url(
             cache_ttl=cache_ttl,
             use_cache=use_cache,
             watch=watch,
+            strict=strict,
+            extract=extract,
         )["content"]
     )
 
@@ -835,6 +846,8 @@ def read_url_with_trace(
     cache_ttl: int = 0,
     use_cache: bool = True,
     watch: bool = False,
+    strict: bool = False,
+    extract: str = "article",
 ) -> dict[str, Any]:
     """Read a URL and return content plus backend/quality trace."""
     url = url.strip()
@@ -844,6 +857,10 @@ def read_url_with_trace(
         url = "https://" + url
 
     cache_key = ""
+    extract = (extract or "article").lower()
+    if extract not in {"article", "text", "metadata", "links"}:
+        raise ValueError("extract must be one of: article, text, metadata, links")
+
     if cache_ttl and cache_ttl > 0 and use_cache and not watch:
         cache_key = _cache_key(
             "read",
@@ -854,6 +871,8 @@ def read_url_with_trace(
                 "fallback_search": fallback_search,
                 "fallback_limit": fallback_limit,
                 "profile": profile or "",
+                "strict": strict,
+                "extract": extract,
             },
         )
         cached = _cache_get("read", cache_key, ttl=cache_ttl)
@@ -866,6 +885,8 @@ def read_url_with_trace(
                 "trace": {
                     "backend": backend,
                     "selected_backend": str(cached.get("selected_backend") or "cache"),
+                    "strict": bool(strict),
+                    "extract": extract,
                     "cache": "hit",
                     "cache_key": cache_key,
                     "attempts": list(cached.get("attempts") or []),
@@ -879,11 +900,12 @@ def read_url_with_trace(
     text = ""
     weak_text = ""
     selected_backend = ""
-    if backend in ("auto", "jina"):
+    prefer_direct = extract in {"metadata", "links"}
+    if backend in ("auto", "jina") and not prefer_direct:
         try:
             candidate = _read_with_jina(url)
             candidate_quality = assess_read_quality(candidate)
-            if backend == "auto" and _is_weak_read(candidate):
+            if backend == "auto" and _read_should_fallback(candidate_quality, strict=strict):
                 errors.append("jina: weak or blocked content")
                 weak_text = weak_text or candidate
                 attempts.append({"backend": "jina", "status": "weak", "chars": len(candidate), "quality": candidate_quality})
@@ -898,9 +920,9 @@ def read_url_with_trace(
                 raise
     if not text and backend in ("auto", "direct"):
         try:
-            candidate = _read_direct(url)
+            candidate = _call_read_direct(url, extract=extract)
             candidate_quality = assess_read_quality(candidate)
-            if backend == "auto" and _is_weak_read(candidate):
+            if backend == "auto" and _read_should_fallback(candidate_quality, strict=strict):
                 errors.append("direct: weak or blocked content")
                 weak_text = weak_text or candidate
                 attempts.append({"backend": "direct", "status": "weak", "chars": len(candidate), "quality": candidate_quality})
@@ -937,6 +959,8 @@ def read_url_with_trace(
     trace_payload = {
         "backend": backend,
         "selected_backend": selected_backend or backend,
+        "strict": bool(strict),
+        "extract": extract,
         "cache": "miss" if cache_key else "disabled",
         "cache_key": cache_key,
         "attempts": attempts,
@@ -972,6 +996,9 @@ def assess_read_quality(text: str) -> dict[str, Any]:
     cjk_chars = sum(1 for char in normalized if "\u4e00" <= char <= "\u9fff")
     mojibake = _looks_mojibake(normalized)
     fallback = normalized.startswith("# 观澜阅读兜底")
+    line_count = len([line for line in (text or "").splitlines() if line.strip()])
+    avg_line_len = round(len(normalized) / max(line_count, 1), 1)
+    noise_ratio = round(len(noise_hits) / max(line_count, 1), 3)
     weak = len(normalized) < _MIN_USEFUL_READ_CHARS or mojibake or any(marker in normalized.lower() for marker in _WEAK_READ_MARKERS)
     score = 100
     if fallback:
@@ -1001,6 +1028,10 @@ def assess_read_quality(text: str) -> dict[str, Any]:
         "mojibake": mojibake,
         "weak": weak,
         "fallback": fallback,
+        "line_count": line_count,
+        "avg_line_len": avg_line_len,
+        "noise_ratio": noise_ratio,
+        "strict_pass": bool(label == "clean" and score >= 70),
     }
 
 
@@ -1016,6 +1047,8 @@ def read_batch(
     fallback_limit: int = DEFAULT_READ_FALLBACK_LIMIT,
     profile: str | None = "china",
     cache_ttl: int = 0,
+    strict: bool = False,
+    extract: str = "article",
 ) -> list[dict[str, Any]]:
     """Read multiple URLs with per-item errors kept in the result list."""
     records: list[dict[str, Any]] = []
@@ -1036,6 +1069,8 @@ def read_batch(
                 fallback_limit=fallback_limit,
                 profile=profile,
                 cache_ttl=cache_ttl,
+                strict=strict,
+                extract=extract,
             )
             records.append({"rank": idx, "url": clean_url, "status": "ok", "content": content})
         except Exception as e:
@@ -1186,6 +1221,13 @@ def build_research_packet(
         limit=effective_limit,
         read_top=read_top,
     )
+    recency = detect_recency_intent(query)
+    query_strategy = build_query_strategy(
+        query,
+        route_plan=route_plan.to_dict(),
+        recency=recency,
+        quality=detect_search_quality_profile(query, scope=explicit_scope, site=site, profile=effective_profile),
+    )
     effective_scope = explicit_scope if explicit_scope is not None else preset_config["scope"]
     effective_sites = _research_sites(preset_config, site=site, sites=sites, explicit_scope=explicit_scope)
     effective_scopes = _research_scopes(
@@ -1217,6 +1259,7 @@ def build_research_packet(
         search_backend=search_backend,
         profile=effective_profile,
         include_open_fallback=not bool(explicit_scope or explicit_sites),
+        query_strategy=query_strategy,
     )
     readings: list[dict[str, Any]] = []
     for item in _select_reading_candidates(results, effective_read_top):
@@ -1246,8 +1289,10 @@ def build_research_packet(
         "read_backend": read_backend,
         "read_top": effective_read_top,
         "route_plan": route_plan.to_dict(),
+        "query_strategy": query_strategy,
         "result_count": len(results),
         "source_mix": _source_mix(results),
+        "source_diagnostics": build_source_diagnostics(results, route_plan=route_plan.to_dict()),
         "topic_count": len({item.get("topic_key") for item in results if item.get("topic_key")}),
         "search_errors": search_errors,
         "result_groups": result_groups,
@@ -1261,8 +1306,10 @@ def build_research_packet(
             "topic=related 的结果可作为补充线索，不要当成独立证据重复计数。",
             "阅读兜底内容只代表公开搜索线索，不等同于原文全文。",
             "路由计划是软约束：优先源用于提高适配度，开放搜索兜底用于避免信息池过窄。",
+            "查询策略会把同一问题拆成不同证据角色；回答时要保留“官方、媒体、社区、用户样本”的差异。",
         ],
     }
+    packet["evidence_audit"] = build_evidence_audit(packet)
     if advisor:
         packet["advisor"] = build_advisor_view(packet, style=advisor_style)
     return packet
@@ -1295,6 +1342,12 @@ def format_research_markdown(packet: dict[str, Any]) -> str:
         lines.append(f"- Preset: {packet.get('preset')} / {packet.get('preset_name', '')}")
     if packet.get("search_errors"):
         lines.append(f"- 部分搜索失败: {'；'.join(packet['search_errors'])}")
+    query_strategy = packet.get("query_strategy") or {}
+    if isinstance(query_strategy, dict) and query_strategy.get("variants"):
+        lines.extend(["", "## 查询策略"])
+        lines.append(f"- 提醒: {query_strategy.get('agent_hint', '')}")
+        for item in list(query_strategy.get("variants") or [])[:6]:
+            lines.append(f"- {item.get('role')}: `{item.get('query')}` — {item.get('reason')}")
     route_plan = packet.get("route_plan") or {}
     if isinstance(route_plan, dict) and route_plan:
         lines.extend(["", "## 路由计划"])
@@ -1309,6 +1362,14 @@ def format_research_markdown(packet: dict[str, Any]) -> str:
             lines.append(f"- 推荐站点: {', '.join(route_plan.get('target_sites') or [])}")
         for warning in route_plan.get("warnings", [])[:4]:
             lines.append(f"- 边界: {warning}")
+
+    diagnostics = packet.get("source_diagnostics")
+    if isinstance(diagnostics, dict):
+        lines.extend(["", format_source_diagnostics_markdown(diagnostics)])
+
+    audit = packet.get("evidence_audit")
+    if isinstance(audit, dict):
+        lines.extend(["", format_evidence_audit_markdown(audit)])
 
     advisor = packet.get("advisor")
     if isinstance(advisor, dict):
@@ -1353,9 +1414,16 @@ def format_research_markdown(packet: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def format_research_prompt(packet: dict[str, Any]) -> str:
+def format_research_prompt(packet: dict[str, Any], style: str = "deep") -> str:
     """Render a complete prompt for local LLMs that have no search tool."""
     query = str(packet.get("query", "")).strip()
+    style = style if style in {"concise", "deep", "evidence", "decision"} else "deep"
+    style_rules = {
+        "concise": ["用短答案优先，证据只列最关键 3-5 条。", "如果信息不足，用一句话说明缺口。"],
+        "deep": ["分层组织结论、依据、分歧和下一步。", "尽量保留不同信源的角色差异。"],
+        "evidence": ["先列证据表，再给推断。", "每个关键判断后标注来源或证据类型。"],
+        "decision": ["输出可行动建议、适用条件和暂缓条件。", "把风险、成本和下一步核验放在结尾。"],
+    }[style]
     lines = [
         "# 观澜本地模型联网 Prompt",
         "",
@@ -1365,6 +1433,8 @@ def format_research_prompt(packet: dict[str, Any]) -> str:
         "- 不要把搜索样本写成全网结论。",
         "- 证据不足时直接说明缺口，并给下一步检索建议。",
         "- 涉及医疗、法律、金融和重大决策时，只给信息整理与风险提醒。",
+        f"- 当前输出风格: {style}。",
+        *[f"- {rule}" for rule in style_rules],
         "",
         f"## 用户问题\n{query}",
         "",
@@ -1380,6 +1450,23 @@ def format_research_prompt(packet: dict[str, Any]) -> str:
     if isinstance(route_plan, dict) and route_plan:
         lines.append("### 路由计划")
         lines.append(format_route_plan_markdown(route_plan))
+        lines.append("")
+    query_strategy = packet.get("query_strategy")
+    if isinstance(query_strategy, dict) and query_strategy.get("variants"):
+        lines.append("### 查询策略")
+        lines.append(str(query_strategy.get("agent_hint") or ""))
+        for item in list(query_strategy.get("variants") or [])[:6]:
+            lines.append(f"- {item.get('role')}: {item.get('query')} ({item.get('reason')})")
+        lines.append("")
+    diagnostics = packet.get("source_diagnostics")
+    if isinstance(diagnostics, dict):
+        lines.append("### 信源诊断")
+        lines.append(format_source_diagnostics_markdown(diagnostics))
+        lines.append("")
+    audit = packet.get("evidence_audit")
+    if isinstance(audit, dict):
+        lines.append("### 证据审计")
+        lines.append(format_evidence_audit_context(audit))
         lines.append("")
     selected = packet.get("selected_evidence") or packet.get("results", [])[:8]
     lines.append(format_search_context(selected, title="精选代表证据"))
@@ -1577,6 +1664,7 @@ def _research_search(
     search_backend: str,
     profile: str | None,
     include_open_fallback: bool = True,
+    query_strategy: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
     errors: list[str] = []
     groups: list[dict[str, Any]] = []
@@ -1591,9 +1679,10 @@ def _research_search(
     combined: list[dict[str, Any]] = []
     per_job_limit = max(3, min(limit, (limit // max(len(jobs), 1)) + 2))
     for job_type, target in jobs:
+        job_query = _query_for_research_job(query, job_type, target, query_strategy)
         try:
             result = search_web(
-                query,
+                job_query,
                 limit=per_job_limit,
                 site=target if job_type == "site" else None,
                 scope=target if job_type == "scope" else None,
@@ -1601,14 +1690,47 @@ def _research_search(
                 profile=profile,
             )
             combined.extend(result)
-            groups.append({"type": job_type, "label": target, "result_count": len(result), "results": result})
+            groups.append({"type": job_type, "label": target, "query": job_query, "result_count": len(result), "results": result})
         except Exception as e:
             message = f"{job_type}:{target}: {e}"
             errors.append(message)
-            groups.append({"type": job_type, "label": target, "result_count": 0, "results": [], "error": str(e)})
+            groups.append({"type": job_type, "label": target, "query": job_query, "result_count": 0, "results": [], "error": str(e)})
     if not combined and errors:
         raise RuntimeError("; ".join(errors))
     return _merge_ranked_result_dicts(combined, limit=limit), errors, groups
+
+
+def _query_for_research_job(
+    query: str,
+    job_type: str,
+    target: str,
+    query_strategy: dict[str, Any] | None = None,
+) -> str:
+    strategy = query_strategy or {}
+    variants = list(strategy.get("variants") or [])
+    if not variants:
+        return query
+    target = (target or "").lower()
+    role_preferences: list[str] = []
+    if job_type == "scope":
+        if target in {"gov", "party_central", "local_official"}:
+            role_preferences = ["official_primary", "authoritative_report", "fresh_news"]
+        elif target in {"social_web", "tech_dev"}:
+            role_preferences = ["user_sample", "developer_discussion", "review"]
+        elif target in {"business", "ecommerce", "finance"}:
+            role_preferences = ["industry_report", "fresh_news"]
+    elif job_type == "site":
+        if any(site in target for site in ("zhihu", "weibo", "xiaohongshu", "bilibili")):
+            role_preferences = ["user_sample", "review", "fresh_news"]
+        elif any(site in target for site in ("gov.cn", "people", "xinhuanet", "cctv")):
+            role_preferences = ["official_primary", "authoritative_report"]
+    elif job_type == "general":
+        role_preferences = ["fresh_news", "base"]
+    for role in role_preferences:
+        for item in variants:
+            if item.get("role") == role:
+                return str(item.get("query") or query)
+    return str(variants[0].get("query") or query)
 
 
 def _merge_ranked_result_dicts(results: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
@@ -1718,6 +1840,335 @@ def _reading_record(
         "content": content,
         "error": error,
     }
+
+
+def build_evidence_audit(packet: dict[str, Any]) -> dict[str, Any]:
+    """Build conservative cross-evidence audit hints without deciding the final answer."""
+    query = str(packet.get("query", "")).strip()
+    observations = _evidence_observations(packet)
+    version_conflicts = _audit_version_conflicts(observations)
+    claim_differences = _audit_claim_differences(observations)
+    timeline = _audit_timeline(observations)
+    warnings: list[str] = []
+    if version_conflicts:
+        warnings.append("检测到同一模型/实体的多个版本或叫法；回答前需要按来源、时间和官方材料交叉验证。")
+    if claim_differences:
+        warnings.append("检测到价格、参数量、日期或指标等结构化事实存在多个候选值；不要直接合并为单一结论。")
+    if len(timeline) >= 2:
+        warnings.append("检测到多个发布时间线索；较新的材料可能修正旧材料，但不能仅凭日期自动判定真伪。")
+    if observations and not version_conflicts and not claim_differences:
+        warnings.append("未发现明显版本号冲突；仍需核对关键数字、价格、参数量和发布日期。")
+    verification_steps = [
+        "把版本号、价格、参数量、发布日期等结构化事实单独列出来，不要直接合并相近说法。",
+        "优先补查官方公告、模型文档、发布博客或权威媒体；博客/社区材料作为线索而非最终口径。",
+        "出现冲突时说明“哪些来源这样说、日期分别是什么”，再给出你的取舍依据。",
+    ]
+    return {
+        "title": "证据审计提示",
+        "mode": "evidence_audit",
+        "query": query,
+        "observation_count": len(observations),
+        "version_conflicts": version_conflicts,
+        "claim_differences": claim_differences,
+        "timeline": timeline[:8],
+        "warnings": warnings,
+        "verification_steps": verification_steps,
+        "boundary": "这是交叉验证提示，不是事实裁决；观澜只标出需要核验的冲突和时间线索。",
+    }
+
+
+def format_evidence_audit_markdown(audit: dict[str, Any]) -> str:
+    """Render evidence audit hints for research Markdown."""
+    lines = [f"## {audit.get('title') or '证据审计提示'}"]
+    boundary = str(audit.get("boundary") or "").strip()
+    if boundary:
+        lines.append(f"- 边界: {boundary}")
+    warnings = [str(item) for item in audit.get("warnings", []) if str(item).strip()]
+    if warnings:
+        lines.append("- 提醒: " + "；".join(warnings[:3]))
+    conflicts = list(audit.get("version_conflicts") or [])
+    if conflicts:
+        lines.append("- 版本/叫法冲突:")
+        for conflict in conflicts[:5]:
+            family = str(conflict.get("family") or "实体")
+            mentions = " / ".join(str(item) for item in conflict.get("mentions", [])[:6])
+            lines.append(f"  - {family}: {mentions}")
+            for source in conflict.get("sources", [])[:4]:
+                date = str(source.get("date") or "日期未知")
+                title = _collapse_ws(str(source.get("title") or ""))[:90]
+                url = str(source.get("url") or "")
+                lines.append(f"    - {date} | {source.get('source_type', '通用网页')} | {title} | {url}")
+    differences = list(audit.get("claim_differences") or [])
+    if differences:
+        lines.append("- 结构化事实差异:")
+        for diff in differences[:6]:
+            category = str(diff.get("category") or "claim")
+            values = " / ".join(str(item) for item in diff.get("values", [])[:6])
+            lines.append(f"  - {category}: {values}")
+            for source in diff.get("sources", [])[:4]:
+                date = str(source.get("date") or "日期未知")
+                title = _collapse_ws(str(source.get("title") or ""))[:90]
+                lines.append(f"    - {date} | {source.get('value')} | {title} | {source.get('url', '')}")
+    timeline = list(audit.get("timeline") or [])
+    if timeline:
+        lines.append("- 时间线索:")
+        for item in timeline[:5]:
+            title = _collapse_ws(str(item.get("title") or ""))[:90]
+            lines.append(f"  - {item.get('date')}: {title} ({item.get('source_type', '通用网页')})")
+    steps = [str(item) for item in audit.get("verification_steps", []) if str(item).strip()]
+    if steps:
+        lines.append("- 建议核验:")
+        lines.extend(f"  - {step}" for step in steps[:4])
+    return "\n".join(lines)
+
+
+def format_evidence_audit_context(audit: dict[str, Any]) -> str:
+    """Render compact audit hints for prompt/context modes."""
+    lines = [f"# {audit.get('title') or '证据审计提示'}"]
+    if audit.get("boundary"):
+        lines.append(f"边界: {audit['boundary']}")
+    for warning in audit.get("warnings", [])[:3]:
+        lines.append(f"- {warning}")
+    for conflict in audit.get("version_conflicts", [])[:5]:
+        mentions = " / ".join(str(item) for item in conflict.get("mentions", [])[:6])
+        lines.append(f"- 冲突: {conflict.get('family')}: {mentions}")
+    for diff in audit.get("claim_differences", [])[:5]:
+        values = " / ".join(str(item) for item in diff.get("values", [])[:6])
+        lines.append(f"- 差异: {diff.get('category')}: {values}")
+    for item in audit.get("timeline", [])[:5]:
+        lines.append(f"- 时间: {item.get('date')} | {item.get('title')} | {item.get('url')}")
+    return "\n".join(lines)
+
+
+def _evidence_observations(packet: dict[str, Any]) -> list[dict[str, Any]]:
+    results = list(packet.get("selected_evidence") or []) + list(packet.get("results") or [])
+    readings = list(packet.get("readings") or [])
+    observations: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for item in results:
+        url = str(item.get("url") or "")
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        text = _collapse_ws(
+            " ".join(
+                [
+                    str(item.get("title") or ""),
+                    str(item.get("snippet") or ""),
+                ]
+            )
+        )
+        observations.append(_audit_observation(item, text=text, kind="search"))
+    for item in readings:
+        url = str(item.get("url") or "")
+        text = _collapse_ws(
+            " ".join(
+                [
+                    str(item.get("title") or ""),
+                    str(item.get("content") or ""),
+                    str(item.get("error") or ""),
+                ]
+            )
+        )
+        if not text.strip():
+            continue
+        observations.append(_audit_observation(item, text=text[:5000], kind="read"))
+    return observations
+
+
+def _audit_observation(item: dict[str, Any], text: str, kind: str) -> dict[str, Any]:
+    title = _collapse_ws(str(item.get("title") or ""))
+    url = str(item.get("url") or "")
+    source_type = str(item.get("source_type") or "通用网页")
+    result = _result_from_dict(
+        {
+            "title": title,
+            "url": url,
+            "snippet": text[:800],
+            "source_type": source_type,
+            "domain": item.get("domain") or _domain(url),
+        }
+    )
+    date = _extract_result_date(result)
+    return {
+        "kind": kind,
+        "title": title,
+        "url": url,
+        "domain": item.get("domain") or _domain(url),
+        "source_type": source_type,
+        "date": date.isoformat() if isinstance(date, dt.date) else "",
+        "mentions": _extract_version_mentions(text),
+        "claims": _extract_structured_claims(text),
+    }
+
+
+def _extract_version_mentions(text: str) -> list[dict[str, str]]:
+    patterns = [
+        ("GPT", r"\bGPT[-\s]?\d+(?:\.\d+)?\b"),
+        ("Claude", r"\bClaude(?:\s+(?:Opus|Sonnet|Haiku))?\s+\d+(?:\.\d+)?\b"),
+        ("Claude", r"\bClaude\s+(?:Opus|Sonnet|Haiku|Mythos)(?:\s+\d+(?:\.\d+)?)?\b"),
+        ("GLM", r"\bGLM[-\s]?\d+(?:\.\d+)?\b"),
+        ("Qwen", r"\bQwen\s*\d+(?:\.\d+)?\b"),
+        ("Gemini", r"\bGemini\s+\d+(?:\.\d+)?\b"),
+        ("DeepSeek", r"\bDeepSeek[-\s]?[A-Za-z]?\d+(?:\.\d+)?\b"),
+    ]
+    mentions: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for family, pattern in patterns:
+        for match in re.finditer(pattern, text or "", flags=re.I):
+            raw = _collapse_ws(match.group(0))
+            canonical = re.sub(r"\s+", " ", raw).strip()
+            key = (family, canonical.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            mentions.append({"family": family, "mention": canonical})
+    return mentions
+
+
+def _audit_version_conflicts(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_family: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for obs in observations:
+        for mention in obs.get("mentions", []):
+            family = str(mention.get("family") or "")
+            value = str(mention.get("mention") or "")
+            if not family or not value:
+                continue
+            by_family.setdefault(family, {}).setdefault(value, []).append(obs)
+    conflicts: list[dict[str, Any]] = []
+    for family, values in by_family.items():
+        if len(values) < 2:
+            continue
+        sources: list[dict[str, str]] = []
+        for value, obs_list in values.items():
+            for obs in obs_list[:2]:
+                sources.append(
+                    {
+                        "mention": value,
+                        "title": str(obs.get("title") or ""),
+                        "url": str(obs.get("url") or ""),
+                        "date": str(obs.get("date") or ""),
+                        "source_type": str(obs.get("source_type") or "通用网页"),
+                    }
+                )
+        conflicts.append(
+            {
+                "family": family,
+                "mentions": sorted(values.keys(), key=str.lower),
+                "sources": sources,
+                "severity": "needs_review",
+            }
+        )
+    return conflicts
+
+
+def _extract_structured_claims(text: str) -> list[dict[str, str]]:
+    """Extract lightweight structured factual claims that often need cross-checking."""
+    patterns = [
+        (
+            "price",
+            r"(?:[$¥￥]\s?\d+(?:\.\d+)?(?:\s*(?:/|per|每)\s*(?:1m|million|百万|千|k|tokens?|token))?|(?:\d+(?:\.\d+)?\s*(?:元|美元|人民币)(?:\s*(?:/|每)\s*(?:百万|千|tokens?|token|次))?))",
+        ),
+        (
+            "parameter_count",
+            r"\b\d+(?:\.\d+)?\s*(?:B|M|K|T)\s*(?:parameters?|params?)?\b|(?:\d+(?:\.\d+)?\s*(?:万亿|千亿|百亿|亿|万)\s*参数)",
+        ),
+        (
+            "percentage_metric",
+            r"\b\d+(?:\.\d+)?\s?%",
+        ),
+        (
+            "date",
+            r"\b20\d{2}[-/.年]\d{1,2}(?:[-/.月]\d{1,2}日?)?\b",
+        ),
+    ]
+    claims: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for category, pattern in patterns:
+        for match in re.finditer(pattern, text or "", flags=re.I):
+            raw = _collapse_ws(match.group(0))
+            value = _normalize_claim_value(category, raw)
+            key = (category, value.lower())
+            if not value or key in seen:
+                continue
+            seen.add(key)
+            claims.append({"category": category, "value": value})
+    return claims
+
+
+def _normalize_claim_value(category: str, value: str) -> str:
+    normalized = _collapse_ws(value).replace("￥", "¥")
+    normalized = re.sub(r"\s*/\s*", "/", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    if category == "date":
+        normalized = normalized.replace("年", "-").replace("月", "-").replace("日", "")
+        normalized = normalized.replace("/", "-").replace(".", "-")
+        parts = [part for part in normalized.split("-") if part]
+        if len(parts) >= 2 and all(part.isdigit() for part in parts[:2]):
+            year = parts[0]
+            month = parts[1].zfill(2)
+            day = parts[2].zfill(2) if len(parts) >= 3 and parts[2].isdigit() else ""
+            return "-".join(part for part in (year, month, day) if part)
+    return normalized
+
+
+def _audit_claim_differences(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_category: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for obs in observations:
+        for claim in obs.get("claims", []):
+            category = str(claim.get("category") or "")
+            value = str(claim.get("value") or "")
+            if not category or not value:
+                continue
+            by_category.setdefault(category, {}).setdefault(value, []).append(obs)
+    differences: list[dict[str, Any]] = []
+    for category, values in by_category.items():
+        if len(values) < 2 or len(values) > 8:
+            continue
+        source_urls = {str(obs.get("url") or "") for obs_list in values.values() for obs in obs_list}
+        if len(source_urls) < 2:
+            continue
+        sources: list[dict[str, str]] = []
+        for value, obs_list in values.items():
+            for obs in obs_list[:2]:
+                sources.append(
+                    {
+                        "value": value,
+                        "title": str(obs.get("title") or ""),
+                        "url": str(obs.get("url") or ""),
+                        "date": str(obs.get("date") or ""),
+                        "source_type": str(obs.get("source_type") or "通用网页"),
+                    }
+                )
+        differences.append(
+            {
+                "category": category,
+                "values": sorted(values.keys(), key=str.lower),
+                "sources": sources,
+                "severity": "needs_review",
+            }
+        )
+    return differences
+
+
+def _audit_timeline(observations: list[dict[str, Any]]) -> list[dict[str, str]]:
+    timeline: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for obs in observations:
+        date = str(obs.get("date") or "")
+        url = str(obs.get("url") or "")
+        if not date or (date, url) in seen:
+            continue
+        seen.add((date, url))
+        timeline.append(
+            {
+                "date": date,
+                "title": str(obs.get("title") or ""),
+                "url": url,
+                "source_type": str(obs.get("source_type") or "通用网页"),
+            }
+        )
+    return sorted(timeline, key=lambda item: item["date"], reverse=True)
 
 
 def build_advisor_view(packet: dict[str, Any], style: str = "brief") -> dict[str, Any]:
@@ -2106,6 +2557,85 @@ def _source_mix(results: list[dict[str, Any]]) -> dict[str, int]:
     return dict(sorted(mix.items(), key=lambda item: (-item[1], item[0])))
 
 
+def build_source_diagnostics(
+    results: list[dict[str, Any]],
+    route_plan: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Summarize source diversity, evidence roles, and blind spots."""
+    route_plan = route_plan or {}
+    cards = []
+    for item in results:
+        domain = str(item.get("domain") or _domain(str(item.get("url", ""))))
+        if not domain:
+            continue
+        card = (item.get("trace") or {}).get("source_card")
+        if not isinstance(card, dict):
+            card = source_card_for_domain(domain, preferred_scope=item.get("matched_scope") or None).to_dict()
+        cards.append(card)
+    source_mix = _source_mix(results)
+    role_counts: dict[str, int] = {}
+    risk_counts: dict[str, int] = {}
+    for card in cards:
+        for role in card.get("content_roles") or []:
+            role_counts[str(role)] = role_counts.get(str(role), 0) + 1
+        for risk in card.get("risk_tags") or []:
+            risk_counts[str(risk)] = risk_counts.get(str(risk), 0) + 1
+    count = max(len(cards), 1)
+    authority_avg = round(sum(float(card.get("authority_score") or 0) for card in cards) / count, 3)
+    sample_avg = round(sum(float(card.get("sample_value") or 0) for card in cards) / count, 3)
+    freshness_avg = round(sum(float(card.get("freshness_value") or 0) for card in cards) / count, 3)
+    domains = {str(item.get("domain") or _domain(str(item.get("url", "")))) for item in results if item.get("url")}
+    warnings: list[str] = []
+    intents = set(route_plan.get("primary_intents") or []) | set(route_plan.get("secondary_intents") or [])
+    if len(source_mix) <= 1 and len(results) >= 4:
+        warnings.append("信源类型过于集中，容易把单一圈层误写成整体情况。")
+    if len(domains) <= 2 and len(results) >= 5:
+        warnings.append("域名集中度偏高，需警惕同源转载或单站偏差。")
+    if {"policy", "official_position"} & intents and authority_avg < 0.45:
+        warnings.append("政策/官方问题的一手权威来源偏少，应补 gov 或 party_central。")
+    if {"reputation", "purchase_advice"} & intents and sample_avg < 0.45:
+        warnings.append("口碑/购买问题的用户样本偏少，应补知乎、微博、小红书、B站等公开页。")
+    if ("hot_trend" in intents or (route_plan.get("freshness") or "")) and freshness_avg < 0.45:
+        warnings.append("近期/热点问题的新鲜度不足，应缩短时间窗口或使用 hotnews。")
+    return {
+        "result_count": len(results),
+        "source_type_count": len(source_mix),
+        "domain_count": len(domains),
+        "authority_avg": authority_avg,
+        "sample_avg": sample_avg,
+        "freshness_avg": freshness_avg,
+        "source_mix": source_mix,
+        "role_counts": dict(sorted(role_counts.items(), key=lambda row: (-row[1], row[0]))),
+        "risk_counts": dict(sorted(risk_counts.items(), key=lambda row: (-row[1], row[0]))),
+        "warnings": warnings,
+    }
+
+
+def format_source_diagnostics_markdown(diagnostics: dict[str, Any]) -> str:
+    """Render source diagnostics as a compact evidence compass."""
+    lines = ["## 信源诊断"]
+    lines.append(
+        "- 权威/样本/新鲜度: "
+        f"{diagnostics.get('authority_avg', 0)}/"
+        f"{diagnostics.get('sample_avg', 0)}/"
+        f"{diagnostics.get('freshness_avg', 0)}"
+    )
+    lines.append(
+        "- 多样性: "
+        f"source_type={diagnostics.get('source_type_count', 0)} "
+        f"domain={diagnostics.get('domain_count', 0)}"
+    )
+    roles = diagnostics.get("role_counts") or {}
+    if roles:
+        lines.append("- 证据角色: " + "；".join(f"{key}: {value}" for key, value in list(roles.items())[:6]))
+    risks = diagnostics.get("risk_counts") or {}
+    if risks:
+        lines.append("- 风险标签: " + "；".join(f"{key}: {value}" for key, value in list(risks.items())[:6]))
+    for warning in diagnostics.get("warnings") or []:
+        lines.append(f"- 边界: {warning}")
+    return "\n".join(lines)
+
+
 def source_distribution(results: list[dict[str, Any]], field: str = "source_type") -> list[dict[str, Any]]:
     """Return count/percent rows for source diagnostics."""
     counts: dict[str, int] = {}
@@ -2224,6 +2754,7 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
     query_quality = (results[0].get("trace") or {}).get("query_quality") or {}
     quality_summary = (results[0].get("trace") or {}).get("quality_summary") or {}
     route_plan = (results[0].get("trace") or {}).get("route_plan") or {}
+    query_strategy = (results[0].get("trace") or {}).get("query_strategy") or {}
     if route_plan:
         lines.append(
             "- route_plan: "
@@ -2234,6 +2765,15 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
         )
         for warning in route_plan.get("warnings", [])[:3]:
             lines.append(f"  route_warning: {warning}")
+    if query_strategy:
+        variants = query_strategy.get("variants") or []
+        lines.append(
+            "- query_strategy: "
+            f"intent={query_strategy.get('intent', 'general')} "
+            f"variants={len(variants)}"
+        )
+        for item in variants[:4]:
+            lines.append(f"  variant:{item.get('role')} => {item.get('query')}")
     if query_quality:
         preferred = ",".join(query_quality.get("preferred_source_types") or []) or "none"
         lines.append(
@@ -2546,6 +3086,56 @@ def detect_recency_intent(query: str) -> dict[str, Any]:
     }
 
 
+def build_query_strategy(
+    query: str,
+    *,
+    route_plan: dict[str, Any] | None = None,
+    recency: dict[str, Any] | None = None,
+    quality: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build query rewrites that preserve source roles instead of one flat query."""
+    clean_query = _collapse_ws(query)
+    route_plan = route_plan or build_route_plan(clean_query).to_dict()
+    recency = recency or detect_recency_intent(clean_query)
+    quality = quality or {}
+    intents = list(route_plan.get("primary_intents") or []) + list(route_plan.get("secondary_intents") or [])
+    roles = list(route_plan.get("evidence_roles") or [])
+    variants: list[dict[str, str]] = []
+
+    def add(role: str, q: str, reason: str) -> None:
+        normalized = _collapse_ws(q)
+        if not normalized:
+            return
+        if any(item["query"] == normalized for item in variants):
+            return
+        variants.append({"role": role, "query": normalized, "reason": reason})
+
+    add("base", clean_query, "用户原始问题，保留语义中心")
+    if {"policy", "official_position", "local"} & set(intents):
+        add("official_primary", f"{clean_query} 官方 原文 通知", "政策/官方问题先找一手口径")
+        add("authoritative_report", f"{clean_query} 人民日报 新华社 央视", "补党央媒与权威报道")
+    if {"reputation", "purchase_advice"} & set(intents):
+        add("user_sample", f"{clean_query} 用户评价 吐槽 体验", "口碑问题先找用户样本语言")
+        add("review", f"{clean_query} 测评 优缺点 值不值得买", "补评测和购买决策材料")
+    if {"industry", "ecommerce", "finance"} & set(intents):
+        add("industry_report", f"{clean_query} 行业 趋势 公司 案例", "产业/商业问题补行业材料")
+    if "tech" in intents:
+        add("developer_discussion", f"{clean_query} github issue benchmark 开源", "技术问题补开发者与可复现线索")
+    if recency.get("enabled") or "hot_trend" in intents:
+        add("fresh_news", _apply_recency_query(f"{clean_query} 最新 进展", recency), "近期/热点问题收束时间窗口")
+    if roles and len(variants) == 1:
+        add(str(roles[0]), f"{clean_query} 依据 来源", "按路由证据角色补充查询")
+
+    return {
+        "primary_query": variants[0]["query"] if variants else clean_query,
+        "recency": recency,
+        "intent": quality.get("intent") or (intents[0] if intents else "general"),
+        "roles": roles,
+        "variants": variants[:8],
+        "agent_hint": "不要只用一个宽泛 query；按证据角色分别搜索，再合并去重和标注边界。",
+    }
+
+
 def _apply_recency_query(query: str, recency: dict[str, Any]) -> str:
     if not recency.get("enabled"):
         return query
@@ -2780,6 +3370,7 @@ def _score_result_parts(
         "intent_mismatch_penalty": 0.0,
         "language_mismatch_penalty": 0.0,
         "source_risk_penalty": 0.0,
+        "semantic_noise_penalty": 0.0,
         "stale_penalty": 0.0,
     }
     source_card = (item.trace or {}).get("source_card") or {}
@@ -2822,6 +3413,8 @@ def _score_result_parts(
         parts["intent_mismatch_penalty"] = -0.35
     if _is_chinese_context_query(query, quality) and _result_lacks_chinese_context(item):
         parts["language_mismatch_penalty"] = -0.75
+    if _is_low_relevance_ai_noise(item, query):
+        parts["semantic_noise_penalty"] = -1.4
     if recency and recency.get("enabled"):
         metrics = _result_recency_metrics(item, recency)
         if metrics["result_date"] and metrics["age_days"] is not None:
@@ -2869,6 +3462,23 @@ def _result_lacks_chinese_context(item: SearchResult) -> bool:
     if domain.endswith((".cn", ".com.cn", ".org.cn", ".gov.cn")):
         return False
     return True
+
+
+def _is_low_relevance_ai_noise(item: SearchResult, query: str) -> bool:
+    """Return true for calendar/history pages that match dates but not AI-model intent."""
+    combined = _collapse_ws(f"{query} {item.title} {item.snippet}").lower()
+    ai_terms = ("llm", "large language model", "ai model", "model release", "gpt", "claude", "gemini", "qwen", "glm")
+    if not any(term in combined for term in ai_terms):
+        return False
+    domain = item.domain or _domain(item.url)
+    title_snippet = _collapse_ws(f"{item.title} {item.snippet}").lower()
+    noisy_domains = ("timeanddate.com", "calendar-365.com", "calendardate.com", "onthisday.com")
+    calendar_terms = ("calendar", "holiday", "holidays", "on this day", "historical events", "events in", "year 2026")
+    has_calendar_signal = any(term in title_snippet for term in calendar_terms)
+    has_ai_signal = any(term in title_snippet for term in ai_terms)
+    if any(domain == noisy or domain.endswith("." + noisy) for noisy in noisy_domains):
+        return has_calendar_signal or not has_ai_signal
+    return has_calendar_signal and not has_ai_signal
 
 
 def _source_quality_weight(source_type: str) -> float:
@@ -3048,6 +3658,26 @@ def _is_weak_read(text: str) -> bool:
     return any(marker in lowered for marker in _WEAK_READ_MARKERS)
 
 
+def _read_should_fallback(quality: dict[str, Any], strict: bool = False) -> bool:
+    label = str(quality.get("label") or "")
+    score = int(quality.get("score") or 0)
+    if label in {"weak", "fallback"}:
+        return True
+    if strict and (label == "noisy" or score < 70):
+        return True
+    return False
+
+
+def _call_read_direct(url: str, extract: str = "article") -> str:
+    """Call _read_direct while keeping old monkeypatched test doubles compatible."""
+    try:
+        return _read_direct(url, extract=extract)
+    except TypeError as exc:
+        if extract == "article" and "unexpected keyword" in str(exc):
+            return _read_direct(url)  # type: ignore[call-arg]
+        raise
+
+
 def _looks_mojibake(text: str) -> bool:
     """Detect common charset failures on older Chinese sites."""
     sample = (text or "")[:5000]
@@ -3115,7 +3745,7 @@ def _read_with_jina(url: str) -> str:
         return resp.read().decode("utf-8", errors="replace")
 
 
-def _read_direct(url: str) -> str:
+def _read_direct(url: str, extract: str = "article") -> str:
     req = urllib.request.Request(
         url,
         headers={
@@ -3129,6 +3759,12 @@ def _read_direct(url: str) -> str:
     raw = _decode_response_body(raw_bytes, content_type)
     if "text/plain" in content_type:
         return raw
+    if extract == "metadata":
+        return _extract_html_metadata(raw, url=url)
+    if extract == "links":
+        return _extract_html_links(raw, url=url)
+    if extract == "text":
+        return _strip_tags(raw)
     return _html_to_markdownish(raw, url=url)
 
 
@@ -3175,6 +3811,81 @@ def _extract_article_text(raw: str) -> str:
     if not lines:
         return _strip_tags(raw)
     return "\n\n".join(lines)
+
+
+def _extract_html_metadata(raw: str, url: str = "") -> str:
+    """Extract title, common metadata, and publication hints from HTML."""
+    fields: list[tuple[str, str]] = []
+    title_match = re.search(r"<title[^>]*>(.*?)</title>", raw or "", re.S | re.I)
+    if title_match:
+        fields.append(("title", _strip_tags(title_match.group(1))))
+    for match in re.finditer(r"<meta\b([^>]+)>", raw or "", flags=re.I | re.S):
+        attrs = _html_attrs(match.group(1))
+        key = attrs.get("property") or attrs.get("name") or attrs.get("itemprop") or ""
+        value = attrs.get("content") or ""
+        key = key.lower().strip()
+        if not key or not value:
+            continue
+        if key in {
+            "description",
+            "keywords",
+            "author",
+            "article:author",
+            "article:published_time",
+            "article:modified_time",
+            "og:title",
+            "og:description",
+            "pubdate",
+            "date",
+            "publishdate",
+        }:
+            fields.append((key, _collapse_ws(value)))
+    lines = ["# 观澜网页元信息"]
+    if url:
+        lines.append(f"- url: {url}")
+    seen: set[str] = set()
+    for key, value in fields:
+        if not value:
+            continue
+        dedupe = f"{key}:{value}".lower()
+        if dedupe in seen:
+            continue
+        seen.add(dedupe)
+        lines.append(f"- {key}: {value}")
+    return "\n".join(lines)
+
+
+def _extract_html_links(raw: str, url: str = "") -> str:
+    """Extract visible links from HTML as a simple Markdown list."""
+    base = url
+    links: list[tuple[str, str]] = []
+    for match in re.finditer(r"<a\b([^>]+)>(.*?)</a>", raw or "", flags=re.I | re.S):
+        attrs = _html_attrs(match.group(1))
+        href = (attrs.get("href") or "").strip()
+        text = _strip_tags(match.group(2))
+        if not href or href.startswith(("#", "javascript:", "mailto:")):
+            continue
+        absolute = urllib.parse.urljoin(base, html.unescape(href))
+        if _is_noise_content_line(text):
+            continue
+        links.append((text[:80] or absolute, absolute))
+    lines = ["# 观澜网页链接"]
+    if url:
+        lines.append(f"- url: {url}")
+    seen: set[str] = set()
+    for text, href in links[:80]:
+        if href in seen:
+            continue
+        seen.add(href)
+        lines.append(f"- [{text}]({href})")
+    return "\n".join(lines)
+
+
+def _html_attrs(fragment: str) -> dict[str, str]:
+    attrs: dict[str, str] = {}
+    for key, _quote, value in re.findall(r"([\w:-]+)\s*=\s*(['\"])(.*?)\2", fragment or "", flags=re.S):
+        attrs[key.lower()] = html.unescape(value)
+    return attrs
 
 
 def _drop_noise_blocks(body: str) -> str:

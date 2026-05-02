@@ -8,6 +8,25 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.2.4 - 2026-05-02
+
+### Added
+
+- 新增查询策略层：`search --trace` 和 `research` 会展示/使用按证据角色拆出的 query variants，例如官方原文、权威报道、用户样本、行业材料和近期进展。
+- `research` 增加信源诊断，统计权威度、样本价值、新鲜度、证据角色、风险标签和来源多样性提醒。
+- `read` 增加 `--strict`，在正文偏脏或质量不足时更倾向 fallback，而不是把噪声直接交给 Agent。
+- `read` 增加 `--extract article|text|metadata|links`，支持直连抽取正文、纯文本、网页元信息和页面链接。
+- `hotnews --trends/--brief` 增加跨平台共振、单平台孤岛提醒、时间线和可继续执行的 research 命令。
+- `guanlan prompt` 增加 `--style concise|deep|evidence|decision`，方便 Ollama、LM Studio、Open WebUI 等本地模型按任务类型接入联网证据。
+- 匿名遥测增加默认 collector、失败本地队列、heartbeat 事件和 collector 并发面板增强；仍只发送命令生命周期元数据，不发送 query、URL、正文或凭据。
+
+### Changed
+
+- `research` 会按 scope/site/open web 自动选择更贴近证据角色的 query variant，再合并去重，减少一个宽泛 query 带来的信息面偏斜。
+- MCP/context 输出补充证据审计提示，帮助 Agent 标出版本/叫法冲突、来源时间线和待核验结构化事实。
+- README 补充严格阅读、元信息抽取、查询策略、热榜水势和本地模型 Prompt 风格说明。
+- 官网展示版本号同步到 `0.2.4`。
+
 ## v0.2.3 - 2026-05-02
 
 ### Added

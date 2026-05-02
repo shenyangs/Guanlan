@@ -120,7 +120,25 @@ def test_search_trace_includes_route_plan(monkeypatch):
 
     assert "route_plan: intents=" in trace
     assert "reputation" in trace
+    assert "query_strategy" in trace
     assert results[0]["trace"]["source_card"]["sample_value"] > results[0]["trace"]["source_card"]["authority_score"]
+
+
+def test_query_strategy_builds_role_specific_variants():
+    route = webtools.build_route_plan("某产品 用户评价 值不值得买 最新", profile="china").to_dict()
+    recency = webtools.detect_recency_intent("某产品 用户评价 值不值得买 最新")
+
+    strategy = webtools.build_query_strategy(
+        "某产品 用户评价 值不值得买 最新",
+        route_plan=route,
+        recency=recency,
+    )
+
+    roles = {item["role"] for item in strategy["variants"]}
+    assert "user_sample" in roles
+    assert "review" in roles
+    assert "fresh_news" in roles
+    assert strategy["agent_hint"]
 
 
 def test_format_search_trace_shows_query_quality(monkeypatch):
@@ -880,6 +898,23 @@ def test_prompt_cli_builds_local_llm_prompt(capsys):
     assert mocked.call_args.kwargs["advisor"] is True
 
 
+def test_prompt_cli_passes_prompt_style(capsys):
+    from guanlan.cli import main
+
+    packet = {
+        "query": "本地模型联网",
+        "results": [],
+        "selected_evidence": [],
+        "readings": [],
+        "guidance": [],
+    }
+    with patch("guanlan.webtools.build_research_packet", return_value=packet):
+        with patch("sys.argv", ["guanlan", "prompt", "本地模型联网", "--style", "decision", "--read-top", "0"]):
+            main()
+    captured = capsys.readouterr()
+    assert "当前输出风格: decision" in captured.out
+
+
 def test_read_cli_outputs_text(capsys):
     from guanlan.cli import main
 
@@ -930,6 +965,44 @@ def test_read_cli_outputs_trace_json(capsys):
     payload = json.loads(captured.out)
     assert payload["quality"]["label"] == "clean"
     assert payload["trace"]["selected_backend"] == "direct"
+
+
+def test_read_url_extracts_metadata_with_direct_backend(monkeypatch):
+    html = """
+    <html><head>
+      <title>测试标题</title>
+      <meta name="description" content="测试摘要">
+      <meta property="article:published_time" content="2026-05-02">
+    </head><body><article>正文</article></body></html>
+    """
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: _FakeResponse(html))
+
+    packet = webtools.read_url_with_trace(
+        "https://example.com/a",
+        backend="direct",
+        extract="metadata",
+    )
+
+    assert "测试标题" in packet["content"]
+    assert "article:published_time" in packet["content"]
+    assert packet["trace"]["extract"] == "metadata"
+
+
+def test_format_research_prompt_accepts_decision_style():
+    packet = {
+        "query": "本地模型联网",
+        "guidance": [],
+        "route_plan": {},
+        "selected_evidence": [],
+        "results": [],
+        "readings": [],
+    }
+
+    prompt = webtools.format_research_prompt(packet, style="decision")
+
+    assert "当前输出风格: decision" in prompt
+    assert "可行动建议" in prompt
 
 
 def test_read_cli_batch_outputs_json(capsys, tmp_path):
@@ -1275,6 +1348,48 @@ def test_build_research_packet_includes_route_plan_and_open_fallback(monkeypatch
     assert "social_web" in packet["scopes"]
     assert any(call["scope"] is None and call["site"] is None for call in calls)
     assert any(group["type"] == "general" for group in packet["result_groups"])
+    assert packet["query_strategy"]["variants"]
+    assert packet["source_diagnostics"]["result_count"] >= 1
+
+
+def test_research_uses_role_specific_query_variants(monkeypatch):
+    calls = []
+
+    def fake_search(query, **kwargs):
+        calls.append((query, kwargs))
+        return [
+            {
+                "title": query,
+                "url": f"https://example.com/{len(calls)}",
+                "source_type": "通用网页",
+                "score": 1.0,
+            }
+        ]
+
+    monkeypatch.setattr(webtools, "search_web", fake_search)
+
+    webtools.build_research_packet("人工智能监管 政策 最新", preset="policy", limit=12, read_top=0)
+
+    queries = [query for query, _kwargs in calls]
+    assert any("官方 原文 通知" in query for query in queries)
+    assert any("最新" in query for query in queries)
+
+
+def test_source_diagnostics_flags_missing_authority_for_policy():
+    diagnostics = webtools.build_source_diagnostics(
+        [
+            {
+                "title": "社交讨论",
+                "url": "https://weibo.com/a",
+                "domain": "weibo.com",
+                "source_type": "社交/内容平台",
+            }
+        ],
+        route_plan={"primary_intents": ["policy"]},
+    )
+
+    assert diagnostics["sample_avg"] > diagnostics["authority_avg"]
+    assert any("权威来源偏少" in warning for warning in diagnostics["warnings"])
 
 
 def test_build_research_packet_user_scope_overrides_preset(monkeypatch):
@@ -1399,6 +1514,77 @@ def test_build_research_packet_adds_cautious_advisor_when_requested(monkeypatch)
     assert any("用户真实动机" in item for item in advisor_packet["advisor"]["response_contract"])
 
 
+def test_build_research_packet_adds_evidence_audit_for_version_conflicts(monkeypatch):
+    search_results = [
+        {
+            "rank": 1,
+            "title": "2026-04-05 BuildFastWithAI: GPT-5.4 and Claude Opus 4.6 released",
+            "url": "https://buildfast.example/llm",
+            "snippet": "GLM-5 model summary",
+            "source_type": "通用网页",
+            "domain": "buildfast.example",
+            "score": 5,
+        },
+        {
+            "rank": 2,
+            "title": "2026-04-17 Medium: GPT-5.5 and Claude Opus 4.7 update",
+            "url": "https://medium.example/llm",
+            "snippet": "GLM-5.1 pricing and release notes",
+            "source_type": "通用网页",
+            "domain": "medium.example",
+            "score": 6,
+        },
+    ]
+
+    monkeypatch.setattr(webtools, "search_web", lambda *args, **kwargs: search_results)
+
+    packet = webtools.build_research_packet("2026 April LLM release global AI model", read_top=0)
+
+    audit = packet["evidence_audit"]
+    families = {item["family"] for item in audit["version_conflicts"]}
+    assert {"GPT", "Claude", "GLM"} <= families
+    assert audit["timeline"][0]["date"] == "2026-04-17"
+    md = webtools.format_research_markdown(packet)
+    assert "## 证据审计提示" in md
+    assert "GPT-5.4" in md
+    assert "GPT-5.5" in md
+    assert "不能仅凭日期自动判定真伪" in md
+
+
+def test_evidence_audit_flags_general_structured_claim_differences(monkeypatch):
+    search_results = [
+        {
+            "rank": 1,
+            "title": "2026-04-05 Model API pricing and parameter report",
+            "url": "https://example.com/a",
+            "snippet": "API price $2/million tokens, 参数量 72B parameters, benchmark 83.2%",
+            "source_type": "通用网页",
+            "domain": "example.com",
+            "score": 5,
+        },
+        {
+            "rank": 2,
+            "title": "2026-04-17 Updated pricing and benchmark",
+            "url": "https://example.org/b",
+            "snippet": "API price $3/million tokens, 参数量 70B parameters, benchmark 85%",
+            "source_type": "通用网页",
+            "domain": "example.org",
+            "score": 6,
+        },
+    ]
+
+    monkeypatch.setattr(webtools, "search_web", lambda *args, **kwargs: search_results)
+
+    packet = webtools.build_research_packet("model API price parameter benchmark", read_top=0)
+
+    categories = {item["category"] for item in packet["evidence_audit"]["claim_differences"]}
+    assert {"price", "parameter_count", "percentage_metric"} <= categories
+    md = webtools.format_research_markdown(packet)
+    assert "结构化事实差异" in md
+    assert "$2/million" in md
+    assert "$3/million" in md
+
+
 def test_build_research_packet_accepts_advisor_style(monkeypatch):
     monkeypatch.setattr(webtools, "search_web", lambda *args, **kwargs: [])
     packet = webtools.build_research_packet(
@@ -1411,6 +1597,33 @@ def test_build_research_packet_accepts_advisor_style(monkeypatch):
 
     assert packet["advisor"]["style"] == "risk"
     assert any("风险" in item or "误判" in item for item in packet["advisor"]["answer_frame"])
+
+
+def test_rank_results_downranks_calendar_noise_for_ai_release_query():
+    results = webtools.rank_results(
+        [
+            webtools.SearchResult(
+                title="April 2026 Calendar",
+                url="https://www.timeanddate.com/calendar/monthly.html?year=2026&month=4",
+                snippet="Calendar for April 2026 with holidays and moon phases.",
+                source="duckduckgo",
+                rank=1,
+            ),
+            webtools.SearchResult(
+                title="April 2026 LLM model release roundup: GPT and Claude updates",
+                url="https://example.com/llm-release",
+                snippet="Analysis of AI model release notes.",
+                source="duckduckgo",
+                rank=2,
+            ),
+        ],
+        query="2026 April LLM release global AI model",
+        backend_order=["duckduckgo"],
+    )
+
+    assert results[0].url == "https://example.com/llm-release"
+    calendar = next(item for item in results if "timeanddate" in item.url)
+    assert calendar.score_parts["semantic_noise_penalty"] < 0
 
 
 def test_format_research_markdown():
