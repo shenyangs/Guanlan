@@ -8,6 +8,21 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.3.3 - 2026-05-02
+
+### Added
+
+- 新增 `guanlan quality robustness`，在 coverage/regression 之上增加更深的稳健性闸门，覆盖 Archive 入库审计、Agent 字段契约、空结果解释和发布脚本完整性。
+- 新增 `scripts/release_gate.sh`，一键运行 `ruff`、全量 `pytest`、coverage/regression/robustness、`eval benchmark`、构建、安装 smoke 和版本核对。
+- Archive 入库候选新增 `ingest_audit`，对相关性、平台首页、重复候选、正文厚度和英文漂移做可解释审计。
+
+### Changed
+
+- `archive ingest-search` / `archive ingest-research` 在写入前会先审计候选，跳过明显低相关、平台首页、重复和过薄内容；dry-run 与 JSON/Markdown 输出同步返回审计摘要。
+- `quality robustness` 固化 v0.3.0 测试暴露的 KV Cache / vLLM / SGLang / KIVI 场景，防止本地知识库召回和入库质量再次退化。
+- README、Agent 文档和发布文档同步稳健性用法，把发布前验收从人工记忆收束为可复跑闸门。
+- 官网展示版本号同步到 `0.3.3`。
+
 ## v0.3.2 - 2026-05-02
 
 ### Added

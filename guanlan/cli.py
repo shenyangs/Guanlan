@@ -554,6 +554,12 @@ def main():
     p_quality_regression.add_argument("--limit", type=int, default=50,
                                       help="Live probe result limit")
     p_quality_regression.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
+    p_quality_robustness = quality_sub.add_parser("robustness", help="Run deeper robustness guards for archive/search/read/release contracts")
+    p_quality_robustness.add_argument("--mode", choices=["quick", "live"], default="quick",
+                                      help="quick is deterministic; live performs network probes")
+    p_quality_robustness.add_argument("--limit", type=int, default=50,
+                                      help="Live probe result limit")
+    p_quality_robustness.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
 
     # ── mcp ──
     p_mcp = sub.add_parser("mcp", help="MCP helpers for agent integration")
@@ -1801,14 +1807,16 @@ def _cmd_quality(args):
         format_quality_jsonl,
         format_quality_report,
         format_regression_report,
+        format_robustness_report,
         run_coverage_checks,
         run_quality_checks,
         run_regression_checks,
+        run_robustness_checks,
     )
 
     command = getattr(args, "quality_command", None)
-    if command not in {"run", "coverage", "regression"}:
-        print("Error: quality command is required: run, coverage, or regression", file=sys.stderr)
+    if command not in {"run", "coverage", "regression", "robustness"}:
+        print("Error: quality command is required: run, coverage, regression, or robustness", file=sys.stderr)
         sys.exit(2)
     if command == "coverage":
         report = run_coverage_checks(mode=args.mode, limit=max(args.limit, 1))
@@ -1829,6 +1837,17 @@ def _cmd_quality(args):
             print(format_coverage_jsonl(report))
         else:
             print(format_regression_report(report))
+        if report.get("summary", {}).get("fail", 0):
+            sys.exit(1)
+        return
+    if command == "robustness":
+        report = run_robustness_checks(mode=args.mode, limit=max(args.limit, 1))
+        if args.format == "json":
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        elif args.format == "jsonl":
+            print(format_coverage_jsonl(report))
+        else:
+            print(format_robustness_report(report))
         if report.get("summary", {}).get("fail", 0):
             sys.exit(1)
         return
@@ -1871,8 +1890,19 @@ def _format_archive_ingest_summary(result: dict) -> str:
         f"- 精选数: {result.get('selected_count', 0)}",
         f"- 跳过低相关: {result.get('skipped_count', 0)}",
         f"- 已归档: {result.get('archived_count', 0)}",
-        "",
     ]
+    audit = result.get("audit_summary") or {}
+    if audit:
+        lines.extend(
+            [
+                f"- 审计候选: {audit.get('audited', 0)}",
+                f"- 审计保留/跳过: {audit.get('kept', 0)}/{audit.get('skipped', 0)}",
+            ]
+        )
+        reasons = audit.get("reasons") or {}
+        if reasons:
+            lines.append("- 跳过原因: " + ", ".join(f"{key}={value}" for key, value in sorted(reasons.items())))
+    lines.append("")
     for item in result.get("records", []):
         reason = f" ({item.get('reason')})" if item.get("reason") else ""
         lines.append(f"- [{item.get('status', 'unknown')}] {item.get('title') or item.get('url')}{reason}")

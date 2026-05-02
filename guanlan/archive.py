@@ -24,6 +24,7 @@ from guanlan.limits import (
 )
 
 ARCHIVE_SCHEMA_VERSION = 1
+ARCHIVE_MIN_USEFUL_CHARS = 40
 
 
 def archive_db_path() -> Path:
@@ -220,19 +221,10 @@ def ingest_search(
         if item.get("status") == "ok"
     }
     records: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
     for item in packet.get("selected_evidence") or packet.get("results", [])[:select_top]:
         url = str(item.get("url", "")).strip()
         if not url:
-            continue
-        if _is_low_value_ingest_candidate(query, item):
-            records.append(
-                {
-                    "url": url,
-                    "title": str(item.get("title") or url),
-                    "status": "skipped",
-                    "reason": "low_relevance_or_platform_homepage",
-                }
-            )
             continue
         reading = readings_by_url.get(url)
         if reading and reading.get("content"):
@@ -241,6 +233,19 @@ def ingest_search(
             title = str(item.get("title") or url)
             snippet = str(item.get("snippet") or "")
             content = f"# {title}\n\nURL: {url}\n\n{snippet}".strip()
+        audit = audit_ingest_candidate(query, item, content=content, existing_urls=seen_urls)
+        if audit.get("decision") == "skip":
+            records.append(
+                {
+                    "url": url,
+                    "title": str(item.get("title") or url),
+                    "status": "skipped",
+                    "reason": ",".join(audit.get("reasons") or ["low_quality_candidate"]),
+                    "audit": audit,
+                }
+            )
+            continue
+        seen_urls.add(_normalize_url(url))
         metadata = {
             "ingest_query": query,
             "ingest_type": "research",
@@ -257,6 +262,7 @@ def ingest_search(
             "source_card": (item.get("trace") or {}).get("source_card", {}),
             "read_quality": reading.get("read_quality", {}) if isinstance(reading, dict) else {},
             "quality_report": reading.get("quality_report", {}) if isinstance(reading, dict) else {},
+            "ingest_audit": audit,
         }
         if dry_run:
             records.append(
@@ -269,11 +275,14 @@ def ingest_search(
                     "source_type": item.get("source_type", ""),
                     "evidence_role": item.get("evidence_role", ""),
                     "snippet": _excerpt(content, max_chars=180),
+                    "audit": audit,
                 }
             )
             continue
         try:
-            records.append(add_document(url, content, title=str(item.get("title", "")), metadata=metadata, db_path=db_path))
+            record = add_document(url, content, title=str(item.get("title", "")), metadata=metadata, db_path=db_path)
+            record["audit"] = audit
+            records.append(record)
         except Exception as exc:
             records.append({"url": url, "status": "error", "error": str(exc)})
     return {
@@ -283,7 +292,67 @@ def ingest_search(
         "selected_count": len(packet.get("selected_evidence") or []),
         "skipped_count": sum(1 for item in records if item.get("status") == "skipped"),
         "archived_count": sum(1 for item in records if item.get("status") in {"created", "updated", "unchanged"}),
+        "audit_summary": _summarize_ingest_audits(records),
         "records": records,
+    }
+
+
+def audit_ingest_candidate(
+    query: str,
+    item: dict[str, Any],
+    *,
+    content: str = "",
+    existing_urls: set[str] | None = None,
+) -> dict[str, Any]:
+    """Score one research result before it is written into the local archive.
+
+    The audit is deliberately conservative and explainable. It should reject
+    obvious drift, platform homepages, duplicate candidates, and very thin
+    content, while keeping technical English terms that match a Chinese query
+    (for example vLLM/SGLang in KV Cache research).
+    """
+    title = _collapse_ws(str(item.get("title") or ""))
+    url = str(item.get("url") or "")
+    snippet = _collapse_ws(str(item.get("snippet") or ""))
+    normalized = _normalize_url(url)
+    combined = _collapse_ws(f"{title} {url} {snippet} {content}")
+    combined_lower = combined.lower()
+    terms = _meaningful_query_terms(query)
+    matched = _unique_terms([term for term in terms if term.lower() in combined_lower])
+    reasons: list[str] = []
+    score = 100
+
+    if not normalized:
+        reasons.append("missing_url")
+        score -= 100
+    if existing_urls and normalized in existing_urls:
+        reasons.append("duplicate_candidate")
+        score -= 70
+    if _looks_like_platform_homepage(title, url, snippet):
+        reasons.append("platform_homepage")
+        score -= 80
+    if len(terms) >= 3 and not matched:
+        reasons.append("low_query_overlap")
+        score -= 60
+    if _contains_cjk(query) and not _contains_cjk(combined) and not matched:
+        reasons.append("english_drift")
+        score -= 45
+    if content and len(_collapse_ws(content)) < ARCHIVE_MIN_USEFUL_CHARS:
+        reasons.append("thin_content")
+        score -= 25
+
+    decision = "skip" if any(reason in reasons for reason in {"missing_url", "duplicate_candidate", "platform_homepage"}) else "keep"
+    if score < 45:
+        decision = "skip"
+    return {
+        "decision": decision,
+        "quality_score": max(score, 0),
+        "reasons": reasons,
+        "query_terms": terms,
+        "matched_terms": matched,
+        "domain": _domain(normalized),
+        "content_chars": len(content),
+        "retrieval_boundary": "research-ingest-audit",
     }
 
 
@@ -667,19 +736,34 @@ def _search_like(conn: sqlite3.Connection, query: str, limit: int) -> list[sqlit
 
 def _is_low_value_ingest_candidate(query: str, item: dict[str, Any]) -> bool:
     """Avoid auto-archiving obvious drift or platform homepages."""
-    title = _collapse_ws(str(item.get("title") or ""))
-    url = str(item.get("url") or "")
-    snippet = _collapse_ws(str(item.get("snippet") or ""))
-    text = f"{title} {url} {snippet}".lower()
-    if _looks_like_platform_homepage(title, url, snippet):
-        return True
-    terms = _meaningful_query_terms(query)
-    if not terms:
-        return False
-    matched = [term for term in terms if term.lower() in text]
-    # For long, specific technical queries, zero overlap is usually search drift
-    # (for example a car page in an LLM inference-framework query).
-    return len(terms) >= 3 and not matched
+    return audit_ingest_candidate(query, item).get("decision") == "skip"
+
+
+def _summarize_ingest_audits(records: list[dict[str, Any]]) -> dict[str, Any]:
+    reasons: dict[str, int] = {}
+    audited = 0
+    kept = 0
+    skipped = 0
+    for record in records:
+        audit = record.get("audit")
+        if not isinstance(audit, dict):
+            audit = (record.get("metadata") or {}).get("ingest_audit") if isinstance(record.get("metadata"), dict) else {}
+        if not isinstance(audit, dict) or not audit:
+            continue
+        audited += 1
+        if audit.get("decision") == "skip":
+            skipped += 1
+        else:
+            kept += 1
+        for reason in audit.get("reasons") or []:
+            reasons[str(reason)] = reasons.get(str(reason), 0) + 1
+    return {
+        "audited": audited,
+        "kept": kept,
+        "skipped": skipped,
+        "reasons": reasons,
+        "principle": "入库前先审计相关性、重复、平台首页、正文厚度和漂移风险。",
+    }
 
 
 def _looks_like_platform_homepage(title: str, url: str, snippet: str) -> bool:
@@ -722,6 +806,10 @@ def _meaningful_query_terms(query: str) -> list[str]:
             continue
         terms.append(term)
     return terms[:12]
+
+
+def _contains_cjk(text: str) -> bool:
+    return bool(re.search(r"[\u4e00-\u9fff]", text or ""))
 
 
 def _match_trace(query: str, fields: dict[str, str], *, match_score: float = 0.0) -> dict[str, Any]:

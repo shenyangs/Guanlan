@@ -108,6 +108,7 @@ guanlan archive export --format rag-jsonl
 guanlan mcp config --client codex
 guanlan serve --host 127.0.0.1 --port 8765
 guanlan plugin template my_company_api
+guanlan quality robustness
 guanlan eval benchmark
 guanlan eval scenarios --format jsonl
 
@@ -141,6 +142,8 @@ rdt read POST_ID
 # V2EX 热门
 curl -s "https://www.v2ex.com/api/topics/hot.json" -H "User-Agent: guanlan/1.0"
 ```
+
+Archive 入库时如果看到 `skipped` 或 `ingest_audit`，优先把它理解为质量保护：观澜在写入本地知识库前检查了相关性、平台首页、重复候选、正文厚度和漂移风险。
 
 ## 环境检查
 

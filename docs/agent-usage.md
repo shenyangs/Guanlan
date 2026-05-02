@@ -94,6 +94,7 @@
 | “看跨源热点趋势” | `guanlan hotnews today --trends` |
 | “拿评估集比较搜索质量” | `guanlan eval scenarios --format jsonl` |
 | “发版前检查观澜契约” | `guanlan eval benchmark` |
+| “发版前检查稳健性” | `guanlan quality robustness` |
 
 CLI 是默认主路径；命令选择不确定时先跑 `guanlan route "用户需求"`，按 `recommended_commands` 起手。若当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_capabilities`、`guanlan_search`、`guanlan_route`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_feeds`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
 
@@ -414,6 +415,8 @@ guanlan archive add batch urls.txt
 guanlan archive ingest-research "人工智能 政策" --limit 80 --dry-run
 guanlan archive ingest-research "人工智能 政策" --limit 80
 ```
+
+入库前观澜会为每个候选生成 `ingest_audit`，解释相关性、平台首页、重复候选、正文厚度和漂移风险。Agent 看到 `skipped` 时，不要把它理解为失败，而应理解为“这条材料不适合沉淀进本地知识库”。
 
 查询本地沉淀材料：
 

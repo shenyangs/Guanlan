@@ -229,6 +229,7 @@ def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkey
     records = archive.search_documents("全文", db_path=db)
 
     assert result["archived_count"] == 1
+    assert result["audit_summary"]["kept"] == 1
     assert records[0]["title"] == "政策原文"
     assert records[0]["metadata"]["source_type"] == "政府/部委"
     assert records[0]["metadata"]["route_plan"]["primary_intents"] == ["policy"]
@@ -268,8 +269,32 @@ def test_archive_ingest_dry_run_and_low_value_filter(tmp_path, monkeypatch):
     assert result["dry_run"] is True
     assert result["archived_count"] == 0
     assert result["skipped_count"] == 1
+    assert result["audit_summary"]["audited"] == 2
+    assert result["audit_summary"]["reasons"]["low_query_overlap"] == 1
     assert {item["status"] for item in result["records"]} == {"skipped", "preview"}
+    assert any(item["status"] == "preview" and item["audit"]["decision"] == "keep" for item in result["records"])
     assert archive.list_documents(db_path=db) == []
+
+
+def test_archive_audit_keeps_matching_technical_terms_and_rejects_drift():
+    drift = archive.audit_ingest_candidate(
+        "开源推理框架 vLLM SGLang",
+        {"title": "2019 Toyota Camry", "url": "https://example.com/camry", "snippet": "Used car listing"},
+    )
+    useful = archive.audit_ingest_candidate(
+        "开源推理框架 vLLM SGLang",
+        {
+            "title": "vLLM 与 SGLang 推理框架对比",
+            "url": "https://example.com/vllm",
+            "snippet": "vLLM SGLang KV Cache 推理框架",
+        },
+        content="# vLLM 与 SGLang\n\nKV Cache 推理框架工程实践。" * 3,
+    )
+
+    assert drift["decision"] == "skip"
+    assert "low_query_overlap" in drift["reasons"]
+    assert useful["decision"] == "keep"
+    assert {"vLLM", "SGLang"} & set(useful["matched_terms"])
 
 
 def test_archive_cli_ingest_research_alias(tmp_path, capsys, monkeypatch):

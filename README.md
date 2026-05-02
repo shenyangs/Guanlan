@@ -212,7 +212,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.3.2`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.3.3`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -452,6 +452,8 @@ guanlan configure --from-browser chrome
 | `guanlan quality run` | 一键跑搜索/阅读/热榜/advisor 质量闸门。 |
 | `guanlan quality coverage` | 发版前检查默认结果池和证据字段没有缩水。 |
 | `guanlan quality regression` | 发版前检查结果池、来源多样性、RSS 兜底、正文抽取和 advisor 动态性没有退化。 |
+| `guanlan quality robustness` | 更深的稳健性闸门，检查 Archive 入库审计、Agent 字段契约、空结果解释和发布脚本完整性。 |
+| `scripts/release_gate.sh` | 维护者发版前一键跑静态检查、全量测试、质量闸门、构建、安装 smoke 和版本核对。 |
 | `guanlan hotnews today --limit 50` | 拉取原生多源中文热榜。 |
 | `guanlan profile set china` | 切换到中文场景画像。 |
 | `guanlan configure --from-browser chrome` | 显式从浏览器提取支持平台的 Cookie。 |
@@ -796,7 +798,7 @@ guanlan archive export --format jsonl > guanlan-archive.jsonl
 guanlan archive export --format rag-jsonl > guanlan-rag.jsonl
 ```
 
-本地知识库默认保存在 `~/.guanlan/archive.db`。当前使用 SQLite FTS/LIKE 检索，不依赖外部 embedding 服务；`archive search` 会对中文短语和技术词做宽召回并排序，适合快速复用已读材料，但不是向量语义搜索。`archive search --trace` 会说明命中词、字段、排序分数和 `semantic=not-vector` 边界，方便 Agent 判断是否需要补搜。`archive ingest-search` / `archive ingest-research` 的行为是“联网研究并入库”，如果只想查本地库，请使用 `archive search`；写入前可用 `--dry-run` 预览，观澜会跳过明显低相关或平台首页结果。归档元数据会保留 `source_card`、`read_quality`、`quality_report`、`route_plan` 和 `query_strategy`，方便后续接 RAG 时知道材料的来源角色、正文质量和检索路径。`rag-jsonl` 会把每条材料收束成 `id/text/source/title/domain/source_type/topic/updated_at`，适合导入轻量本地 RAG、向量库或个人知识库。它不是云同步，也不会自动上传内容。
+本地知识库默认保存在 `~/.guanlan/archive.db`。当前使用 SQLite FTS/LIKE 检索，不依赖外部 embedding 服务；`archive search` 会对中文短语和技术词做宽召回并排序，适合快速复用已读材料，但不是向量语义搜索。`archive search --trace` 会说明命中词、字段、排序分数和 `semantic=not-vector` 边界，方便 Agent 判断是否需要补搜。`archive ingest-search` / `archive ingest-research` 的行为是“联网研究并入库”，如果只想查本地库，请使用 `archive search`；写入前可用 `--dry-run` 预览。观澜会为每个候选生成 `ingest_audit`，解释相关性、平台首页、重复候选、正文厚度和漂移风险，跳过明显低相关或平台首页结果。归档元数据会保留 `source_card`、`read_quality`、`quality_report`、`route_plan`、`query_strategy` 和 `ingest_audit`，方便后续接 RAG 时知道材料的来源角色、正文质量、检索路径和入库理由。`rag-jsonl` 会把每条材料收束成 `id/text/source/title/domain/source_type/topic/updated_at`，适合导入轻量本地 RAG、向量库或个人知识库。它不是云同步，也不会自动上传内容。
 
 ### 17. 质量闸门
 
@@ -808,7 +810,9 @@ guanlan quality run --format json
 guanlan quality run --coverage
 guanlan quality coverage
 guanlan quality regression
+guanlan quality robustness
 guanlan eval benchmark
+scripts/release_gate.sh
 guanlan quality run --mode live --limit 5
 ```
 
@@ -817,6 +821,8 @@ guanlan quality run --mode live --limit 5
 `quality coverage` 是给发版用的防缩水护栏：检查 `search/research/archive/hotnews/read fallback` 的默认结果池下限，检查搜索结果是否保留 `evidence_role`，检查 research/read/archive 是否保留质量元数据。它不保证每个网络请求都成功，但能防止一次更新把 Agent 赖以判断的信息面悄悄变窄。
 
 `quality regression` 是更完整的发版回归闸门：除默认结果池外，还检查来源多样性、RSS 缓存兜底元数据、正文主体抽取信号和 advisor 是否会随任务变化。它的目标很朴素：每次更新，都不能让下游 Agent 拿到的材料突然变少、变窄、变脏。
+
+`quality robustness` 是更深一层的稳健性闸门：它检查 Archive 入库前是否会审计噪声和漂移，检查本地库 `search --trace` / `inspect` / `rag-jsonl` 是否保留 Agent 需要的字段，检查空结果是否解释下一步，也检查发布脚本是否覆盖完整验收链路。
 
 `eval benchmark` 是更偏“观澜契约”的离线评测：不依赖外网，固定检查政策、口碑、热点、技术、学术、地方、电商和本地模型场景是否被路由到合适的意图、scope、证据角色和足够大的候选池。
 

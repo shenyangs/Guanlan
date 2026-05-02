@@ -34,6 +34,20 @@ def test_release_smoke_script_covers_install_paths():
     assert "guanlan\" status" in script
 
 
+def test_release_gate_runs_full_quality_ladder():
+    script = (ROOT / "scripts" / "release_gate.sh").read_text(encoding="utf-8")
+
+    assert "ruff check" in script
+    assert "pytest -q" in script
+    assert "quality coverage" in script
+    assert "quality regression" in script
+    assert "quality robustness" in script
+    assert "eval benchmark" in script
+    assert "uv build" in script
+    assert "release_smoke.sh" in script
+    assert "guanlan version" in script
+
+
 def test_agent_update_docs_require_full_reinstall_and_smoke():
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     update_doc = (ROOT / "docs" / "update.md").read_text(encoding="utf-8")

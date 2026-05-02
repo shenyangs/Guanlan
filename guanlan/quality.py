@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from guanlan import hotnews, webtools
@@ -152,6 +153,44 @@ def run_regression_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any
     }
 
 
+def run_robustness_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any]:
+    """Run deeper deterministic guards for messy real-world agent workflows."""
+    mode = mode if mode in {"quick", "live"} else "quick"
+    checks: list[dict[str, Any]] = []
+    checks.extend(run_regression_checks(mode="quick", limit=limit)["checks"])
+    checks.extend(_check_archive_ingest_audit_contract())
+    checks.extend(_check_archive_agent_contract_fields())
+    checks.extend(_check_archive_failure_explanations())
+    checks.extend(_check_release_gate_script_contract())
+    if mode == "live":
+        checks.extend(_check_live_coverage(limit=limit))
+        checks.extend(_check_live(limit=min(limit, 8)))
+    passed = sum(1 for item in checks if item["status"] == "pass")
+    warned = sum(1 for item in checks if item["status"] == "warn")
+    failed = sum(1 for item in checks if item["status"] == "fail")
+    return {
+        "mode": mode,
+        "summary": {
+            "total": len(checks),
+            "pass": passed,
+            "warn": warned,
+            "fail": failed,
+            "score": round((passed + warned * 0.5) / max(len(checks), 1) * 100, 1),
+        },
+        "checks": checks,
+        "contract": {
+            "principle": "稳健性不是更多结果，而是在脏网页、坏网络、误用命令、空库和版本升级时仍能解释边界并保住字段。",
+            "must_explain": [
+                "archive_ingest_audit",
+                "search_trace",
+                "read_quality",
+                "feed_status",
+                "release_gate",
+            ],
+        },
+    }
+
+
 def format_quality_report(report: dict[str, Any]) -> str:
     """Render a quality report as Markdown."""
     summary = report.get("summary") or {}
@@ -214,6 +253,28 @@ def format_regression_report(report: dict[str, Any]) -> str:
         "## 必须保留的深度字段",
     ]
     for field in contract.get("depth_fields") or []:
+        lines.append(f"- {field}")
+    lines.extend(["", "## 检查项"])
+    for item in report.get("checks") or []:
+        lines.append(f"- [{item.get('status')}] {item.get('id')}: {item.get('message')}")
+    return "\n".join(lines)
+
+
+def format_robustness_report(report: dict[str, Any]) -> str:
+    """Render robustness checks as Markdown."""
+    summary = report.get("summary") or {}
+    contract = report.get("contract") or {}
+    lines = [
+        "# 观澜 Robustness Guard",
+        "",
+        f"- 模式: {report.get('mode', 'quick')}",
+        f"- 总分: {summary.get('score', 0)}",
+        f"- 结果: pass={summary.get('pass', 0)} warn={summary.get('warn', 0)} fail={summary.get('fail', 0)}",
+        f"- 原则: {contract.get('principle', '')}",
+        "",
+        "## 必须解释的边界",
+    ]
+    for field in contract.get("must_explain") or []:
         lines.append(f"- {field}")
     lines.extend(["", "## 检查项"])
     for item in report.get("checks") or []:
@@ -369,6 +430,125 @@ def _check_archive_technical_recall() -> list[dict[str, Any]]:
             "dimension": "release_regression",
             "status": "pass" if ok else "fail",
             "message": message,
+        }
+    ]
+
+
+def _check_archive_ingest_audit_contract() -> list[dict[str, Any]]:
+    from guanlan import archive
+
+    noisy = archive.audit_ingest_candidate(
+        "开源推理框架 vLLM SGLang",
+        {"title": "2019 Toyota Camry", "url": "https://example.com/camry", "snippet": "Used car listing"},
+    )
+    homepage = archive.audit_ingest_candidate(
+        "EI会议 投稿 检索 收录 要求",
+        {"title": "Engineering Village - Quick Search", "url": "https://www.engineeringvillage.com/search/quick.url", "snippet": ""},
+    )
+    useful = archive.audit_ingest_candidate(
+        "开源推理框架 vLLM SGLang",
+        {
+            "title": "vLLM 与 SGLang 推理框架对比",
+            "url": "https://example.com/vllm",
+            "snippet": "vLLM SGLang KV Cache 推理框架",
+        },
+        content="# vLLM 与 SGLang\n\nKV Cache 推理框架工程实践。" * 3,
+    )
+    ok = (
+        noisy.get("decision") == "skip"
+        and "low_query_overlap" in noisy.get("reasons", [])
+        and homepage.get("decision") == "skip"
+        and "platform_homepage" in homepage.get("reasons", [])
+        and useful.get("decision") == "keep"
+        and {"vLLM", "SGLang"} & set(useful.get("matched_terms") or [])
+    )
+    return [
+        {
+            "id": "robustness_archive_ingest_audits_noise_before_write",
+            "dimension": "robustness",
+            "status": "pass" if ok else "fail",
+            "message": f"noisy={noisy.get('reasons')}, homepage={homepage.get('reasons')}, useful={useful.get('matched_terms')}",
+        }
+    ]
+
+
+def _check_archive_agent_contract_fields() -> list[dict[str, Any]]:
+    from guanlan import archive
+
+    try:
+        import tempfile
+
+        db_path = Path(tempfile.mkdtemp()) / "archive.db"
+        record = archive.add_document(
+            "https://example.com/kv-cache",
+            "# KV Cache 优化\n\nvLLM、SGLang、KIVI 与 KVQuant 都是推理服务常见优化线索。",
+            metadata={"source_type": "科技/开发者社区", "topic_key": "llm-inference"},
+            db_path=db_path,
+        )
+        searched = archive.search_documents("vLLM SGLang KIVI", trace=True, db_path=db_path)
+        inspected = archive.inspect_document(str(record["id"]), db_path=db_path)
+        exported = archive.export_documents(db_path=db_path)
+        search_ok = bool(searched and searched[0].get("search_trace", {}).get("matched_terms"))
+        inspect_ok = bool(inspected.get("diagnostics", {}).get("has_content") and inspected.get("content"))
+        export_ok = bool(exported and exported[0].get("rag", {}).get("text") and exported[0].get("metadata", {}).get("read_quality") is not None)
+        ok = search_ok and inspect_ok and export_ok
+        message = f"search_trace={search_ok}, inspect={inspect_ok}, rag_export={export_ok}"
+    except Exception as exc:
+        ok = False
+        message = str(exc)
+    return [
+        {
+            "id": "robustness_archive_keeps_agent_contract_fields",
+            "dimension": "robustness",
+            "status": "pass" if ok else "fail",
+            "message": message,
+        }
+    ]
+
+
+def _check_archive_failure_explanations() -> list[dict[str, Any]]:
+    from guanlan import archive
+
+    markdown = archive.format_archive_markdown([], title="空库")
+    context = archive.format_archive_context([], title="空库")
+    ok = (
+        "archive list" in markdown
+        and "archive ingest-research" in markdown
+        and "archive list" in context
+        and "archive ingest-research" in context
+    )
+    return [
+        {
+            "id": "robustness_archive_empty_results_explain_next_steps",
+            "dimension": "robustness",
+            "status": "pass" if ok else "fail",
+            "message": "empty archive output should explain list vs ingest-research next steps",
+        }
+    ]
+
+
+def _check_release_gate_script_contract() -> list[dict[str, Any]]:
+    root = Path(__file__).resolve().parents[1]
+    script = root / "scripts" / "release_gate.sh"
+    text = script.read_text(encoding="utf-8") if script.exists() else ""
+    required = [
+        "ruff check",
+        "pytest -q",
+        "quality coverage",
+        "quality regression",
+        "quality robustness",
+        "eval benchmark",
+        "uv build",
+        "release_smoke.sh",
+        "guanlan version",
+    ]
+    missing = [item for item in required if item not in text]
+    return [
+        {
+            "id": "robustness_release_gate_runs_full_local_checks",
+            "dimension": "robustness",
+            "status": "pass" if not missing else "fail",
+            "message": "missing=" + ",".join(missing) if missing else "release gate covers static/test/quality/build/smoke/version",
         }
     ]
 

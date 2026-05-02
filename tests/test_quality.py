@@ -70,3 +70,25 @@ def test_quality_cli_regression_outputs_json(capsys):
     assert payload["mode"] == "quick"
     assert payload["summary"]["fail"] == 0
     assert "minimum_pool" in payload["contract"]
+
+
+def test_robustness_guard_checks_messy_agent_workflows():
+    report = quality.run_robustness_checks(mode="quick")
+
+    assert report["summary"]["fail"] == 0
+    assert any(item["id"] == "robustness_archive_ingest_audits_noise_before_write" for item in report["checks"])
+    assert any(item["id"] == "robustness_release_gate_runs_full_local_checks" for item in report["checks"])
+    assert "Robustness Guard" in quality.format_robustness_report(report)
+
+
+def test_quality_cli_robustness_outputs_json(capsys):
+    from guanlan.cli import main
+
+    with patch("sys.argv", ["guanlan", "quality", "robustness", "--format", "json"]):
+        main()
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert payload["mode"] == "quick"
+    assert payload["summary"]["fail"] == 0
+    assert "must_explain" in payload["contract"]
