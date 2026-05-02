@@ -8,6 +8,15 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.2.8 - 2026-05-02
+
+### Changed
+
+- 更新安装与升级口径：默认建议 Agent 使用全量重装而不是增量升级，优先 `uv tool install --force guanlan`，Homebrew / pipx 也使用 reinstall / force install。
+- 更新后要求刷新 shell 命令缓存、核对 `command -v guanlan` 与 `which -a guanlan`，避免旧全局可执行文件遮蔽新版。
+- `format_update_notice`、README、`docs/update.md` 和 `AGENTS.md` 增加最小 post-update smoke：`capabilities`、`doctor --trace`、`search --trace` 和 `hotnews today --trends`。
+- 更新检查测试覆盖 pipx 强制安装、路径核对和热榜 smoke 提示。
+
 ## v0.2.7 - 2026-05-02
 
 ### Added

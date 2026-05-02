@@ -76,11 +76,20 @@ def format_update_notice(info: UpdateInfo) -> str:
     return "\n".join(
         [
             f"版本提醒：当前 v{info.current}，{info.source} 最新 v{info.latest}。",
-            "建议先升级再配置 MCP、可选渠道或登录态：",
+            "建议先做全量更新，再配置 MCP、可选渠道或登录态。不要混用旧的全局 guanlan：",
             "  uv tool install --force guanlan",
             "  # 如果使用 Homebrew：",
             "  brew update && brew reinstall shenyangs/tap/guanlan",
+            "  # 如果使用 pipx：",
+            "  pipx install --force guanlan",
+            "  hash -r  # 如果 shell 支持",
+            "  command -v guanlan",
+            "  which -a guanlan",
             "  guanlan version",
-            "如果 Homebrew 仍然装到旧版，请临时使用 uv 路径。",
+            "  guanlan capabilities",
+            "  guanlan doctor --trace",
+            "  guanlan search \"人工智能 政策\" --profile china --limit 5 --trace",
+            "  guanlan hotnews today --limit 5 --trends",
+            "如果版本号或路径不对，请停止配置 MCP；Homebrew 仍然装到旧版时，临时使用 uv 路径。",
         ]
     )

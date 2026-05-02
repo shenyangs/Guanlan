@@ -21,6 +21,9 @@ def test_format_update_notice_mentions_safe_upgrade_paths():
     assert "最新 v0.2.4" in notice
     assert "uv tool install --force guanlan" in notice
     assert "brew update" in notice
+    assert "pipx install --force guanlan" in notice
+    assert "which -a guanlan" in notice
+    assert 'guanlan hotnews today --limit 5 --trends' in notice
 
 
 def test_doctor_prints_update_notice_when_newer_version_available(capsys):
@@ -35,6 +38,7 @@ def test_doctor_prints_update_notice_when_newer_version_available(capsys):
     captured = capsys.readouterr()
     assert "版本提醒" in captured.out
     assert "uv tool install --force guanlan" in captured.out
+    assert "guanlan doctor --trace" in captured.out
 
 
 def test_check_update_uses_pypi_without_github_repo(capsys, monkeypatch):

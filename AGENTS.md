@@ -2,10 +2,19 @@
 
 This repository is designed as a CLI-first search productivity tool for AI agents.
 
-Install rule: after installing or upgrading Guanlan, always run `guanlan version` and compare it
-with the version documented in README/release notes before configuring MCP, optional channels, or
-auth. If Homebrew installs an older version, run `brew update` and reinstall
-`shenyangs/tap/guanlan`; if it is still stale, use the GitHub/uv install path instead.
+Install/update rule: after installing or upgrading Guanlan, always do a full reinstall, not an
+incremental upgrade, before configuring MCP, optional channels, or auth. Prefer one clean path:
+`uv tool install --force guanlan`; if the user explicitly wants Homebrew, run
+`brew update && brew reinstall shenyangs/tap/guanlan`; for pipx, run `pipx install --force guanlan`.
+Then refresh shell command lookup with `hash -r` when available, run `command -v guanlan` and
+`which -a guanlan` (or the platform equivalent), and run `guanlan version`. If the version does not
+match README/release notes, stop and report the path/version mismatch instead of configuring MCP or
+using the tool. If Homebrew is stale, switch to the uv path.
+
+Post-update smoke rule: after a full reinstall, run `guanlan capabilities`, `guanlan doctor --trace`,
+`guanlan search "人工智能 政策" --profile china --limit 5 --trace`, and
+`guanlan hotnews today --limit 5 --trends`. Report the exact version, executable path, and smoke
+results to the user. Do not treat an old global executable as a successful update.
 
 Agent operating rule: when using Guanlan for search, research, hotnews, pulse, or archive lookup,
 prefer the largest sensible result pool instead of a tiny sample. Use the default 50 results for

@@ -32,3 +32,18 @@ def test_release_smoke_script_covers_install_paths():
     assert "guanlan\" --version" in script
     assert "install --env=auto" in script
     assert "guanlan\" status" in script
+
+
+def test_agent_update_docs_require_full_reinstall_and_smoke():
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    update_doc = (ROOT / "docs" / "update.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    combined = "\n".join([agents, update_doc, readme])
+
+    assert "uv tool install --force guanlan" in combined
+    assert "brew reinstall shenyangs/tap/guanlan" in combined
+    assert "pipx install --force guanlan" in combined
+    assert "which -a guanlan" in combined
+    assert 'guanlan search "人工智能 政策" --profile china --limit 5 --trace' in combined
+    assert "guanlan hotnews today --limit 5 --trends" in combined

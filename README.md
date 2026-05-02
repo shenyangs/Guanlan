@@ -208,7 +208,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.2.7`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.2.8`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -225,21 +225,41 @@ uv tool install --force guanlan
 guanlan version
 ```
 
-以后更新观澜：
+以后更新观澜，建议让 Agent 走“全量更新”而不是增量升级。全量更新的目标是避免旧的
+`guanlan` 可执行文件、旧 Homebrew 公式或旧 pipx/uv tool 入口继续被 Agent 调用。
 
 ```bash
-brew upgrade guanlan
-uv tool upgrade guanlan
-pipx upgrade guanlan
+uv tool install --force guanlan
 ```
 
-如果更新失败，也可以直接重装：
+如果你明确使用 Homebrew：
 
 ```bash
-brew reinstall guanlan
-uv tool install --force guanlan
+brew update
+brew reinstall shenyangs/tap/guanlan
+```
+
+如果你明确使用 pipx：
+
+```bash
 pipx install --force guanlan
 ```
+
+更新后必须核对入口和版本，并做最小 smoke：
+
+```bash
+hash -r 2>/dev/null || true
+command -v guanlan
+which -a guanlan
+guanlan version
+guanlan capabilities
+guanlan doctor --trace
+guanlan search "人工智能 政策" --profile china --limit 5 --trace
+guanlan hotnews today --limit 5 --trends
+```
+
+如果 `guanlan version` 不是 README 标注的当前版本，或 `which -a guanlan` 显示 Agent 会优先
+调用旧路径，请不要继续配置 MCP 或可选渠道，先改用 `uv tool install --force guanlan` 重新安装。
 
 ### Agent / 开发者安装
 
