@@ -14,6 +14,8 @@
 
 默认原则：
 
+- 用户或 Agent 不知道观澜有哪些能力时，先运行 `guanlan capabilities`；MCP 模式下调用 `guanlan_capabilities`。
+- 新用户问“装好了怎么用”时，先运行 `guanlan welcome`，再按用户目标选择具体能力。
 - 先读公开信息，不主动读取浏览器 Cookie。
 - 先搜索和阅读，不自动发布、评论、点赞、私信。
 - 输出结论时保留来源链接。
@@ -27,6 +29,8 @@
 
 | 用户意图 | 首选命令 |
 | --- | --- |
+| “刚装好，怎么用/怎么让 Agent 用” | `guanlan welcome` |
+| “观澜能做什么/我该用哪个能力” | `guanlan capabilities` |
 | “查一下/搜一下” | `guanlan search "关键词" --limit 50` |
 | “查中文互联网/国内资料” | `guanlan search "关键词" --profile china --limit 50` |
 | “查近期/最近/热点/最新进展” | `guanlan search "最近 关键词 热点" --profile china --trace` |
@@ -72,7 +76,7 @@
 | “看跨源热点趋势” | `guanlan hotnews today --trends` |
 | “拿评估集比较搜索质量” | `guanlan eval scenarios --format jsonl` |
 
-CLI 是默认主路径；如果当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
+CLI 是默认主路径；如果当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_capabilities`、`guanlan_search`、`guanlan_route`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
 
 MCP 客户端安装入口：
 

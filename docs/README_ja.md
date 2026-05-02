@@ -8,7 +8,7 @@ Guanlan は、AI エージェント向けの中国語インターネット検索
 
 - [中文 README](../README.md)
 - [Agent 使用说明](agent-usage.md)
-- [中文互联网设计](chinese-web-design.md)
+- [本地大模型联网指南](local-llm.md)
 - [排障手册](troubleshooting.md)
 - [来源说明](SOURCE_ATTRIBUTION.md)
 

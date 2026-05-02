@@ -11,14 +11,24 @@
 | [本地大模型联网指南](local-llm.md) | 让 Ollama、LM Studio、Open WebUI 等无联网模型使用观澜证据包。 |
 | [Agent 使用说明](agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜、社交平台和安全降级规则。 |
 | [安装指南](install.md) | 让 Agent 按步骤安装、配置和自检。 |
-| [发布自动化](release-automation.md) | 维护者用：PyPI 自动发布与 Homebrew tap 自动更新。 |
-| [质量测试计划](quality-test-plan.md) | 搜索、热榜、阅读、趋势和 advisor 的发布前质量闸门。 |
-| [匿名遥测](telemetry.md) | 可选自托管遥测，只记录命令生命周期元数据。 |
 | [排障手册](troubleshooting.md) | 遇到钥匙串弹窗、网络异常、Cookie 或平台失败时排查。 |
-| [中文互联网设计](chinese-web-design.md) | 查看产品方案、平台矩阵和阶段路线。 |
-| [发布冒烟样本](release-smoke-samples.md) | 第一版发布前的真实中文查询样本和通过标准。 |
 | [Cookie 导出](cookie-export.md) | 需要手动提供 Cookie 时，按安全方式导出。 |
 | [来源说明](SOURCE_ATTRIBUTION.md) | 查看本项目参考过的开源项目。 |
+
+## 维护者资料
+
+下面这些资料主要服务维护、发布、质量验收或设计复盘，不建议作为官网和 README 的主入口展示：
+
+| 文档 | 适合什么时候看 |
+| --- | --- |
+| [路线图](roadmap.md) | 跟踪后续迭代主线、验收标准和暂不做事项。 |
+| [中文互联网设计](chinese-web-design.md) | 查看产品方案、平台矩阵和阶段路线。 |
+| [质量测试计划](quality-test-plan.md) | 维护者发布前检查搜索、热榜、阅读、趋势和 advisor 质量。 |
+| [发布冒烟样本](release-smoke-samples.md) | 第一版发布前或回归测试时复跑真实中文查询样本。 |
+| [发布自动化](release-automation.md) | 维护者配置 PyPI 自动发布与 Homebrew tap 自动更新。 |
+| [依赖锁定](dependency-locking.md) | 维护者更新依赖约束和复现实验环境。 |
+| [MCP 配置示例](examples/mcporter.json) | 可选第三方 MCP 工具配置样例，不是观澜默认运行配置。 |
+| [匿名遥测](telemetry.md) | 自托管统计时配置命令生命周期元数据采集。 |
 
 ## 当前重点
 

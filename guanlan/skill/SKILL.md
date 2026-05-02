@@ -38,6 +38,8 @@ metadata:
 
 - 搜索、研究、热榜、回响和本地知识库检索时，默认使用 50 条以上候选池；复杂调研可提高到 80-100。
 - 只有用户明确要“少量样本”“快速试一下”“只看前几条”时，才主动降低 limit。
+- 如果新用户问“装好了怎么用/怎么让 Agent 用观澜”，先运行 `guanlan welcome`。
+- 如果用户或 Agent 不知道观澜有哪些功能、该用哪个命令，先运行 `guanlan capabilities`；MCP 模式下调用 `guanlan_capabilities`。
 - `--advisor` 输出的是证据边界和写作规则，Agent 需要据此生成自然建议，不要机械复述固定小标题。
 
 ## 路由表
@@ -59,6 +61,8 @@ metadata:
 mcporter call 'exa.web_search_exa(query: "query", numResults: 50)'
 
 # 观澜统一网页搜索（默认公开搜索，不需要 Cookie）
+guanlan welcome
+guanlan capabilities
 guanlan search "query" --limit 50
 guanlan search "最近 query 热点" --profile china --trace
 guanlan search "query" --site zhihu.com --limit 50

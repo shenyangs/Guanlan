@@ -3,13 +3,13 @@
 ## Project
 观澜 / Guanlan — Python CLI + library for AI-agent search, reading, hotnews, and source routing across the Chinese web.
 Positioning: CLI-first, read-first router with explicit authorization boundaries.
-Repo: local workspace, public remote not configured yet | License: MIT | Version: 0.1.0
+License: MIT | Version: 0.2.3
 
 ## Commands
 - `pip install -e .` — Dev install
-- `pytest tests/ -v` — All tests
-- `pytest tests/test_cli.py -v` — CLI tests only
-- `bash test.sh` — Full integration test (creates venv, installs, runs doctor + channel tests)
+- `uv run pytest` — All tests
+- `uv run pytest tests/test_cli.py` — CLI tests only
+- `bash scripts/manual_integration_test.sh` — Manual local integration smoke
 - `python -m guanlan.cli doctor` — Run diagnostics
 - `python -m guanlan.cli install --env=auto` — Auto-configure
 
@@ -24,7 +24,7 @@ Repo: local workspace, public remote not configured yet | License: MIT | Version
 - `guanlan/skill/` — OpenClaw skill files
 - `guanlan/guides/` — Usage guides
 - `tests/` — pytest tests
-- `config/mcporter.json` — MCP tool config
+- `docs/examples/mcporter.json` — Example MCP tool config
 
 ## Conventions
 - Python 3.10+ with type hints

@@ -50,7 +50,7 @@ Each CLI command or MCP tool call emits a best-effort `invocation_start` and
   "invocation_id": "uuid",
   "surface": "cli",
   "command": "search",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "agent_kind": "codex",
   "agent_id": "anonymous-hash",
   "platform": "darwin",

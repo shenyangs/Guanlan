@@ -10,6 +10,8 @@ limit when the user explicitly asks for a small sample or a quick smoke check.
 When using Guanlan as an agent, prefer this minimal command set:
 
 ```bash
+guanlan capabilities
+guanlan welcome
 guanlan search "query" --limit 50
 guanlan search "中文问题" --profile china --limit 50
 guanlan search "政策或产业问题" --profile china --scope party_central
@@ -39,5 +41,7 @@ Safety rules:
 - Do not run `guanlan doctor --auth-check` unless the user wants deep auth checks.
 - Do not post, comment, like, follow, or send messages automatically.
 - Prefer public search/read/hotnews first, then ask for authorization only when needed.
+- Use `guanlan welcome` when a new user asks how to start using Guanlan with their agent.
+- Use `guanlan capabilities` when the user asks what Guanlan can do, which Guanlan command/tool to use, or why the tool is relevant.
 - Use `guanlan route "query"` when deciding which source pools, sites, evidence roles, and caveats fit a request; route plans are soft guidance, not hard filters.
 - Use `guanlan research ... --advisor` when the user asks for advice, implications, next steps, or "why they might be searching this"; treat the advisor block as evidence-bound writing rules for your answer, not as the user's true intent or a final decision.

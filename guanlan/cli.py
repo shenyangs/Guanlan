@@ -90,6 +90,16 @@ def main():
     # ── setup ──
     sub.add_parser("setup", help="Interactive configuration wizard")
 
+    # ── welcome ──
+    sub.add_parser("welcome", help="Show a short first-run guide for using Guanlan with agents")
+
+    # ── capabilities ──
+    p_capabilities = sub.add_parser(
+        "capabilities",
+        help="Show what Guanlan can do and which command/tool to use",
+    )
+    p_capabilities.add_argument("--json", action="store_true", help="Print capability map as JSON")
+
     # ── install ──
     p_install = sub.add_parser("install", help="One-shot installer with flags")
     p_install.add_argument("--env", choices=["local", "server", "auto"], default="auto",
@@ -513,6 +523,10 @@ def _dispatch_command(args):
     """Run a parsed command."""
     if args.command == "doctor":
         _cmd_doctor(args)
+    elif args.command == "welcome":
+        _cmd_welcome()
+    elif args.command == "capabilities":
+        _cmd_capabilities(args)
     elif args.command == "profile":
         _cmd_profile(args)
     elif args.command == "check-update":
@@ -562,6 +576,24 @@ def _dispatch_command(args):
 
 
 # ── Command handlers ────────────────────────────────
+
+
+def _cmd_welcome():
+    """Show the short user-facing onboarding card."""
+    from guanlan.onboarding import format_welcome_card, mark_welcome_shown
+
+    print(format_welcome_card())
+    mark_welcome_shown()
+
+
+def _cmd_capabilities(args):
+    """Show the Guanlan capability map for humans and agents."""
+    from guanlan.capabilities import format_capabilities_json, format_capabilities_markdown
+
+    if getattr(args, "json", False):
+        print(format_capabilities_json())
+    else:
+        print(format_capabilities_markdown())
 
 
 def _cmd_install(args):
@@ -710,6 +742,9 @@ def _cmd_install(args):
 
         print()
         print("后续可以运行 `guanlan doctor --trace` 查看诊断路径。")
+        from guanlan.onboarding import show_welcome_once
+
+        show_welcome_once()
     else:
         print()
         print("Dry run complete. No changes were made.")
@@ -1417,6 +1452,11 @@ def _cmd_mcp(args):
             )
         else:
             print(format_mcp_config_markdown(client=args.client, command=args.server_command))
+            print()
+            print(
+                "接好 MCP 后，可以问 Agent："
+                "“请调用 guanlan_capabilities，告诉我观澜能做什么。”"
+            )
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

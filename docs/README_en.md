@@ -8,7 +8,7 @@ The canonical documentation is maintained in Chinese:
 
 - [中文 README](../README.md)
 - [Agent usage guide](agent-usage.md)
-- [Chinese web design notes](chinese-web-design.md)
+- [Local LLM guide](local-llm.md)
 - [Troubleshooting](troubleshooting.md)
 - [Source attribution](SOURCE_ATTRIBUTION.md)
 

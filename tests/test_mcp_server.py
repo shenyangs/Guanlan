@@ -27,6 +27,7 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     names = {tool["name"] for tool in tools}
 
     assert "guanlan_status" in names
+    assert "guanlan_capabilities" in names
     assert "guanlan_search" in names
     assert "guanlan_route" in names
     assert "guanlan_read" in names
@@ -35,7 +36,10 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "guanlan_pulse" in names
     assert "guanlan_archive_search" in names
     research_tool = next(tool for tool in tools if tool["name"] == "guanlan_research")
+    capabilities_tool = next(tool for tool in tools if tool["name"] == "guanlan_capabilities")
     hotnews_tool = next(tool for tool in tools if tool["name"] == "guanlan_hotnews")
+    assert "what Guanlan can do" in capabilities_tool["description"]
+    assert "format" in capabilities_tool["inputSchema"]["properties"]
     assert "advisor" in research_tool["inputSchema"]["properties"]
     assert "advisor=true" in research_tool["description"]
     assert "writing rules" in research_tool["description"]
@@ -174,6 +178,23 @@ def test_mcp_route_explains_source_plan():
     assert "reputation" in text
     assert "purchase_advice" in text
     assert "social_web" in text
+
+
+def test_mcp_capabilities_explains_entrypoints():
+    text = mcp_server._run_tool("guanlan_capabilities", {})
+
+    assert "观澜能力地图" in text
+    assert "能力发现" in text
+    assert "guanlan search" in text
+    assert "助理视角" in text
+
+
+def test_mcp_capabilities_can_return_json():
+    payload = mcp_server._run_tool("guanlan_capabilities", {"format": "json"})
+
+    ids = {item["id"] for item in payload}
+    assert "discover" in ids
+    assert "hotnews" in ids
 
 
 def test_mcp_archive_search_uses_archive(monkeypatch):

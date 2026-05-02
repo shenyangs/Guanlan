@@ -22,6 +22,8 @@ metadata:
 
 Upstream tools for 17 platforms. Call them directly.
 
+Run `guanlan welcome` when a new user asks how to start using Guanlan with their agent.
+Run `guanlan capabilities` when the user or agent needs to know what Guanlan can do.
 Run `guanlan doctor` to check which channels are available.
 
 ## ⚠️ Workspace Rules
@@ -37,6 +39,8 @@ curl -s "https://r.jina.ai/URL"
 ## Web Search (Exa)
 
 ```bash
+guanlan welcome
+guanlan capabilities
 mcporter call 'exa.web_search_exa(query: "query", numResults: 50)'
 mcporter call 'exa.get_code_context_exa(query: "code question", tokensNum: 3000)'
 ```

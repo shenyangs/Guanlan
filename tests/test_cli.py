@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Tests for 观澜 / Guanlan CLI."""
 
+import json
 from unittest.mock import patch
 
 import pytest
@@ -105,6 +106,51 @@ class TestCLI:
         assert "verified" in captured.out
         assert "stable" in captured.out
         assert "search: 2" in captured.out
+
+    def test_capabilities_markdown_lists_agent_entrypoints(self, capsys):
+        with patch("sys.argv", ["guanlan", "capabilities"]):
+            main()
+
+        captured = capsys.readouterr()
+        assert "观澜能力地图" in captured.out
+        assert "guanlan route" in captured.out
+        assert "guanlan research" in captured.out
+        assert "助理视角" in captured.out
+
+    def test_capabilities_json_lists_mcp_tools(self, capsys):
+        with patch("sys.argv", ["guanlan", "capabilities", "--json"]):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        ids = {item["id"] for item in data}
+        assert "discover" in ids
+        assert "advisor" in ids
+        assert any(item["mcp"] == "guanlan_capabilities" for item in data)
+
+    def test_welcome_prints_short_user_guide(self, capsys, tmp_path, monkeypatch):
+        monkeypatch.setenv("GUANLAN_ONBOARDING_FILE", str(tmp_path / "onboarding.json"))
+
+        with patch("sys.argv", ["guanlan", "welcome"]):
+            main()
+
+        captured = capsys.readouterr()
+        assert "观澜已安装完成" in captured.out
+        assert "你可以直接这样对 Agent 说" in captured.out
+        assert "guanlan capabilities" in captured.out
+
+    def test_welcome_once_only_prints_first_time(self, capsys, tmp_path, monkeypatch):
+        from guanlan.onboarding import show_welcome_once
+
+        monkeypatch.setenv("GUANLAN_ONBOARDING_FILE", str(tmp_path / "onboarding.json"))
+
+        assert show_welcome_once() is True
+        first = capsys.readouterr()
+        assert "观澜已安装完成" in first.out
+
+        assert show_welcome_once() is False
+        second = capsys.readouterr()
+        assert second.out == ""
 
     def test_profile_show(self, capsys, tmp_path, monkeypatch):
         from guanlan.config import Config

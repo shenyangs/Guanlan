@@ -42,8 +42,25 @@ def _tool_definitions() -> list[dict]:
     return [
         {
             "name": "guanlan_status",
-            "description": "Get Guanlan channel status and health summary.",
+            "description": (
+                "Get Guanlan channel status and health summary. If the user asks what Guanlan can do, "
+                "call guanlan_capabilities instead."
+            ),
             "inputSchema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "guanlan_capabilities",
+            "description": (
+                "Show Guanlan's capability map: when to use search, route, read, research, advisor, "
+                "hotnews, pulse, archive, local-LLM prompt, status, and their safety boundaries. "
+                "Call this first when the user asks what Guanlan can do or which Guanlan tool to use."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
+                },
+            },
         },
         {
             "name": "guanlan_search",
@@ -257,6 +274,13 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
     args = arguments or {}
     if name == "guanlan_status":
         return Guanlan(Config()).doctor_report()
+
+    if name == "guanlan_capabilities":
+        from guanlan.capabilities import format_capabilities_markdown, list_capabilities
+
+        if str(args.get("format") or "markdown") == "json":
+            return list_capabilities()
+        return format_capabilities_markdown()
 
     if name == "guanlan_search":
         from guanlan.webtools import (

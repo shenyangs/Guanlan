@@ -170,7 +170,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.2.2`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.2.3`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 以后更新观澜：
 
@@ -300,6 +300,8 @@ guanlan configure --from-browser chrome
 | `guanlan install --env=auto` | 自动安装基础能力与必要依赖。 |
 | `guanlan install --env=auto --safe` | 安全模式，只提示需要什么，不主动改系统。 |
 | `guanlan install --env=auto --dry-run` | 预演安装步骤，不做实际改动。 |
+| `guanlan welcome` | 重新查看首次安装后的简短使用介绍和 Agent 说法示例。 |
+| `guanlan capabilities` | 展示观澜能力地图：何时用 search/route/research/advisor/hotnews 等能力。 |
 | `guanlan doctor` | 健康检查，默认跳过敏感登录态探测。 |
 | `guanlan doctor --trace` | 展示诊断路径，帮助定位是否存在敏感探测风险。 |
 | `guanlan doctor --check-config` | 扫描本地配置中可能误存的明文 Cookie、Token、Key 或代理凭据。 |
@@ -717,19 +719,15 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 | --- | --- |
 | [中文入口](docs/README_zh.md) | 中文文档导航。 |
 | [更新日志](CHANGELOG.md) | 记录每个版本的能力变化、边界调整和下一步收口。 |
-| [路线图](docs/roadmap.md) | 后续迭代主线、验收标准和暂不做事项。 |
 | [本地大模型联网指南](docs/local-llm.md) | Ollama、LM Studio、Open WebUI 等无联网模型如何接入观澜。 |
 | [Agent 使用说明](docs/agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜和安全路由规则。 |
 | [安装指南](docs/install.md) | 给 Agent 执行的安装流程与边界。 |
 | [更新指南](docs/update.md) | 更新观澜与依赖工具。 |
-| [发布自动化](docs/release-automation.md) | 维护者用：PyPI 自动发布与 Homebrew tap 自动更新。 |
-| [质量测试计划](docs/quality-test-plan.md) | 搜索、热榜、阅读、趋势和 advisor 的发布前质量闸门。 |
-| [匿名遥测](docs/telemetry.md) | 可选自托管遥测：只记录命令生命周期元数据，不记录查询和正文。 |
 | [排障手册](docs/troubleshooting.md) | 网络、Cookie、钥匙串、平台异常排查。 |
-| [中文互联网设计](docs/chinese-web-design.md) | 产品方案、平台矩阵与阶段路线。 |
-| [发布冒烟样本](docs/release-smoke-samples.md) | 第一版发布前的真实中文查询样本和通过标准。 |
 | [Cookie 导出](docs/cookie-export.md) | 手动导出 Cookie 的安全流程。 |
 | [来源说明](docs/SOURCE_ATTRIBUTION.md) | 开源参考与来源集中说明。 |
+
+维护者、贡献者或对设计细节感兴趣的读者，可在 [中文入口](docs/README_zh.md) 查看路线图、质量测试、发布自动化、匿名遥测和发布冒烟样本等资料。
 
 ## 本地数据与隐私
 

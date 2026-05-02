@@ -8,6 +8,22 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.2.3 - 2026-05-02
+
+### Added
+
+- 新增 `guanlan welcome`，安装后可展示面向新用户和 Agent 的简短上手卡片。
+- 新增 `guanlan capabilities` 和 `guanlan capabilities --json`，提供可读、可编排的能力地图。
+- MCP 新增 `guanlan_capabilities` 工具，让 Agent 在不知道该调用什么能力时可以先做能力发现。
+- 新增能力发现和首次欢迎的 CLI/MCP 测试，并补充手动集成 smoke 脚本。
+
+### Changed
+
+- README、Agent 文档、Skill 文档和 `llms.txt` 增加 `welcome/capabilities` 入口，强化 Agent-first 的上手路径。
+- 将维护者资料从 README 主入口收束到中文文档入口，降低外部阅读噪音。
+- 将示例 MCP 配置迁移到 `docs/examples/mcporter.json`，避免被误认为默认运行配置。
+- 官网展示版本号同步到 `0.2.3`。
+
 ## v0.2.2 - 2026-05-02
 
 ### Added
