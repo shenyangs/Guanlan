@@ -18,6 +18,9 @@ def test_search_scopes_include_requested_china_sources():
     assert "ebrun.com" in scopes["ecommerce"]["domains"]
     assert "engineeringvillage.com" in scopes["academic"]["domains"]
     assert scopes["academic"]["source_type"] == "学术/论文检索"
+    assert "douban.com" in scopes["entertainment"]["domains"]
+    assert "maoyan.com" in scopes["entertainment"]["domains"]
+    assert scopes["entertainment"]["source_type"] == "文娱/内容平台"
     assert "sec.gov" in scopes["global_official"]["domains"]
     assert scopes["global_official"]["source_type"] == "英文官方/监管"
     assert "openai.com" in scopes["company_primary"]["domains"]
@@ -31,6 +34,8 @@ def test_resolve_scope_aliases():
     assert resolve_scope("scholar").id == "academic"
     assert resolve_scope("company").id == "company_primary"
     assert resolve_scope("reddit").id == "community_sample"
+    assert resolve_scope("movie").id == "entertainment"
+    assert resolve_scope("douban").id == "entertainment"
 
 
 def test_resolve_scope_rejects_unknown():
@@ -65,6 +70,16 @@ def test_classify_domain_detects_academic_sources():
     assert meta["source_type"] == "学术/论文检索"
     assert meta["matched_scope"] == "academic"
     assert meta["trust_level"] == 4
+
+
+def test_classify_domain_detects_entertainment_sources():
+    douban = classify_domain("movie.douban.com")
+    maoyan = classify_domain("piaofang.maoyan.com")
+
+    assert douban["source_type"] == "文娱/内容平台"
+    assert douban["matched_scope"] == "entertainment"
+    assert maoyan["source_type"] == "文娱/内容平台"
+    assert maoyan["matched_scope"] == "entertainment"
 
 
 def test_classify_domain_detects_english_source_scopes():

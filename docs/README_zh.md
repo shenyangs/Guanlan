@@ -50,5 +50,5 @@
 - 发版前稳健性闸门：`guanlan quality coverage`、`guanlan quality regression`、`guanlan quality robustness`、`guanlan eval benchmark`，或直接运行 `scripts/release_gate.sh`。真实网络探测可用 `guanlan quality live-smoke --limit 5`，默认不阻断发版。
 - 本地模型联网入口已经可用：`guanlan prompt "问题"`、`guanlan research "问题" --format prompt`、`guanlan mcp config --client codex`。
 - 进阶能力已经有第一版骨架：`guanlan serve` 本地只读 HTTP、`hotnews --trends` 趋势归并、`archive ingest-research --dry-run` RAG 沉淀、`plugin register/template` 企业只读 connector、`eval scenarios` 评估集。
-- 第一批原生热榜命令已经可用：`guanlan hotnews list`、`guanlan hotnews baidu --limit 50`、`guanlan hotnews v2ex --json`；`zhihu` 是 experimental 源，失败时使用搜索 fallback。
+- 第一批原生热榜命令已经可用：`guanlan hotnews list`、`guanlan hotnews baidu --limit 80`、`guanlan hotnews v2ex --json`；`zhihu` 是 experimental 源，失败时使用搜索 fallback。
 - 观澜当前优先强化中文搜索、热榜聚合、社交口碑、视频、财经和开发者社区。

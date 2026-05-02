@@ -13,6 +13,14 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from guanlan.limits import (
+    DEFAULT_FEEDS_LIMIT,
+    DEFAULT_HOTNEWS_LIMIT,
+    DEFAULT_PULSE_LIMIT,
+    DEFAULT_RESEARCH_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+)
+
 
 @dataclass
 class RoutePlan:
@@ -162,6 +170,41 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
         "roles": ("local_context", "official_primary"),
     },
     {
+        "intent": "entertainment",
+        "terms": (
+            "文娱",
+            "娱乐",
+            "影视",
+            "电影",
+            "电视剧",
+            "剧集",
+            "综艺",
+            "明星",
+            "偶像",
+            "演员",
+            "票房",
+            "排片",
+            "播放量",
+            "收视率",
+            "评分",
+            "豆瓣",
+            "猫眼",
+            "灯塔",
+            "音乐",
+            "专辑",
+            "演唱会",
+            "游戏",
+            "手游",
+            "动漫",
+            "二次元",
+        ),
+        "scopes": ("entertainment", "social_web", "business"),
+        "fallback": ("finance", "tech_dev"),
+        "sites": ("douban.com", "maoyan.com", "bilibili.com", "weibo.com", "taptap.cn"),
+        "roles": ("platform_metric", "user_review", "industry_report", "fan_discussion", "official_release"),
+        "warning": "文娱问题应区分平台热度、用户评分、产业报道、宣发通稿和粉圈讨论；单平台热搜不能代表总体口碑。",
+    },
+    {
         "intent": "reputation",
         "terms": ("评价", "口碑", "体验", "吐槽", "避雷", "测评", "推荐吗", "好用吗", "怎么样", "小红书", "知乎", "微博", "b站"),
         "scopes": ("social_web", "tech_dev", "business"),
@@ -293,6 +336,7 @@ _DOMAIN_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("policy", ("regulation", "policy", "compliance", "law", "standard")),
     ("company", ("pricing", "release notes", "docs", "official blog", "investor relations")),
     ("reviews", ("review", "reviews", "reddit", "g2", "trustpilot", "capterra")),
+    ("entertainment", ("文娱", "娱乐", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏")),
 )
 
 _HIGH_RISK_TERMS = (
@@ -403,6 +447,7 @@ def build_route_plan(
             "standards_compliance",
             "medical_health",
             "legal_judicial",
+            "entertainment",
         }
         & set(primary + secondary)
         or high_risk
@@ -429,11 +474,11 @@ def build_route_plan(
         profile=profile,
         read_top=read_top,
     )
-    read_default = 3 if {"policy", "official_position", "tech", "industry"} & set(primary + secondary) else 2
+    read_default = 5 if {"policy", "official_position", "tech", "industry"} & set(primary + secondary) else 3
     if {"standards_compliance", "medical_health", "legal_judicial"} & set(primary + secondary):
-        read_default = 3
+        read_default = 5
     if "reputation" in primary + secondary and not high_risk:
-        read_default = 1
+        read_default = 3
 
     plan = RoutePlan(
         query=clean_query,
@@ -452,7 +497,7 @@ def build_route_plan(
         recommended_feeds=recommended_feeds,
         recommended_commands=recommended_commands,
         read_top=max(read_top if read_top is not None else read_default, 0),
-        limit=max(limit if limit is not None else 50, 1),
+        limit=max(limit if limit is not None else DEFAULT_RESEARCH_LIMIT, 1),
         advisor_recommended=advisor_recommended,
         warnings=_unique(warnings),
         explain=_unique(reasons + _domain_reasons(domains) + _route_explanations(primary, preferred_scopes, target_sites)),
@@ -553,6 +598,14 @@ def _preset_rule(preset: str) -> dict[str, Any] | None:
         "company": "company_primary",
         "company_primary": "company_primary",
         "ecommerce": "ecommerce",
+        "entertainment": "entertainment",
+        "culture": "entertainment",
+        "wenyu": "entertainment",
+        "yule": "entertainment",
+        "movie": "entertainment",
+        "film": "entertainment",
+        "game": "entertainment",
+        "gaming": "entertainment",
         "tech": "tech",
         "academic": "academic",
         "scholar": "academic",
@@ -601,6 +654,10 @@ def _query_variants(query: str, intents: list[str], domains: list[str]) -> list[
         variants.append(f"{query} review reddit hacker news complaints")
     if "purchase_advice" in intents:
         variants.append(f"{query} 优缺点 值不值得买")
+    if "entertainment" in intents:
+        variants.append(f"{query} 豆瓣 评分 评价")
+        variants.append(f"{query} 猫眼 灯塔 票房 热度")
+        variants.append(f"{query} 微博 B站 讨论")
     if "company_primary" in intents:
         variants.append(f"{query} official docs pricing release notes")
     if "tech" in intents:
@@ -633,6 +690,8 @@ def _avoid_as_primary(intents: list[str]) -> list[str]:
         avoid.extend(["社交/内容平台", "英文社区样本", "商业软文", "SEO 聚合页"])
     if "reputation" in intents or "global_reputation" in intents or "purchase_advice" in intents:
         avoid.extend(["单条爆款帖", "疑似营销内容", "无来源二手汇总", "单一 review 站点评分"])
+    if "entertainment" in intents:
+        avoid.extend(["单平台热搜", "粉圈控评", "宣发通稿", "无来源搬运", "刷分/水军样本"])
     if "finance" in intents:
         avoid.extend(["社交荐股", "未核验市场传言"])
     if "academic" in intents:
@@ -661,63 +720,75 @@ def _recommended_commands(
     commands: list[str] = []
     quoted = _shell_quote(query)
     profile_part = f" --profile {profile}" if profile in {"china", "english", "hybrid"} else ""
-    effective_read_top = 2 if read_top is None else max(read_top, 0)
+    effective_read_top = 5 if read_top is None else max(read_top, 0)
     reading_discovery = _is_reading_discovery(query.lower())
 
+    search_limit = DEFAULT_SEARCH_LIMIT
+    research_limit = DEFAULT_RESEARCH_LIMIT
+    hotnews_limit = DEFAULT_HOTNEWS_LIMIT
+    pulse_limit = DEFAULT_PULSE_LIMIT
+    feeds_limit = DEFAULT_FEEDS_LIMIT
+
     if "hot_trend" in intents and not reading_discovery and profile != "english":
-        commands.append("guanlan hotnews today --limit 50")
+        commands.append(f"guanlan hotnews today --limit {hotnews_limit}")
     if "academic" in intents:
-        academic_read_top = max(read_top if read_top is not None else 0, 0)
-        commands.append(f"guanlan research {quoted} --preset academic{profile_part} --limit 50 --read-top {academic_read_top}")
+        academic_read_top = max(effective_read_top, 5)
+        commands.append(f"guanlan research {quoted} --preset academic{profile_part} --limit {research_limit} --read-top {academic_read_top}")
     elif "standards_compliance" in intents and not (profile == "english" and "global_policy" in intents):
-        commands.append(f"guanlan research {quoted}{profile_part} --scope global_official --limit 50 --read-top {max(effective_read_top, 3)}")
-        commands.append(f"guanlan search {quoted}{profile_part} --scope gov --limit 50")
+        commands.append(f"guanlan research {quoted}{profile_part} --scope global_official --limit {research_limit} --read-top {max(effective_read_top, 5)}")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope gov --limit {search_limit}")
     elif "medical_health" in intents:
-        commands.append(f"guanlan research {quoted}{profile_part} --scope global_official --limit 50 --read-top {max(effective_read_top, 3)}")
-        commands.append(f"guanlan search {quoted}{profile_part} --scope academic --limit 50")
+        commands.append(f"guanlan research {quoted}{profile_part} --scope global_official --limit {research_limit} --read-top {max(effective_read_top, 5)}")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope academic --limit {search_limit}")
     elif "legal_judicial" in intents:
-        commands.append(f"guanlan research {quoted}{profile_part} --scope gov --limit 50 --read-top {max(effective_read_top, 3)}")
-        commands.append(f"guanlan search {quoted}{profile_part} --scope global_official --limit 50")
+        commands.append(f"guanlan research {quoted}{profile_part} --scope gov --limit {research_limit} --read-top {max(effective_read_top, 5)}")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope global_official --limit {search_limit}")
     elif "global_policy" in intents:
-        commands.append(f"guanlan research {quoted} --preset global_policy{profile_part} --limit 50 --read-top {max(effective_read_top, 2)}")
+        commands.append(f"guanlan research {quoted} --preset global_policy{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "policy" in intents:
-        commands.append(f"guanlan research {quoted} --preset policy{profile_part} --limit 50 --read-top {max(effective_read_top, 2)}")
+        commands.append(f"guanlan research {quoted} --preset policy{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "official_position" in intents:
-        commands.append(f"guanlan research {quoted} --preset official{profile_part} --limit 50 --read-top {max(effective_read_top, 2)}")
+        commands.append(f"guanlan research {quoted} --preset official{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "global_reputation" in intents:
-        commands.append(f"guanlan research {quoted} --preset global_reputation{profile_part} --limit 50 --read-top {effective_read_top}")
+        commands.append(f"guanlan research {quoted} --preset global_reputation{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 3)}")
+    elif "entertainment" in intents:
+        if profile != "english":
+            commands.append(f"guanlan hotnews weibo --limit {hotnews_limit}")
+            commands.append(f"guanlan hotnews bilibili --limit {hotnews_limit}")
+        commands.append(f"guanlan research {quoted} --preset entertainment{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 3)}")
+        commands.append(f"guanlan pulse {quoted}{profile_part} --limit {pulse_limit} --format context")
     elif "reputation" in intents or "purchase_advice" in intents:
-        commands.append(f"guanlan pulse {quoted}{profile_part} --limit 80 --format context")
-        commands.append(f"guanlan research {quoted} --preset reputation{profile_part} --limit 50 --read-top {effective_read_top}")
+        commands.append(f"guanlan pulse {quoted}{profile_part} --limit {pulse_limit} --format context")
+        commands.append(f"guanlan research {quoted} --preset reputation{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 3)}")
     elif "company_primary" in intents:
-        commands.append(f"guanlan research {quoted} --preset company{profile_part} --limit 50 --read-top {max(effective_read_top, 2)}")
+        commands.append(f"guanlan research {quoted} --preset company{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "tech" in intents:
-        commands.append(f"guanlan research {quoted} --preset tech{profile_part} --limit 50 --read-top {max(effective_read_top, 2)}")
+        commands.append(f"guanlan research {quoted} --preset tech{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "global_industry" in intents:
-        commands.append(f"guanlan research {quoted} --preset global_industry{profile_part} --limit 50 --read-top {max(effective_read_top, 2)}")
+        commands.append(f"guanlan research {quoted} --preset global_industry{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "industry" in intents:
-        commands.append(f"guanlan research {quoted} --preset industry{profile_part} --limit 50 --read-top {max(effective_read_top, 2)}")
+        commands.append(f"guanlan research {quoted} --preset industry{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "finance" in intents:
-        commands.append(f"guanlan research {quoted} --preset finance{profile_part} --limit 50 --read-top {max(effective_read_top, 1)}")
+        commands.append(f"guanlan research {quoted} --preset finance{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
 
     if not commands:
         scope = preferred_scopes[0] if preferred_scopes else ""
         scope_part = f" --scope {scope}" if scope else ""
-        commands.append(f"guanlan search {quoted}{profile_part}{scope_part} --limit 50")
+        commands.append(f"guanlan search {quoted}{profile_part}{scope_part} --limit {search_limit}")
 
     if target_sites and not any(site in commands[0] for site in target_sites[:1]):
-        commands.append(f"guanlan search {quoted} --site {target_sites[0]}{profile_part} --limit 50")
+        commands.append(f"guanlan search {quoted} --site {target_sites[0]}{profile_part} --limit {search_limit}")
 
     for feed in feeds:
         if feed == "curated":
             category = " --category ai" if "ai" in domains else ""
-            commands.append(f"guanlan feeds curated{category} --limit 80")
+            commands.append(f"guanlan feeds curated{category} --limit {feeds_limit}")
         elif feed == "curated-sources":
-            commands.append(f"guanlan feeds curated-sources --keyword {quoted} --limit 80")
+            commands.append(f"guanlan feeds curated-sources --keyword {quoted} --limit {feeds_limit}")
         elif feed == "baidu-rss":
-            commands.append("guanlan feeds baidu-rss --limit 80")
+            commands.append(f"guanlan feeds baidu-rss --limit {feeds_limit}")
         elif feed == "wechat-rss":
-            commands.append("guanlan feeds wechat-rss --limit 80")
+            commands.append(f"guanlan feeds wechat-rss --limit {feeds_limit}")
 
     return _unique(commands)[:6]
 
@@ -747,6 +818,8 @@ def _route_explanations(intents: list[str], scopes: list[str], sites: list[str])
         output.append("英文政策/监管问题需要官方、监管或标准组织原文作为主证据。")
     if "academic" in intents:
         output.append("学术检索问题需要数据库/出版商口径、会议 CFP 和高校认定口径分开核验。")
+    if "entertainment" in intents:
+        output.append("文娱内容需要把票房/播放/榜单、用户评分、产业报道和粉圈讨论分层看，避免把热度写成口碑。")
     if "tech" in intents:
         output.append("科技/技术内容除开发者社区和代码仓库外，必须额外补一轮 RSS/精品内容流作为阅读发现视角。")
     if "standards_compliance" in intents:

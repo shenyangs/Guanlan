@@ -95,11 +95,11 @@ def run_coverage_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any]:
         },
         "checks": checks,
         "contract": {
-            "search_min": 50,
-            "research_min": 50,
-            "hotnews_min": 50,
+            "search_min": 80,
+            "research_min": 80,
+            "hotnews_min": 80,
             "feeds_min": 80,
-            "archive_search_min": 50,
+            "archive_search_min": 80,
             "read_fallback_min": 20,
             "principle": "新版本不得让 Agent 默认拿到的候选池、证据字段或归档元数据大面积缩水。",
         },
@@ -135,9 +135,9 @@ def run_regression_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any
         "contract": {
             "principle": "每次更新不得让 Agent 默认拿到的内容大面积变少、变窄或变脏。",
             "minimum_pool": {
-                "search": 50,
-                "research": 50,
-                "hotnews": 50,
+                "search": 80,
+                "research": 80,
+                "hotnews": 80,
                 "feeds": 80,
                 "read_fallback": 20,
             },
@@ -224,11 +224,11 @@ def format_coverage_report(report: dict[str, Any]) -> str:
         f"- 原则: {contract.get('principle', '')}",
         "",
         "## 下限契约",
-        f"- search >= {contract.get('search_min', 50)}",
-        f"- research >= {contract.get('research_min', 50)}",
-        f"- hotnews >= {contract.get('hotnews_min', 50)}",
+        f"- search >= {contract.get('search_min', 80)}",
+        f"- research >= {contract.get('research_min', 80)}",
+        f"- hotnews >= {contract.get('hotnews_min', 80)}",
         f"- feeds >= {contract.get('feeds_min', 80)}",
-        f"- archive search >= {contract.get('archive_search_min', 50)}",
+        f"- archive search >= {contract.get('archive_search_min', 80)}",
         f"- read fallback >= {contract.get('read_fallback_min', 20)}",
         "",
         "## 检查项",
@@ -294,11 +294,11 @@ def format_coverage_jsonl(report: dict[str, Any]) -> str:
 
 def _check_default_limits() -> list[dict[str, Any]]:
     checks = [
-        ("coverage_search_default_limit", "search", DEFAULT_SEARCH_LIMIT, 50),
-        ("coverage_research_default_limit", "research", DEFAULT_RESEARCH_LIMIT, 50),
-        ("coverage_hotnews_default_limit", "hotnews", DEFAULT_HOTNEWS_LIMIT, 50),
+        ("coverage_search_default_limit", "search", DEFAULT_SEARCH_LIMIT, 80),
+        ("coverage_research_default_limit", "research", DEFAULT_RESEARCH_LIMIT, 80),
+        ("coverage_hotnews_default_limit", "hotnews", DEFAULT_HOTNEWS_LIMIT, 80),
         ("coverage_feeds_default_limit", "feeds", DEFAULT_FEEDS_LIMIT, 80),
-        ("coverage_archive_search_default_limit", "archive", DEFAULT_ARCHIVE_SEARCH_LIMIT, 50),
+        ("coverage_archive_search_default_limit", "archive", DEFAULT_ARCHIVE_SEARCH_LIMIT, 80),
         ("coverage_read_fallback_default_limit", "read", DEFAULT_READ_FALLBACK_LIMIT, 20),
     ]
     return [

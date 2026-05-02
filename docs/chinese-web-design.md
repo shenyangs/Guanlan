@@ -382,7 +382,7 @@ NewsNow 的 GitHub OAuth 主要用于用户同步、缓存和强制刷新，不�
 ```bash
 guanlan configure newsnow-base-url https://newsnow.busiyi.world
 guanlan doctor --profile china
-guanlan hotnews zhihu --limit 50
+guanlan hotnews zhihu --limit 80
 ```
 
 MCP 模式：

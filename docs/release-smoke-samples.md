@@ -28,7 +28,7 @@ scripts/release_smoke.sh
 | S5 | 技术/开发者社区 | `guanlan research "Python Agent 框架 对比" --preset tech --read-top 1 --max-read-chars 1200` | 输出技术证据包，结果应混合技术社区、开发者站点或 GitHub。 |
 | S6 | 社交公开页口碑 | `guanlan research "某产品 用户评价" --preset reputation --read-top 0 --format context` | 不要求登录态；应返回公开网页层面的口碑线索，而不是触发社交账号批量读取。 |
 | S7 | URL 阅读降级 | `guanlan read "https://www.gov.cn/" --max-chars 1200 --fallback-search` | 能返回正文、首页文本，或给出清晰的搜索兜底上下文。 |
-| S8 | 热榜 | `guanlan hotnews baidu --limit 50` | 输出 `观澜热榜` Markdown，单条异常不应导致整个 CLI 崩溃。 |
+| S8 | 热榜 | `guanlan hotnews baidu --limit 80` | 输出 `观澜热榜` Markdown，单条异常不应导致整个 CLI 崩溃。 |
 | S9 | MCP 工具面 | `uv run python -c "from guanlan.integrations.mcp_server import _tool_definitions; print([t['name'] for t in _tool_definitions()])"` | 输出包含 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_hotnews`、`guanlan_status`。 |
 | S10 | 安装与发布 smoke | `scripts/release_smoke.sh` | `pip install .`、可用时的 `pipx install .`、`guanlan --version`、`guanlan install --env=auto` 安全预演和 `guanlan status` 均通过。 |
 

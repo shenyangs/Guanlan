@@ -11,24 +11,24 @@
 guanlan hotnews list
 
 # 今日多源热榜，Markdown 输出，适合直接放进 Agent 上下文
-guanlan hotnews today --limit 50
+guanlan hotnews today --limit 80
 
 # 单源观察
-guanlan hotnews baidu --limit 50
-guanlan hotnews weibo --limit 50
-guanlan hotnews bilibili --limit 50
-guanlan hotnews ithome --limit 50
-guanlan hotnews v2ex --limit 50
+guanlan hotnews baidu --limit 80
+guanlan hotnews weibo --limit 80
+guanlan hotnews bilibili --limit 80
+guanlan hotnews ithome --limit 80
+guanlan hotnews v2ex --limit 80
 
 # NewsNow 可选增强源
-guanlan hotnews newsnow:36kr-quick --limit 50
-guanlan hotnews newsnow:ithome --limit 50
-guanlan hotnews newsnow:bilibili-hot-search --limit 50
+guanlan hotnews newsnow:36kr-quick --limit 80
+guanlan hotnews newsnow:ithome --limit 80
+guanlan hotnews newsnow:bilibili-hot-search --limit 80
 guanlan configure newsnow-base-url https://your-newsnow.example
 
 # 知乎热榜（experimental，失败时用搜索 fallback）
-guanlan hotnews zhihu --limit 50 --json
-guanlan search "热点关键词" --site zhihu.com --profile china --limit 50
+guanlan hotnews zhihu --limit 80 --json
+guanlan search "热点关键词" --site zhihu.com --profile china --limit 80
 ```
 
 统一字段包括：
@@ -64,13 +64,13 @@ cat /tmp/hotnews.json | guanlan format hotnews
 默认网页搜索命令：
 
 ```bash
-guanlan search "query" --limit 50
+guanlan search "query" --limit 80
 ```
 
 中文互联网搜索：
 
 ```bash
-guanlan search "query" --profile china --limit 50
+guanlan search "query" --profile china --limit 80
 ```
 
 时效性搜索：
@@ -110,8 +110,8 @@ guanlan search "query" --profile china --scope finance
 限定站点：
 
 ```bash
-guanlan search "query" --site zhihu.com --limit 50
-guanlan search "query" --site mp.weixin.qq.com --limit 50
+guanlan search "query" --site zhihu.com --limit 80
+guanlan search "query" --site mp.weixin.qq.com --limit 80
 ```
 
 结构化输出：

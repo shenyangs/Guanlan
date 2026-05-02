@@ -125,7 +125,7 @@ guanlan mcp config --client openwebui --format json
 - `guanlan_archive_search`
 - `guanlan_status`
 
-复杂研究建议让 Agent 使用 `limit=50-100`，再从观澜返回的精选代表证据中组织回答。
+复杂研究建议让 Agent 使用 `limit=80-100`，再从观澜返回的精选代表证据中组织回答。
 
 ## 四、不支持 MCP：使用本地只读 HTTP
 

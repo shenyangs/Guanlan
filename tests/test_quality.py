@@ -46,7 +46,7 @@ def test_quality_cli_coverage_outputs_json(capsys):
     payload = json.loads(captured.out)
 
     assert payload["mode"] == "quick"
-    assert payload["contract"]["search_min"] == 50
+    assert payload["contract"]["search_min"] == 80
     assert payload["contract"]["feeds_min"] == 80
     assert payload["summary"]["fail"] == 0
 

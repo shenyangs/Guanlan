@@ -56,7 +56,7 @@ guanlan doctor
 中文资料优先使用中文场景画像：
 
 ```bash
-guanlan search "关键词" --profile china --limit 50
+guanlan search "关键词" --profile china --limit 80
 ```
 
 需要更明确的信源范围时使用 scope：
@@ -70,7 +70,7 @@ guanlan search "某地 政策" --scope local_official
 如果用户要的是“查清楚并给依据”，优先用研究证据包：
 
 ```bash
-guanlan research "关键词" --profile china --read-top 2
+guanlan research "关键词" --profile china --read-top 5
 ```
 
 ## 网页读取失败

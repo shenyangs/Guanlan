@@ -205,6 +205,40 @@ _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
         "caution_source_types": ("社交/内容平台",),
         "guidance": "优先数据库/出版商官方说明、会议 CFP 和学校/单位认定口径；商业代投内容只能作线索。",
     },
+    "entertainment": {
+        "name": "文娱/内容消费",
+        "terms": (
+            "文娱",
+            "娱乐",
+            "影视",
+            "电影",
+            "电视剧",
+            "剧集",
+            "综艺",
+            "明星",
+            "偶像",
+            "演员",
+            "票房",
+            "排片",
+            "播放量",
+            "收视率",
+            "评分",
+            "豆瓣",
+            "猫眼",
+            "灯塔",
+            "音乐",
+            "专辑",
+            "演唱会",
+            "游戏",
+            "手游",
+            "动漫",
+            "二次元",
+        ),
+        "preferred_scopes": ("entertainment", "social_web", "business"),
+        "preferred_source_types": ("文娱/内容平台", "社交/内容平台", "商业/产业媒体"),
+        "caution_source_types": ("通用网页", "评价/消费样本"),
+        "guidance": "文娱问题应分清平台数据、用户评分、专业/产业报道和粉圈讨论；不要把单平台热度当作总体口碑。",
+    },
     "reputation": {
         "name": "口碑/公开讨论",
         "terms": (
@@ -309,6 +343,21 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "read_top": 2,
         "max_read_chars": 2400,
         "guidance": ["口碑材料偏样本线索，不要直接当作总体结论。"],
+    },
+    "entertainment": {
+        "name": "文娱研究",
+        "description": "优先文娱/内容平台与公开讨论样本，适合影视、综艺、音乐、游戏、明星、票房和口碑。",
+        "profile": "china",
+        "scope": "entertainment",
+        "scopes": ["entertainment", "social_web", "business"],
+        "sites": ["douban.com", "maoyan.com", "bilibili.com", "weibo.com", "taptap.cn"],
+        "limit": DEFAULT_RESEARCH_LIMIT,
+        "read_top": 2,
+        "max_read_chars": 2600,
+        "guidance": [
+            "把平台数据、用户评分/评论、产业报道、宣发通稿和粉圈讨论分开看。",
+            "票房、播放、榜单和热搜只能说明平台口径下的热度，不直接等于大众口碑。",
+        ],
     },
     "tech": {
         "name": "技术选型",
@@ -426,6 +475,10 @@ class SearchResult:
     topic_key: str = ""
     topic_size: int = 1
     topic_role: str = "single"
+    published_at: str = ""
+    date_source: str = ""
+    freshness_confidence: str = ""
+    stale_risk: str = ""
     trace: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -803,7 +856,12 @@ def rank_results(
             quality=quality,
         )
         item.score = item.score_parts["total"]
-        item.trace["recency"] = _result_recency_trace(item, recency)
+        recency_trace = _result_recency_trace(item, recency)
+        item.trace["recency"] = recency_trace
+        item.published_at = str(recency_trace.get("result_date") or "")
+        item.date_source = str(recency_trace.get("date_source") or "")
+        item.freshness_confidence = str(recency_trace.get("freshness_confidence") or "")
+        item.stale_risk = str(recency_trace.get("stale_risk") or "")
         item.trace["quality"] = _result_quality_trace(item, quality)
     ranked = sorted(deduped, key=lambda r: (-r.score, r.rank))
     _assign_topic_clusters(ranked, threshold=cluster_threshold)
@@ -952,7 +1010,7 @@ def _search_recovery_commands(
 ) -> list[str]:
     quoted = _shell_quote_for_command(query)
     profile_part = f" --profile {profile}" if profile in {"china", "english", "hybrid"} else ""
-    command_limit = max(limit, 50)
+    command_limit = max(limit, DEFAULT_SEARCH_LIMIT)
     commands: list[str] = []
     for backend_name in ("bing", "duckduckgo"):
         if backend_name in ok_backends:
@@ -1742,8 +1800,10 @@ def build_research_packet(
         if not effective_sites:
             effective_sites = _normalize_sites(list(route_plan.target_sites))[:6]
     effective_read_top = max(read_top if read_top is not None else preset_config["read_top"], 0)
+    if read_top is None:
+        effective_read_top = max(effective_read_top, 5)
     if read_top is None and preset_config["id"] == "general":
-        effective_read_top = route_plan.read_top
+        effective_read_top = max(route_plan.read_top, 5)
     effective_max_read_chars = max(
         max_read_chars if max_read_chars is not None else preset_config["max_read_chars"],
         1,
@@ -1796,6 +1856,9 @@ def build_research_packet(
         except Exception as e:
             readings.append(_reading_record(item, status="error", error=str(e)))
 
+    source_diagnostics = build_source_diagnostics(results, route_plan=route_plan.to_dict())
+    freshness_guard = build_freshness_guard(results, route_plan=route_plan.to_dict(), recency=recency)
+    source_mix_guard = build_source_mix_guard(results, route_plan=route_plan.to_dict())
     packet = {
         "query": query,
         "preset": preset_config["id"],
@@ -1812,7 +1875,9 @@ def build_research_packet(
         "query_strategy": query_strategy,
         "result_count": len(results),
         "source_mix": _source_mix(results),
-        "source_diagnostics": build_source_diagnostics(results, route_plan=route_plan.to_dict()),
+        "source_diagnostics": source_diagnostics,
+        "freshness_guard": freshness_guard,
+        "source_mix_guard": source_mix_guard,
         "topic_count": len({item.get("topic_key") for item in results if item.get("topic_key")}),
         "search_errors": search_errors,
         "result_groups": result_groups,
@@ -1828,6 +1893,9 @@ def build_research_packet(
             "阅读兜底内容只代表公开搜索线索，不等同于原文全文。",
             "路由计划是软约束：优先源用于提高适配度，开放搜索兜底用于避免信息池过窄。",
             "查询策略会把同一问题拆成不同证据角色；回答时要保留“官方、媒体、社区、用户样本”的差异。",
+            "时效护栏会标出无日期、旧内容和窗口外材料；最新问题不要把旧稿当新进展。",
+            "UGC/信源配比护栏会限制用户生成内容占比；事实问题必须让官方/权威/一手材料站到主证据位。",
+            "research 默认会读取更多代表证据；如外层超时，优先降低 read_top，不要缩小 limit。",
         ] + (
             ["科技/技术类路线已强制补跑 RSS/精品内容流；RSS 适合作阅读发现和新鲜线索，不替代代码仓库、官方文档或原文核验。"]
             if feed_groups
@@ -1891,6 +1959,14 @@ def format_research_markdown(packet: dict[str, Any]) -> str:
     diagnostics = packet.get("source_diagnostics")
     if isinstance(diagnostics, dict):
         lines.extend(["", format_source_diagnostics_markdown(diagnostics)])
+
+    freshness_guard = packet.get("freshness_guard")
+    if isinstance(freshness_guard, dict):
+        lines.extend(["", format_freshness_guard_markdown(freshness_guard)])
+
+    source_mix_guard = packet.get("source_mix_guard")
+    if isinstance(source_mix_guard, dict):
+        lines.extend(["", format_source_mix_guard_markdown(source_mix_guard)])
 
     audit = packet.get("evidence_audit")
     if isinstance(audit, dict):
@@ -1995,6 +2071,16 @@ def format_research_prompt(packet: dict[str, Any], style: str = "deep") -> str:
     if isinstance(diagnostics, dict):
         lines.append("### 信源诊断")
         lines.append(format_source_diagnostics_markdown(diagnostics))
+        lines.append("")
+    freshness_guard = packet.get("freshness_guard")
+    if isinstance(freshness_guard, dict):
+        lines.append("### 时效护栏")
+        lines.append(format_freshness_guard_markdown(freshness_guard))
+        lines.append("")
+    source_mix_guard = packet.get("source_mix_guard")
+    if isinstance(source_mix_guard, dict):
+        lines.append("### UGC/信源配比护栏")
+        lines.append(format_source_mix_guard_markdown(source_mix_guard))
         lines.append("")
     audit = packet.get("evidence_audit")
     if isinstance(audit, dict):
@@ -2516,6 +2602,10 @@ def _result_from_dict(item: dict[str, Any]) -> SearchResult:
         topic_key=str(item.get("topic_key", "")),
         topic_size=int(item.get("topic_size") or 1),
         topic_role=str(item.get("topic_role", "single")),
+        published_at=str(item.get("published_at", "")),
+        date_source=str(item.get("date_source", "")),
+        freshness_confidence=str(item.get("freshness_confidence", "")),
+        stale_risk=str(item.get("stale_risk", "")),
         trace=dict(item.get("trace") or {}),
         evidence_role=str(item.get("evidence_role", "open_web_context")),
     )
@@ -3187,6 +3277,8 @@ def _advisor_primary_angle(preset: str, query: str) -> str:
     text = query.lower()
     if preset in {"policy", "official", "local"} or _contains_any(text, ["政策", "监管", "通知", "官方"]):
         return "官方口径与影响判断"
+    if preset == "entertainment" or _contains_any(text, ["文娱", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏"]):
+        return "热度、口碑与消费判断"
     if preset in {"reputation", "ecommerce"} or _contains_any(text, ["评价", "口碑", "购买", "值不值得", "产品"]):
         return "口碑线索与行动建议"
     if preset in {"industry", "finance"} or _contains_any(text, ["行业", "融资", "财报", "股价", "商业化"]):
@@ -3210,6 +3302,8 @@ def _advisor_synthesis_rules(
     ]
     if preset in {"policy", "official", "local"} or _contains_any(query, ["政策", "监管", "通知", "官方"]):
         rules.append("涉及政策或官方口径时，优先引用原文和发文主体，再解释影响")
+    if preset == "entertainment" or _contains_any(query, ["文娱", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏"]):
+        rules.append("涉及文娱时，分清平台数据、用户评分、产业报道、宣发通稿和粉圈讨论")
     if preset in {"reputation", "ecommerce"} or _contains_any(query, ["口碑", "评价", "购买", "产品"]):
         rules.append("涉及口碑时，提炼高频场景和用户原话，不把样本热度写成总体比例")
     if any(_source_has(key, ["社交", "内容平台"]) for key in source_mix):
@@ -3234,6 +3328,8 @@ def _advisor_intents(
 
     if preset in {"policy", "official", "local"} or _contains_any(haystack, ["政策", "监管", "通知", "法规", "官方", "gov", "party_central"]):
         intents.extend(["寻找可引用的官方依据或政策口径", "判断某项政策、监管或公共议题对业务/研究的影响"])
+    if preset == "entertainment" or _contains_any(haystack, ["文娱", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏", "entertainment"]):
+        intents.extend(["判断作品、艺人或游戏的热度、口碑和争议点", "为观影/消费、内容选题或舆情观察寻找公开样本"])
     if preset in {"reputation", "ecommerce"} or _contains_any(haystack, ["评价", "口碑", "吐槽", "小红书", "知乎", "微博", "购买", "产品"]):
         intents.extend(["判断产品、品牌或服务的真实口碑线索", "为购买、选型、运营或竞品分析寻找用户语言"])
     if preset in {"industry", "finance"} or _contains_any(haystack, ["融资", "裁员", "财报", "股价", "行业", "商业化", "公司"]):
@@ -3259,6 +3355,8 @@ def _advisor_supports(
         supports.append("判断官方口径、政策表述或权威报道中的主要说法")
     if any(_source_has(key, ["商业", "产业", "财经", "电商"]) for key in source_keys):
         supports.append("梳理商业媒体、产业媒体或财经来源中的趋势线索")
+    if any(_source_has(key, ["文娱", "内容平台"]) for key in source_keys):
+        supports.append("区分平台热度、用户评分/评论和公开讨论中的文娱口碑线索")
     if any(_source_has(key, ["社交", "内容平台", "开发者", "社区"]) for key in source_keys):
         supports.append("发现公开讨论里的用户语言、痛点、情绪和使用场景")
     if topic_count >= 3:
@@ -3293,6 +3391,8 @@ def _advisor_limits(
         limits.append("目前主要依赖搜索摘要，缺少原文级核验")
     if any(_source_has(key, ["社交", "内容平台"]) for key in source_keys):
         limits.append("社交平台材料适合发现样本线索，不适合直接代表总体口碑")
+    if any(_source_has(key, ["文娱"]) for key in source_keys):
+        limits.append("文娱平台数据、粉圈讨论和宣发内容容易互相放大，不能直接当作大众结论")
     if packet.get("search_errors"):
         limits.append("部分搜索后端失败，结果覆盖面可能不完整")
     if _high_stakes_query(str(packet.get("query", ""))):
@@ -3313,6 +3413,9 @@ def _advisor_scenario_advice(
     if preset in {"reputation", "ecommerce"} or _contains_any(text, ["评价", "口碑", "购买", "产品"]):
         advice.append("如果你是为了购买或采用：先看负面反馈是否集中在同一版本、渠道或使用场景")
         advice.append("如果你是为了竞品/运营：提取用户原话和高频痛点，但不要用热门样本估算总体比例")
+    if preset == "entertainment" or _contains_any(text, ["文娱", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏"]):
+        advice.append("如果你是为了观影/游玩/追综艺：把评分、评论、票房/播放热度和争议点分开看")
+        advice.append("如果你是为了选题或舆情：关注平台间差异，不要把粉圈高声量写成大众共识")
     if preset in {"industry", "finance"}:
         advice.append("如果你是为了商业判断：把事实报道、市场观点和公司宣传分开看")
         advice.append("如果你是为了风险判断：优先补官方公告、财报或一手披露材料")
@@ -3344,6 +3447,8 @@ def _advisor_next_steps(
         steps.append("增加 gov 或 party_central scope，优先找原文")
     if preset in {"reputation", "ecommerce"} and not any(_source_has(key, ["社交", "内容平台"]) for key in source_mix):
         steps.append("补充知乎、微博、小红书、B站等公开页搜索，但注意登录态和样本偏差")
+    if preset == "entertainment" and not any(_source_has(key, ["文娱", "内容平台"]) for key in source_mix):
+        steps.append("补充豆瓣、猫眼/灯塔、B站、微博或游戏平台等文娱垂直来源")
     if _high_stakes_query(query):
         steps.append("涉及重大决策时，补充权威来源或专业意见后再行动")
     steps.append("把当前建议视为下一步研究路线，而不是最终判断")
@@ -3451,6 +3556,153 @@ def build_source_diagnostics(
     }
 
 
+def build_freshness_guard(
+    results: list[dict[str, Any]],
+    route_plan: dict[str, Any] | None = None,
+    recency: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build an agent-visible guard against stale material in time-sensitive searches."""
+    route_plan = route_plan or {}
+    recency = recency or {}
+    intents = set(route_plan.get("primary_intents") or []) | set(route_plan.get("secondary_intents") or [])
+    required = bool(recency.get("enabled") or route_plan.get("freshness") or "hot_trend" in intents)
+    dated = []
+    in_window = []
+    stale = []
+    unknown = []
+    high_risk = []
+    date_source_counts: dict[str, int] = {}
+    for item in results:
+        trace_recency = (item.get("trace") or {}).get("recency") or {}
+        date_value = str(item.get("published_at") or trace_recency.get("result_date") or "")
+        date_source = str(item.get("date_source") or trace_recency.get("date_source") or "")
+        stale_risk = str(item.get("stale_risk") or trace_recency.get("stale_risk") or "unknown")
+        if date_value:
+            dated.append(item)
+            date_source_counts[date_source or "unknown"] = date_source_counts.get(date_source or "unknown", 0) + 1
+            if trace_recency.get("in_window"):
+                in_window.append(item)
+            if stale_risk in {"medium", "high"} or (required and trace_recency.get("enabled") and not trace_recency.get("in_window")):
+                stale.append(item)
+            if stale_risk == "high":
+                high_risk.append(item)
+        else:
+            unknown.append(item)
+    total = max(len(results), 1)
+    dated_ratio = len(dated) / total
+    in_window_ratio = len(in_window) / total
+    unknown_ratio = len(unknown) / total
+    stale_ratio = len(stale) / total
+    if not required:
+        status = "pass" if stale_ratio <= 0.35 else "warn"
+    elif in_window_ratio >= 0.45 and stale_ratio <= 0.25:
+        status = "pass"
+    elif dated_ratio >= 0.35 and stale_ratio <= 0.45:
+        status = "warn"
+    else:
+        status = "fail"
+    warnings: list[str] = []
+    if required and unknown:
+        warnings.append(f"有 {len(unknown)} 条候选未解析到发布日期，不能直接当作最新材料。")
+    if stale:
+        warnings.append(f"有 {len(stale)} 条候选存在旧内容风险，引用时要标明日期或降级为背景。")
+    if required and not in_window:
+        warnings.append("未找到明确落在当前时效窗口内的候选，应补搜最新/今日/本周或使用 hotnews。")
+    return {
+        "status": status,
+        "required": required,
+        "result_count": len(results),
+        "dated_count": len(dated),
+        "in_window_count": len(in_window),
+        "stale_count": len(stale),
+        "unknown_date_count": len(unknown),
+        "high_stale_risk_count": len(high_risk),
+        "dated_ratio": round(dated_ratio, 3),
+        "in_window_ratio": round(in_window_ratio, 3),
+        "stale_ratio": round(stale_ratio, 3),
+        "unknown_date_ratio": round(unknown_ratio, 3),
+        "date_source_counts": dict(sorted(date_source_counts.items(), key=lambda row: (-row[1], row[0]))),
+        "warnings": warnings,
+        "rules": [
+            "最新/近期问题必须优先使用带明确日期且落在窗口内的材料。",
+            "无日期候选只能作线索；旧日期候选只能作背景或历史脉络。",
+            "回答中要写清发布日期来源和旧内容风险，不要把旧稿当新进展。",
+        ],
+    }
+
+
+def build_source_mix_guard(
+    results: list[dict[str, Any]],
+    route_plan: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build an agent-visible guard for UGC/source mix ratios."""
+    route_plan = route_plan or {}
+    intents = set(route_plan.get("primary_intents") or []) | set(route_plan.get("secondary_intents") or [])
+    ugc_results = [item for item in results if _is_ugc_result(item)]
+    authority_results = [item for item in results if str(item.get("evidence_role") or "") in {"official_primary", "authoritative_report", "company_primary", "technical_primary"}]
+    industry_results = [item for item in results if str(item.get("evidence_role") or "") in {"industry_report", "market_context", "fresh_news"}]
+    total = max(len(results), 1)
+    ugc_ratio = len(ugc_results) / total
+    factual_intents = {
+        "policy",
+        "official_position",
+        "global_policy",
+        "company_primary",
+        "standards_compliance",
+        "medical_health",
+        "legal_judicial",
+        "finance",
+    }
+    sample_intents = {"reputation", "purchase_advice", "global_reputation", "entertainment"}
+    tech_intents = {"tech", "academic"}
+    if intents & factual_intents:
+        max_ugc_ratio = 0.2
+        min_authority = 2
+    elif intents & sample_intents:
+        max_ugc_ratio = 0.6
+        min_authority = 1
+    elif intents & tech_intents:
+        max_ugc_ratio = 0.35
+        min_authority = 1
+    else:
+        max_ugc_ratio = 0.4
+        min_authority = 1
+    warnings: list[str] = []
+    if ugc_ratio > max_ugc_ratio:
+        warnings.append(f"UGC/社区样本占比 {ugc_ratio:.0%}，高于当前意图建议上限 {max_ugc_ratio:.0%}。")
+    if min_authority and len(authority_results) < min_authority and not (intents & sample_intents and industry_results):
+        warnings.append("权威/一手/技术主证据偏少，应补官方、权威媒体、公司一手或技术原始材料。")
+    if intents & sample_intents and not ugc_results:
+        warnings.append("口碑/评价问题缺少用户样本，应补知乎、微博、小红书、B站、Reddit 等公开样本。")
+    status = "pass" if not warnings else "warn"
+    return {
+        "status": status,
+        "result_count": len(results),
+        "ugc_count": len(ugc_results),
+        "ugc_ratio": round(ugc_ratio, 3),
+        "max_recommended_ugc_ratio": max_ugc_ratio,
+        "authority_count": len(authority_results),
+        "industry_count": len(industry_results),
+        "warnings": warnings,
+        "rules": [
+            "事实/政策/财经问题中，UGC 只能作讨论样本，不能做主证据。",
+            "口碑问题允许较高 UGC 占比，但必须声明样本偏差，并补官方参数或垂类材料。",
+            "技术问题优先官方文档、代码仓库、issue 和工程实践，社区讨论需要交叉验证。",
+        ],
+    }
+
+
+def _is_ugc_result(item: dict[str, Any]) -> bool:
+    role = str(item.get("evidence_role") or "")
+    source_type = str(item.get("source_type") or "")
+    domain = str(item.get("domain") or _domain(str(item.get("url", ""))))
+    if role in {"user_sample", "community_discussion", "review"}:
+        return True
+    if any(marker in source_type for marker in ("社交", "社区", "评价/消费", "英文社区", "文娱/内容平台")):
+        return True
+    return domain in {"zhihu.com", "weibo.com", "xiaohongshu.com", "bilibili.com", "reddit.com", "news.ycombinator.com", "xueqiu.com"}
+
+
 def format_source_diagnostics_markdown(diagnostics: dict[str, Any]) -> str:
     """Render source diagnostics as a compact evidence compass."""
     lines = ["## 信源诊断"]
@@ -3472,6 +3724,43 @@ def format_source_diagnostics_markdown(diagnostics: dict[str, Any]) -> str:
     if risks:
         lines.append("- 风险标签: " + "；".join(f"{key}: {value}" for key, value in list(risks.items())[:6]))
     for warning in diagnostics.get("warnings") or []:
+        lines.append(f"- 边界: {warning}")
+    return "\n".join(lines)
+
+
+def format_freshness_guard_markdown(guard: dict[str, Any]) -> str:
+    """Render freshness guard as compact Markdown."""
+    lines = ["## 时效护栏"]
+    lines.append(
+        "- 状态: "
+        f"{guard.get('status', 'unknown')} | "
+        f"需要时效核验: {bool(guard.get('required'))} | "
+        f"有日期: {guard.get('dated_count', 0)}/{guard.get('result_count', 0)} | "
+        f"窗口内: {guard.get('in_window_count', 0)} | "
+        f"旧内容风险: {guard.get('stale_count', 0)} | "
+        f"无日期: {guard.get('unknown_date_count', 0)}"
+    )
+    sources = guard.get("date_source_counts") or {}
+    if sources:
+        lines.append("- 日期来源: " + "；".join(f"{key}: {value}" for key, value in list(sources.items())[:5]))
+    for warning in guard.get("warnings") or []:
+        lines.append(f"- 边界: {warning}")
+    return "\n".join(lines)
+
+
+def format_source_mix_guard_markdown(guard: dict[str, Any]) -> str:
+    """Render source-mix guard as compact Markdown."""
+    lines = ["## UGC/信源配比护栏"]
+    lines.append(
+        "- 状态: "
+        f"{guard.get('status', 'unknown')} | "
+        f"UGC: {guard.get('ugc_count', 0)}/{guard.get('result_count', 0)} "
+        f"({float(guard.get('ugc_ratio') or 0):.0%}) | "
+        f"建议上限: {float(guard.get('max_recommended_ugc_ratio') or 0):.0%} | "
+        f"权威/一手: {guard.get('authority_count', 0)} | "
+        f"产业/新闻: {guard.get('industry_count', 0)}"
+    )
+    for warning in guard.get("warnings") or []:
         lines.append(f"- 边界: {warning}")
     return "\n".join(lines)
 
@@ -3563,6 +3852,17 @@ def format_search_markdown(results: list[dict[str, Any]], title: str = "观澜�
         lines.append(f"{rank}. [{source}/{source_type}{score_label}{topic_label}{role_label}] {item_title}")
         if url:
             lines.append(f"   {url}")
+        date_bits = []
+        if item.get("published_at"):
+            date_bits.append(f"日期: {item['published_at']}")
+        if item.get("date_source"):
+            date_bits.append(f"日期来源: {item['date_source']}")
+        if item.get("freshness_confidence"):
+            date_bits.append(f"时效置信: {item['freshness_confidence']}")
+        if item.get("stale_risk") and item.get("stale_risk") != "low":
+            date_bits.append(f"旧内容风险: {item['stale_risk']}")
+        if date_bits:
+            lines.append("   " + " | ".join(date_bits))
         if snippet:
             lines.append(f"   {snippet[:240]}")
     return "\n".join(lines)
@@ -4197,19 +4497,62 @@ def _dedupe_results(results: list[SearchResult]) -> list[SearchResult]:
 
 def _result_recency_trace(item: SearchResult, recency: dict[str, Any] | None = None) -> dict[str, Any]:
     metrics = _result_recency_metrics(item, recency)
-    if not metrics["enabled"]:
-        return {"enabled": False}
     result_date = metrics.get("result_date")
+    result_date_text = result_date.isoformat() if isinstance(result_date, dt.date) else ""
+    freshness_confidence = _result_freshness_confidence(metrics)
+    stale_risk = _result_stale_risk(metrics)
+    if not metrics["enabled"]:
+        return {
+            "enabled": False,
+            "result_date": result_date_text,
+            "date_source": metrics.get("date_source", ""),
+            "age_days": metrics.get("age_days"),
+            "freshness_confidence": freshness_confidence,
+            "stale_risk": stale_risk,
+        }
     return {
         "enabled": True,
         "window_days": metrics["window_days"],
         "start_date": metrics["start_date"],
         "end_date": metrics["end_date"],
         "matched_terms": metrics["matched_terms"],
-        "result_date": result_date.isoformat() if isinstance(result_date, dt.date) else "",
+        "result_date": result_date_text,
+        "date_source": metrics.get("date_source", ""),
         "age_days": metrics.get("age_days"),
         "in_window": metrics["in_window"],
+        "freshness_confidence": freshness_confidence,
+        "stale_risk": stale_risk,
     }
+
+
+def _result_freshness_confidence(metrics: dict[str, Any]) -> str:
+    if not metrics.get("result_date"):
+        return "unknown"
+    age_days = metrics.get("age_days")
+    if age_days is None:
+        return "unknown"
+    if metrics.get("enabled"):
+        return "high" if metrics.get("in_window") else "stale"
+    if age_days <= 14:
+        return "high"
+    if age_days <= 120:
+        return "medium"
+    return "low"
+
+
+def _result_stale_risk(metrics: dict[str, Any]) -> str:
+    age_days = metrics.get("age_days")
+    if metrics.get("enabled"):
+        if metrics.get("in_window"):
+            return "low"
+        return "medium" if metrics.get("result_date") else "high"
+    if age_days is None:
+        return "unknown"
+    if age_days > 365:
+        return "high"
+    if age_days > 120:
+        return "medium"
+    return "low"
 
 
 def _result_quality_trace(item: SearchResult, quality: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -4281,7 +4624,7 @@ def _result_recency_metrics(item: SearchResult, recency: dict[str, Any] | None =
     today = _recency_today(recency)
     window_days = int(recency.get("window_days") or 0)
     start_date = str(recency.get("start_date") or "")
-    result_date = _extract_result_date(item, today=today) if enabled else None
+    result_date = _extract_result_date(item, today=today)
     age_days = (today - result_date).days if result_date else None
     return {
         "enabled": enabled,
@@ -4290,6 +4633,7 @@ def _result_recency_metrics(item: SearchResult, recency: dict[str, Any] | None =
         "end_date": today.isoformat(),
         "matched_terms": list(recency.get("matched_terms") or []),
         "result_date": result_date,
+        "date_source": "title_or_snippet" if result_date else "",
         "age_days": age_days,
         "in_window": bool(result_date and age_days is not None and age_days <= max(window_days, 0)),
         "has_freshness_words": _has_freshness_words(item),

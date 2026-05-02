@@ -31,7 +31,7 @@ The first public task pool contains 40 tasks across eight categories:
 For each task, compare three outputs:
 
 1. Ordinary web search or the agent's built-in search.
-2. `guanlan search "..." --profile china --limit 50 --trace`.
+2. `guanlan search "..." --profile china --limit 80 --trace`.
 3. `guanlan route "..." --json` followed by `guanlan research "..." --profile china --limit 80 --advisor`.
 
 Score each task on five simple signals:

@@ -85,6 +85,15 @@ def test_search_quality_profile_detects_academic_intent():
     assert "学术/论文检索" in quality["preferred_source_types"]
 
 
+def test_search_quality_profile_detects_entertainment_intent():
+    quality = webtools.detect_search_quality_profile("哪吒2 票房 豆瓣评分 最近热议", profile="china")
+
+    assert quality["intent"] == "entertainment"
+    assert "entertainment" in quality["preferred_scopes"]
+    assert "文娱/内容平台" in quality["preferred_source_types"]
+    assert "单平台热度" in quality["guidance"]
+
+
 def test_search_quality_profile_detects_english_company_intent():
     quality = webtools.detect_search_quality_profile("OpenAI API pricing release notes", profile="english")
 
@@ -1168,6 +1177,8 @@ def test_research_cli_lists_presets(capsys):
     presets = json.loads(captured.out)
     assert "policy" in presets
     assert presets["policy"]["scope"] == "gov"
+    assert "entertainment" in presets
+    assert presets["entertainment"]["scope"] == "entertainment"
 
 
 def test_search_cli_lists_scopes(capsys):
@@ -1712,7 +1723,7 @@ def test_build_research_packet_applies_preset_defaults(monkeypatch):
     assert packet["preset"] == "policy"
     assert packet["scope"] == "gov"
     assert packet["scopes"] == ["gov", "party_central"]
-    assert packet["read_top"] == 3
+    assert packet["read_top"] == 5
     assert packet["route_plan"]["primary_intents"][0] == "policy"
 
 
@@ -1792,6 +1803,42 @@ def test_source_diagnostics_flags_missing_authority_for_policy():
 
     assert diagnostics["sample_avg"] > diagnostics["authority_avg"]
     assert any("权威来源偏少" in warning for warning in diagnostics["warnings"])
+
+
+def test_freshness_guard_flags_stale_and_unknown_dates():
+    guard = webtools.build_freshness_guard(
+        [
+            {
+                "title": "旧专访",
+                "published_at": "2024-06-01",
+                "stale_risk": "high",
+                "trace": {"recency": {"enabled": True, "result_date": "2024-06-01", "date_source": "title_or_snippet", "in_window": False}},
+            },
+            {"title": "无日期讨论", "trace": {"recency": {"enabled": True}}},
+        ],
+        route_plan={"primary_intents": ["hot_trend"], "freshness": "recent"},
+        recency={"enabled": True, "window_days": 30},
+    )
+
+    assert guard["status"] == "fail"
+    assert guard["stale_count"] == 1
+    assert guard["unknown_date_count"] == 1
+    assert any("旧内容风险" in warning for warning in guard["warnings"])
+
+
+def test_source_mix_guard_limits_ugc_for_fact_queries():
+    guard = webtools.build_source_mix_guard(
+        [
+            {"title": "知乎讨论", "source_type": "社交/内容平台", "evidence_role": "user_sample", "domain": "zhihu.com"},
+            {"title": "微博讨论", "source_type": "社交/内容平台", "evidence_role": "user_sample", "domain": "weibo.com"},
+            {"title": "产业报道", "source_type": "商业/产业媒体", "evidence_role": "industry_report", "domain": "36kr.com"},
+        ],
+        route_plan={"primary_intents": ["policy"]},
+    )
+
+    assert guard["status"] == "warn"
+    assert guard["ugc_ratio"] > guard["max_recommended_ugc_ratio"]
+    assert any("UGC" in warning for warning in guard["warnings"])
 
 
 def test_build_research_packet_user_scope_overrides_preset(monkeypatch):

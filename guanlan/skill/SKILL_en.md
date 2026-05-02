@@ -12,7 +12,9 @@ description: >
   "search reddit", "read this link", "bilibili", "douyin video",
   "wechat article", "wechat official account", "weibo", "V2EX",
   "xiaoyuzhou", "podcast", "xueqiu", "stock quote",
-  "install guanlan", "archive", "RAG", "Agent Wiki", "HTML report", "visual report".
+  "movie", "film", "TV drama", "variety show", "celebrity", "box office",
+  "douban rating", "game review", "install guanlan", "archive", "RAG",
+  "Agent Wiki", "HTML report", "visual report".
 metadata:
   openclaw:
     homepage: local-repo
@@ -30,6 +32,7 @@ Use `guanlan archive verify`, `archive context`, `archive wiki`, and `archive pa
 Use `guanlan report html` only as a sidecar renderer when the user asks for a static HTML report; it reads existing JSON/stdin/demo data and does not replace search/read/research/hotnews.
 If your agent/MCP runner supports tool timeouts, use generous outer budgets: 60-90s for search/read/status/doctor, 120s for hotnews/feeds/pulse/batch reads, 180-300s for research/compare/timeline/dossier/archive ingest, and 300-600s for install/update/release smoke. Treat timeouts as network/upstream evidence, not proof of no results; retry once, use cache_ttl where available, or reduce read_top before shrinking the result pool.
 For technology/AI/developer/engineering-practice routes, always add one RSS discovery pass. `guanlan research ... --preset tech` does this automatically; if you only run route or search, run `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80` as the second pass.
+For entertainment routes such as film, TV drama, variety shows, music, celebrities, games, box office, ratings, and fandom/public discussion, use `guanlan research ... --preset entertainment`; separate platform metrics, user ratings, industry reports, promotional copy, and fandom samples.
 
 ## ⚠️ Workspace Rules
 
@@ -48,6 +51,7 @@ guanlan welcome
 guanlan capabilities
 mcporter call 'exa.web_search_exa(query: "query", numResults: 50)'
 mcporter call 'exa.get_code_context_exa(query: "code question", tokensNum: 3000)'
+guanlan research "film box office douban rating public discussion" --preset entertainment --read-top 0
 ```
 
 ## Sidecar HTML Reports
@@ -251,7 +255,7 @@ from guanlan.channels.v2ex import V2EXChannel
 
 ch = V2EXChannel()
 
-# Get hot topics (default 50 items)
+# Get hot topics (default 80 items)
 # Returned fields: id, title, url, replies, node_name, node_title, content(first 200 chars), created
 topics = ch.get_hot_topics(limit=50)
 for t in topics:

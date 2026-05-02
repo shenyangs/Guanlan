@@ -41,6 +41,19 @@ def test_route_plan_detects_academic_indexing_need():
     assert any("学术会议" in warning or "检索" in warning for warning in plan.warnings)
 
 
+def test_route_plan_detects_entertainment_need():
+    plan = build_route_plan("哪吒2 票房 口碑 豆瓣评分 最近热议", profile="china")
+
+    assert "entertainment" in plan.primary_intents + plan.secondary_intents
+    assert "entertainment" in plan.preferred_scopes
+    assert "douban.com" in plan.target_sites
+    assert "maoyan.com" in plan.target_sites
+    assert any("--preset entertainment" in command for command in plan.recommended_commands)
+    assert "粉圈控评" in plan.avoid_as_primary
+    assert any("宣发" in warning or "单平台" in warning for warning in plan.warnings)
+    assert plan.advisor_recommended is True
+
+
 def test_route_plan_detects_english_company_primary_need():
     plan = build_route_plan("OpenAI API pricing release notes", profile="english")
 
@@ -131,6 +144,17 @@ def test_source_card_separates_authority_and_sample_value():
     assert gov.authority_score > zhihu.authority_score
     assert zhihu.sample_value > gov.sample_value
     assert "sample_bias" in zhihu.risk_tags
+
+
+def test_source_card_marks_entertainment_sources_as_sample_heavy():
+    douban = source_card_for_domain("movie.douban.com")
+    maoyan = source_card_for_domain("piaofang.maoyan.com")
+
+    assert douban.scope_id == "entertainment"
+    assert douban.sample_value > douban.authority_score
+    assert "rating" in douban.content_roles
+    assert maoyan.scope_id == "entertainment"
+    assert "box_office" in maoyan.content_roles
 
 
 def test_route_cli_outputs_json(capsys):

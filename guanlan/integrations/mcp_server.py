@@ -68,7 +68,7 @@ def _tool_definitions() -> list[dict]:
             "name": "guanlan_search",
             "description": (
                 "Search public web sources with Guanlan's China-aware ranking layer. "
-                "For agent research, prefer a broad limit such as 50-100 and filter after retrieval."
+                "For agent research, prefer a broad limit such as 80-100 and filter after retrieval."
             ),
             "inputSchema": {
                 "type": "object",
@@ -144,7 +144,7 @@ def _tool_definitions() -> list[dict]:
         {
             "name": "guanlan_research",
             "description": (
-                "Build an agent-ready research evidence packet. Prefer a broad limit such as 50-100 for "
+                "Build an agent-ready research evidence packet. Prefer a broad limit such as 80-100 for "
                 "serious research. Set advisor=true when the user wants advice, next steps, implications, "
                 "risk reminders, or cautious hypotheses about why they may be searching; the advisor block "
                 "returns evidence-bound writing rules for the agent, not final advice or the user's true intent."
@@ -297,7 +297,7 @@ def _tool_definitions() -> list[dict]:
             "name": "guanlan_pulse",
             "description": (
                 "Analyze topic echo from public samples with explicit caveats. "
-                "Use a broad sample, usually 50-100, before summarizing tendency."
+                "Use a broad sample, usually 80-100, before summarizing tendency."
             ),
             "inputSchema": {
                 "type": "object",

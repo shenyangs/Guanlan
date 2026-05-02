@@ -1355,10 +1355,12 @@ def _cmd_research(args):
         build_research_packet,
         format_advisor_context,
         format_evidence_audit_context,
+        format_freshness_guard_markdown,
         format_research_markdown,
         format_research_prompt,
         format_search_context,
         format_source_chart,
+        format_source_mix_guard_markdown,
         list_research_presets,
     )
 
@@ -1399,6 +1401,12 @@ def _cmd_research(args):
         if isinstance(packet.get("evidence_audit"), dict):
             print()
             print(format_evidence_audit_context(packet["evidence_audit"]))
+        if isinstance(packet.get("freshness_guard"), dict):
+            print()
+            print(format_freshness_guard_markdown(packet["freshness_guard"]))
+        if isinstance(packet.get("source_mix_guard"), dict):
+            print()
+            print(format_source_mix_guard_markdown(packet["source_mix_guard"]))
         if args.advisor and isinstance(packet.get("advisor"), dict):
             print()
             print(format_advisor_context(packet["advisor"]))
@@ -2964,7 +2972,7 @@ def _cmd_configure(args):
     elif args.key == "newsnow-base-url":
         config.set("newsnow_base_url", value.rstrip("/"))
         print("✅ NewsNow BASE_URL configured!")
-        print("  Example: guanlan hotnews newsnow:36kr-quick --limit 50")
+        print("  Example: guanlan hotnews newsnow:36kr-quick --limit 80")
 
     elif args.key == "telemetry":
         normalized = value.strip().lower()

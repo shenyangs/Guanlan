@@ -8,6 +8,21 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.3.10 - 2026-05-03
+
+### Added
+
+- 新增文娱/内容消费路由：覆盖影视、综艺、音乐、游戏、明星、票房、播放热度、豆瓣评分、猫眼/灯塔、B站/微博公开讨论等场景。
+- `research` 证据包新增 `freshness_guard` 和 `source_mix_guard`，帮助 Agent 显式识别旧内容风险、无日期候选、UGC 占比和权威/一手材料不足。
+- 文娱能力纳入 `route`、`search --scope entertainment`、`research --preset entertainment`、source taxonomy、capabilities、MCP 说明和评测场景。
+
+### Changed
+
+- 默认候选池继续向 Agent 研究场景倾斜：`search`、`research`、`hotnews`、`archive`、`pulse` 默认提升到 80 条，避免下游 Agent 因样本池过小而错判。
+- `research` 在未显式指定 `--read-top` 时默认读取更多代表证据，政策、官方、技术、产业等场景优先补足正文核验。
+- README、Agent 文档、Skill、质量文档和能力清单同步更新 80 条候选池、文娱路线和更宽松的外层超时建议。
+- 官网展示版本号同步到 `0.3.10`。
+
 ## v0.3.9 - 2026-05-02
 
 ### Added

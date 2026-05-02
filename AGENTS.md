@@ -19,7 +19,7 @@ Post-update smoke rule: after a full reinstall, run `guanlan capabilities`, `gua
 results to the user. Do not treat an old global executable as a successful update.
 
 Agent operating rule: when using Guanlan for search, research, hotnews, pulse, or archive lookup,
-prefer the largest sensible result pool instead of a tiny sample. Use the default 50 results for
+prefer the largest sensible result pool instead of a tiny sample. Use the default 80 results for
 normal work, raise to 80-100 for broad research when latency is acceptable, and only lower the
 limit when the user explicitly asks for a small sample or a quick smoke check.
 
@@ -30,7 +30,7 @@ agent platform, MCP client, or automation runner lets you set a tool timeout, us
 `feeds`, `pulse`, and batch reads; 180-300 seconds for `research`, `compare`, `timeline`, `dossier`,
 and `archive ingest-research`; 300-600 seconds for install/update/release smoke workflows. On timeout,
 retry once with `--cache-ttl 3600` where supported or reduce `--read-top`, but do not shrink the
-result pool below the normal 50 just to make the command finish faster. A timeout is network evidence,
+result pool below the normal 80 just to make the command finish faster. A timeout is network evidence,
 not evidence that the topic has no results.
 
 When using Guanlan as an agent, prefer this minimal command set:
@@ -38,11 +38,12 @@ When using Guanlan as an agent, prefer this minimal command set:
 ```bash
 guanlan capabilities
 guanlan welcome
-guanlan search "query" --limit 50
-guanlan search "中文问题" --profile china --limit 50
+guanlan search "query" --limit 80
+guanlan search "中文问题" --profile china --limit 80
 guanlan search "政策或产业问题" --profile china --scope party_central
 guanlan search "电商零售问题" --profile china --scope ecommerce
 guanlan search "学术会议 投稿 检索问题" --profile china --scope academic
+guanlan search "影视 综艺 游戏 明星 票房口碑" --profile china --scope entertainment
 guanlan search --list-scopes
 guanlan route "中文研究需求" --json
 guanlan read "https://example.com/article" --max-chars 12000
@@ -50,17 +51,18 @@ guanlan read "https://example.com/article" --quality-report
 guanlan read "https://example.com/article" --strict --trace
 guanlan research "query" --profile china --advisor
 guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
+guanlan research "影视 综艺 游戏 明星 票房口碑" --preset entertainment --read-top 0
 guanlan research "产品 用户评价" --preset reputation --read-top 0 --advisor
 guanlan compare "A" "B" --focus "价格 口碑 风险" --limit 80 --format context
 guanlan timeline "某事件 最新进展" --limit 80 --format context
 guanlan dossier "某对象" --focus "业务 口碑 风险" --limit 80 --format context
 guanlan prompt "query" --profile china --style evidence
-guanlan hotnews today --limit 50
-guanlan hotnews today --limit 50 --trends
-guanlan hotnews weibo --limit 50
-guanlan hotnews bilibili --limit 50
-guanlan hotnews ithome --limit 50
-guanlan hotnews v2ex --limit 50
+guanlan hotnews today --limit 80
+guanlan hotnews today --limit 80 --trends
+guanlan hotnews weibo --limit 80
+guanlan hotnews bilibili --limit 80
+guanlan hotnews ithome --limit 80
+guanlan hotnews v2ex --limit 80
 guanlan doctor --install-check
 guanlan doctor --trace
 guanlan archive ingest-research "query" --limit 80
@@ -89,6 +91,7 @@ Safety rules:
 - Use `guanlan search ... --trace` or `guanlan research ...` when you need query_strategy, source diagnostics, and evidence-role query rewrites; do not rely on one broad query for serious research.
 - Use `guanlan compare`, `guanlan timeline`, or `guanlan dossier` when the user asks for comparison, event chronology, or an entity dossier; these are structured views over evidence packets, not final truth.
 - Use `guanlan research ... --preset academic --read-top 0` for EI/SCI/Scopus, academic conference, paper submission, indexing, and university-recognition questions; read selected official URLs afterward if needed.
+- Use `guanlan research ... --preset entertainment --read-top 0` for film, drama, variety show, music, celebrity, game, box-office, rating, and fandom/public-discussion questions; separate platform metrics, user ratings, industry reports, promotion copy, and fandom samples.
 - For technology/AI/developer routing, always include one RSS discovery pass. `guanlan research ... --preset tech` does this automatically; if you only run `route` or `search`, also run `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80` as a second pass.
 - Use `guanlan read ... --quality-report` when deciding whether a page body is clean enough for downstream reasoning; use `--strict` when noisy page chrome would be harmful; use `--extract metadata` or `--extract links` for source/date/link checks.
 - Use `guanlan archive verify` before relying on archive as memory/RAG/Wiki; use `archive context` or `archive wiki context` when a local model needs evidence-bound context from stored materials.

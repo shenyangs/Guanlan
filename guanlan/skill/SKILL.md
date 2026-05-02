@@ -25,6 +25,7 @@ triggers:
   - web: 网页/链接/文章/公众号/微信文章/rss/读一下/打开这个
   - video: youtube/视频/播客/字幕/小宇宙/转录/yt
   - finance: 雪球/股票/stock/xueqiu/行情/基金
+  - entertainment: 文娱/娱乐/影视/电影/电视剧/综艺/明星/票房/豆瓣/猫眼/游戏
   - archive/wiki/rag: 本地知识库/archive/RAG/向量库/Agent Wiki/知识底座
   - report: 报表/html report/可视化报告/汇报页/出个报告
 metadata:
@@ -38,11 +39,12 @@ metadata:
 
 ## Agent 运行规则
 
-- 搜索、研究、热榜、回响和本地知识库检索时，默认使用 50 条以上候选池；复杂调研可提高到 80-100。
+- 搜索、研究、热榜、回响和本地知识库检索时，默认使用 80 条候选池；复杂调研可提高到 80-100。
 - 只有用户明确要“少量样本”“快速试一下”“只看前几条”时，才主动降低 limit。
 - 如果 Agent/MCP/自动化平台能设置工具 timeout：`search/read/status/doctor` 用 60-90 秒；`hotnews/feeds/pulse/read batch` 用 120 秒；`research/compare/timeline/dossier/archive ingest-research` 用 180-300 秒；安装/升级/发布 smoke 用 300-600 秒。
-- 超时只代表网络或上游源未完成，不代表没有证据；优先重试一次、加 `--cache-ttl 3600`，或把 `--read-top` 降到 0/1，不要为了速度把 50 条候选池砍成小样本。
+- 超时只代表网络或上游源未完成，不代表没有证据；优先重试一次、加 `--cache-ttl 3600`，或把 `--read-top` 降到 0/1，不要为了速度把 80 条候选池砍成小样本。
 - 科技/AI/开发者/工程实践类问题必须额外补一轮 RSS/精品内容流；`research --preset tech` 会自动补，若只跑 `route` 或 `search`，再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。
+- 文娱/影视/综艺/明星/游戏/票房/评分/口碑类问题优先用 `route` 或 `research --preset entertainment`；把平台热度、用户评分、产业报道、宣发通稿和粉圈讨论分层看。
 - 如果新用户问“装好了怎么用/怎么让 Agent 用观澜”，先运行 `guanlan welcome`。
 - 如果用户或 Agent 不知道观澜有哪些功能、该用哪个命令，先运行 `guanlan capabilities`；MCP 模式下调用 `guanlan_capabilities`。
 - `--advisor` 输出的是证据边界和写作规则，Agent 需要据此生成自然建议，不要机械复述固定小标题。
@@ -62,6 +64,7 @@ metadata:
 | GitHub/代码 | dev | [references/dev.md](references/dev.md) |
 | 网页/文章/公众号/RSS | web | [references/web.md](references/web.md) |
 | YouTube/B站/播客字幕 | video | [references/video.md](references/video.md) |
+| 文娱/影视/综艺/游戏/明星/票房口碑 | entertainment | `guanlan research "关键词" --preset entertainment` |
 
 ## 零配置快速命令
 
@@ -72,11 +75,12 @@ mcporter call 'exa.web_search_exa(query: "query", numResults: 50)'
 # 观澜统一网页搜索（默认公开搜索，不需要 Cookie）
 guanlan welcome
 guanlan capabilities
-guanlan search "query" --limit 50
+guanlan search "query" --limit 80
 guanlan search "EI会议 投稿 检索" --profile china --scope academic
+guanlan search "电影 票房 评分" --profile china --scope entertainment
 guanlan search "最近 query 热点" --profile china --trace
-guanlan search "中文问题" --profile china --limit 50 --trace  # 查看 Baidu/Bing/DDG 状态与 backend_recovery
-guanlan search "query" --site zhihu.com --limit 50
+guanlan search "中文问题" --profile china --limit 80 --trace  # 查看 Baidu/Bing/DDG 状态与 backend_recovery
+guanlan search "query" --site zhihu.com --limit 80
 guanlan search "query" --trace
 guanlan search "query" --cache-ttl 3600
 guanlan search "query" --format context
@@ -86,6 +90,7 @@ guanlan route "query"
 guanlan research "query" --profile china --advisor
 guanlan research "query" --profile china --format prompt
 guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
+guanlan research "电影/综艺/游戏/明星 票房口碑" --preset entertainment --read-top 0
 guanlan prompt "query" --profile china --style evidence
 guanlan context "query" --profile china --style evidence
 guanlan research "product 用户评价" --preset reputation --read-top 0 --advisor
@@ -132,11 +137,11 @@ guanlan report html --input results.json --output report.html
 gh search repos "query" --sort stars --limit 50
 
 # 中文热榜（原生公开源，不需要 Cookie）
-guanlan hotnews today --limit 50
-guanlan hotnews today --limit 50 --trends
-guanlan hotnews weibo --limit 50
-guanlan hotnews bilibili --limit 50
-guanlan hotnews ithome --limit 50
+guanlan hotnews today --limit 80
+guanlan hotnews today --limit 80 --trends
+guanlan hotnews weibo --limit 80
+guanlan hotnews bilibili --limit 80
+guanlan hotnews ithome --limit 80
 guanlan hotnews zhihu --json  # experimental，失败时改用 site:zhihu.com 搜索
 guanlan hotnews list
 

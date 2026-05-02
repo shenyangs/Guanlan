@@ -28,13 +28,13 @@
 
 ### 热点与趋势
 
-- `guanlan hotnews today --limit 50`
-- `guanlan hotnews today --limit 50 --trends`
-- `guanlan hotnews baidu --limit 50`
-- `guanlan hotnews weibo --limit 50`
-- `guanlan hotnews bilibili --limit 50`
-- `guanlan hotnews ithome --limit 50`
-- `guanlan hotnews v2ex --limit 50`
+- `guanlan hotnews today --limit 80`
+- `guanlan hotnews today --limit 80 --trends`
+- `guanlan hotnews baidu --limit 80`
+- `guanlan hotnews weibo --limit 80`
+- `guanlan hotnews bilibili --limit 80`
+- `guanlan hotnews ithome --limit 80`
+- `guanlan hotnews v2ex --limit 80`
 
 ### 正文抽取
 

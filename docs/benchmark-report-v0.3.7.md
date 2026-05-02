@@ -36,13 +36,13 @@ For external testing, use at least these nine tasks:
 
 | Category | Command | What To Inspect |
 | --- | --- | --- |
-| Policy | `guanlan research "新质生产力 政策 原文 最新" --preset policy --limit 80 --read-top 2` | Official sources, recency window, source/date boundaries. |
+| Policy | `guanlan research "新质生产力 政策 原文 最新" --preset policy --limit 80 --read-top 5` | Official sources, recency window, source/date boundaries. |
 | Local | `guanlan timeline "低空经济 广东 政策 最新进展" --preset local --limit 80` | Dated local official/media events and undated evidence separation. |
-| Ecommerce | `guanlan research "跨境电商 AI 工具 趋势" --preset ecommerce --limit 80 --read-top 2` | Vertical media and open-web fallback balance. |
+| Ecommerce | `guanlan research "跨境电商 AI 工具 趋势" --preset ecommerce --limit 80 --read-top 5` | Vertical media and open-web fallback balance. |
 | Reputation | `guanlan pulse "某产品 用户评价" --limit 80 --format context` | Sample caveats and tendency confidence. |
 | Compare | `guanlan compare "LangGraph" "AutoGen" "CrewAI" --focus "中文资料 技术选型 社区反馈" --preset tech --limit 80` | Per-subject evidence breadth and fair missing-evidence wording. |
-| Dossier | `guanlan dossier "某公司" --focus "业务 口碑 风险 近期动态" --limit 80 --read-top 2` | Section coverage, open questions, read quality summary. |
-| Hotnews | `guanlan hotnews today --limit 50 --trends --brief` | Cross-source trend grouping and single-platform caveats. |
+| Dossier | `guanlan dossier "某公司" --focus "业务 口碑 风险 近期动态" --limit 80 --read-top 5` | Section coverage, open questions, read quality summary. |
+| Hotnews | `guanlan hotnews today --limit 80 --trends --brief` | Cross-source trend grouping and single-platform caveats. |
 | Read | `guanlan read "URL" --quality-report --trace` | Main-body extraction, fallback path, and noise recommendations. |
 | Local LLM | `guanlan prompt "最近 AI 眼镜 在中国市场有什么变化？" --profile china --style evidence` | Prompt includes evidence rules and source boundaries. |
 

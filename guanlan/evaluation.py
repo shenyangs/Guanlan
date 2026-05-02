@@ -91,6 +91,17 @@ EVALUATION_SCENARIOS: list[dict[str, Any]] = [
         "expected_roles": ["vertical_report", "industry_report"],
     },
     {
+        "id": "entertainment_reputation",
+        "query": "哪吒2 票房 口碑 豆瓣评分 最近热议",
+        "profile": "china",
+        "preset": "entertainment",
+        "expected_gain": "把豆瓣评分、猫眼/灯塔票房、B站/微博讨论和产业报道分层，避免把热度直接写成口碑。",
+        "checks": ["uses_entertainment_scope", "separates_metrics_and_fandom", "keeps_open_web_fallback"],
+        "expected_intents": ["entertainment", "reputation"],
+        "expected_scopes": ["entertainment", "social_web"],
+        "expected_roles": ["platform_metric", "user_review", "fan_discussion"],
+    },
+    {
         "id": "local_llm_prompt_context",
         "query": "给本地 Ollama 模型联网搜索 中文政策信息",
         "profile": "china",
@@ -129,6 +140,11 @@ BENCHMARK_TASKS: list[dict[str, Any]] = [
     {"id": "reputation_003", "category": "reputation", "query": "新能源汽车 车主评价 缺点", "expected_source_family": "user_sample"},
     {"id": "reputation_004", "category": "reputation", "query": "儿童学习机 用户反馈 真实体验", "expected_source_family": "user_sample"},
     {"id": "reputation_005", "category": "reputation", "query": "国产数据库 用户口碑 迁移成本", "expected_source_family": "user_sample"},
+    {"id": "entertainment_001", "category": "entertainment", "query": "哪吒2 票房 豆瓣评分 最近热议", "expected_source_family": "entertainment"},
+    {"id": "entertainment_002", "category": "entertainment", "query": "国产剧 口碑 播放量 B站 微博 讨论", "expected_source_family": "entertainment"},
+    {"id": "entertainment_003", "category": "entertainment", "query": "某综艺 热搜 粉圈 争议 评价", "expected_source_family": "entertainment"},
+    {"id": "entertainment_004", "category": "entertainment", "query": "某手游 TapTap 评分 玩家评价", "expected_source_family": "entertainment"},
+    {"id": "entertainment_005", "category": "entertainment", "query": "某明星 最近舆情 微博 B站 讨论", "expected_source_family": "entertainment"},
     {"id": "hot_001", "category": "hot", "query": "今天 中文互联网 热点 AI", "expected_source_family": "hotnews"},
     {"id": "hot_002", "category": "hot", "query": "今天 微博 B站 科技 热点", "expected_source_family": "hotnews"},
     {"id": "hot_003", "category": "hot", "query": "最近 AI 应用 创业 热点", "expected_source_family": "hotnews"},
@@ -340,8 +356,8 @@ def _score_route_plan(scenario: dict[str, Any], plan: dict[str, Any], *, limit: 
     checks.append(
         _benchmark_check(
             "agent_command",
-            any("--limit 50" in command or "--limit 80" in command for command in commands),
-            "recommended commands should keep a substantial result pool",
+            any("--limit 80" in command or "--limit 100" in command for command in commands),
+            "recommended commands should keep an expanded result pool",
             warn=True,
         )
     )

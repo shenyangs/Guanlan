@@ -15,7 +15,7 @@ The canonical documentation is maintained in Chinese:
 ## Core Commands
 
 ```bash
-guanlan search "keyword" --profile china --limit 50
+guanlan search "keyword" --profile china --limit 80
 guanlan search "keyword" --profile china --scope party_central
 guanlan search "keyword" --profile china --scope ecommerce
 guanlan search "OpenAI API pricing" --profile english --scope company_primary
@@ -23,7 +23,7 @@ guanlan research "AI regulation NIST standard" --preset global_policy --profile 
 guanlan research "Product reviews Reddit G2" --preset global_reputation --profile english --read-top 0
 guanlan read "https://example.com/article"
 guanlan read "https://example.com/article" --backend direct
-guanlan hotnews baidu --limit 50
+guanlan hotnews baidu --limit 80
 guanlan doctor --trace
 ```
 

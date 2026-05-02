@@ -20,8 +20,8 @@
 - 先搜索和阅读，不自动发布、评论、点赞、私信。
 - 输出结论时保留来源链接。
 - 失败时降级，不要硬撞平台风控。
-- 默认候选池按研究任务放大：搜索/研究/归档检索默认 50 条，热榜默认 50 条，读取失败后的搜索兜底默认 20 条。
-- Agent 调用时应尽量多取结果再筛选：普通任务保持 50，复杂研究可设到 80-100；只有用户明确要求“小样本/快速看一下”时才降低 limit。
+- 默认候选池按研究任务放大：搜索/研究/归档检索默认 80 条，热榜默认 80 条，读取失败后的搜索兜底默认 20 条。
+- Agent 调用时应尽量多取结果再筛选：普通任务保持 80，复杂研究可设到 80-100；只有用户明确要求“小样本/快速看一下”时才降低 limit。
 - Agent 平台外层 timeout 要宽松：不要用 10-30 秒去包住 `research`、`feeds` 或 `hotnews` 这种组合命令；超时只能说明网络/上游抖动，不代表没有证据。
 - 用户需要建议、影响判断、下一步行动，或询问“为什么会搜这个”时，优先使用 `research --advisor`，但把助理视角当作证据边界和写作规则，由你结合用户问题生成自然建议；不要机械复述模板，也不要当作用户真实意图。
 - 不确定该查哪些信源时，先用 `guanlan route "关键词"` 看需求路由；路由计划是软约束，优先源用于提高适配度，开放网页兜底用于防止信源池过窄。
@@ -51,15 +51,16 @@
 | --- | --- |
 | “刚装好，怎么用/怎么让 Agent 用” | `guanlan welcome` |
 | “观澜能做什么/我该用哪个能力” | `guanlan capabilities` |
-| “查一下/搜一下” | `guanlan search "关键词" --limit 50` |
-| “查中文互联网/国内资料” | `guanlan search "关键词" --profile china --limit 50` |
-| “查英文互联网/全球资料” | `guanlan search "query" --profile english --limit 50` |
+| “查一下/搜一下” | `guanlan search "关键词" --limit 80` |
+| “查中文互联网/国内资料” | `guanlan search "关键词" --profile china --limit 80` |
+| “查英文互联网/全球资料” | `guanlan search "query" --profile english --limit 80` |
 | “查近期/最近/热点/最新进展” | `guanlan search "最近 关键词 热点" --profile china --trace` |
-| “只搜某个网站” | `guanlan search "关键词" --site zhihu.com --limit 50` |
-| “搜微信公众号文章” | `guanlan search "关键词" --site mp.weixin.qq.com --profile china --limit 50`，结果按 best-effort 处理 |
+| “只搜某个网站” | `guanlan search "关键词" --site zhihu.com --limit 80` |
+| “搜微信公众号文章” | `guanlan search "关键词" --site mp.weixin.qq.com --profile china --limit 80`，结果按 best-effort 处理 |
 | “查官方/央媒表述” | `guanlan search "关键词" --profile china --scope party_central` |
 | “查地方官媒/区域政策” | `guanlan search "关键词" --profile china --scope local_official` |
 | “查电商/零售/产业带” | `guanlan search "关键词" --profile china --scope ecommerce` |
+| “查影视/综艺/明星/游戏/票房口碑” | `guanlan research "关键词" --preset entertainment --read-top 0` |
 | “查英文公司官网/文档/价格/发布说明” | `guanlan research "OpenAI API pricing release notes" --preset company --profile english` |
 | “查英文政策/监管/标准原文” | `guanlan research "AI regulation NIST standard" --preset global_policy --profile english` |
 | “查英文社区/评价样本” | `guanlan research "Product reviews Reddit G2" --preset global_reputation --profile english --read-top 0` |
@@ -72,6 +73,7 @@
 | “查政策/监管/官方通知” | `guanlan research "关键词" --preset policy` |
 | “查产品口碑/用户评价” | `guanlan research "关键词" --preset reputation` |
 | “查 EI/SCI/Scopus、学术会议、投稿/检索/收录要求” | `guanlan research "关键词" --preset academic --read-top 0` |
+| “查文娱口碑/票房/评分/粉圈讨论” | `guanlan research "关键词" --preset entertainment --read-top 0` |
 | “查产品口碑并给购买/处理建议” | `guanlan research "关键词" --preset reputation --read-top 0 --advisor` |
 | “指定多个平台查口碑” | `guanlan research "关键词" --preset reputation --sites zhihu.com,weibo.com,xiaohongshu.com` |
 | “看话题是被夸还是被骂” | `guanlan pulse "关键词" --format context` |
@@ -82,8 +84,8 @@
 | “页面噪声太多，宁可少给” | `guanlan read "URL" --strict --trace` |
 | “只核验标题/发布时间/链接” | `guanlan read "URL" --backend direct --extract metadata` 或 `--extract links` |
 | “只读原文，不要兜底搜索” | `guanlan read "URL" --no-fallback-search` |
-| “今天有什么热点” | `guanlan hotnews today --limit 50` |
-| “技术社区在讨论什么” | `guanlan hotnews v2ex --limit 50` |
+| “今天有什么热点” | `guanlan hotnews today --limit 80` |
+| “技术社区在讨论什么” | `guanlan hotnews v2ex --limit 80` |
 | “今天有什么值得读的技术/AI 文章” | `guanlan feeds curated --limit 80` |
 | “今天微信/公众号有什么热文” | `guanlan feeds wechat-rss --limit 80` |
 | “补一个百度热点 RSS 视角” | `guanlan feeds baidu-rss --limit 80` |
@@ -156,13 +158,13 @@ MCP 客户端安装入口：
 执行：
 
 ```bash
-guanlan search "某个主题" --limit 50
+guanlan search "某个主题" --limit 80
 ```
 
 中文互联网任务优先使用中文场景画像：
 
 ```bash
-guanlan search "某个主题" --profile china --limit 50
+guanlan search "某个主题" --profile china --limit 80
 ```
 
 如果 trace 里出现 `baidu=blocked`，这表示百度安全验证/反爬拦截，不是“没有搜索结果”。
@@ -170,10 +172,10 @@ guanlan search "某个主题" --profile china --limit 50
 `backend_recovery` 里给出可执行的多源补搜命令：
 
 ```bash
-guanlan search "某个主题" --profile china --limit 50 --trace
-guanlan search "某个主题" --profile china --backend bing --limit 50 --trace
-guanlan search "某个主题" --profile china --scope gov --limit 50 --trace
-guanlan research "某个主题" --profile china --limit 50 --read-top 0
+guanlan search "某个主题" --profile china --limit 80 --trace
+guanlan search "某个主题" --profile china --backend bing --limit 80 --trace
+guanlan search "某个主题" --profile china --scope gov --limit 80 --trace
+guanlan research "某个主题" --profile china --limit 80 --read-top 0
 ```
 
 需要更可信的中文信源时使用白名单 scope：
@@ -190,15 +192,20 @@ guanlan search "低空经济 广东" --profile china --scope local_official
 
 # 电商与零售垂类，包含亿邦动力等
 guanlan search "跨境电商 AI" --profile china --scope ecommerce
+
+# 文娱与内容消费，包含豆瓣、猫眼、B站、微博、TapTap 等
+guanlan search "某电影 票房 豆瓣评分" --profile china --scope entertainment
 ```
+
+文娱、影视、综艺、明星、游戏、票房和评分问题使用文娱 scope。它是软路由，不会只看白名单；重点是让 Agent 分清平台热度、用户评分、产业报道、宣发通稿和粉圈讨论。
 
 公众号文章搜索优先使用站内定向搜索；当公开搜索结果不足且已安装可选依赖时，
 观澜会把 `wechat-sogou` 作为备份后端追加到末尾。搜狗微信反爬较强，后端遇到验证码会直接降级，
 不会自动打码或读取浏览器 Cookie：
 
 ```bash
-guanlan search "关键词" --site mp.weixin.qq.com --profile china --limit 50
-guanlan search "关键词" --backend wechat-sogou --limit 50
+guanlan search "关键词" --site mp.weixin.qq.com --profile china --limit 80
+guanlan search "关键词" --backend wechat-sogou --limit 80
 ```
 
 查看全部白名单：
@@ -263,7 +270,7 @@ guanlan pulse "产品名 用户评价" --read-top 2 --format context
 
 ```bash
 guanlan route "某主题"
-guanlan research "某主题" --profile china --limit 50 --read-top 2
+guanlan research "某主题" --profile china --limit 80 --read-top 5
 ```
 
 `research` 会自动整合搜索质量层、同题聚类、信源多样性和原文摘读。输出仍然不是最终答案，Agent 需要基于证据包再组织结论、依据和不确定性。
@@ -284,7 +291,7 @@ RSS 适合作阅读发现、新鲜技术文章和趋势线索，不替代官方�
 如果用户需要你在证据包之外给一个谨慎的“助理视角”，加 `--advisor`：
 
 ```bash
-guanlan research "某主题" --profile china --limit 50 --read-top 2 --advisor
+guanlan research "某主题" --profile china --limit 80 --read-top 5 --advisor
 guanlan research "某产品 用户评价" --preset reputation --read-top 0 --advisor
 ```
 
@@ -301,6 +308,7 @@ Preset 会自动选择一个或多个 scope，并可包含平台定向站点。�
 | `industry` | `business` + `ecommerce` + `finance`；36氪、虎嗅、一财 | 产业趋势、商业模式、公司动态。 |
 | `ecommerce` | `ecommerce` + `business`；亿邦动力、网经社、雨果跨境 | 电商、零售、跨境、品牌和产业带。 |
 | `reputation` | `social_web` + `tech_dev` + `business`；知乎、微博、小红书、B站 | 产品口碑、用户评价、社交平台公开讨论。 |
+| `entertainment` | `entertainment` + `social_web` + `business`；豆瓣、猫眼/灯塔、B站、微博、TapTap | 影视、综艺、音乐、游戏、明星、票房、播放热度和公开口碑。 |
 | `tech` | `tech_dev` + `social_web`；V2EX、掘金、SegmentFault、GitHub | 技术选型、开发者社区、工程实践。 |
 | `academic` | `academic` + `tech_dev` + `business`；Elsevier、Engineering Village、IEEE、CNKI、百度学术 | EI/SCI/Scopus、学术会议、论文投稿、数据库检索和高校认定口径。 |
 | `finance` | `finance` + `business`；财联社、东方财富、雪球 | 财经、资本市场、公司和宏观金融。 |
@@ -348,11 +356,11 @@ guanlan read "https://example.com/article" --no-fallback-search
 优先：
 
 ```bash
-guanlan hotnews today --limit 50
-guanlan hotnews weibo --limit 50
-guanlan hotnews bilibili --limit 50
-guanlan hotnews ithome --limit 50
-guanlan hotnews v2ex --limit 50
+guanlan hotnews today --limit 80
+guanlan hotnews weibo --limit 80
+guanlan hotnews bilibili --limit 80
+guanlan hotnews ithome --limit 80
+guanlan hotnews v2ex --limit 80
 ```
 
 `today` 会混合百度热搜、微博热搜、B站热门视频、IT之家 RSS 和 V2EX 热门，适合作为“今天发生了什么”的默认入口。单个公开源失败时，观澜会保留其它源的结果。
@@ -360,9 +368,9 @@ guanlan hotnews v2ex --limit 50
 如果需要更多来源，可以使用 NewsNow 可选增强后端，例如：
 
 ```bash
-guanlan hotnews newsnow:36kr-quick --limit 50
-guanlan hotnews newsnow:ithome --limit 50
-guanlan hotnews newsnow:bilibili-hot-search --limit 50
+guanlan hotnews newsnow:36kr-quick --limit 80
+guanlan hotnews newsnow:ithome --limit 80
+guanlan hotnews newsnow:bilibili-hot-search --limit 80
 ```
 
 NewsNow 源覆盖面更广，但稳定性取决于 `BASE_URL`、Cloudflare 和上游抓取状态；公共站不稳时可先配置自有或可用 endpoint：
@@ -374,14 +382,14 @@ guanlan configure newsnow-base-url https://your-newsnow.example
 `zhihu` 热榜是 experimental 源，不要当作稳定热榜入口。需要知乎视角时可尝试：
 
 ```bash
-guanlan hotnews zhihu --limit 50
-guanlan search "热点关键词" --site zhihu.com --profile china --limit 50
+guanlan hotnews zhihu --limit 80
+guanlan search "热点关键词" --site zhihu.com --profile china --limit 80
 ```
 
 如果需要更深入，再对热点关键词做搜索：
 
 ```bash
-guanlan search "热点关键词" --limit 50
+guanlan search "热点关键词" --limit 80
 ```
 
 ### 站内搜索
@@ -395,7 +403,7 @@ guanlan search "热点关键词" --limit 50
 优先用站内搜索：
 
 ```bash
-guanlan search "产品名 评价" --site zhihu.com --limit 50
+guanlan search "产品名 评价" --site zhihu.com --limit 80
 ```
 
 如果用户明确要求微博、小红书、Twitter 等平台，再先检查可用性：
