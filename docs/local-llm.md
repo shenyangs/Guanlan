@@ -122,6 +122,15 @@ guanlan mcp config --client openwebui --format json
 guanlan serve --host 127.0.0.1 --port 8765
 ```
 
+默认只建议监听本机。如果必须让 Open WebUI、局域网机器或服务器上的其它进程访问，使用 token：
+
+```bash
+export GUANLAN_SERVE_TOKEN="change-me"
+guanlan serve --host 0.0.0.0 --port 8765
+```
+
+请求侧添加 `Authorization: Bearer change-me` 或 `X-Guanlan-Token: change-me`。
+
 常用接口：
 
 - `GET /health`

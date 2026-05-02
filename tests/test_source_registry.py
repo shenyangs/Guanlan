@@ -2,6 +2,7 @@
 """Tests for the centralized Guanlan source matrix."""
 
 from guanlan import source_registry
+from guanlan.channel_catalog import get_channel_metadata
 
 
 def test_source_matrix_marks_native_and_optional_boundaries():
@@ -27,3 +28,30 @@ def test_source_matrix_resolves_aliases_and_feed_sources():
     feeds = source_registry.list_feed_sources()
     assert feeds["curated"]["evidence_role"] == "reading_discovery_signal"
     assert feeds["wechat-rss"]["risk_tags"] == ["third_party_rss", "login_wall"]
+
+
+def test_source_matrix_has_stable_required_fields_and_status_values():
+    allowed_status = {"stable", "best-effort", "experimental", "optional"}
+    allowed_backend = {"native", "optional", "rss", "curated"}
+    sources = source_registry.list_sources()
+
+    assert len(sources) == len(set(sources))
+    for source_id, meta in sources.items():
+        assert meta["id"] == source_id
+        assert meta["name"]
+        assert meta["surface"] in {"hotnews", "feeds"}
+        assert meta["backend"] in allowed_backend
+        assert meta["status"] in allowed_status
+        assert meta["evidence_role"]
+        assert isinstance(meta.get("risk_tags", []), list)
+
+
+def test_hotnews_registry_and_channel_catalog_keep_same_reality_boundary():
+    hotnews = source_registry.list_hotnews_sources()
+    channel = get_channel_metadata("hotnews")
+
+    assert hotnews["baidu"]["status"] == "stable"
+    assert hotnews["zhihu"]["status"] == "experimental"
+    assert hotnews["newsnow:thepaper"]["backend"] == "optional"
+    assert "zhihu 为实验源" in channel["expectation"]
+    assert channel["stability"] == "best-effort"

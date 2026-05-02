@@ -529,7 +529,7 @@ def render_group(title, rows):
         count = int(row["count"])
         items.append("<tr><td>{}</td><td>{}</td></tr>".format(key, count))
     if not items:
-        items.append("<tr><td colspan='2'>No data yet</td></tr>")
+        items.append("<tr><td colspan='2'>暂无数据 / No data yet</td></tr>")
     return "<section><h2>{}</h2><table><tbody>{}</tbody></table></section>".format(
         html.escape(title), "\n".join(items)
     )
@@ -553,24 +553,24 @@ def render_dashboard():
     task_24h = data["task_duration_24h"]
     session_24h = data["session_24h"]
     cards = [
-        ("当前并发", data["active_now"]),
-        ("最近事件", fmt_ms(data["last_event_age_ms"]) + " 前"),
-        ("24h 调用", data["calls_24h"]),
-        ("7d 调用", data["calls_7d"]),
-        ("24h 独立 Agent", data["unique_agents_24h"]),
-        ("7d 独立 Agent", data["unique_agents_7d"]),
-        ("24h 独立设备", data["active_installs_24h"]),
-        ("7d 独立设备", data["active_installs_7d"]),
-        ("24h 新增设备", data["new_installs_24h"]),
-        ("24h 回访设备", data["returning_installs_24h"]),
-        ("Agent 日均调用", data["calls_per_agent_24h"]),
-        ("设备日均调用", data["calls_per_device_24h"]),
-        ("任务平均时长", fmt_ms(task_24h["avg_ms"])),
-        ("任务 P95 时长", fmt_ms(task_24h["p95_ms"])),
-        ("Session 平均时长", fmt_ms(session_24h["avg_duration_ms"])),
-        ("Session P95 时长", fmt_ms(session_24h["p95_duration_ms"])),
-        ("24h 错误率", data["error_rate_24h"]),
-        ("24h 异常结束率", data["orphan_rate_24h"]),
+        ("当前并发 / Active Concurrency", data["active_now"]),
+        ("最近事件 / Last Event", fmt_ms(data["last_event_age_ms"]) + " 前"),
+        ("24h 调用 / 24h Calls", data["calls_24h"]),
+        ("7d 调用 / 7d Calls", data["calls_7d"]),
+        ("24h 独立 Agent / 24h Unique Agents", data["unique_agents_24h"]),
+        ("7d 独立 Agent / 7d Unique Agents", data["unique_agents_7d"]),
+        ("24h 独立设备 / 24h Unique Devices", data["active_installs_24h"]),
+        ("7d 独立设备 / 7d Unique Devices", data["active_installs_7d"]),
+        ("24h 新增设备 / 24h New Devices", data["new_installs_24h"]),
+        ("24h 回访设备 / 24h Returning Devices", data["returning_installs_24h"]),
+        ("Agent 日均调用 / Daily Calls per Agent", data["calls_per_agent_24h"]),
+        ("设备日均调用 / Daily Calls per Device", data["calls_per_device_24h"]),
+        ("任务平均时长 / Avg Task Duration", fmt_ms(task_24h["avg_ms"])),
+        ("任务 P95 时长 / P95 Task Duration", fmt_ms(task_24h["p95_ms"])),
+        ("Session 平均时长 / Avg Session Duration", fmt_ms(session_24h["avg_duration_ms"])),
+        ("Session P95 时长 / P95 Session Duration", fmt_ms(session_24h["p95_duration_ms"])),
+        ("24h 错误率 / 24h Error Rate", data["error_rate_24h"]),
+        ("24h 异常结束率 / 24h Orphan Rate", data["orphan_rate_24h"]),
     ]
     card_html = "\n".join(
         "<div class='card'><span>{}</span><strong>{}</strong></div>".format(label, value)
@@ -591,30 +591,30 @@ def render_dashboard():
             )
         )
     if not recent_rows:
-        recent_rows.append("<tr><td colspan='8'>No events yet</td></tr>")
+        recent_rows.append("<tr><td colspan='8'>暂无事件 / No events yet</td></tr>")
 
     depth_panel = render_key_values(
-        "使用深度",
+        "使用深度 / Usage Depth",
         [
-            ("24h 单任务平均", fmt_ms(task_24h["avg_ms"])),
-            ("24h 单任务 P50", fmt_ms(task_24h["p50_ms"])),
-            ("24h 单任务 P95", fmt_ms(task_24h["p95_ms"])),
-            ("7d 单任务 P95", fmt_ms(data["task_duration_7d"]["p95_ms"])),
-            ("24h Session 数", data["session_24h"]["count"]),
-            ("24h Session 平均", fmt_ms(session_24h["avg_duration_ms"])),
-            ("24h Session 平均调用", data["session_24h"]["avg_calls"]),
+            ("24h 单任务平均 / 24h Avg Task", fmt_ms(task_24h["avg_ms"])),
+            ("24h 单任务 P50 / 24h P50 Task", fmt_ms(task_24h["p50_ms"])),
+            ("24h 单任务 P95 / 24h P95 Task", fmt_ms(task_24h["p95_ms"])),
+            ("7d 单任务 P95 / 7d P95 Task", fmt_ms(data["task_duration_7d"]["p95_ms"])),
+            ("24h Session 数 / 24h Sessions", data["session_24h"]["count"]),
+            ("24h Session 平均 / 24h Avg Session", fmt_ms(session_24h["avg_duration_ms"])),
+            ("24h Session 平均调用 / 24h Avg Calls per Session", data["session_24h"]["avg_calls"]),
         ],
     )
     quality_panel = render_key_values(
-        "质量与留存",
+        "质量与留存 / Quality & Retention",
         [
-            ("24h 错误", data["error_24h"]),
-            ("24h 错误率", data["error_rate_24h"]),
-            ("24h 异常结束", data["orphan_starts_24h"]),
-            ("24h 异常结束率", data["orphan_rate_24h"]),
-            ("24h 新增设备", data["new_installs_24h"]),
-            ("7d 新增设备", data["new_installs_7d"]),
-            ("24h 回访设备", data["returning_installs_24h"]),
+            ("24h 错误 / 24h Errors", data["error_24h"]),
+            ("24h 错误率 / 24h Error Rate", data["error_rate_24h"]),
+            ("24h 异常结束 / 24h Orphan Starts", data["orphan_starts_24h"]),
+            ("24h 异常结束率 / 24h Orphan Rate", data["orphan_rate_24h"]),
+            ("24h 新增设备 / 24h New Devices", data["new_installs_24h"]),
+            ("7d 新增设备 / 7d New Devices", data["new_installs_7d"]),
+            ("24h 回访设备 / 24h Returning Devices", data["returning_installs_24h"]),
         ],
     )
 
@@ -654,7 +654,7 @@ def render_dashboard():
     <div class="brand">
       <img src="/assets/guanlan-logo.svg" alt="">
       <div class="brand-title">
-        <strong>观澜遥测面板</strong>
+        <strong>观澜遥测面板 / Guanlan Telemetry</strong>
         <span>Guanlan Telemetry</span>
       </div>
     </div>
@@ -671,9 +671,9 @@ def render_dashboard():
       {quality}
     </div>
     <section class="recent">
-      <h2>Recent events</h2>
+      <h2>最近事件 / Recent Events</h2>
       <table>
-        <thead><tr><th>Time CST</th><th>Event</th><th>Surface</th><th>Command</th><th>Agent</th><th>Version</th><th>Status</th><th>Duration ms</th></tr></thead>
+        <thead><tr><th>时间 / Time (CST)</th><th>事件 / Event</th><th>入口 / Surface</th><th>命令 / Command</th><th>Agent</th><th>版本 / Version</th><th>状态 / Status</th><th>耗时 / Duration (ms)</th></tr></thead>
         <tbody>{recent}</tbody>
       </table>
     </section>
@@ -681,11 +681,11 @@ def render_dashboard():
 </body>
 </html>""".format(
         cards=card_html,
-        surface=render_group("Surface", data["surface"]),
-        commands=render_group("Commands", data["commands"]),
-        agents=render_group("Agents", data["agents"]),
-        versions=render_group("Versions", data["versions"]),
-        platforms=render_group("Platforms", data["platforms"]),
+        surface=render_group("入口分布 / Surface", data["surface"]),
+        commands=render_group("命令分布 / Commands", data["commands"]),
+        agents=render_group("Agent 类型 / Agent Types", data["agents"]),
+        versions=render_group("版本分布 / Versions", data["versions"]),
+        platforms=render_group("平台分布 / Platforms", data["platforms"]),
         depth=depth_panel,
         quality=quality_panel,
         recent="\n".join(recent_rows),

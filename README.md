@@ -212,7 +212,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.3.3`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.3.4`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -446,8 +446,10 @@ guanlan configure --from-browser chrome
 | `guanlan archive export --format jsonl --source-type 政府` | 按 domain/source_type/topic 导出 RAG 友好 JSONL。 |
 | `guanlan archive export --format rag-jsonl` | 只导出 RAG 载入常用字段：id/text/source/title/domain/source_type/topic。 |
 | `guanlan serve --host 127.0.0.1 --port 8765` | 启动本地只读 HTTP 服务。 |
+| `guanlan serve --host 0.0.0.0 --token "$TOKEN"` | 如必须暴露给局域网/服务器，启用只读 token 校验。 |
 | `guanlan plugin template my_company_api` | 生成企业内部只读搜索 connector 模板。 |
 | `guanlan eval scenarios --format jsonl` | 输出中文语境搜索质量评估集。 |
+| `guanlan eval tasks --format jsonl` | 输出真实中文研究任务池骨架，用于 live/manual benchmark。 |
 | `guanlan eval benchmark` | 跑离线确定性评测，检查路由、证据角色和候选池是否守住 Agent 契约。 |
 | `guanlan quality run` | 一键跑搜索/阅读/热榜/advisor 质量闸门。 |
 | `guanlan quality coverage` | 发版前检查默认结果池和证据字段没有缩水。 |
@@ -764,7 +766,7 @@ guanlan mcp config --client openwebui
 guanlan serve --host 127.0.0.1 --port 8765
 ```
 
-服务默认只监听本机，提供 `/search`、`/research`、`/read`、`/hotnews`、`/feeds`、`/route`、`/context`、`/prompt` 和 `/archive/search` 等只读接口，不提供发布、评论、点赞、私信等写操作。对本地模型来说，推荐工作流是：
+服务默认只监听本机，提供 `/search`、`/research`、`/read`、`/hotnews`、`/feeds`、`/route`、`/context`、`/prompt` 和 `/archive/search` 等只读接口，不提供发布、评论、点赞、私信等写操作。如果必须监听 `0.0.0.0` 或局域网地址，请使用 `--token` 或 `GUANLAN_SERVE_TOKEN`，请求侧通过 `Authorization: Bearer <token>` 或 `X-Guanlan-Token` 传入；否则虽然只读，也可能暴露本地 archive 内容和搜索行为。对本地模型来说，推荐工作流是：
 
 1. 用 `hotnews --brief` 或 `route` 判断该去哪找。
 2. 用 `search/research --format context` 拿证据表。
@@ -812,6 +814,7 @@ guanlan quality coverage
 guanlan quality regression
 guanlan quality robustness
 guanlan eval benchmark
+guanlan eval tasks --format jsonl
 scripts/release_gate.sh
 guanlan quality run --mode live --limit 5
 ```
@@ -825,6 +828,8 @@ guanlan quality run --mode live --limit 5
 `quality robustness` 是更深一层的稳健性闸门：它检查 Archive 入库前是否会审计噪声和漂移，检查本地库 `search --trace` / `inspect` / `rag-jsonl` 是否保留 Agent 需要的字段，检查空结果是否解释下一步，也检查发布脚本是否覆盖完整验收链路。
 
 `eval benchmark` 是更偏“观澜契约”的离线评测：不依赖外网，固定检查政策、口碑、热点、技术、学术、地方、电商和本地模型场景是否被路由到合适的意图、scope、证据角色和足够大的候选池。
+
+`eval tasks` 是真实中文研究任务池骨架，覆盖政策、地方、电商、技术、口碑、热点、学术和本地模型联网。它先用于人工/半自动评测，不替代 `eval benchmark` 的离线发布闸门。
 
 ### 18. 安全检查和授权边界
 
@@ -910,6 +915,7 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 | [更新日志](CHANGELOG.md) | 记录每个版本的能力变化、边界调整和下一步收口。 |
 | [本地大模型联网指南](docs/local-llm.md) | Ollama、LM Studio、Open WebUI 等无联网模型如何接入观澜。 |
 | [Agent 使用说明](docs/agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜和安全路由规则。 |
+| [Agent 输出契约](docs/contract.md) | 给 Agent/MCP/HTTP/RAG 集成方看的稳定字段与边界承诺。 |
 | [安装指南](docs/install.md) | 给 Agent 执行的安装流程与边界。 |
 | [更新指南](docs/update.md) | 更新观澜与依赖工具。 |
 | [排障手册](docs/troubleshooting.md) | 网络、Cookie、钥匙串、平台异常排查。 |
@@ -935,6 +941,7 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 - 如果使用共享电脑，检查配置文件权限是否为仅本人可读写。
 - 不确定是否需要授权时，先运行 `guanlan doctor --trace`。
 - 匿名遥测默认发送命令生命周期元数据，用于聚合使用量与并发统计；不发送 query、URL、正文或凭据。可用 `guanlan configure telemetry off` 或 `GUANLAN_TELEMETRY=0` 关闭；如需自托管统计，可配置 `guanlan configure telemetry-endpoint ...`。
+- Agent/MCP/HTTP/RAG 集成方可参考 [Agent 输出契约](docs/contract.md)。观澜仍处 Alpha，但这些核心字段不应静默移除或改名。
 
 ## 许可证与来源
 

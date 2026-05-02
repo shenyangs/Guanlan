@@ -508,6 +508,8 @@ def main():
     p_serve = sub.add_parser("serve", help="Run a local read-only HTTP service")
     p_serve.add_argument("--host", default="127.0.0.1", help="Host to bind; default keeps service local-only")
     p_serve.add_argument("--port", type=int, default=8765, help="Port to listen on")
+    p_serve.add_argument("--token", default="",
+                         help="Optional read-only HTTP token; can also use GUANLAN_SERVE_TOKEN")
 
     # ── plugin ──
     p_plugin = sub.add_parser("plugin", help="Manage read-only search backend plugins")
@@ -524,6 +526,9 @@ def main():
     eval_sub = p_eval.add_subparsers(dest="eval_command", help="Evaluation commands")
     p_eval_scenarios = eval_sub.add_parser("scenarios", help="Print built-in evaluation scenarios")
     p_eval_scenarios.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
+    p_eval_tasks = eval_sub.add_parser("tasks", help="Print realistic benchmark task seeds")
+    p_eval_tasks.add_argument("--category", default="", help="Optional task category filter")
+    p_eval_tasks.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
     p_eval_benchmark = eval_sub.add_parser("benchmark", help="Run deterministic agent-facing benchmark")
     p_eval_benchmark.add_argument("--mode", choices=["quick", "live"], default="quick",
                                   help="Benchmark mode; quick is deterministic and offline")
@@ -1732,14 +1737,17 @@ def _cmd_mcp(args):
 
 def _cmd_serve(args):
     """Run local read-only HTTP service."""
-    if args.host not in {"127.0.0.1", "localhost", "::1"}:
+    token = args.token or os.environ.get("GUANLAN_SERVE_TOKEN", "")
+    if args.host not in {"127.0.0.1", "localhost", "::1"} and not token:
         print(
-            "[!] 默认建议只监听 127.0.0.1；当前未启用任何写操作或 Cookie 读取，但请确认网络边界。",
+            "[!] 默认建议只监听 127.0.0.1；当前未设置 --token / GUANLAN_SERVE_TOKEN。服务虽只读，但可能暴露本地 archive 内容和搜索行为。",
             file=sys.stderr,
         )
+    elif args.host not in {"127.0.0.1", "localhost", "::1"}:
+        print("[i] 非本地监听已启用 token 校验；请仍确认网络边界。", file=sys.stderr)
     from guanlan.serve import run_server
 
-    run_server(host=args.host, port=max(args.port, 1))
+    run_server(host=args.host, port=max(args.port, 1), token=token)
 
 
 def _cmd_plugin(args):
@@ -1771,13 +1779,14 @@ def _cmd_eval(args):
         format_benchmark_markdown,
         format_evaluation_jsonl,
         format_evaluation_markdown,
+        list_benchmark_tasks,
         list_evaluation_scenarios,
         run_benchmark,
     )
 
     command = getattr(args, "eval_command", None)
-    if command not in {"scenarios", "benchmark"}:
-        print("Error: eval command is required: scenarios or benchmark", file=sys.stderr)
+    if command not in {"scenarios", "tasks", "benchmark"}:
+        print("Error: eval command is required: scenarios, tasks, or benchmark", file=sys.stderr)
         sys.exit(2)
     if command == "benchmark":
         report = run_benchmark(mode=args.mode, limit=max(args.limit, 1))
@@ -1789,6 +1798,20 @@ def _cmd_eval(args):
             print(format_benchmark_markdown(report))
         if report.get("summary", {}).get("fail", 0):
             sys.exit(1)
+        return
+    if command == "tasks":
+        tasks = list_benchmark_tasks(category=args.category or None)
+        if args.format == "json":
+            print(json.dumps(tasks, ensure_ascii=False, indent=2))
+        elif args.format == "jsonl":
+            for task in tasks:
+                print(json.dumps(task, ensure_ascii=False, sort_keys=True))
+        else:
+            print("# 观澜真实任务评测池")
+            print()
+            print("这些任务用于后续 live/manual benchmark，不代表 quick gate 已经联网验证。")
+            for task in tasks:
+                print(f"- [{task.get('category')}] {task.get('id')}: {task.get('query')} ({task.get('expected_source_family')})")
         return
     scenarios = list_evaluation_scenarios()
     if args.format == "json":

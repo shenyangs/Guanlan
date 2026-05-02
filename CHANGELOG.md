@@ -8,6 +8,20 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.3.4 - 2026-05-02
+
+### Added
+
+- 新增 `docs/contract.md`，明确 Agent/MCP/HTTP/RAG 集成方可依赖的稳定字段和边界承诺。
+- `guanlan serve` 新增 `--token`，也支持 `GUANLAN_SERVE_TOKEN`；非本机监听时可用 Bearer token 或 `X-Guanlan-Token` 保护只读接口。
+- 新增 40 个真实中文研究任务种子，并通过 `guanlan eval tasks` 暴露，作为后续 live/manual benchmark 的任务池骨架。
+
+### Changed
+
+- `source_registry` 增加一致性护栏测试，先验证信源矩阵字段、状态值和 hotnews/channel_catalog 现实边界，不做大重构。
+- README、Agent 文档、本地模型指南和中文文档入口补充 Agent 输出契约与 HTTP token 边界。
+- 遥测默认开启策略保持不变；本次只纳入遥测面板中英双语展示改动，不扩大采集范围。
+
 ## v0.3.3 - 2026-05-02
 
 ### Added

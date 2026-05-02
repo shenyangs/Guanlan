@@ -78,6 +78,7 @@
 | “把研究证据包直接喂给本地模型” | `guanlan research "关键词" --format prompt` |
 | “生成 MCP 客户端配置” | `guanlan mcp config --client codex` |
 | “本地工具不支持 MCP，但能调 HTTP” | `guanlan serve --host 127.0.0.1 --port 8765` |
+| “必须把 HTTP 服务暴露到局域网” | `guanlan serve --host 0.0.0.0 --token "$TOKEN"` |
 | “查企业内部只读搜索后端” | `guanlan search "关键词" --backend plugin:my_company_api` |
 | “注册企业内部只读搜索 connector” | `guanlan plugin register my_company_api ./backend.py` |
 | “批量读一组链接” | `guanlan read batch urls.txt --format context` |
@@ -94,9 +95,12 @@
 | “看跨源热点趋势” | `guanlan hotnews today --trends` |
 | “拿评估集比较搜索质量” | `guanlan eval scenarios --format jsonl` |
 | “发版前检查观澜契约” | `guanlan eval benchmark` |
+| “导出真实任务评测池” | `guanlan eval tasks --format jsonl` |
 | “发版前检查稳健性” | `guanlan quality robustness` |
 
 CLI 是默认主路径；命令选择不确定时先跑 `guanlan route "用户需求"`，按 `recommended_commands` 起手。若当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_capabilities`、`guanlan_search`、`guanlan_route`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_feeds`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
+
+本地 HTTP 服务默认只建议监听 `127.0.0.1`。如果用户明确要求监听局域网或服务器公网地址，必须提醒其设置 `--token` 或 `GUANLAN_SERVE_TOKEN`，因为只读接口也可能暴露本地 archive 内容和搜索行为。
 
 MCP 客户端安装入口：
 

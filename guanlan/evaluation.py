@@ -103,10 +103,61 @@ EVALUATION_SCENARIOS: list[dict[str, Any]] = [
     },
 ]
 
+BENCHMARK_TASKS: list[dict[str, Any]] = [
+    {"id": "policy_001", "category": "policy", "query": "新质生产力 政策 原文", "expected_source_family": "official"},
+    {"id": "policy_002", "category": "policy", "query": "人工智能治理 暂行办法 官方 原文", "expected_source_family": "official"},
+    {"id": "policy_003", "category": "policy", "query": "数据要素 政策 国家发改委 原文", "expected_source_family": "official"},
+    {"id": "policy_004", "category": "policy", "query": "低空经济 政策 官方口径", "expected_source_family": "official"},
+    {"id": "policy_005", "category": "policy", "query": "制造业 数字化转型 政策 部委", "expected_source_family": "official"},
+    {"id": "local_001", "category": "local", "query": "上海 人工智能 产业政策 原文", "expected_source_family": "local_official"},
+    {"id": "local_002", "category": "local", "query": "深圳 低空经济 政策 原文", "expected_source_family": "local_official"},
+    {"id": "local_003", "category": "local", "query": "杭州 算力券 政策 官方", "expected_source_family": "local_official"},
+    {"id": "local_004", "category": "local", "query": "成都 人工智能 产业扶持 政策", "expected_source_family": "local_official"},
+    {"id": "local_005", "category": "local", "query": "苏州 生物医药 产业政策 原文", "expected_source_family": "local_official"},
+    {"id": "ecommerce_001", "category": "ecommerce", "query": "即时零售 电商 产业趋势 亿邦动力", "expected_source_family": "vertical_media"},
+    {"id": "ecommerce_002", "category": "ecommerce", "query": "跨境电商 AI 工具 卖家反馈", "expected_source_family": "vertical_media"},
+    {"id": "ecommerce_003", "category": "ecommerce", "query": "抖音电商 商家 服务商 趋势", "expected_source_family": "vertical_media"},
+    {"id": "ecommerce_004", "category": "ecommerce", "query": "美团 闪购 即时零售 商家 案例", "expected_source_family": "vertical_media"},
+    {"id": "ecommerce_005", "category": "ecommerce", "query": "淘宝天猫 AI 电商 产品趋势", "expected_source_family": "vertical_media"},
+    {"id": "tech_001", "category": "tech", "query": "vLLM SGLang KV Cache 推理框架 对比", "expected_source_family": "developer"},
+    {"id": "tech_002", "category": "tech", "query": "LangGraph AutoGen CrewAI GitHub issue 对比", "expected_source_family": "developer"},
+    {"id": "tech_003", "category": "tech", "query": "MCP server Python SDK issue 实践", "expected_source_family": "developer"},
+    {"id": "tech_004", "category": "tech", "query": "RAG reranker bge m3 中文 实测", "expected_source_family": "developer"},
+    {"id": "tech_005", "category": "tech", "query": "Ollama 本地模型 联网搜索 工具", "expected_source_family": "developer"},
+    {"id": "reputation_001", "category": "reputation", "query": "某 AI 笔记软件 用户评价 值不值得买", "expected_source_family": "user_sample"},
+    {"id": "reputation_002", "category": "reputation", "query": "AI 眼镜 用户评价 小红书 知乎", "expected_source_family": "user_sample"},
+    {"id": "reputation_003", "category": "reputation", "query": "新能源汽车 车主评价 缺点", "expected_source_family": "user_sample"},
+    {"id": "reputation_004", "category": "reputation", "query": "儿童学习机 用户反馈 真实体验", "expected_source_family": "user_sample"},
+    {"id": "reputation_005", "category": "reputation", "query": "国产数据库 用户口碑 迁移成本", "expected_source_family": "user_sample"},
+    {"id": "hot_001", "category": "hot", "query": "今天 中文互联网 热点 AI", "expected_source_family": "hotnews"},
+    {"id": "hot_002", "category": "hot", "query": "今天 微博 B站 科技 热点", "expected_source_family": "hotnews"},
+    {"id": "hot_003", "category": "hot", "query": "最近 AI 应用 创业 热点", "expected_source_family": "hotnews"},
+    {"id": "hot_004", "category": "hot", "query": "今天 财经 市场 热点 财联社", "expected_source_family": "hotnews"},
+    {"id": "hot_005", "category": "hot", "query": "最近 开发者社区 热门项目", "expected_source_family": "hotnews"},
+    {"id": "academic_001", "category": "academic", "query": "EI会议 投稿 检索 收录 要求", "expected_source_family": "academic"},
+    {"id": "academic_002", "category": "academic", "query": "CCF 推荐会议 人工智能 投稿 官网", "expected_source_family": "academic"},
+    {"id": "academic_003", "category": "academic", "query": "SCI 期刊 APC 出版商 官方说明", "expected_source_family": "academic"},
+    {"id": "academic_004", "category": "academic", "query": "高校 科研奖励 论文认定 政策", "expected_source_family": "academic"},
+    {"id": "academic_005", "category": "academic", "query": "arXiv 论文 代码 GitHub 中文解读", "expected_source_family": "academic"},
+    {"id": "local_llm_001", "category": "local_llm", "query": "给本地 Ollama 模型联网搜索 中文政策信息", "expected_source_family": "agent_context"},
+    {"id": "local_llm_002", "category": "local_llm", "query": "Open WebUI 调用本地 HTTP 搜索证据", "expected_source_family": "agent_context"},
+    {"id": "local_llm_003", "category": "local_llm", "query": "LM Studio 本地模型 RAG 导入 中文网页", "expected_source_family": "agent_context"},
+    {"id": "local_llm_004", "category": "local_llm", "query": "本地模型 读取网页 生成引用证据", "expected_source_family": "agent_context"},
+    {"id": "local_llm_005", "category": "local_llm", "query": "无联网大模型 获取今日热点 上下文", "expected_source_family": "agent_context"},
+]
+
 
 def list_evaluation_scenarios() -> list[dict[str, Any]]:
     """Return built-in evaluation scenarios."""
     return list(EVALUATION_SCENARIOS)
+
+
+def list_benchmark_tasks(category: str | None = None) -> list[dict[str, Any]]:
+    """Return realistic benchmark task seeds for live/manual evaluation."""
+    category_key = (category or "").strip().lower()
+    if not category_key:
+        return list(BENCHMARK_TASKS)
+    return [task for task in BENCHMARK_TASKS if task.get("category") == category_key]
 
 
 def format_evaluation_markdown(scenarios: list[dict[str, Any]] | None = None) -> str:

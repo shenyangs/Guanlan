@@ -2,6 +2,8 @@
 """Tests for P2/P3 service, plugin, and evaluation surfaces."""
 
 import json
+import sys
+from unittest.mock import patch
 
 from guanlan import evaluation, plugins, serve
 from guanlan.config import Config
@@ -72,6 +74,34 @@ def test_serve_dispatch_hotnews_compact_brief(monkeypatch):
     assert status == 200
     assert body["items"][0]["evidence_role"] == "fresh_trend_signal"
     assert body["brief"]["sample_count"] == 1
+
+
+def test_serve_token_auth_helper_accepts_header_or_bearer():
+    assert serve.is_authorized_request({}, "") is True
+    assert serve.is_authorized_request({"X-Guanlan-Token": "secret"}, "secret") is True
+    assert serve.is_authorized_request({"Authorization": "Bearer secret"}, "secret") is True
+    assert serve.is_authorized_request({"Authorization": "Bearer wrong"}, "secret") is False
+
+
+def test_benchmark_task_pool_has_realistic_category_coverage():
+    tasks = evaluation.list_benchmark_tasks()
+    categories = {task["category"] for task in tasks}
+
+    assert len(tasks) >= 40
+    assert {"policy", "local", "ecommerce", "tech", "reputation", "hot", "academic", "local_llm"} <= categories
+    assert len(evaluation.list_benchmark_tasks(category="policy")) == 5
+
+
+def test_eval_tasks_cli_outputs_json(capsys):
+    from guanlan.cli import main
+
+    with patch.object(sys, "argv", ["guanlan", "eval", "tasks", "--category", "policy", "--format", "json"]):
+        main()
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert len(payload) == 5
+    assert payload[0]["category"] == "policy"
 
 
 def test_plugin_registry_registers_readonly_backend(tmp_path):

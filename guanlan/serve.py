@@ -7,7 +7,9 @@ to 127.0.0.1 and exposes only search/read/research/hotnews/feeds/archive lookup.
 
 from __future__ import annotations
 
+import hmac
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -172,20 +174,27 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
         return 400, {"error": "bad_request", "message": str(exc)}
 
 
-def run_server(host: str = "127.0.0.1", port: int = 8765) -> None:
+def run_server(host: str = "127.0.0.1", port: int = 8765, token: str = "") -> None:
     """Run the read-only local HTTP server."""
     server = ThreadingHTTPServer((host, int(port)), _GuanlanHandler)
+    server.guanlan_token = token or os.environ.get("GUANLAN_SERVE_TOKEN", "")
     print(f"观澜只读服务启动: http://{host}:{port}")
     print("Endpoints: /health, /sources, /route, /search, /research, /read, /hotnews, /feeds, /archive/search")
+    if server.guanlan_token:
+        print("Access: token required via Authorization: Bearer <token> or X-Guanlan-Token")
     server.serve_forever()
 
 
 class _GuanlanHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
+        if not self._check_auth():
+            return
         status, body = dispatch_request("GET", self.path)
         self._write_json(status, body)
 
     def do_POST(self) -> None:  # noqa: N802
+        if not self._check_auth():
+            return
         length = _int(self.headers.get("content-length"), 0)
         raw = self.rfile.read(length).decode("utf-8", errors="replace") if length else "{}"
         try:
@@ -201,6 +210,21 @@ class _GuanlanHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         return
+
+    def _check_auth(self) -> bool:
+        token = str(getattr(self.server, "guanlan_token", "") or "")
+        if not token:
+            return True
+        if is_authorized_request(self.headers, token):
+            return True
+        self._write_json(
+            401,
+            {
+                "error": "unauthorized",
+                "message": "Missing or invalid Guanlan serve token.",
+            },
+        )
+        return False
 
     def _write_json(self, status: int, body: dict[str, Any]) -> None:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -227,3 +251,15 @@ def _optional_int(value: Any) -> int | None:
 
 def _bool(value: Any) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def is_authorized_request(headers: Any, token: str) -> bool:
+    """Return whether HTTP headers satisfy the optional serve token."""
+    expected = str(token or "")
+    if not expected:
+        return True
+    provided = str(headers.get("x-guanlan-token", "") or headers.get("X-Guanlan-Token", "") or "")
+    auth = str(headers.get("authorization", "") or headers.get("Authorization", "") or "")
+    if auth.lower().startswith("bearer "):
+        provided = auth[7:].strip()
+    return bool(provided) and hmac.compare_digest(provided, expected)
