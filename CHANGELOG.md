@@ -8,6 +8,23 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.3.5 - 2026-05-02
+
+### Added
+
+- 新增 `docs/benchmark.md`，把离线契约评测、40 个真实任务池和 live/manual benchmark 方法拆开说明。
+- 新增运行时契约测试，直接覆盖 search result、research packet 和 archive/RAG 输出字段，防止文档契约与实际 JSON 漂移。
+- `archive stats --quality` 新增本地库阅读质量、入库审计和 RAG-ready 概览；`archive export --min-quality` 支持显式过滤低阅读质量材料。
+- `guanlan serve --print-token` 可只生成只读 HTTP token；`--token auto` 可启动前自动生成 token。
+- 新增 `guanlan quality live-smoke`，作为可选外网探针观察网络/源站波动；默认不阻断发版，`--strict` 才按失败退出。
+
+### Changed
+
+- `eval tasks` 的 Markdown 输出改为共享格式器，便于 README、CLI 和后续报告保持一致。
+- source registry 增加 HTTP `/sources` 与 feeds 模块一致性测试，继续以中央信源矩阵作为事实来源，但不做高风险重构。
+- README 和中文文档入口补充 benchmark、live smoke、Archive 质量视图和只读 HTTP token 工作流。
+- 官网展示版本号同步到 `0.3.5`。
+
 ## v0.3.4 - 2026-05-02
 
 ### Added

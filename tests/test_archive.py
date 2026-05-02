@@ -179,6 +179,58 @@ def test_archive_export_filters_and_adds_rag_fields(tmp_path):
     assert records[0]["rag"]["topic"] == "policy"
 
 
+def test_archive_export_can_filter_by_read_quality(tmp_path):
+    db = tmp_path / "archive.db"
+    archive.add_document(
+        "https://good.example/a",
+        "# 高质量正文\n" + "正文内容。" * 80,
+        metadata={"read_quality": {"label": "clean", "score": 88}},
+        db_path=db,
+    )
+    archive.add_document(
+        "https://noisy.example/b",
+        "# 噪声页面\n登录 注册 首页",
+        metadata={"read_quality": {"label": "noisy", "score": 35}},
+        db_path=db,
+    )
+
+    records = archive.export_documents(db_path=db, min_quality=60)
+
+    assert len(records) == 1
+    assert records[0]["domain"] == "good.example"
+
+
+def test_archive_quality_summary_and_cli_stats(tmp_path, capsys):
+    from guanlan.cli import main
+
+    db = tmp_path / "archive.db"
+    archive.add_document(
+        "https://good.example/a",
+        "# 高质量正文\n" + "正文内容。" * 80,
+        metadata={"read_quality": {"label": "clean", "score": 88}, "ingest_audit": {"decision": "keep"}},
+        db_path=db,
+    )
+    archive.add_document(
+        "https://noisy.example/b",
+        "# 噪声页面\n登录 注册 首页",
+        metadata={"read_quality": {"label": "noisy", "score": 35}},
+        db_path=db,
+    )
+
+    summary = archive.archive_quality_summary(db_path=db, rag_min_quality=60)
+    assert summary["documents"] == 2
+    assert summary["rag_ready"] == 1
+    assert summary["low_quality"] == 1
+    assert summary["with_ingest_audit"] == 1
+
+    with patch("sys.argv", ["guanlan", "archive", "stats", "--quality", "--db", str(db)]):
+        main()
+    captured = capsys.readouterr()
+
+    assert "质量概览" in captured.out
+    assert "RAG-ready 文档" in captured.out
+
+
 def test_archive_cli_export_rag_jsonl(tmp_path, capsys):
     from guanlan.cli import main
 

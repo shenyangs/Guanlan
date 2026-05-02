@@ -12,6 +12,7 @@ Usage:
 import argparse
 import json
 import os
+import secrets
 import sys
 import time
 
@@ -463,6 +464,10 @@ def main():
     p_archive_stats = archive_sub.add_parser("stats", help="Show archive counts and domain distribution")
     p_archive_stats.add_argument("--json", action="store_true",
                                  help="Print normalized JSON instead of Markdown")
+    p_archive_stats.add_argument("--quality", action="store_true",
+                                 help="Include read-quality and RAG-readiness summary")
+    p_archive_stats.add_argument("--rag-min-quality", type=int, default=60,
+                                 help="Quality score threshold used for RAG-ready stats")
     p_archive_stats.add_argument("--db", default="", help="Optional archive database path")
 
     p_archive_inspect = archive_sub.add_parser("inspect", help="Inspect one archived document by id or URL")
@@ -486,6 +491,8 @@ def main():
     p_archive_export.add_argument("--domain", default="", help="Filter export by domain")
     p_archive_export.add_argument("--source-type", default="", help="Filter export by archived source_type metadata")
     p_archive_export.add_argument("--topic", default="", help="Filter export by archived topic metadata")
+    p_archive_export.add_argument("--min-quality", type=int, default=None,
+                                  help="Only export records whose read_quality score is at least this value")
     p_archive_export.add_argument("--db", default="", help="Optional archive database path")
 
     p_archive_ingest = archive_sub.add_parser(
@@ -510,6 +517,8 @@ def main():
     p_serve.add_argument("--port", type=int, default=8765, help="Port to listen on")
     p_serve.add_argument("--token", default="",
                          help="Optional read-only HTTP token; can also use GUANLAN_SERVE_TOKEN")
+    p_serve.add_argument("--print-token", action="store_true",
+                         help="Print a random serve token and exit")
 
     # ── plugin ──
     p_plugin = sub.add_parser("plugin", help="Manage read-only search backend plugins")
@@ -565,6 +574,12 @@ def main():
     p_quality_robustness.add_argument("--limit", type=int, default=50,
                                       help="Live probe result limit")
     p_quality_robustness.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
+    p_quality_live = quality_sub.add_parser("live-smoke", help="Run optional live network smoke probes")
+    p_quality_live.add_argument("--limit", type=int, default=5,
+                                help="Live probe result limit")
+    p_quality_live.add_argument("--strict", action="store_true",
+                                help="Exit non-zero if live smoke reports failures")
+    p_quality_live.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
 
     # ── mcp ──
     p_mcp = sub.add_parser("mcp", help="MCP helpers for agent integration")
@@ -1540,6 +1555,7 @@ def _cmd_archive(args):
     from guanlan.archive import (
         add_url,
         add_urls,
+        archive_quality_summary,
         archive_stats,
         export_documents,
         format_archive_context,
@@ -1622,6 +1638,11 @@ def _cmd_archive(args):
 
         if command == "stats":
             stats = archive_stats(db_path=db_path)
+            if args.quality:
+                stats["quality"] = archive_quality_summary(
+                    db_path=db_path,
+                    rag_min_quality=max(args.rag_min_quality, 0),
+                )
             if args.json:
                 print(json.dumps(stats, ensure_ascii=False, indent=2))
             else:
@@ -1663,6 +1684,7 @@ def _cmd_archive(args):
                 domain=args.domain or None,
                 source_type=args.source_type or None,
                 topic=args.topic or None,
+                min_quality=args.min_quality,
             )
             if args.format == "markdown":
                 for item in records:
@@ -1737,7 +1759,13 @@ def _cmd_mcp(args):
 
 def _cmd_serve(args):
     """Run local read-only HTTP service."""
+    if args.print_token:
+        print(secrets.token_urlsafe(24))
+        return
     token = args.token or os.environ.get("GUANLAN_SERVE_TOKEN", "")
+    if token == "auto":
+        token = secrets.token_urlsafe(24)
+        print(f"Generated GUANLAN_SERVE_TOKEN: {token}", file=sys.stderr)
     if args.host not in {"127.0.0.1", "localhost", "::1"} and not token:
         print(
             "[!] 默认建议只监听 127.0.0.1；当前未设置 --token / GUANLAN_SERVE_TOKEN。服务虽只读，但可能暴露本地 archive 内容和搜索行为。",
@@ -1777,6 +1805,7 @@ def _cmd_eval(args):
     from guanlan.evaluation import (
         format_benchmark_jsonl,
         format_benchmark_markdown,
+        format_benchmark_tasks_markdown,
         format_evaluation_jsonl,
         format_evaluation_markdown,
         list_benchmark_tasks,
@@ -1807,11 +1836,7 @@ def _cmd_eval(args):
             for task in tasks:
                 print(json.dumps(task, ensure_ascii=False, sort_keys=True))
         else:
-            print("# 观澜真实任务评测池")
-            print()
-            print("这些任务用于后续 live/manual benchmark，不代表 quick gate 已经联网验证。")
-            for task in tasks:
-                print(f"- [{task.get('category')}] {task.get('id')}: {task.get('query')} ({task.get('expected_source_family')})")
+            print(format_benchmark_tasks_markdown(tasks))
         return
     scenarios = list_evaluation_scenarios()
     if args.format == "json":
@@ -1838,9 +1863,24 @@ def _cmd_quality(args):
     )
 
     command = getattr(args, "quality_command", None)
-    if command not in {"run", "coverage", "regression", "robustness"}:
-        print("Error: quality command is required: run, coverage, regression, or robustness", file=sys.stderr)
+    if command not in {"run", "coverage", "regression", "robustness", "live-smoke"}:
+        print("Error: quality command is required: run, coverage, regression, robustness, or live-smoke", file=sys.stderr)
         sys.exit(2)
+    if command == "live-smoke":
+        report = run_quality_checks(mode="live", limit=max(args.limit, 1), coverage=False)
+        report["contract"] = {
+            "principle": "live-smoke 是可选外网探针，用来发现网络/源站/后端波动；默认不阻断发版，--strict 才按失败退出。",
+            "blocking": bool(args.strict),
+        }
+        if args.format == "json":
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        elif args.format == "jsonl":
+            print(format_quality_jsonl(report))
+        else:
+            print(format_quality_report(report))
+        if args.strict and report.get("summary", {}).get("fail", 0):
+            sys.exit(1)
+        return
     if command == "coverage":
         report = run_coverage_checks(mode=args.mode, limit=max(args.limit, 1))
         if args.format == "json":

@@ -3,6 +3,7 @@
 
 from guanlan import source_registry
 from guanlan.channel_catalog import get_channel_metadata
+from guanlan.serve import dispatch_request
 
 
 def test_source_matrix_marks_native_and_optional_boundaries():
@@ -55,3 +56,19 @@ def test_hotnews_registry_and_channel_catalog_keep_same_reality_boundary():
     assert hotnews["newsnow:thepaper"]["backend"] == "optional"
     assert "zhihu 为实验源" in channel["expectation"]
     assert channel["stability"] == "best-effort"
+
+
+def test_http_sources_endpoint_uses_central_registry():
+    status, body = dispatch_request("GET", "/sources?surface=hotnews")
+    registry = source_registry.list_hotnews_sources()
+
+    assert status == 200
+    assert body["sources"] == registry
+    assert body["sources"]["zhihu"]["status"] == "experimental"
+
+
+def test_feeds_module_uses_registry_feed_catalog():
+    from guanlan import feeds
+
+    assert feeds.list_feed_sources() == source_registry.list_feed_sources()
+    assert feeds.FEED_SOURCE_CATALOG == source_registry.list_feed_sources()

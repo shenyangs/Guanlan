@@ -183,6 +183,28 @@ def format_evaluation_jsonl(scenarios: list[dict[str, Any]] | None = None) -> st
     return "\n".join(json.dumps(item, ensure_ascii=False, sort_keys=True) for item in (scenarios or EVALUATION_SCENARIOS))
 
 
+def format_benchmark_tasks_markdown(tasks: list[dict[str, Any]] | None = None) -> str:
+    """Render live/manual benchmark task seeds as a compact Markdown plan."""
+    rows = tasks or BENCHMARK_TASKS
+    categories: dict[str, list[dict[str, Any]]] = {}
+    for task in rows:
+        categories.setdefault(str(task.get("category") or "general"), []).append(task)
+    lines = [
+        "# 观澜真实任务评测池",
+        "",
+        "这些任务用于 live/manual benchmark，不代表 quick gate 已经联网验证。",
+        "评测时应比较普通搜索、`guanlan search`、`guanlan route + research` 三组输出。",
+    ]
+    for category in sorted(categories):
+        lines.extend(["", f"## {category}"])
+        for task in categories[category]:
+            lines.append(
+                f"- {task.get('id')}: {task.get('query')} "
+                f"(expected={task.get('expected_source_family')})"
+            )
+    return "\n".join(lines)
+
+
 def run_benchmark(mode: str = "quick", limit: int = 50) -> dict[str, Any]:
     """Run a deterministic benchmark over built-in scenarios.
 

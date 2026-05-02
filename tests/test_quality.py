@@ -92,3 +92,22 @@ def test_quality_cli_robustness_outputs_json(capsys):
     assert payload["mode"] == "quick"
     assert payload["summary"]["fail"] == 0
     assert "must_explain" in payload["contract"]
+
+
+def test_quality_cli_live_smoke_is_non_blocking_by_default(capsys):
+    from guanlan.cli import main
+
+    fake_report = {
+        "mode": "live",
+        "summary": {"total": 1, "pass": 0, "warn": 0, "fail": 1, "score": 0},
+        "checks": [{"id": "live_timeout", "status": "fail", "message": "upstream timeout"}],
+    }
+    with patch("guanlan.quality.run_quality_checks", return_value=fake_report):
+        with patch("sys.argv", ["guanlan", "quality", "live-smoke", "--format", "json"]):
+            main()
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert payload["mode"] == "live"
+    assert payload["contract"]["blocking"] is False
+    assert payload["summary"]["fail"] == 1

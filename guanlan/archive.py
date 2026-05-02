@@ -493,6 +493,7 @@ def export_documents(
     domain: str | None = None,
     source_type: str | None = None,
     topic: str | None = None,
+    min_quality: int | None = None,
 ) -> list[dict[str, Any]]:
     """Return all archive documents for JSONL/Markdown export."""
     with _connect(db_path) as conn:
@@ -500,7 +501,13 @@ def export_documents(
     records = [_row_to_record(row, include_content=True, rag=True) for row in rows]
     return [
         record for record in records
-        if _export_filter(record, domain=domain, source_type=source_type, topic=topic)
+        if _export_filter(
+            record,
+            domain=domain,
+            source_type=source_type,
+            topic=topic,
+            min_quality=min_quality,
+        )
     ]
 
 
@@ -543,6 +550,51 @@ def archive_stats(db_path: str | Path | None = None) -> dict[str, Any]:
             "semantic": "not-vector",
         },
         "domains": [{"domain": row["domain"], "count": int(row["count"])} for row in domains],
+    }
+
+
+def archive_quality_summary(
+    db_path: str | Path | None = None,
+    *,
+    rag_min_quality: int = 60,
+) -> dict[str, Any]:
+    """Summarize archive read quality and RAG readiness without changing schema."""
+    records = export_documents(db_path=db_path)
+    labels: dict[str, int] = {}
+    scores: list[float] = []
+    with_quality = 0
+    with_ingest_audit = 0
+    low_quality = 0
+    rag_ready = 0
+    for record in records:
+        metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+        quality = metadata.get("read_quality") if isinstance(metadata.get("read_quality"), dict) else {}
+        audit = metadata.get("ingest_audit") if isinstance(metadata.get("ingest_audit"), dict) else {}
+        score = _quality_score(quality)
+        if quality:
+            with_quality += 1
+            label = str(quality.get("label") or quality.get("status") or "unknown")
+            labels[label] = labels.get(label, 0) + 1
+        if audit:
+            with_ingest_audit += 1
+        if score is not None:
+            scores.append(score)
+            if score < rag_min_quality:
+                low_quality += 1
+        content = str(record.get("content") or "")
+        if content.strip() and record.get("url") and (score is None or score >= rag_min_quality):
+            rag_ready += 1
+    average = round(sum(scores) / len(scores), 1) if scores else 0
+    return {
+        "documents": len(records),
+        "with_read_quality": with_quality,
+        "with_ingest_audit": with_ingest_audit,
+        "average_read_quality": average,
+        "labels": labels,
+        "low_quality": low_quality,
+        "rag_ready": rag_ready,
+        "rag_min_quality": rag_min_quality,
+        "principle": "Archive 先保留来源身份和正文质量，再进入 RAG；低分材料不默认丢弃，但可在导出时过滤。",
     }
 
 
@@ -591,6 +643,22 @@ def format_archive_stats(stats: dict[str, Any]) -> str:
                 f"- 语义边界: {index.get('semantic', '')}",
             ]
         )
+    quality = stats.get("quality") if isinstance(stats.get("quality"), dict) else {}
+    if quality:
+        lines.extend(
+            [
+                "",
+                "## 质量概览",
+                f"- 有阅读质量元数据: {quality.get('with_read_quality', 0)} / {quality.get('documents', 0)}",
+                f"- 平均阅读质量: {quality.get('average_read_quality', 0)}",
+                f"- RAG-ready 文档: {quality.get('rag_ready', 0)}",
+                f"- 低于导出阈值: {quality.get('low_quality', 0)}",
+                f"- 原则: {quality.get('principle', '')}",
+            ]
+        )
+        labels = quality.get("labels") if isinstance(quality.get("labels"), dict) else {}
+        if labels:
+            lines.append("- 质量标签: " + ", ".join(f"{key}={value}" for key, value in sorted(labels.items())))
     domains = stats.get("domains", [])
     if domains:
         lines.extend(["", "## 域名分布"])
@@ -893,6 +961,7 @@ def _export_filter(
     domain: str | None = None,
     source_type: str | None = None,
     topic: str | None = None,
+    min_quality: int | None = None,
 ) -> bool:
     metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
     if domain and domain.lower() not in str(record.get("domain", "")).lower():
@@ -901,7 +970,25 @@ def _export_filter(
         return False
     if topic and topic.lower() not in str(metadata.get("topic_key", "")).lower():
         return False
+    if min_quality is not None:
+        quality = metadata.get("read_quality") if isinstance(metadata.get("read_quality"), dict) else {}
+        score = _quality_score(quality)
+        if score is None or score < max(min_quality, 0):
+            return False
     return True
+
+
+def _quality_score(quality: dict[str, Any]) -> float | None:
+    if not isinstance(quality, dict):
+        return None
+    for key in ("score", "quality_score", "readability_score"):
+        if key not in quality:
+            continue
+        try:
+            return float(quality[key])
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def _normalize_url(url: str) -> str:

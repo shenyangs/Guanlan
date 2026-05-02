@@ -212,7 +212,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.3.4`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.3.5`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -443,9 +443,12 @@ guanlan configure --from-browser chrome
 | `guanlan archive search "关键词" --trace` | 展示命中词、命中字段、排序分数和检索边界。 |
 | `guanlan archive inspect 1` | 查看单条归档的正文、元数据和内容诊断。 |
 | `guanlan archive reindex` | 重建 SQLite FTS 索引，修复索引/正文不一致。 |
+| `guanlan archive stats --quality` | 查看本地库阅读质量、入库审计和 RAG-ready 概览。 |
 | `guanlan archive export --format jsonl --source-type 政府` | 按 domain/source_type/topic 导出 RAG 友好 JSONL。 |
+| `guanlan archive export --format rag-jsonl --min-quality 60` | 只导出达到阅读质量阈值的 RAG 材料。 |
 | `guanlan archive export --format rag-jsonl` | 只导出 RAG 载入常用字段：id/text/source/title/domain/source_type/topic。 |
 | `guanlan serve --host 127.0.0.1 --port 8765` | 启动本地只读 HTTP 服务。 |
+| `guanlan serve --print-token` | 生成一个只读 HTTP token，便于安全暴露给本机工作流。 |
 | `guanlan serve --host 0.0.0.0 --token "$TOKEN"` | 如必须暴露给局域网/服务器，启用只读 token 校验。 |
 | `guanlan plugin template my_company_api` | 生成企业内部只读搜索 connector 模板。 |
 | `guanlan eval scenarios --format jsonl` | 输出中文语境搜索质量评估集。 |
@@ -455,6 +458,7 @@ guanlan configure --from-browser chrome
 | `guanlan quality coverage` | 发版前检查默认结果池和证据字段没有缩水。 |
 | `guanlan quality regression` | 发版前检查结果池、来源多样性、RSS 兜底、正文抽取和 advisor 动态性没有退化。 |
 | `guanlan quality robustness` | 更深的稳健性闸门，检查 Archive 入库审计、Agent 字段契约、空结果解释和发布脚本完整性。 |
+| `guanlan quality live-smoke --limit 5` | 可选外网 smoke，用于观察源站/网络波动；默认不阻断发版。 |
 | `scripts/release_gate.sh` | 维护者发版前一键跑静态检查、全量测试、质量闸门、构建、安装 smoke 和版本核对。 |
 | `guanlan hotnews today --limit 50` | 拉取原生多源中文热榜。 |
 | `guanlan profile set china` | 切换到中文场景画像。 |
@@ -815,6 +819,7 @@ guanlan quality regression
 guanlan quality robustness
 guanlan eval benchmark
 guanlan eval tasks --format jsonl
+guanlan quality live-smoke --limit 5
 scripts/release_gate.sh
 guanlan quality run --mode live --limit 5
 ```
@@ -830,6 +835,8 @@ guanlan quality run --mode live --limit 5
 `eval benchmark` 是更偏“观澜契约”的离线评测：不依赖外网，固定检查政策、口碑、热点、技术、学术、地方、电商和本地模型场景是否被路由到合适的意图、scope、证据角色和足够大的候选池。
 
 `eval tasks` 是真实中文研究任务池骨架，覆盖政策、地方、电商、技术、口碑、热点、学术和本地模型联网。它先用于人工/半自动评测，不替代 `eval benchmark` 的离线发布闸门。
+
+如果要做更接近真实使用的横向比较，可以参考 [Benchmark 说明](docs/benchmark.md)：同一任务分别跑普通搜索、`guanlan search --trace`、`guanlan route + research`，再看是否命中正确信源家族、是否保留来源身份、证据角色、候选池深度和漂移控制。观澜不是只比“搜到几条”，更要比 Agent 最后拿到的材料是否足够稳、足够明源。
 
 ### 18. 安全检查和授权边界
 
@@ -916,6 +923,7 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 | [本地大模型联网指南](docs/local-llm.md) | Ollama、LM Studio、Open WebUI 等无联网模型如何接入观澜。 |
 | [Agent 使用说明](docs/agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜和安全路由规则。 |
 | [Agent 输出契约](docs/contract.md) | 给 Agent/MCP/HTTP/RAG 集成方看的稳定字段与边界承诺。 |
+| [Benchmark 说明](docs/benchmark.md) | 离线契约评测、真实任务池和 live/manual benchmark 方法。 |
 | [安装指南](docs/install.md) | 给 Agent 执行的安装流程与边界。 |
 | [更新指南](docs/update.md) | 更新观澜与依赖工具。 |
 | [排障手册](docs/troubleshooting.md) | 网络、Cookie、钥匙串、平台异常排查。 |

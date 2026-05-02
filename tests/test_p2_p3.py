@@ -83,6 +83,17 @@ def test_serve_token_auth_helper_accepts_header_or_bearer():
     assert serve.is_authorized_request({"Authorization": "Bearer wrong"}, "secret") is False
 
 
+def test_serve_cli_can_print_random_token(capsys):
+    from guanlan.cli import main
+
+    with patch.object(sys, "argv", ["guanlan", "serve", "--print-token"]):
+        main()
+    captured = capsys.readouterr()
+
+    assert len(captured.out.strip()) >= 24
+    assert not captured.err
+
+
 def test_benchmark_task_pool_has_realistic_category_coverage():
     tasks = evaluation.list_benchmark_tasks()
     categories = {task["category"] for task in tasks}
@@ -102,6 +113,17 @@ def test_eval_tasks_cli_outputs_json(capsys):
 
     assert len(payload) == 5
     assert payload[0]["category"] == "policy"
+
+
+def test_eval_tasks_markdown_uses_shared_formatter(capsys):
+    from guanlan.cli import main
+
+    with patch.object(sys, "argv", ["guanlan", "eval", "tasks", "--category", "tech"]):
+        main()
+    captured = capsys.readouterr()
+
+    assert "观澜真实任务评测池" in captured.out
+    assert "## tech" in captured.out
 
 
 def test_plugin_registry_registers_readonly_backend(tmp_path):

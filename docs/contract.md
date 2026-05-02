@@ -66,6 +66,8 @@ This document records the fields Guanlan treats as stable for downstream agents,
 | `search_trace` | Matched terms, hit fields, retrieval boundary, and `semantic=not-vector` when `--trace` is used. |
 | `rag` | RAG-friendly export fields: `id`, `text`, `source`, `title`, `domain`, `source_type`, `topic`, `updated_at`. |
 
+`guanlan archive stats --quality` should expose aggregate read-quality and RAG-readiness signals. `archive export --min-quality N` may filter noisy records for RAG import, but filtering is explicit and should not silently delete local archive rows.
+
 ## Hotnews And Feeds Contract
 
 `hotnews` and `feeds` are public read-only discovery surfaces. They should preserve:
@@ -100,3 +102,5 @@ Stable MCP tools include:
 - `guanlan_status`
 
 The local HTTP service defaults to `127.0.0.1`. If exposed beyond localhost, use `--token` or `GUANLAN_SERVE_TOKEN` and treat local archive contents as private user data.
+
+Use `guanlan serve --print-token` to generate a local token without starting the service. `--token auto` may generate and print a token before starting; clients still authenticate with `Authorization: Bearer <token>` or `X-Guanlan-Token`.
