@@ -1739,6 +1739,86 @@ def test_search_web_parses_bing_html(monkeypatch):
     assert results[0]["url"] == "https://example.com/a"
 
 
+def test_bing_backend_uses_locale_and_safe_search(monkeypatch):
+    html = """
+    <ol id="b_results">
+      <li class="b_algo"><h2><a href="https://example.com/a">固态电池量产时间表</a></h2>
+      <p>固态电池 量产 时间表</p></li>
+    </ol>
+    """
+    seen = {}
+
+    def fake_urlopen(req, timeout=None):
+        seen["url"] = req.full_url
+        seen["accept_language"] = req.headers.get("Accept-language") or req.headers.get("Accept-Language")
+        return _FakeResponse(html)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    results = webtools.search_web("固态电池量产时间表", backend="bing", limit=5)
+
+    assert results[0]["title"] == "固态电池量产时间表"
+    assert "safeSearch=Strict" in seen["url"]
+    assert "mkt=zh-CN" in seen["url"]
+    assert "setLang=zh-Hans" in seen["url"]
+    assert "cc=CN" in seen["url"]
+    assert "zh-CN" in seen["accept_language"]
+
+
+def test_explicit_bing_low_relevance_batch_is_not_returned(monkeypatch):
+    def noisy_bing(query, limit=10):
+        return [
+            webtools.SearchResult(
+                title="什么是固本培元？",
+                url="https://example.com/guben",
+                snippet="中医养生内容",
+                source="bing",
+            ),
+            webtools.SearchResult(
+                title="胆固醇 HDL LDL 都是什么？",
+                url="https://health.example.com/cholesterol",
+                snippet="胆固醇 健康科普",
+                source="bing",
+            ),
+            webtools.SearchResult(
+                title="如何评价仆固怀恩？",
+                url="https://history.example.com/pugu",
+                snippet="历史人物介绍",
+                source="bing",
+            ),
+        ]
+
+    monkeypatch.setattr(webtools, "_search_bing", noisy_bing)
+
+    results = webtools.search_web("固态电池量产时间表", backend="bing", limit=10, trace=True)
+    diagnostics = results.diagnostics["backend_diagnostics"]
+
+    assert results == []
+    assert diagnostics[0]["status"] == "low_relevance"
+    assert "query_terms_missing" in diagnostics[0]["quality_gate"]["reason"]
+
+
+def test_explicit_bing_unsafe_batch_is_filtered(monkeypatch):
+    def unsafe_bing(query, limit=10):
+        return [
+            webtools.SearchResult(
+                title="Today's selection - XNXX.COM",
+                url="https://www.xnxx.com/",
+                snippet="Free Porn, Sex, Tube Videos, XXX Pics",
+                source="bing",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_bing", unsafe_bing)
+
+    results = webtools.search_web("宁德时代 固态电池 进展", backend="bing", limit=5, trace=True)
+    diagnostics = results.diagnostics["backend_diagnostics"]
+
+    assert results == []
+    assert diagnostics[0]["status"] == "unsafe_filtered"
+    assert diagnostics[0]["safety_filter"]["dropped_count"] == 1
+
+
 def test_search_web_parses_bing_html_with_extra_li_attributes(monkeypatch):
     html = """
     <ol id="b_results">

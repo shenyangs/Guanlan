@@ -92,9 +92,48 @@ _SEARCH_BLOCK_MARKERS: dict[str, tuple[str, ...]] = {
 }
 
 _LOW_RELEVANCE_RESULT_STATUS = "low_relevance"
+_UNSAFE_RESULT_STATUS = "unsafe_filtered"
 _KNOWN_LOW_VALUE_DOMAINS = {
     "support.microsoft.com",
 }
+_UNSAFE_RESULT_DOMAINS = {
+    "xnxx.com",
+    "xvideos.com",
+    "pornhub.com",
+    "youporn.com",
+    "redtube.com",
+}
+_UNSAFE_RESULT_TERMS = (
+    "free porn",
+    "porn videos",
+    "sex videos",
+    "xxx",
+    "成人",
+    "色情",
+)
+_CJK_RELEVANCE_PHRASES = (
+    "固态电池",
+    "全固态电池",
+    "低空经济",
+    "新质生产力",
+    "人工智能",
+    "数据要素",
+    "人形机器人",
+    "具身智能",
+    "宁德时代",
+    "量产",
+    "时间表",
+    "政策",
+    "补贴",
+    "进展",
+    "财报",
+    "公告",
+    "风险",
+    "口碑",
+    "评价",
+    "热榜",
+    "热点",
+)
 _NETWORK_HEALTH_CACHE: dict[str, dict[str, Any]] = {}
 _VALID_NETWORK_MODES = {"auto", "current", "direct", "proxy"}
 _NETWORK_PROBLEM_STATUSES = {"network_unreachable", "proxy_error", "network_changed"}
@@ -1444,13 +1483,23 @@ def search_web(
                     attempt["note"] = (
                         "scoped query returned no results; retried the original query and kept scope-aware ranking."
                     )
+            raw_result_count = len(batch)
+            safety_filter = _filter_unsafe_search_results(batch)
+            if safety_filter["dropped_count"]:
+                attempt["safety_filter"] = safety_filter
+                batch = safety_filter["kept_results"]
+                attempt["raw_result_count"] = raw_result_count
             attempt["result_count"] = len(batch)
+            if raw_result_count and not batch and safety_filter["dropped_count"]:
+                attempt["status"] = _UNSAFE_RESULT_STATUS
+                attempt["note"] = "该后端候选触发成人/不安全内容过滤，已拒绝返回这批结果。"
+                continue
             if network_attempts:
                 attempt["network_attempts"] = network_attempts
                 attempt["network_mode"] = _first_ok_network_mode(network_attempts)
             batch_quality = _assess_backend_batch_quality(original_query, batch, quality)
             attempt["quality_gate"] = batch_quality
-            if backend == "auto" and batch and not batch_quality["usable"]:
+            if batch and not batch_quality["usable"] and (backend == "auto" or name == "bing"):
                 attempt["status"] = _LOW_RELEVANCE_RESULT_STATUS
                 attempt["note"] = str(batch_quality["note"])
                 continue
@@ -2295,6 +2344,7 @@ def _recovery_needed(
         "no_results",
         "no_results_or_parser_miss",
         _LOW_RELEVANCE_RESULT_STATUS,
+        _UNSAFE_RESULT_STATUS,
         "blocked",
         "error",
         *_NETWORK_PROBLEM_STATUSES,
@@ -2530,8 +2580,12 @@ def _assess_backend_batch_quality(
     reasons: list[str] = []
     if top_domain in _KNOWN_LOW_VALUE_DOMAINS and not _query_mentions_domain(query, top_domain):
         reasons.append(f"known_low_value_domain:{top_domain}")
-    if len(entity_terms) >= 2 and entity_coverage == 0:
+    if len(entity_terms) >= 2 and entity_coverage == 0 and (_contains_cjk(query) or len(batch) >= 3):
         reasons.append("requested_entities_missing")
+    if _contains_cjk(query) and len(terms) >= 3 and term_coverage < 0.5 and len(batch) >= 3:
+        reasons.append("cjk_compound_terms_missing")
+    if len(terms) >= 2 and term_coverage < 0.25 and len(batch) >= 3:
+        reasons.append("query_terms_missing")
     if len(terms) >= 3 and term_coverage == 0 and top_domain_ratio >= 0.8 and len(batch) >= 4:
         reasons.append("single_domain_zero_query_overlap")
 
@@ -2574,8 +2628,22 @@ def _query_relevance_terms(query: str) -> list[str]:
             continue
         if len(term) < 2:
             continue
-        terms.append(term)
+        terms.extend(_expand_relevance_term(term))
     return _unique_keep_order(terms)
+
+
+def _expand_relevance_term(term: str) -> list[str]:
+    if not _contains_cjk(term):
+        return [term]
+    expanded = [phrase for phrase in _CJK_RELEVANCE_PHRASES if phrase in term]
+    if expanded:
+        # Keep the original term when it is short enough to be a meaningful
+        # compound, but avoid making a long unsplit Chinese sentence the only
+        # relevance key.
+        if len(term) <= 8:
+            expanded.insert(0, term)
+        return _unique_keep_order(expanded)
+    return [term]
 
 
 def _query_entity_terms(query: str) -> list[str]:
@@ -2593,6 +2661,40 @@ def _query_entity_terms(query: str) -> list[str]:
 def _result_text_contains(item: SearchResult, term: str) -> bool:
     haystack = _collapse_ws(f"{item.title} {item.snippet} {item.url}").lower()
     return term.lower() in haystack
+
+
+def _filter_unsafe_search_results(batch: list[SearchResult]) -> dict[str, Any]:
+    kept: list[SearchResult] = []
+    dropped: list[dict[str, str]] = []
+    for item in batch:
+        reason = _unsafe_search_result_reason(item)
+        if reason:
+            dropped.append(
+                {
+                    "title": item.title,
+                    "domain": item.domain or _domain(item.url),
+                    "reason": reason,
+                }
+            )
+            continue
+        kept.append(item)
+    return {
+        "kept_results": kept,
+        "dropped_count": len(dropped),
+        "dropped": dropped[:5],
+        "policy": "adult_or_unsafe_search_result_filter",
+    }
+
+
+def _unsafe_search_result_reason(item: SearchResult) -> str:
+    domain = (item.domain or _domain(item.url)).lower().removeprefix("www.")
+    if any(domain == unsafe or domain.endswith("." + unsafe) for unsafe in _UNSAFE_RESULT_DOMAINS):
+        return f"unsafe_domain:{domain}"
+    text = _collapse_ws(f"{item.title} {item.snippet} {item.url}").lower()
+    for term in _UNSAFE_RESULT_TERMS:
+        if term in text:
+            return f"unsafe_term:{term}"
+    return ""
 
 
 def _query_mentions_domain(query: str, domain: str) -> bool:
@@ -2658,6 +2760,7 @@ def _backend_diagnostic_summary(diagnostics: list[dict[str, Any]]) -> dict[str, 
         if item.get("status") in {"no_results", "no_results_or_parser_miss"}
     ]
     low_relevance = [item["backend"] for item in diagnostics if item.get("status") == _LOW_RELEVANCE_RESULT_STATUS]
+    unsafe_filtered = [item["backend"] for item in diagnostics if item.get("status") == _UNSAFE_RESULT_STATUS]
     blocked = [item["backend"] for item in diagnostics if item.get("status") == "blocked"]
     errors = [item["backend"] for item in diagnostics if item.get("status") == "error"]
     network_errors = [item["backend"] for item in diagnostics if item.get("status") in _NETWORK_PROBLEM_STATUSES]
@@ -2666,6 +2769,7 @@ def _backend_diagnostic_summary(diagnostics: list[dict[str, Any]]) -> dict[str, 
         "no_results",
         "no_results_or_parser_miss",
         _LOW_RELEVANCE_RESULT_STATUS,
+        _UNSAFE_RESULT_STATUS,
         "blocked",
         "error",
         *_NETWORK_PROBLEM_STATUSES,
@@ -2683,6 +2787,7 @@ def _backend_diagnostic_summary(diagnostics: list[dict[str, Any]]) -> dict[str, 
         "parser_miss": parser_miss,
         "zero_results": zero_results,
         "low_relevance": low_relevance,
+        "unsafe_filtered": unsafe_filtered,
         "blocked": blocked,
         "network_errors": network_errors,
         "errors": errors,
@@ -2733,6 +2838,7 @@ def build_search_recovery_plan(
     blocked = [str(item.get("backend")) for item in problems if item.get("status") == "blocked"]
     parser_miss = [str(item.get("backend")) for item in problems if item.get("status") == "parser_miss"]
     low_relevance = [str(item.get("backend")) for item in problems if item.get("status") == _LOW_RELEVANCE_RESULT_STATUS]
+    unsafe_filtered = [str(item.get("backend")) for item in problems if item.get("status") == _UNSAFE_RESULT_STATUS]
     network_errors = [str(item.get("backend")) for item in problems if item.get("status") in _NETWORK_PROBLEM_STATUSES]
     errors = [str(item.get("backend")) for item in problems if item.get("status") == "error"]
 
@@ -2743,6 +2849,8 @@ def build_search_recovery_plan(
         guidance.append(f"{', '.join(parser_miss)} 页面可访问但解析器未抓到结果，应视为解析器/模板问题而非资料不存在。")
     if low_relevance:
         guidance.append(f"{', '.join(low_relevance)} 返回了候选但相关性门控未通过，已继续补充后续后端。")
+    if unsafe_filtered:
+        guidance.append(f"{', '.join(unsafe_filtered)} 返回了成人/不安全候选，观澜已过滤并拒绝把它当搜索证据。")
     if network_errors:
         guidance.append(
             f"{', '.join(network_errors)} 当前网络路径不可用或刚发生代理切换；"
@@ -2766,6 +2874,7 @@ def build_search_recovery_plan(
         "blocked_backends": blocked,
         "parser_miss_backends": parser_miss,
         "low_relevance_backends": low_relevance,
+        "unsafe_filtered_backends": unsafe_filtered,
         "network_error_backends": network_errors,
         "error_backends": errors,
         "auto_downgrade": auto_downgrade,
@@ -3088,12 +3197,24 @@ def _search_bing(
     limit: int = DEFAULT_SEARCH_LIMIT,
     network_mode: str = "current",
 ) -> list[SearchResult]:
-    url = "https://www.bing.com/search?" + urllib.parse.urlencode({"q": query, "count": min(max(limit, 1), 50)})
+    params: dict[str, str | int] = {
+        "q": query,
+        "count": min(max(limit, 1), 50),
+        "safeSearch": "Strict",
+    }
+    if _contains_cjk(query):
+        params.update({"mkt": "zh-CN", "setLang": "zh-Hans", "cc": "CN"})
+        accept_language = "zh-CN,zh;q=0.9,en;q=0.6"
+    else:
+        params.update({"mkt": "en-US", "setLang": "en", "cc": "US"})
+        accept_language = "en-US,en;q=0.9"
+    url = "https://www.bing.com/search?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(
         url,
         headers={
             "User-Agent": _UA,
             "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": accept_language,
         },
     )
     with _open_url_with_network(req, timeout=_SEARCH_TIMEOUT, network_mode=network_mode) as resp:
@@ -6283,6 +6404,9 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
                 parts.append(f"{backend_name}={status}")
             elif status == _LOW_RELEVANCE_RESULT_STATUS:
                 parts.append(f"{backend_name}=low_relevance({count})")
+            elif status == _UNSAFE_RESULT_STATUS:
+                raw_count = item.get("raw_result_count", count)
+                parts.append(f"{backend_name}=unsafe_filtered({raw_count})")
             elif status == "error":
                 parts.append(f"{backend_name}=error")
             elif status == "skipped":
@@ -6301,6 +6425,7 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
                     "no_results",
                     "no_results_or_parser_miss",
                     _LOW_RELEVANCE_RESULT_STATUS,
+                    _UNSAFE_RESULT_STATUS,
                     "blocked",
                     "error",
                     *_NETWORK_PROBLEM_STATUSES,
