@@ -10,6 +10,7 @@
 | [更新日志](../CHANGELOG.md) | 查看每个版本的能力变化、边界调整和下一步收口。 |
 | [本地大模型联网指南](local-llm.md) | 让 Ollama、LM Studio、Open WebUI 等无联网模型使用观澜证据包。 |
 | [Agent 使用说明](agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜、社交平台和安全降级规则。 |
+| [Agent Playbook](agent-playbook.md) | 给 Agent 的长期操作记忆：动态工作流、benchmark 纪律、fallback 规则。 |
 | [Agent 输出契约](contract.md) | 给 Agent/MCP/HTTP/RAG 集成方看的稳定字段与边界承诺。 |
 | [Benchmark 说明](benchmark.md) | 离线契约评测、真实任务池和 live/manual benchmark 方法。 |
 | [v0.3.7 Benchmark 报告](benchmark-report-v0.3.7.md) | 对比、时间线、档案、搜索质量 v2 与本地模型工作流的测试口径。 |
@@ -27,6 +28,7 @@
 | [路线图](roadmap.md) | 跟踪后续迭代主线、验收标准和暂不做事项。 |
 | [中文互联网设计](chinese-web-design.md) | 查看产品方案、平台矩阵和阶段路线。 |
 | [质量测试计划](quality-test-plan.md) | 维护者发布前检查搜索、热榜、阅读、趋势和 advisor 质量。 |
+| [Guanlan 优化计划（2026-05）](guanlan-optimization-plan-2026-05.md) | 针对暴力测试暴露问题的修复优先级和验收标准。 |
 | [发布冒烟样本](release-smoke-samples.md) | 第一版发布前或回归测试时复跑真实中文查询样本。 |
 | [发布自动化](release-automation.md) | 维护者配置 PyPI 自动发布与 Homebrew tap 自动更新。 |
 | [依赖锁定](dependency-locking.md) | 维护者更新依赖约束和复现实验环境。 |

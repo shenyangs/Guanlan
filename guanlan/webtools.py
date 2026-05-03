@@ -92,6 +92,68 @@ _QUERY_TOKEN_STOPWORDS = {
     "趋势",
     "融资",
 }
+_QUERY_REWRITE_STOPWORDS = {
+    "怎么",
+    "如何",
+    "以及",
+    "还有",
+    "一下",
+    "这个",
+    "那个",
+    "相关",
+    "情况",
+    "问题",
+    "最新",
+    "最近",
+    "今天",
+    "刚刚",
+    "请问",
+}
+_MEANINGLESS_QUERY_ALLOWLIST = {
+    "gpt",
+    "gpt4",
+    "gpt-4",
+    "gpt5",
+    "gpt-5",
+    "openai",
+    "claude",
+    "gemini",
+    "qwen",
+    "glm",
+    "cve",
+    "react",
+    "vue",
+    "nextjs",
+    "next.js",
+    "python",
+    "java",
+    "golang",
+    "typescript",
+    "javascript",
+    "cpp",
+    "c++",
+    "ios",
+    "android",
+}
+_QUERY_KEYBOARD_RUNS = ("qwertyuiop", "asdfghjkl", "zxcvbnm")
+_LONG_QUERY_KEYPHRASE_HINTS = (
+    "具身智能",
+    "人形机器人",
+    "机器人",
+    "人工智能",
+    "融资",
+    "产品",
+    "商业化",
+    "政策",
+    "供应链",
+    "订单",
+    "客户",
+    "趋势",
+    "GDP",
+    "人口",
+    "股价",
+    "天气",
+)
 _ROBOTICS_AI_TERMS = (
     "具身智能",
     "具身",
@@ -885,6 +947,14 @@ class SearchResult:
         return asdict(self)
 
 
+class SearchResults(list):
+    """List-like search results with diagnostics for empty-result CLI output."""
+
+    def __init__(self, rows=None, *, diagnostics: dict[str, Any] | None = None):
+        super().__init__(rows or [])
+        self.diagnostics = diagnostics or {}
+
+
 class _DuckDuckGoHTMLParser(HTMLParser):
     """Small parser for DuckDuckGo's no-JS HTML results."""
 
@@ -1067,12 +1137,106 @@ def search_web(
         limit=limit,
     )
     quality = _quality_with_route_plan(quality, route_plan.to_dict(), explicit_scope=effective_scope, site=site)
+    query_shape = _analyze_search_query_shape(
+        original_query,
+        effective_scope=effective_scope,
+        quality=quality,
+        route_plan=route_plan.to_dict(),
+    )
     query_strategy = build_query_strategy(
         original_query,
         route_plan=route_plan.to_dict(),
         recency=recency,
         quality=quality,
     )
+    query_strategy["query_shape"] = query_shape
+    if query_shape.get("rejected"):
+        backend_diagnostics = [
+            {
+                "backend": "query_guard",
+                "status": "rejected",
+                "result_count": 0,
+                "error": "",
+                "note": str(query_shape.get("reason") or "query_guard rejected the query"),
+            }
+        ]
+        quality_summary = {
+            "status": "warn",
+            "quality_status": "needs_more_evidence",
+            "intent": quality.get("intent", "general"),
+            "preferred_hit_count": 0,
+            "result_count": 0,
+            "source_type_count": 0,
+            "domain_count": 0,
+            "source_mix": {},
+            "role_counts": {},
+            "missing_roles": [],
+            "warnings": [str(query_shape.get("reason") or "query 信息量不足")],
+            "interpretation": "当前不是观澜搜索能力失败，而是 query 信息量过低或接近乱码；观澜主动拒绝随机返回，以免 Agent 基于噪声证据继续推理。",
+            "guanlan_next_steps": [
+                "先把 query 扩写成更明确的问题，再继续运行 Guanlan。",
+                "补充主题、对象、时间、地区、比较维度或官方/技术/口碑等约束词。",
+            ],
+            "agent_reporting_contract": [
+                "不要把这种情况汇报成“Guanlan 搜索失败”；应表述为“当前 query 信息量不足，观澜主动拒绝随机返回”。",
+            ],
+            "user_facing_status": "当前 query 信息量过低，观澜主动拒绝随机返回；请先补充主题或约束后再搜。",
+            "why_cautious": [str(query_shape.get("reason") or "query 信息量不足")],
+            "agent_workflow_plan": {
+                "tier": "rewrite-first",
+                "minimum_guanlan_tools": 0,
+                "planned_tool_count": 0,
+                "tool_sequence": [],
+                "workflow_kind": "query_rewrite_needed",
+                "summary": "先重写 query，再进入 Guanlan 的正常搜索工作流。",
+                "must_finish_before_fallback": True,
+            },
+            "followup_actions": [],
+            "recommended_actions": [],
+            "agent_execution_policy": {
+                "mode": "rewrite_query_first",
+                "should_run_followups": False,
+                "instruction": "先扩写 query；不要让 Guanlan 或通用 web_search 对低信息量输入随机返回。",
+                "fallback_rule": "扩写 query 前不要 fallback。",
+                "action_count": 0,
+            },
+            "suggestions": [
+                "把 query 扩写成“对象 + 关注点 + 时间/地区/来源类型”的形式后再搜。",
+            ],
+        }
+        shared_diagnostics = _search_shared_diagnostics(
+            original_query=original_query,
+            effective_query=original_query,
+            requested_scope=requested_scope,
+            effective_scope=effective_scope,
+            order=[],
+            cache_meta={"enabled": False, "status": "disabled", "ttl": 0},
+            cache_key="",
+            cluster_threshold=cluster_threshold,
+            recency=recency,
+            route_plan=route_plan.to_dict(),
+            query_strategy=query_strategy,
+            query_shape=query_shape,
+            quality=quality,
+            quality_summary=quality_summary,
+            backend_diagnostics=backend_diagnostics,
+            backend_summary={
+                "ok": [],
+                "parser_miss": [],
+                "zero_results": [],
+                "low_relevance": [],
+                "blocked": [],
+                "errors": [],
+                "fallback_used": False,
+                "primary_backend": "query_guard",
+                "primary_status": "rejected",
+            },
+            backend_recovery={},
+            errors=[],
+        )
+        return SearchResults([], diagnostics=shared_diagnostics)
+    query = str(query_shape.get("backend_query") or original_query)
+    scope_domains: list[str] = []
     if effective_scope:
         from guanlan.search_sources import resolve_scope, scoped_query
 
@@ -1082,6 +1246,7 @@ def search_web(
             domains = _university_search_domains(route_plan.to_dict(), domains)
         if site:
             domains.insert(0, site.strip())
+        scope_domains = _unique_keep_order([domain.strip() for domain in domains if domain.strip()])
         query = scoped_query(
             query,
             domains,
@@ -1090,7 +1255,7 @@ def search_web(
     elif site:
         query = f"site:{site.strip()} {query}"
     query = _apply_recency_query(query, recency)
-    fallback_open_query = _apply_recency_query(original_query, recency)
+    fallback_open_query = _apply_recency_query(str(query_shape.get("fallback_open_query") or original_query), recency)
 
     cache_meta = {
         "enabled": bool(cache_ttl and cache_ttl > 0 and use_cache),
@@ -1218,6 +1383,34 @@ def search_web(
         finally:
             backend_diagnostics.append(attempt)
 
+    if backend in {"auto", "duckduckgo"} and not site and effective_scope != "university":
+        _run_duckduckgo_recovery_pass(
+            results,
+            diagnostics=backend_diagnostics,
+            errors=errors,
+            original_query=original_query,
+            fallback_open_query=fallback_open_query,
+            effective_scope=effective_scope,
+            scope_domains=scope_domains,
+            recency=recency,
+            quality=quality,
+            limit=limit,
+        )
+
+    if backend in {"auto", "duckduckgo"} and not site and effective_scope != "university":
+        _run_multi_entity_fanout_pass(
+            results,
+            diagnostics=backend_diagnostics,
+            errors=errors,
+            original_query=original_query,
+            query_shape=query_shape,
+            effective_scope=effective_scope,
+            scope_domains=scope_domains,
+            recency=recency,
+            quality=quality,
+            limit=limit,
+        )
+
     if not results and effective_scope == "university" and not site and backend in {"auto", "duckduckgo"}:
         fallback_query = _apply_recency_query(original_query, recency)
         attempt = {
@@ -1333,6 +1526,7 @@ def search_web(
                 "query_recency": recency,
                 "route_plan": route_plan.to_dict(),
                 "query_strategy": query_strategy,
+                "query_shape": query_shape,
                 "query_quality": quality,
                 "quality_summary": quality_summary,
                 "backend_diagnostics": backend_diagnostics,
@@ -1347,7 +1541,347 @@ def search_web(
     if not trace:
         for item in output:
             item.pop("score_parts", None)
-    return output
+    shared_diagnostics = _search_shared_diagnostics(
+        original_query=original_query,
+        effective_query=query,
+        requested_scope=requested_scope,
+        effective_scope=effective_scope,
+        order=order,
+        cache_meta=cache_meta,
+        cache_key=cache_key,
+        cluster_threshold=cluster_threshold,
+        recency=recency,
+        route_plan=route_plan.to_dict(),
+        query_strategy=query_strategy,
+        query_shape=query_shape,
+        quality=quality,
+        quality_summary=quality_summary,
+        backend_diagnostics=backend_diagnostics,
+        backend_summary=backend_summary,
+        backend_recovery=backend_recovery,
+        errors=errors,
+    )
+    return SearchResults(output, diagnostics=shared_diagnostics)
+
+
+def _search_shared_diagnostics(
+    *,
+    original_query: str,
+    effective_query: str,
+    requested_scope: str | None,
+    effective_scope: str | None,
+    order: list[str],
+    cache_meta: dict[str, Any],
+    cache_key: str,
+    cluster_threshold: str,
+    recency: dict[str, Any],
+    route_plan: dict[str, Any],
+    query_strategy: dict[str, Any],
+    query_shape: dict[str, Any],
+    quality: dict[str, Any],
+    quality_summary: dict[str, Any],
+    backend_diagnostics: list[dict[str, Any]],
+    backend_summary: dict[str, Any],
+    backend_recovery: dict[str, Any],
+    errors: list[str],
+) -> dict[str, Any]:
+    return {
+        "query": original_query,
+        "effective_query": effective_query,
+        "requested_scope": requested_scope or "",
+        "effective_scope": effective_scope or "",
+        "scope_rewrite": (
+            f"{requested_scope}->{effective_scope}"
+            if requested_scope and effective_scope and requested_scope != effective_scope
+            else ""
+        ),
+        "backend_order": order,
+        "cache": cache_meta["status"],
+        "cache_key": cache_key,
+        "cluster_threshold": cluster_threshold,
+        "query_recency": recency,
+        "route_plan": route_plan,
+        "query_strategy": query_strategy,
+        "query_shape": query_shape,
+        "query_quality": quality,
+        "quality_summary": quality_summary,
+        "backend_diagnostics": backend_diagnostics,
+        "backend_summary": backend_summary,
+        "backend_recovery": backend_recovery,
+        "errors": list(errors),
+    }
+
+
+def _run_duckduckgo_recovery_pass(
+    results: list[SearchResult],
+    *,
+    diagnostics: list[dict[str, Any]],
+    errors: list[str],
+    original_query: str,
+    fallback_open_query: str,
+    effective_scope: str | None,
+    scope_domains: list[str],
+    recency: dict[str, Any],
+    quality: dict[str, Any],
+    limit: int,
+) -> None:
+    """Try lower-friction DuckDuckGo queries after blocked/over-narrow attempts."""
+    if _usable_candidate_count(results, original_query, quality) >= _recovery_target_count(limit):
+        return
+    if not _recovery_needed(results, diagnostics, original_query, quality, limit):
+        return
+
+    attempted_queries = {
+        str(item.get("query") or "").strip()
+        for item in diagnostics
+        if str(item.get("query") or "").strip()
+    }
+    if effective_scope and scope_domains:
+        for domain in scope_domains[:3]:
+            if _usable_candidate_count(results, original_query, quality) >= _recovery_target_count(limit):
+                break
+            query = _apply_recency_query(f"site:{domain} {original_query}", recency)
+            if query in attempted_queries:
+                continue
+            attempted_queries.add(query)
+            _run_duckduckgo_recovery_attempt(
+                results,
+                diagnostics=diagnostics,
+                errors=errors,
+                backend_name="duckduckgo:scope_lite",
+                query=query,
+                original_query=original_query,
+                quality=quality,
+                limit=limit,
+                note=f"scope 查询未产出足够候选，自动拆成单域名站内补搜：{domain}。",
+                site=domain,
+            )
+
+    if _usable_candidate_count(results, original_query, quality) < _recovery_target_count(limit):
+        if fallback_open_query not in attempted_queries:
+            attempted_queries.add(fallback_open_query)
+            _run_duckduckgo_recovery_attempt(
+                results,
+                diagnostics=diagnostics,
+                errors=errors,
+                backend_name="duckduckgo:open_fallback",
+                query=fallback_open_query,
+                original_query=original_query,
+                quality=quality,
+                limit=limit,
+                note="主后端受阻或 scope 过窄，自动用原始 query 开放补搜，并继续按信源质量排序。",
+            )
+
+    for variant in _duckduckgo_recovery_query_variants(original_query, effective_scope, quality):
+        if _usable_candidate_count(results, original_query, quality) >= _recovery_target_count(limit):
+            break
+        query = _apply_recency_query(variant, recency)
+        if query in attempted_queries:
+            continue
+        attempted_queries.add(query)
+        _run_duckduckgo_recovery_attempt(
+            results,
+            diagnostics=diagnostics,
+            errors=errors,
+            backend_name="duckduckgo:query_variant",
+            query=query,
+            original_query=original_query,
+            quality=quality,
+            limit=limit,
+            note="短词/特殊字符/歧义 query 未产出足够候选，自动追加保守 query variant。",
+        )
+
+
+def _run_multi_entity_fanout_pass(
+    results: list[SearchResult],
+    *,
+    diagnostics: list[dict[str, Any]],
+    errors: list[str],
+    original_query: str,
+    query_shape: dict[str, Any],
+    effective_scope: str | None,
+    scope_domains: list[str],
+    recency: dict[str, Any],
+    quality: dict[str, Any],
+    limit: int,
+) -> None:
+    """Add bounded entity-specific passes for broad comparison/list queries."""
+    if not query_shape.get("multi_entity"):
+        return
+    entities = [
+        entity
+        for entity in (str(item).strip() for item in query_shape.get("entities") or [])
+        if entity and not re.fullmatch(r"(?:19|20)\d{2}", entity)
+    ]
+    entities = _unique_keep_order(entities)
+    if len(entities) < 4:
+        return
+    if _multi_entity_coverage_count(results, entities) >= min(4, len(entities)):
+        return
+
+    focus_terms = _multi_entity_focus_terms(original_query, entities)
+    attempted_queries = {
+        str(item.get("query") or "").strip()
+        for item in diagnostics
+        if str(item.get("query") or "").strip()
+    }
+    per_entity_limit = max(2, min(5, (max(limit, 1) // min(len(entities), 5)) + 1))
+    fanout_entities = entities[:5]
+    for entity in fanout_entities:
+        if _multi_entity_coverage_count(results, entities) >= min(4, len(entities)):
+            break
+        base_query = _collapse_ws(f"{entity} {' '.join(focus_terms)}")
+        if not base_query or base_query == entity:
+            base_query = _collapse_ws(f"{entity} {original_query}")
+        query = base_query
+        if effective_scope and scope_domains:
+            from guanlan.search_sources import scoped_query
+
+            query = scoped_query(
+                base_query,
+                scope_domains,
+                max_sites=min(4, _SHORT_SCOPED_QUERY_MAX_SITES.get(effective_scope, 4)),
+            )
+        query = _apply_recency_query(query, recency)
+        if query in attempted_queries:
+            continue
+        attempted_queries.add(query)
+        _run_duckduckgo_recovery_attempt(
+            results,
+            diagnostics=diagnostics,
+            errors=errors,
+            backend_name="duckduckgo:entity_fanout",
+            query=query,
+            original_query=f"{entity} {original_query}",
+            quality=quality,
+            limit=per_entity_limit,
+            note=(
+                "检测到多实体查询，自动按实体拆分补搜，避免只保留第一个实体造成对比失真。"
+            ),
+            extra={"entity": entity, "fanout_total": len(fanout_entities)},
+        )
+
+
+def _multi_entity_coverage_count(results: list[SearchResult], entities: list[str]) -> int:
+    if not results or not entities:
+        return 0
+    matched = {
+        entity
+        for entity in entities
+        if any(_result_text_contains(result, entity) for result in results)
+    }
+    return len(matched)
+
+
+def _multi_entity_focus_terms(query: str, entities: list[str]) -> list[str]:
+    entity_set = {entity.lower() for entity in entities}
+    focus_terms: list[str] = []
+    for term in _query_relevance_terms(query):
+        if term.lower() in entity_set:
+            continue
+        if term in {"最新", "最近", "今天", "刚刚"}:
+            continue
+        focus_terms.append(term)
+    if any(term in query for term in ("对比", "比较")) and "对比" not in focus_terms:
+        focus_terms.append("对比")
+    if "排名" in query and "排名" not in focus_terms:
+        focus_terms.append("排名")
+    if not focus_terms:
+        focus_terms.append("资料")
+    return _unique_keep_order(focus_terms)[:5]
+
+
+def _recovery_target_count(limit: int) -> int:
+    return max(1, min(5, max(limit, 1)))
+
+
+def _recovery_needed(
+    results: list[SearchResult],
+    diagnostics: list[dict[str, Any]],
+    original_query: str,
+    quality: dict[str, Any],
+    limit: int,
+) -> bool:
+    if results:
+        return False
+    if _usable_candidate_count(results, original_query, quality) < _recovery_target_count(limit):
+        return True
+    problem_statuses = {"parser_miss", "no_results", "no_results_or_parser_miss", _LOW_RELEVANCE_RESULT_STATUS, "blocked", "error"}
+    return any(item.get("status") in problem_statuses for item in diagnostics)
+
+
+def _run_duckduckgo_recovery_attempt(
+    results: list[SearchResult],
+    *,
+    diagnostics: list[dict[str, Any]],
+    errors: list[str],
+    backend_name: str,
+    query: str,
+    original_query: str,
+    quality: dict[str, Any],
+    limit: int,
+    note: str,
+    site: str = "",
+    extra: dict[str, Any] | None = None,
+) -> None:
+    attempt: dict[str, Any] = {
+        "backend": backend_name,
+        "status": "unknown",
+        "result_count": 0,
+        "error": "",
+        "note": note,
+        "query": query,
+    }
+    if site:
+        attempt["site"] = site
+    if extra:
+        attempt.update(extra)
+    try:
+        batch = _search_duckduckgo(query, limit=limit)
+        attempt["result_count"] = len(batch)
+        batch_quality = _assess_backend_batch_quality(original_query, batch, quality)
+        attempt["quality_gate"] = batch_quality
+        if batch and not batch_quality["usable"]:
+            attempt["status"] = _LOW_RELEVANCE_RESULT_STATUS
+            attempt["note"] = f"{note} 但相关性门控未通过：{batch_quality['note']}"
+            return
+        attempt["status"] = "ok" if batch else "no_results_or_parser_miss"
+        if not batch:
+            attempt["note"] = f"{note} DuckDuckGo 仍未产出结果。"
+        results.extend(batch)
+    except Exception as e:
+        errors.append(f"{backend_name}: {e}")
+        attempt.update(
+            {
+                "status": _exception_backend_status(str(e)),
+                "error": str(e),
+                "note": _backend_error_note(backend_name, str(e)),
+            }
+        )
+    finally:
+        diagnostics.append(attempt)
+
+
+def _duckduckgo_recovery_query_variants(
+    query: str,
+    effective_scope: str | None,
+    quality: dict[str, Any],
+) -> list[str]:
+    normalized = _collapse_ws(query).strip()
+    lowered = normalized.lower()
+    variants: list[str] = []
+    if lowered in {"c++", '"c++"'}:
+        variants.extend(["C++ programming language", "C plus plus language"])
+    if normalized == "苹果" and effective_scope in {"ecommerce", "tech_dev", "social_web"}:
+        if effective_scope == "ecommerce":
+            variants.append("苹果 iPhone 手机 用户评价 价格")
+        elif effective_scope == "tech_dev":
+            variants.append("苹果 Apple iPhone 技术 参数 芯片")
+        else:
+            variants.append("苹果 Apple iPhone 微博 知乎 评价")
+    if len(normalized) <= 4 and quality.get("preferred_scopes"):
+        variants.append(f"{normalized} {quality['preferred_scopes'][0]}")
+    return _unique_keep_order([item for item in variants if item and item != normalized])
 
 
 def rank_results(
@@ -1382,6 +1916,19 @@ def rank_results(
             item.domain,
             preferred_scope=quality_scope,
         )
+        if source_card.source_type and (
+            meta["source_type"] == "通用网页"
+            or (source_card.scope_id and source_card.scope_id != meta.get("matched_scope", ""))
+        ):
+            item.source_type = source_card.source_type
+            item.matched_scope = source_card.scope_id
+            try:
+                from guanlan.search_sources import resolve_scope
+
+                if source_card.scope_id:
+                    item.trust_level = resolve_scope(source_card.scope_id).trust_level
+            except Exception:
+                pass
         item.trace["source_card"] = source_card.to_dict()
         item.evidence_role = _infer_evidence_role(item, source_card.to_dict(), quality=quality)
         item.score_parts = _score_result_parts(
@@ -4600,12 +5147,13 @@ def format_search_context(results: list[dict[str, Any]], title: str = "观澜搜
 
 
 def _search_context_diagnostics(results: list[dict[str, Any]]) -> list[str]:
-    if not results:
+    if not results and not getattr(results, "diagnostics", None):
         return []
-    trace = results[0].get("trace") or {}
+    trace = (results[0].get("trace") if results else getattr(results, "diagnostics", None)) or {}
     diagnostics = trace.get("backend_diagnostics") or []
     quality_summary = trace.get("quality_summary") or {}
     route_plan = trace.get("route_plan") or {}
+    query_shape = trace.get("query_shape") or {}
     lines: list[str] = []
     quality_interpretation = str(quality_summary.get("interpretation") or "")
     quality_status = str(quality_summary.get("quality_status") or "")
@@ -4616,8 +5164,24 @@ def _search_context_diagnostics(results: list[dict[str, Any]]) -> list[str]:
         lines.append(f"> 当前进展: {user_facing_status}")
     if quality_interpretation:
         lines.append(f"> 质量画像: {quality_interpretation}")
+    if isinstance(query_shape, dict) and query_shape.get("rewritten"):
+        lines.append(f"> Query 修整: 已自动改写为 `{query_shape.get('backend_query', '')}`")
+    if isinstance(query_shape, dict) and query_shape.get("rejected"):
+        lines.append(f"> Query 护栏: {query_shape.get('reason', '')}")
+    for note in query_shape.get("notes") or []:
+        lines.append(f"> Query 说明: {note}")
     for reason in quality_summary.get("why_cautious") or []:
         lines.append(f"> 谨慎原因: {reason}")
+    workflow_plan = quality_summary.get("agent_workflow_plan") or {}
+    if isinstance(workflow_plan, dict) and workflow_plan.get("tier"):
+        lines.append(
+            f"> 工作流档位: `{workflow_plan.get('tier')}` "
+            f"(至少 {workflow_plan.get('minimum_guanlan_tools', 0)} 个 Guanlan 工具)"
+        )
+    if isinstance(workflow_plan, dict) and workflow_plan.get("summary"):
+        lines.append(f"> 工作流说明: {workflow_plan.get('summary')}")
+    for tool in workflow_plan.get("tool_sequence") or []:
+        lines.append(f"> 工具顺序: {tool}")
     for step in quality_summary.get("guanlan_next_steps") or []:
         lines.append(f"> 观澜补证: {step}")
     execution_policy = quality_summary.get("agent_execution_policy") or {}
@@ -4664,17 +5228,33 @@ def _search_context_diagnostics(results: list[dict[str, Any]]) -> list[str]:
 def format_search_trace(results: list[dict[str, Any]]) -> str:
     """Render score and routing trace for search results."""
     lines = ["", "## 搜索 Trace"]
-    if not results:
+    if not results and not getattr(results, "diagnostics", None):
         lines.append("- 无结果。")
         return "\n".join(lines)
-    query_quality = (results[0].get("trace") or {}).get("query_quality") or {}
-    quality_summary = (results[0].get("trace") or {}).get("quality_summary") or {}
-    route_plan = (results[0].get("trace") or {}).get("route_plan") or {}
-    query_strategy = (results[0].get("trace") or {}).get("query_strategy") or {}
-    backend_diagnostics = (results[0].get("trace") or {}).get("backend_diagnostics") or []
-    backend_summary = (results[0].get("trace") or {}).get("backend_summary") or {}
-    backend_recovery = (results[0].get("trace") or {}).get("backend_recovery") or {}
-    scope_rewrite = (results[0].get("trace") or {}).get("scope_rewrite") or ""
+    trace = (results[0].get("trace") if results else getattr(results, "diagnostics", None)) or {}
+    query_quality = trace.get("query_quality") or {}
+    quality_summary = trace.get("quality_summary") or {}
+    route_plan = trace.get("route_plan") or {}
+    query_strategy = trace.get("query_strategy") or {}
+    backend_diagnostics = trace.get("backend_diagnostics") or []
+    backend_summary = trace.get("backend_summary") or {}
+    backend_recovery = trace.get("backend_recovery") or {}
+    scope_rewrite = trace.get("scope_rewrite") or ""
+    query_shape = trace.get("query_shape") or {}
+    if isinstance(query_shape, dict) and query_shape:
+        lines.append(
+            "- query_shape: "
+            f"status={query_shape.get('status', 'ok')} "
+            f"short={query_shape.get('short_query', False)} "
+            f"overlong={query_shape.get('overlong_query', False)} "
+            f"multi_entity={query_shape.get('multi_entity', False)}"
+        )
+        if query_shape.get("backend_query"):
+            lines.append(f"  query_backend: {query_shape.get('backend_query')}")
+        if query_shape.get("reason"):
+            lines.append(f"  query_reason: {query_shape.get('reason')}")
+        for note in query_shape.get("notes") or []:
+            lines.append(f"  query_note: {note}")
     if backend_diagnostics:
         parts = []
         for item in backend_diagnostics:
@@ -4760,6 +5340,18 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
             lines.append(f"  why_cautious: {reason}")
         if quality_summary.get("interpretation"):
             lines.append(f"  interpretation: {quality_summary.get('interpretation')}")
+        workflow_plan = quality_summary.get("agent_workflow_plan") or {}
+        if isinstance(workflow_plan, dict) and workflow_plan.get("tier"):
+            lines.append(
+                "  workflow_plan: "
+                f"tier={workflow_plan.get('tier')} "
+                f"minimum_tools={workflow_plan.get('minimum_guanlan_tools', 0)} "
+                f"kind={workflow_plan.get('workflow_kind', '')}"
+            )
+            if workflow_plan.get("summary"):
+                lines.append(f"  workflow_summary: {workflow_plan.get('summary')}")
+            for tool in workflow_plan.get("tool_sequence") or []:
+                lines.append(f"  workflow_tool: {tool}")
         for step in quality_summary.get("guanlan_next_steps") or []:
             lines.append(f"  guanlan_next: {step}")
         execution_policy = quality_summary.get("agent_execution_policy") or {}
@@ -5131,14 +5723,26 @@ def search_quality_summary(
     for role in missing_roles[:3]:
         suggestions.append(_role_gap_suggestion(role))
     status = "warn" if warnings or missing_roles else "pass"
-    quality_status = _quality_status(results, warnings, missing_roles)
+    strong_primary_evidence = _quality_has_strong_primary_evidence(
+        results,
+        quality=quality,
+        preferred_hits=preferred_hits,
+        warnings=warnings,
+    )
+    quality_status = _quality_status(
+        results,
+        warnings,
+        missing_roles,
+        strong_primary_evidence=strong_primary_evidence,
+    )
     interpretation = _quality_gap_interpretation(status)
     guanlan_next_steps = _quality_gap_next_steps(quality, warnings, missing_roles)
     reporting_contract = _quality_gap_reporting_contract(status)
     why_cautious = _quality_why_cautious(warnings, missing_roles)
     user_facing_status = _quality_user_facing_status(quality_status, why_cautious)
     followup_actions = _quality_followup_actions(quality, warnings, missing_roles, quality_status)
-    execution_policy = _quality_execution_policy(quality_status, followup_actions)
+    workflow_plan = _quality_workflow_plan(quality, warnings, missing_roles, quality_status, followup_actions)
+    execution_policy = _quality_execution_policy(quality_status, followup_actions, workflow_plan)
 
     return {
         "status": status,
@@ -5151,12 +5755,14 @@ def search_quality_summary(
         "source_mix": source_mix,
         "role_counts": dict(sorted(role_counts.items(), key=lambda row: (-row[1], row[0]))),
         "missing_roles": missing_roles,
+        "strong_primary_evidence": strong_primary_evidence,
         "warnings": warnings,
         "interpretation": interpretation,
         "guanlan_next_steps": guanlan_next_steps,
         "agent_reporting_contract": reporting_contract,
         "user_facing_status": user_facing_status,
         "why_cautious": why_cautious,
+        "agent_workflow_plan": workflow_plan,
         "followup_actions": followup_actions,
         "recommended_actions": followup_actions,
         "agent_execution_policy": execution_policy,
@@ -5168,14 +5774,68 @@ def _quality_status(
     results: list[dict[str, Any]],
     warnings: list[str],
     missing_roles: list[str],
+    *,
+    strong_primary_evidence: bool = False,
 ) -> str:
     if not results:
         return "needs_more_evidence"
     if not warnings and not missing_roles:
         return "ok"
+    if strong_primary_evidence and not any("未命中" in warning for warning in warnings):
+        return "usable_with_gaps"
     if missing_roles or any("未命中" in warning for warning in warnings):
         return "quality_strict"
     return "needs_more_evidence"
+
+
+def _quality_has_strong_primary_evidence(
+    results: list[dict[str, Any]],
+    *,
+    quality: dict[str, Any],
+    preferred_hits: list[dict[str, Any]],
+    warnings: list[str],
+) -> bool:
+    if not results or not preferred_hits:
+        return False
+    if any("未命中" in warning for warning in warnings):
+        return False
+    primary_roles = {
+        "official_primary",
+        "company_primary",
+        "technical_primary",
+        "security_advisory",
+        "weather_primary",
+        "science_primary",
+        "university_official",
+        "database_official",
+        "standard_original",
+        "statute_original",
+        "clinical_guideline",
+    }
+    strong_source_types = {
+        "政府/部委",
+        "党央媒",
+        "公司一手资料",
+        "高校/院系官网",
+        "英文官方/监管",
+        "网络安全/漏洞/反诈",
+        "天气/灾害/预警",
+        "科学机构/科研新闻",
+        "学术/论文检索",
+        "标准/合规",
+        "法律/司法",
+        "医疗/健康",
+    }
+    preferred_scopes = {str(scope) for scope in quality.get("preferred_scopes") or [] if str(scope)}
+    preferred_ratio = len(preferred_hits) / max(len(results), 1)
+    role_hit = any(str(item.get("evidence_role") or "") in primary_roles for item in preferred_hits)
+    scope_hit = any(str(item.get("matched_scope") or "") in preferred_scopes for item in preferred_hits)
+    strong_type_hit = any(
+        str(item.get("source_type") or "") in strong_source_types
+        or int(item.get("trust_level") or 0) >= 4
+        for item in preferred_hits
+    )
+    return strong_type_hit and (role_hit or scope_hit or preferred_ratio >= 0.5)
 
 
 def _quality_why_cautious(warnings: list[str], missing_roles: list[str]) -> list[str]:
@@ -5190,6 +5850,8 @@ def _quality_why_cautious(warnings: list[str], missing_roles: list[str]) -> list
 def _quality_user_facing_status(quality_status: str, why_cautious: list[str]) -> str:
     if quality_status == "ok":
         return "Guanlan 已返回可用证据；可以继续综合，但仍应保留来源和时效边界。"
+    if quality_status == "usable_with_gaps":
+        return "Guanlan 已返回强相关的一手/偏好信源；可以继续使用，但最好读取代表原文并说明仍有证据角色缺口。"
     if quality_status == "quality_strict":
         reason = why_cautious[0] if why_cautious else "当前证据包覆盖不足"
         return f"Guanlan 已找到线索，但质量画像提示还不适合直接下结论：{reason} 接下来直接用 Guanlan 补一轮证据。"
@@ -5201,14 +5863,15 @@ def _quality_followup_actions(
     warnings: list[str],
     missing_roles: list[str],
     quality_status: str,
-) -> list[dict[str, str]]:
-    if quality_status == "ok":
+) -> list[dict[str, Any]]:
+    if quality_status in {"ok", "usable_with_gaps"}:
         return [
             {
                 "label": "读取代表原文",
                 "command": "guanlan read \"URL\" --quality-report",
                 "reason": "证据包可用时，继续摘读关键原文并核对正文质量。",
                 "run_policy": "run_when_deepening_answer",
+                "tool": "read",
             }
         ]
     query = _shell_quote_for_command(str(quality.get("route_query") or "问题"))
@@ -5221,6 +5884,7 @@ def _quality_followup_actions(
             "command": f"guanlan route {query} --json",
             "reason": "确认 Guanlan 推荐的 source pools、evidence roles 和 caveats。",
             "run_policy": "run_immediately",
+            "tool": "route",
         }
     ]
     preset = _quality_followup_preset(intent, route_intents)
@@ -5230,6 +5894,7 @@ def _quality_followup_actions(
             "command": f"guanlan research {query} --preset {preset} --advisor",
             "reason": "让 Guanlan 按证据角色重写 query、合并候选并标出补证缺口。",
             "run_policy": "run_immediately",
+            "tool": "research",
         }
     )
     if preferred_scopes:
@@ -5239,6 +5904,7 @@ def _quality_followup_actions(
                 "command": f"guanlan search {query} --scope {preferred_scopes[0]} --limit 80 --trace",
                 "reason": "补当前质量画像偏好的垂直信源池，不要只看开放网页 fallback。",
                 "run_policy": "run_immediately",
+                "tool": "search",
             }
         )
     if any(role in missing_roles for role in ("fresh_news", "public_discussion")) or "hot_trend" in route_intents:
@@ -5248,6 +5914,7 @@ def _quality_followup_actions(
                 "command": "guanlan hotnews today --limit 80 --trends",
                 "reason": "近期/热点问题需要热榜或趋势信号交叉确认。",
                 "run_policy": "run_immediately",
+                "tool": "hotnews",
             }
         )
     if "tech" in route_intents or intent == "tech":
@@ -5257,6 +5924,7 @@ def _quality_followup_actions(
                 "command": "guanlan feeds curated --category ai --limit 80",
                 "reason": "技术/AI 问题需要 RSS/精品内容流作为阅读发现线索。",
                 "run_policy": "run_immediately",
+                "tool": "feeds",
             }
         )
     if any("域名集中" in warning or "来源类型" in warning for warning in warnings):
@@ -5266,6 +5934,7 @@ def _quality_followup_actions(
                 "command": f"guanlan dossier {query} --limit 80 --format context",
                 "reason": "用 dossier/compare/timeline 这类 Guanlan 工作流扩展证据面，而不是立刻切到通用 web_search。",
                 "run_policy": "run_immediately",
+                "tool": "dossier",
             }
         )
     return actions[:5]
@@ -5273,19 +5942,83 @@ def _quality_followup_actions(
 
 def _quality_execution_policy(
     quality_status: str,
-    followup_actions: list[dict[str, str]],
+    followup_actions: list[dict[str, Any]],
+    workflow_plan: dict[str, Any],
 ) -> dict[str, Any]:
-    run_now = quality_status != "ok" and bool(followup_actions)
+    run_now = quality_status not in {"ok", "usable_with_gaps"} and bool(followup_actions)
+    minimum_tools = int(workflow_plan.get("minimum_guanlan_tools") or 0)
+    tool_sequence = [str(item) for item in workflow_plan.get("tool_sequence") or [] if str(item)]
+    tool_text = " -> ".join(tool_sequence[:minimum_tools or len(tool_sequence)])
     return {
         "mode": "run_followups_now" if run_now else "continue_or_read",
         "should_run_followups": run_now,
         "instruction": (
-            "不要停在建议；在预算允许且用户未禁止时，直接按 followup_actions 顺序继续运行 Guanlan 补证。"
+            f"不要停在建议；在预算允许且用户未禁止时，直接完成至少 {minimum_tools} 个最适合的 Guanlan 工具步骤"
+            f"（{tool_text or 'search -> read'}），再决定是否需要 fallback。"
             if run_now
             else "证据包已可用；需要深化时直接读取代表原文。"
         ),
         "fallback_rule": "只有 Guanlan followup_actions 执行后仍缺关键证据，才切到通用 web_search/web_fetch。",
         "action_count": len(followup_actions),
+    }
+
+
+def _quality_workflow_plan(
+    quality: dict[str, Any],
+    warnings: list[str],
+    missing_roles: list[str],
+    quality_status: str,
+    followup_actions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    intent = str(quality.get("intent") or "general")
+    route_intents = {str(item) for item in quality.get("route_intents") or [] if str(item)}
+    tools = _unique_keep_order(str(action.get("tool") or "") for action in followup_actions if str(action.get("tool") or ""))
+    requires_hotnews = (
+        any(role in missing_roles for role in ("fresh_news", "public_discussion"))
+        or "hot_trend" in route_intents
+    )
+    requires_feeds = "tech" in route_intents or intent == "tech"
+    requires_breadth = any("域名集中" in warning or "来源类型" in warning for warning in warnings)
+    if quality_status in {"ok", "usable_with_gaps"}:
+        return {
+            "tier": "2-step",
+            "minimum_guanlan_tools": 2,
+            "planned_tool_count": 2,
+            "tool_sequence": ["search", "read"],
+            "workflow_kind": "search_then_read",
+            "summary": (
+                "结果已可用时，先保留搜索证据，再读取代表原文完成核验；"
+                "若仍缺角色证据，在回答中说明边界。"
+            ),
+            "must_finish_before_fallback": False,
+        }
+
+    minimum_tools = 3
+    workflow_kind = "route_research_scope"
+    summary = "默认至少完成 route、research、垂直 search 三步，再判断证据是否够用。"
+    if requires_hotnews:
+        minimum_tools = 4
+        workflow_kind = "route_research_scope_hotnews"
+        summary = "涉及实时/热点时，至少完成 route、research、scope search、hotnews 四步交叉补证。"
+    elif requires_feeds:
+        minimum_tools = 4
+        workflow_kind = "route_research_scope_feeds"
+        summary = "技术/AI 问题至少完成 route、research、scope search、feeds 四步，补 RSS 发现线索。"
+    elif requires_breadth:
+        minimum_tools = 4
+        workflow_kind = "route_research_scope_breadth"
+        summary = "来源过窄时，至少完成 route、research、scope search、dossier 四步扩展证据面。"
+
+    if not tools:
+        tools = ["route", "research", "search"]
+    return {
+        "tier": "4-step" if minimum_tools >= 4 else "3-step",
+        "minimum_guanlan_tools": minimum_tools,
+        "planned_tool_count": len(tools),
+        "tool_sequence": tools,
+        "workflow_kind": workflow_kind,
+        "summary": summary,
+        "must_finish_before_fallback": True,
     }
 
 
@@ -5337,6 +6070,184 @@ def _quality_gap_next_steps(
         steps.append("用 Guanlan 的 `--scope`、`--site`、`compare/timeline/dossier` 扩大信源面，而不是立刻切到通用 web_search。")
     steps.append("只有 Guanlan 的多轮补证仍缺关键网页时，再用 web_search/web_fetch 作外部兜底，并保留观澜质量提示。")
     return _unique_keep_order(steps)[:5]
+
+
+def _analyze_search_query_shape(
+    query: str,
+    *,
+    effective_scope: str | None = None,
+    quality: dict[str, Any] | None = None,
+    route_plan: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    quality = quality or {}
+    route_plan = route_plan or {}
+    clean_query = _collapse_ws(query)
+    backend_query = clean_query
+    notes: list[str] = []
+    reasons: list[str] = []
+    relevance_terms = _query_relevance_terms(clean_query)
+    entities = _query_shape_entities(clean_query)
+    is_meaningless = _looks_like_meaningless_query(clean_query)
+    if is_meaningless:
+        return {
+            "status": "rejected",
+            "rejected": True,
+            "reason": "query 近似乱码或低信息量测试串，继续搜索更可能随机返回噪声页面。",
+            "backend_query": "",
+            "fallback_open_query": "",
+            "relevance_terms": relevance_terms,
+            "entities": entities,
+            "short_query": len(clean_query) <= 8 or len(relevance_terms) <= 1,
+            "overlong_query": len(clean_query) >= 100,
+            "multi_entity": len(entities) >= 4,
+            "rewritten": False,
+            "notes": [],
+        }
+
+    if len(clean_query) >= 100:
+        compressed = _compress_overlong_query(clean_query, route_plan=route_plan)
+        if compressed and compressed != backend_query:
+            backend_query = compressed
+            notes.append("query 过长，已提炼为更可搜索的关键词串。")
+            reasons.append("overlong_query")
+
+    expanded = _expand_search_query(
+        backend_query,
+        effective_scope=effective_scope,
+        quality=quality,
+        entities=entities,
+    )
+    if expanded != backend_query:
+        backend_query = expanded
+        notes.append("query 偏短、偏歧义或缺少任务约束，已自动补充更贴近意图的词。")
+        reasons.append("expanded_query")
+
+    if len(entities) >= 4:
+        notes.append("检测到多实体查询；单次搜索只适合先取线索，后续更适合 compare/dossier 分步整理。")
+        reasons.append("multi_entity")
+
+    status = "rewritten" if reasons else "ok"
+    return {
+        "status": status,
+        "rejected": False,
+        "reason": "",
+        "backend_query": backend_query,
+        "fallback_open_query": backend_query,
+        "relevance_terms": relevance_terms,
+        "entities": entities,
+        "short_query": len(clean_query) <= 8 or len(relevance_terms) <= 1,
+        "overlong_query": len(clean_query) >= 100,
+        "multi_entity": len(entities) >= 4,
+        "rewritten": bool(reasons),
+        "rewrite_reasons": reasons,
+        "notes": notes,
+    }
+
+
+def _compress_overlong_query(query: str, *, route_plan: dict[str, Any] | None = None) -> str:
+    route_plan = route_plan or {}
+    keywords: list[str] = []
+    for hint in _LONG_QUERY_KEYPHRASE_HINTS:
+        if hint.lower() in query.lower():
+            keywords.append(hint)
+    keywords.extend(_query_shape_entities(query))
+    keywords.extend(_query_relevance_terms(query))
+    keep: list[str] = []
+    for token in keywords:
+        normalized = token.strip()
+        if not normalized or normalized in _QUERY_REWRITE_STOPWORDS:
+            continue
+        keep.append(normalized)
+    keep = _unique_keep_order(keep)
+    freshness = str(route_plan.get("freshness") or "")
+    if freshness and freshness not in keep:
+        keep.append(freshness)
+    compact = " ".join(keep[:8]).strip()
+    if len(compact) < 8:
+        compact = query[:96].strip()
+    return compact
+
+
+def _expand_search_query(
+    query: str,
+    *,
+    effective_scope: str | None = None,
+    quality: dict[str, Any] | None = None,
+    entities: list[str] | None = None,
+) -> str:
+    quality = quality or {}
+    entities = entities or []
+    normalized = _collapse_ws(query).strip()
+    lowered = normalized.lower()
+    additions: list[str] = []
+    intent = str(quality.get("intent") or "")
+    if normalized == "苹果" and effective_scope in {"ecommerce", "tech_dev", "social_web"}:
+        if effective_scope == "ecommerce":
+            additions.extend(["iPhone", "手机", "价格", "用户评价"])
+        elif effective_scope == "tech_dev":
+            additions.extend(["Apple", "iPhone", "芯片", "参数"])
+        else:
+            additions.extend(["Apple", "iPhone", "知乎", "微博", "评价"])
+    if len(normalized) <= 8 or (len(_query_relevance_terms(normalized)) <= 1 and len(normalized) <= 16):
+        if any(term in normalized for term in ("人口", "多少")):
+            additions.extend(["统计", "数据", "官方"])
+        if any(term in normalized for term in ("为什么", "原因")):
+            additions.extend(["原因", "调查", "数据", "观点"])
+        if effective_scope == "ecommerce":
+            additions.extend(["价格", "购买", "评测", "用户评价"])
+        elif effective_scope == "tech_dev":
+            additions.extend(["官方", "文档", "GitHub"])
+        elif effective_scope == "social_web":
+            additions.extend(["知乎", "微博", "小红书", "讨论"])
+        elif intent == "policy":
+            additions.extend(["官方", "原文", "通知"])
+        elif intent == "finance":
+            additions.extend(["财报", "公告", "市场"])
+        elif intent == "tech":
+            additions.extend(["官方", "文档", "benchmark"])
+    if len(normalized) <= 40 and len(entities) >= 4 and not any(term in lowered for term in ("对比", "比较", "排名")):
+        additions.extend(["对比", "数据"])
+    additions = [item for item in _unique_keep_order(additions) if item and item not in normalized]
+    if not additions:
+        return normalized
+    return f"{normalized} {' '.join(additions[:4])}".strip()
+
+
+def _query_shape_entities(query: str) -> list[str]:
+    tokens = re.split(r"[\s,，。；;、/|()（）]+", _collapse_ws(query))
+    entities: list[str] = []
+    for token in tokens:
+        clean = token.strip()
+        lower = clean.lower()
+        if not clean or lower in _QUERY_REWRITE_STOPWORDS:
+            continue
+        if re.fullmatch(r"(?:19|20)\d{2}", clean):
+            entities.append(clean)
+            continue
+        if _contains_cjk(clean):
+            if 2 <= len(clean) <= 8 and clean not in {"最新", "最近", "刚刚", "今天", "多少", "怎么申请", "为什么"}:
+                entities.append(clean)
+                continue
+        elif re.search(r"[A-Za-z]", clean) and 2 <= len(clean) <= 20:
+            entities.append(clean)
+    return _unique_keep_order(entities)
+
+
+def _looks_like_meaningless_query(query: str) -> bool:
+    text = _collapse_ws(query).strip()
+    if not text or _contains_cjk(text) or " " in text:
+        return False
+    lowered = text.lower()
+    if any(term in lowered for term in _MEANINGLESS_QUERY_ALLOWLIST):
+        return False
+    if not re.fullmatch(r"[a-z0-9_-]{10,}", lowered):
+        return False
+    letters = [char for char in lowered if "a" <= char <= "z"]
+    digits = [char for char in lowered if char.isdigit()]
+    vowel_count = sum(1 for char in letters if char in "aeiou")
+    vowel_ratio = vowel_count / max(len(letters), 1)
+    keyboard_run = any(run in lowered for run in _QUERY_KEYBOARD_RUNS)
+    return bool(keyboard_run or (digits and vowel_ratio < 0.2))
 
 
 def _quality_followup_preset(intent: str, route_intents: list[str]) -> str:
@@ -5530,6 +6441,12 @@ def build_query_strategy(
     intents = list(route_plan.get("primary_intents") or []) + list(route_plan.get("secondary_intents") or [])
     roles = list(route_plan.get("evidence_roles") or [])
     variants: list[dict[str, str]] = []
+    query_shape = _analyze_search_query_shape(
+        clean_query,
+        effective_scope=str(quality.get("requested_scope") or "") or None,
+        quality=quality,
+        route_plan=route_plan,
+    )
 
     def add(role: str, q: str, reason: str) -> None:
         normalized = _collapse_ws(q)
@@ -5540,6 +6457,8 @@ def build_query_strategy(
         variants.append({"role": role, "query": normalized, "reason": reason})
 
     add("base", clean_query, "用户原始问题，保留语义中心")
+    if query_shape.get("rewritten") and query_shape.get("backend_query"):
+        add("query_rewrite", str(query_shape.get("backend_query")), "对过短、过长、歧义或多实体 query 先做搜索友好的重写")
     if {"policy", "official_position", "local"} & set(intents):
         add("official_primary", f"{clean_query} 官方 原文 通知", "政策/官方问题先找一手口径")
         add("authoritative_report", f"{clean_query} 人民日报 新华社 央视", "补党央媒与权威报道")
@@ -5585,6 +6504,9 @@ def build_query_strategy(
             add("fresh_primary", _apply_recency_query(f"{clean_query} 官方 发布 时间", recency), "近期问题优先补一手发布时间线索")
         if {"reputation", "purchase_advice"} & set(intents):
             add("fresh_user_sample", _apply_recency_query(f"{clean_query} 最新 用户 反馈", recency), "近期口碑需要补新鲜用户样本")
+    if query_shape.get("multi_entity"):
+        entity_terms = [str(item) for item in query_shape.get("entities") or [] if str(item)]
+        add("entity_compare", f"{' '.join(entity_terms[:4])} 对比 {clean_query}", "多实体问题先显式保留比较意图和前几个关键实体")
     if roles and len(variants) == 1:
         add(str(roles[0]), f"{clean_query} 依据 来源", "按路由证据角色补充查询")
 
@@ -5602,6 +6524,7 @@ def build_query_strategy(
             "recency_bounded": bool(recency.get("enabled")),
             "source_role_queries": len(variants),
         },
+        "query_shape": query_shape,
         "agent_hint": "不要只用一个宽泛 query；按证据角色分别搜索，再合并去重和标注边界；涉及近期/热点时必须保留时间窗口。",
     }
 
@@ -5819,7 +6742,7 @@ def _result_recency_metrics(item: SearchResult, recency: dict[str, Any] | None =
     today = _recency_today(recency)
     window_days = int(recency.get("window_days") or 0)
     start_date = str(recency.get("start_date") or "")
-    result_date = _extract_result_date(item, today=today)
+    result_date, date_source = _extract_result_date_with_source(item, today=today)
     age_days = (today - result_date).days if result_date else None
     return {
         "enabled": enabled,
@@ -5828,46 +6751,62 @@ def _result_recency_metrics(item: SearchResult, recency: dict[str, Any] | None =
         "end_date": today.isoformat(),
         "matched_terms": list(recency.get("matched_terms") or []),
         "result_date": result_date,
-        "date_source": "title_or_snippet" if result_date else "",
+        "date_source": date_source,
         "age_days": age_days,
         "in_window": bool(result_date and age_days is not None and age_days <= max(window_days, 0)),
         "has_freshness_words": _has_freshness_words(item),
     }
 
 
-def _extract_result_date(item: SearchResult, today: dt.date | None = None) -> dt.date | None:
+def _extract_result_date_with_source(item: SearchResult, today: dt.date | None = None) -> tuple[dt.date | None, str]:
     today = today or dt.date.today()
     text = _collapse_ws(f"{item.title} {item.snippet}")
-    if not text:
-        return None
+    if text:
+        relative = _extract_relative_result_date(text, today)
+        if relative:
+            return relative, "title_or_snippet"
 
-    relative = _extract_relative_result_date(text, today)
-    if relative:
-        return relative
+        patterns = (
+            r"((?:19|20)\d{2})\s*(?:年|[-/.])\s*(\d{1,2})\s*(?:月|[-/.])\s*(\d{1,2})\s*日?",
+            r"((?:19|20)\d{2})\s*年\s*(\d{1,2})\s*月",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if not match:
+                continue
+            year = int(match.group(1))
+            month = int(match.group(2))
+            day = int(match.group(3)) if len(match.groups()) >= 3 and match.group(3) else 1
+            parsed = _safe_date(year, month, day)
+            if parsed:
+                return parsed, "title_or_snippet"
 
-    patterns = (
-        r"((?:19|20)\d{2})\s*(?:年|[-/.])\s*(\d{1,2})\s*(?:月|[-/.])\s*(\d{1,2})\s*日?",
-        r"((?:19|20)\d{2})\s*年\s*(\d{1,2})\s*月",
+        match = re.search(r"(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日", text)
+        if match:
+            parsed = _safe_date(today.year, int(match.group(1)), int(match.group(2)))
+            if parsed and parsed > today + dt.timedelta(days=7):
+                parsed = _safe_date(today.year - 1, int(match.group(1)), int(match.group(2)))
+            if parsed:
+                return parsed, "title_or_snippet"
+
+    url = str(item.url or "")
+    url_patterns = (
+        r"/((?:19|20)\d{2})/(\d{1,2})/(\d{1,2})(?:/|$)",
+        r"((?:19|20)\d{2})[-_/](\d{1,2})[-_/](\d{1,2})",
     )
-    for pattern in patterns:
-        match = re.search(pattern, text)
+    for pattern in url_patterns:
+        match = re.search(pattern, url)
         if not match:
             continue
-        year = int(match.group(1))
-        month = int(match.group(2))
-        day = int(match.group(3)) if len(match.groups()) >= 3 and match.group(3) else 1
-        parsed = _safe_date(year, month, day)
+        parsed = _safe_date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
         if parsed:
-            return parsed
+            return parsed, "url"
+    return None, ""
 
-    match = re.search(r"(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日", text)
-    if match:
-        parsed = _safe_date(today.year, int(match.group(1)), int(match.group(2)))
-        if parsed and parsed > today + dt.timedelta(days=7):
-            parsed = _safe_date(today.year - 1, int(match.group(1)), int(match.group(2)))
-        return parsed
 
-    return None
+def _extract_result_date(item: SearchResult, today: dt.date | None = None) -> dt.date | None:
+    parsed, _ = _extract_result_date_with_source(item, today=today)
+    return parsed
 
 
 def _extract_relative_result_date(text: str, today: dt.date) -> dt.date | None:
@@ -5961,6 +6900,10 @@ def _score_result_parts(
     freshness_value = float(source_card.get("freshness_value") or 0.0)
     if route_intents & {"policy", "official_position", "local", "finance", "global_policy", "company_primary"}:
         parts["authority_fit"] = authority_score * 0.45
+    if route_intents & {"tech", "cybersecurity"} and (
+        {"documentation", "source_code", "release", "official_specs", "security_advisory", "vendor_patch"} & content_roles
+    ):
+        parts["authority_fit"] = max(parts["authority_fit"], authority_score * 0.42)
     if route_intents & {"reputation", "global_reputation", "purchase_advice", "tech"}:
         parts["sample_fit"] = sample_value * 0.42
     if route_intents & {"hot_trend"} or (recency and recency.get("enabled")):
@@ -5988,6 +6931,8 @@ def _score_result_parts(
         parts["intent_fit"] += 0.48
     if item.source_type and item.source_type in caution_source_types:
         parts["intent_mismatch_penalty"] = -0.35
+    if route_intents & {"tech", "cybersecurity"} and source_card.get("authority_role") in {"company_primary", "developer_source", "code_host"}:
+        parts["intent_fit"] += 0.18
     if _is_chinese_context_query(query, quality) and _result_lacks_chinese_context(item):
         parts["language_mismatch_penalty"] = -0.75
     university_entity = _extract_university_entity(query)

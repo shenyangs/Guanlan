@@ -8,6 +8,32 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.4.1 - 2026-05-03
+
+### Added
+
+- 新增 `docs/agent-playbook.md`：把 Agent 使用观澜时的动态工作流、benchmark 纪律、fallback 边界和汇报口径沉淀成长期记忆面，减少“只跑一次 search 就下结论”的误用。
+- 新增 `docs/guanlan-optimization-plan-2026-05.md`：记录 2026-05 暴力测试后的搜索质量治理计划、已落地项和长期优化方向，方便后续迭代按证据推进。
+- 新增 `scripts/guanlan_channel_benchmark.py`：提供 Guanlan / WebSearch / WebFetch 的真实网络 best-effort 对比脚本，保留原始输出、超时、解析失败和质量信号，避免把弱网或反爬误判为能力结论。
+- 搜索空结果新增结构化 diagnostics：当 query 被护栏拒绝或没有可用候选时，`search --json` 会返回 `results` 与 `diagnostics`，让下游 Agent 能解释原因，而不是只拿到空数组。
+
+### Changed
+
+- 搜索入口新增 query shape 护栏：无意义、键盘乱码或信息量过低的 query 会被主动拒识，并输出“先重写 query”的 Agent 策略，避免随机网页污染推理。
+- 短 query、短电商/口碑 query 和超长 query 增加保守改写/压缩路径；`search --trace` 和 `--format context` 会显式展示 `query_shape`、后端 query 与改写原因。
+- DuckDuckGo 增加补搜恢复链路：当首轮结果不足时，会尝试 scope lite、open fallback 和 query variant；多实体查询会触发有限 fan-out，降低“只搜到第一个实体”的概率。
+- 搜索质量画像增加动态 Agent 工作流：按场景给出 `2-step / 3-step / 4-step`、最低 Guanlan 工具数、工具顺序和 fallback 前置条件，提醒 Agent 先完成观澜工作流再转向通用搜索。
+- 强一手证据场景降压：当官方/公司一手来源已经可靠命中时，质量状态可标为 `usable_with_gaps`，不再因为辅助证据角色不全就误报“搜索失败”。
+- 信源分类补充 Apple、Samsung、Huawei、OpenAI、知乎、微博、小红书、B站等高频域名覆盖，提升 source_type、scope_id 和 evidence role 的一致性。
+- `AGENTS.md`、`docs/agent-usage.md`、`guanlan/skill/SKILL.md` 同步新增记忆面、强路由快捷规则、动态工作流阶梯、benchmark 规则和 Agent timeout / fallback 口径。
+- 发布 smoke 脚本改为优先安装本地构建 wheel，并在 uv / pip / pipx 路径下更稳地处理证书和安装目标，降低发布环境偶发失败。
+- 官网展示版本号同步到 `0.4.1`。
+
+### Notes
+
+- 本版重点是“查询质量护栏 + 补搜恢复 + Agent 工作流纪律”，不是缩小结果池；默认候选池和 Agent 取证深度不缩水。
+- 观澜不会把低信息量输入硬搜成随机结论：这类场景应先重写 query，再进入正常 `route / research / search / hotnews / feeds` 工作流。
+
 ## v0.4.0 - 2026-05-03
 
 ### Added

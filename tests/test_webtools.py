@@ -264,6 +264,131 @@ def test_search_web_trace_includes_quality_profile(monkeypatch):
     assert results[0]["evidence_role"] == "official_primary"
 
 
+def test_search_web_rejects_meaningless_query_before_backend(monkeypatch):
+    def fail_search(query, limit=10):
+        raise AssertionError("backend should not be called")
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fail_search)
+
+    results = webtools.search_web("asdfghjk123456789", backend="duckduckgo", trace=True)
+    trace = webtools.format_search_trace(results)
+
+    assert results == []
+    assert results.diagnostics["query_shape"]["status"] == "rejected"
+    assert results.diagnostics["backend_diagnostics"][0]["status"] == "rejected"
+    assert "query_shape: status=rejected" in trace
+
+
+def test_search_web_expands_short_fact_query(monkeypatch):
+    captured_queries = []
+
+    def fake_search(query, limit=10):
+        captured_queries.append(query)
+        return [
+            webtools.SearchResult(
+                title="澳门统计暨普查局人口数据",
+                url="https://www.dsec.gov.mo/zh-MO/Population",
+                snippet="澳门人口统计数据。",
+                source="duckduckgo",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web("澳门人口多少", backend="duckduckgo", trace=True)
+
+    assert captured_queries
+    assert "统计" in captured_queries[0]
+    assert "官方" in captured_queries[0]
+    assert results[0]["trace"]["query_shape"]["status"] == "rewritten"
+
+
+def test_search_web_expands_short_ecommerce_query(monkeypatch):
+    captured_queries = []
+
+    def fake_search(query, limit=10):
+        captured_queries.append(query)
+        return [
+            webtools.SearchResult(
+                title="华为手机用户评价",
+                url="https://www.zhihu.com/question/1",
+                snippet="购买、续航、拍照和价格讨论。",
+                source="duckduckgo",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    webtools.search_web("华为手机", backend="duckduckgo", scope="ecommerce", trace=True)
+
+    assert captured_queries
+    assert "价格" in captured_queries[0]
+    assert "用户评价" in captured_queries[0]
+
+
+def test_search_web_compresses_overlong_query(monkeypatch):
+    captured_queries = []
+    long_query = (
+        "我想系统了解具身智能企业在2024到2025年的融资、产品、商业化、政策支持、供应链和主要玩家情况，"
+        "包括智元、宇树、傅利叶、银河通用、逐际动力，还想看广东、上海、北京的地方政策以及最新行业趋势、量产、订单、客户落地情况"
+    )
+
+    def fake_search(query, limit=10):
+        captured_queries.append(query)
+        return [
+            webtools.SearchResult(
+                title="具身智能行业观察",
+                url="https://36kr.com/p/robot",
+                snippet="融资、产品、商业化和政策趋势。",
+                source="duckduckgo",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web(long_query, backend="duckduckgo", trace=True)
+
+    assert captured_queries
+    assert len(captured_queries[0]) < len(long_query)
+    assert "具身智能" in captured_queries[0]
+    assert results[0]["trace"]["query_shape"]["overlong_query"] is True
+    assert results[0]["trace"]["query_shape"]["rewritten"] is True
+
+
+def test_search_web_multi_entity_fanout_adds_entity_specific_queries(monkeypatch):
+    captured_queries = []
+
+    def fake_search(query, limit=10):
+        captured_queries.append(query)
+        if "澳门" in query and "珠海 澳门 香港 深圳 广州" not in query:
+            return [
+                webtools.SearchResult(
+                    title="澳门 GDP 统计数据",
+                    url="https://www.dsec.gov.mo/gdp",
+                    snippet="澳门本地生产总值数据。",
+                    source="duckduckgo",
+                )
+            ]
+        return [
+            webtools.SearchResult(
+                title="珠海 GDP 统计数据",
+                url="https://www.zhuhai.gov.cn/gdp",
+                snippet="珠海地区生产总值数据。",
+                source="duckduckgo",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web("珠海 澳门 香港 深圳 广州 GDP 对比", backend="duckduckgo", trace=True)
+
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+    assert len(captured_queries) > 1
+    assert any(item["backend"] == "duckduckgo:entity_fanout" for item in diagnostics)
+    assert any(item.get("entity") == "澳门" for item in diagnostics)
+    assert any(result["title"] == "澳门 GDP 统计数据" for result in results)
+
+
 def test_search_web_trace_includes_english_source_roles(monkeypatch):
     monkeypatch.setattr(
         webtools,
@@ -319,6 +444,60 @@ def test_search_trace_includes_route_plan(monkeypatch):
     assert "query_strategy" in trace
     assert results[0]["trace"]["source_card"]["sample_value"] > results[0]["trace"]["source_card"]["authority_score"]
     assert results[0]["evidence_role"] == "user_sample"
+
+
+def test_rank_results_prefers_company_primary_for_samsung_newsroom():
+    ranked = webtools.rank_results(
+        [
+            webtools.SearchResult(
+                title="Samsung Electronics announces Q1 results",
+                url="https://news.samsung.com/kr/earnings-q1-2026",
+                snippet="Official newsroom release.",
+                source="duckduckgo",
+            )
+        ],
+        query="삼성전자 실적",
+        backend_order=["duckduckgo"],
+    )
+
+    assert ranked[0].source_type == "公司一手资料"
+    assert ranked[0].matched_scope == "company_primary"
+
+
+def test_rank_results_keeps_zhihu_as_social_web_by_default():
+    ranked = webtools.rank_results(
+        [
+            webtools.SearchResult(
+                title="一文了解 Transformer 全貌",
+                url="https://www.zhihu.com/tardis/zm/art/600773858",
+                snippet="详细图解 Encoder、Decoder 和 Attention。",
+                source="duckduckgo",
+            )
+        ],
+        query="Transformer架构原理",
+        backend_order=["duckduckgo"],
+    )
+
+    assert ranked[0].source_type == "社交/内容平台"
+    assert ranked[0].matched_scope == "social_web"
+
+
+def test_rank_results_extracts_date_from_url_when_title_lacks_date():
+    ranked = webtools.rank_results(
+        [
+            webtools.SearchResult(
+                title="AI release notes",
+                url="https://example.com/2026/05/03/release-notes",
+                snippet="Important update.",
+                source="duckduckgo",
+            )
+        ],
+        query="OpenAI 最新发布",
+        backend_order=["duckduckgo"],
+    )
+
+    assert ranked[0].published_at == "2026-05-03"
+    assert ranked[0].date_source == "url"
 
 
 def test_query_strategy_builds_role_specific_variants():
@@ -491,9 +670,13 @@ def test_search_quality_summary_suggests_missing_roles():
     assert summary["quality_status"] == "quality_strict"
     assert "Guanlan 已找到线索" in summary["user_facing_status"]
     assert "缺少 `official_primary`" in "；".join(summary["why_cautious"])
+    assert summary["agent_workflow_plan"]["tier"] == "3-step"
+    assert summary["agent_workflow_plan"]["minimum_guanlan_tools"] == 3
+    assert summary["agent_workflow_plan"]["tool_sequence"][:3] == ["route", "research", "search"]
     assert summary["agent_execution_policy"]["should_run_followups"] is True
     assert summary["agent_execution_policy"]["mode"] == "run_followups_now"
     assert "不要停在建议" in summary["agent_execution_policy"]["instruction"]
+    assert "至少 3 个最适合的 Guanlan 工具步骤" in summary["agent_execution_policy"]["instruction"]
     assert any(action["label"] == "查看路由计划" for action in summary["followup_actions"])
     assert all(action["run_policy"] == "run_immediately" for action in summary["followup_actions"])
     assert any("guanlan research" in action["command"] for action in summary["followup_actions"])
@@ -503,6 +686,63 @@ def test_search_quality_summary_suggests_missing_roles():
     assert any("不要向 AI 使用者概括为" in item for item in summary["agent_reporting_contract"])
     assert any("未完全通过质量画像" in item for item in summary["agent_reporting_contract"])
     assert any("scope gov" in item for item in summary["suggestions"])
+
+
+def test_search_quality_summary_treats_strong_primary_evidence_as_usable_with_gaps():
+    summary = webtools.search_quality_summary(
+        [
+            {
+                "title": "国务院人工智能政策通知",
+                "url": "https://www.gov.cn/zhengce/ai.htm",
+                "source_type": "政府/部委",
+                "matched_scope": "gov",
+                "domain": "gov.cn",
+                "evidence_role": "official_primary",
+                "trust_level": 5,
+            }
+        ],
+        quality={
+            "intent": "policy",
+            "preferred_source_types": ["政府/部委"],
+            "preferred_scopes": ["gov"],
+            "route_evidence_roles": ["official_primary", "authoritative_report", "public_discussion"],
+        },
+    )
+
+    assert summary["missing_roles"] == ["authoritative_report", "public_discussion"]
+    assert summary["strong_primary_evidence"] is True
+    assert summary["quality_status"] == "usable_with_gaps"
+    assert summary["agent_workflow_plan"]["tier"] == "2-step"
+    assert summary["agent_execution_policy"]["mode"] == "continue_or_read"
+    assert summary["agent_execution_policy"]["should_run_followups"] is False
+    assert summary["followup_actions"][0]["tool"] == "read"
+
+
+def test_search_quality_summary_upgrades_tech_queries_to_four_step_workflow():
+    summary = webtools.search_quality_summary(
+        [
+            {
+                "title": "开发者博客",
+                "url": "https://example.com/a",
+                "source_type": "通用网页",
+                "domain": "example.com",
+                "evidence_role": "open_web_context",
+            }
+        ],
+        quality={
+            "intent": "tech",
+            "route_intents": ["tech"],
+            "preferred_source_types": ["开发者社区/技术博客"],
+            "preferred_scopes": ["tech_dev"],
+            "route_evidence_roles": ["developer_discussion"],
+        },
+    )
+
+    assert summary["agent_workflow_plan"]["tier"] == "4-step"
+    assert summary["agent_workflow_plan"]["minimum_guanlan_tools"] == 4
+    assert "feeds" in summary["agent_workflow_plan"]["tool_sequence"]
+    assert any(action["tool"] == "feeds" for action in summary["followup_actions"])
+    assert "至少 4 个最适合的 Guanlan 工具步骤" in summary["agent_execution_policy"]["instruction"]
 
 
 def test_search_web_detects_recency_intent():
@@ -831,6 +1071,68 @@ def test_search_recovery_plan_productizes_baidu_block(monkeypatch):
     assert any("--scope gov" in command for command in recovery["followup_commands"])
     assert "backend_status: baidu=blocked, bing=ok(1), duckduckgo=no_results_or_parser_miss" in rendered
     assert "Baidu 当前被安全验证/反爬拦截" in rendered
+
+
+def test_search_web_scope_lite_recovers_after_blocked_scoped_query(monkeypatch):
+    requested = []
+
+    def blocked_baidu(query, limit=10):
+        raise RuntimeError("captcha_or_verification: 百度安全验证")
+
+    def blocked_bing(query, limit=10):
+        raise RuntimeError("captcha_or_verification: b_captcha")
+
+    def duckduckgo(query, limit=10):
+        requested.append(query)
+        if query.startswith("site:gov.cn "):
+            return [
+                webtools.SearchResult(
+                    title="数据要素市场化配置改革政策",
+                    url="https://www.gov.cn/zhengce/a.htm",
+                    snippet="数据要素 市场化 配置 改革 政策",
+                    source="duckduckgo",
+                    rank=1,
+                )
+            ]
+        return []
+
+    monkeypatch.setattr(webtools, "_search_baidu", blocked_baidu)
+    monkeypatch.setattr(webtools, "_search_bing", blocked_bing)
+    monkeypatch.setattr(webtools, "_search_duckduckgo", duckduckgo)
+
+    results = webtools.search_web("数据要素市场化配置改革 最新政策", profile="china", scope="gov", trace=True)
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+
+    assert results[0]["domain"] == "gov.cn"
+    assert any(query.startswith("site:gov.cn ") for query in requested)
+    assert any(item["backend"] == "duckduckgo:scope_lite" and item["status"] == "ok" for item in diagnostics)
+
+
+def test_search_web_query_variant_recovers_special_character_query(monkeypatch):
+    requested = []
+
+    def duckduckgo(query, limit=10):
+        requested.append(query)
+        if query == "C++ programming language":
+            return [
+                webtools.SearchResult(
+                    title="C++ programming language",
+                    url="https://isocpp.org/",
+                    snippet="C++ programming language standard resources",
+                    source="duckduckgo",
+                    rank=1,
+                )
+            ]
+        return []
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", duckduckgo)
+
+    results = webtools.search_web("C++", backend="duckduckgo", trace=True)
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+
+    assert "C++ programming language" in requested
+    assert results[0]["domain"] == "isocpp.org"
+    assert any(item["backend"] == "duckduckgo:query_variant" and item["status"] == "ok" for item in diagnostics)
 
 
 def test_search_web_continues_after_low_relevance_bing_batch(monkeypatch):
@@ -1539,6 +1841,27 @@ def test_search_cli_outputs_json(capsys):
     assert json.loads(captured.out)[0]["title"] == "A"
 
 
+def test_search_cli_outputs_empty_diagnostics_json(capsys):
+    from guanlan.cli import main
+
+    empty = webtools.SearchResults(
+        [],
+        diagnostics={
+            "query": "blocked query",
+            "backend_diagnostics": [{"backend": "baidu", "status": "blocked"}],
+            "backend_recovery": {"status": "failed"},
+        },
+    )
+    with patch("guanlan.webtools.search_web", return_value=empty):
+        with patch("sys.argv", ["guanlan", "search", "blocked query", "--json"]):
+            main()
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["results"] == []
+    assert payload["diagnostics"]["backend_diagnostics"][0]["status"] == "blocked"
+
+
 def test_search_cli_outputs_context(capsys):
     from guanlan.cli import main
 
@@ -1984,6 +2307,13 @@ def test_format_search_context_surfaces_quality_guidance_before_web_fallback():
                         "user_facing_status": "Guanlan 已找到线索，但质量画像提示还不适合直接下结论。",
                         "interpretation": "当前提示是观澜质量画像在提醒“证据包覆盖不足”，不是主题没有资料。",
                         "why_cautious": ["未命中当前意图偏好的信源类型。"],
+                        "agent_workflow_plan": {
+                            "tier": "4-step",
+                            "minimum_guanlan_tools": 4,
+                            "workflow_kind": "route_research_scope_hotnews",
+                            "summary": "涉及实时/热点时，至少完成 route、research、scope search、hotnews 四步交叉补证。",
+                            "tool_sequence": ["route", "research", "search", "hotnews"],
+                        },
                         "guanlan_next_steps": [
                             "先运行 `guanlan route \"问题\" --json` 看推荐的 source pools。",
                             "只有 Guanlan 的多轮补证仍缺关键网页时，再用 web_search/web_fetch 作外部兜底。",
@@ -2014,6 +2344,9 @@ def test_format_search_context_surfaces_quality_guidance_before_web_fallback():
     assert "质量状态" in context
     assert "当前进展" in context
     assert "谨慎原因" in context
+    assert "工作流档位" in context
+    assert "至少 4 个 Guanlan 工具" in context
+    assert "工具顺序: route" in context
     assert "执行策略" in context
     assert "执行动作" in context
     assert "run_immediately" in context
@@ -2048,6 +2381,8 @@ def test_format_search_trace_includes_reporting_contract_for_quality_warn(monkey
     assert "quality_status:" in trace
     assert "user_facing_status:" in trace
     assert "why_cautious:" in trace
+    assert "workflow_plan:" in trace
+    assert "workflow_tool: route" in trace
     assert "execution_policy:" in trace
     assert "run_followups_now" in trace
     assert "run_immediately" in trace

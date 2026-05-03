@@ -1350,7 +1350,11 @@ def _cmd_search(args):
 
     output_format = "json" if args.json else args.format
     if output_format == "json":
-        print(json.dumps(results, ensure_ascii=False, indent=2))
+        diagnostics = getattr(results, "diagnostics", None)
+        if diagnostics and not results:
+            print(json.dumps({"results": [], "diagnostics": diagnostics}, ensure_ascii=False, indent=2))
+        else:
+            print(json.dumps(results, ensure_ascii=False, indent=2))
     elif output_format == "context":
         suffix = f" / {args.scope}" if args.scope else ""
         print(format_search_context(results, title=f"观澜搜索上下文{suffix} / {args.query}"))

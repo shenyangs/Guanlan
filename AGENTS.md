@@ -2,6 +2,11 @@
 
 This repository is designed as a CLI-first search productivity tool for AI agents.
 
+Memory rule: treat `AGENTS.md`, `docs/agent-playbook.md`, `docs/agent-usage.md`, and
+`guanlan/skill/SKILL.md` as the durable memory surfaces for how to operate Guanlan. Before building
+new benchmarks, automations, or MCP workflows, reread at least `AGENTS.md` and
+`docs/agent-playbook.md`.
+
 Commit/release language rule: Guanlan is a Chinese-web research tool. Use Chinese-first
 commit subjects, changelog entries, and release notes. Keep conventional prefixes such as
 `feat:` / `fix:` / `docs:` when useful, but write the description in Chinese, for example
@@ -27,6 +32,30 @@ Agent operating rule: when using Guanlan for search, research, hotnews, pulse, o
 prefer the largest sensible result pool instead of a tiny sample. Use the default 80 results for
 normal work, raise to 80-100 for broad research when latency is acceptable, and only lower the
 limit when the user explicitly asks for a small sample or a quick smoke check.
+
+Agent routing shortcut rule: when a query clearly matches a dedicated route, go directly to that
+route's `--preset` or `--scope` instead of starting with generic web search. Use `guanlan route
+"query" --json` only when the intent is mixed, ambiguous, or you need to inspect evidence roles and
+caveats first. Strong direct-route matches include: Western entertainment (`global_entertainment`),
+Japanese/Korean entertainment (`jp_kr_entertainment`), cybersecurity/CVE/fraud (`cybersecurity`),
+weather/disaster alerts (`weather_disaster`), sports (`sports`), science-news verification
+(`science`), job/salary/interview research (`career`), podcast discovery (`podcast`), exam prep
+(`test_prep`), university admissions/advisor pages (`university`), academic indexing/submission
+(`academic`), and product/company reputation (`reputation`).
+
+Agent workflow ladder rule: do not reduce Guanlan to one generic `search` call. Use a dynamic
+minimum workflow:
+- 2-step: `search -> read` when the result set is already clearly usable and you only need to verify a representative original page.
+- 3-step: `route -> research -> scoped search` for normal research tasks or whenever quality signals are not yet good enough.
+- 4-step: upgrade to `route -> research -> scoped search -> hotnews` for recent/hot tasks, `route -> research -> scoped search -> feeds` for tech/AI/developer tasks, and `route -> research -> scoped search -> dossier|compare|timeline` when source diversity is too narrow.
+Do not fall back to generic `web_search` / `web_fetch` until the current Guanlan workflow tier has been completed and still lacks key evidence.
+
+Benchmark rule: do not call a benchmark fair if it tests Guanlan with a workflow Guanlan is not
+meant to use. Real-time or “today/just now/latest” queries must include `hotnews`; tech/AI queries
+must include `feeds` or `research --preset tech`; policy/official tasks should usually be measured
+with `research` or `search + read`, not with a single generic search pass. Do not report
+`quality_summary=warn` as “Guanlan search failed”; that usually means “the evidence packet is not
+complete enough yet.”
 
 Agent timeout budget rule: Guanlan may touch multiple public web/RSS/hotnews sources in one command,
 and weak networks can make some upstreams slow before Guanlan falls back or marks stale cache. If an
@@ -99,7 +128,7 @@ guanlan eval benchmark
 guanlan eval scenarios --format jsonl
 ```
 
-Read [docs/agent-usage.md](docs/agent-usage.md) for the full agent routing guide.
+Read [docs/agent-playbook.md](docs/agent-playbook.md) and [docs/agent-usage.md](docs/agent-usage.md) for the full agent routing guide.
 
 Safety rules:
 
