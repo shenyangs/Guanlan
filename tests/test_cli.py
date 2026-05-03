@@ -175,6 +175,33 @@ class TestCLI:
         assert data["workflow_decision"]["tier"] == "investigate"
         assert data["investigation"]["principle"] == "先取证"
 
+    def test_diagnose_page_command_returns_json(self, capsys):
+        with patch(
+            "guanlan.page_diagnosis.diagnose_page",
+            return_value={
+                "url": "https://example.com",
+                "page_type": "readable_article",
+                "usable_as_evidence": True,
+            },
+        ), patch("sys.argv", ["guanlan", "diagnose", "page", "https://example.com", "--json"]):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["page_type"] == "readable_article"
+
+    def test_recipe_run_command_returns_plan(self, capsys):
+        with patch(
+            "sys.argv",
+            ["guanlan", "recipe", "run", "finance-risk", "宁德时代 股价 财报", "--json"],
+        ):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["recipe"]["id"] == "finance-risk"
+        assert any("guanlan stock detail" in command for command in data["commands"])
+
     def test_feedback_command_submits(self, capsys):
         with patch(
             "guanlan.feedback.submit_feedback",

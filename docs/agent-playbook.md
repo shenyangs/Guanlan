@@ -78,6 +78,28 @@ guanlan research "华为手机" --preset general --advisor
 guanlan search "华为手机" --scope social_web --limit 80 --trace
 ```
 
+### 页面诊断
+
+如果 `read` 读到的是动态页壳、登录墙、安全验证、搜索兜底或明显弱正文，不要反复重试同一个 URL。先跑：
+
+```bash
+guanlan diagnose page "URL"
+```
+
+页面诊断会说明它是可读正文、动态壳、访问门槛、搜索兜底还是弱正文，并给出下一步命令。诊断不是浏览器接管，也不会读取 Cookie；它只是帮 Agent 判断“这个页面还能不能当证据”。
+
+### Recipe
+
+如果任务是反复出现的垂直研究模式，先用 recipe 固化流程：
+
+```bash
+guanlan recipe list
+guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"
+guanlan recipe run university-advisor "南京师范大学中北学院 计算机 导师 招生"
+```
+
+Recipe 输出的是计划、证据层和边界，不是最终答案。执行时仍要按 `route/search/read/research` 的质量信号补证。
+
 ### 4-step
 
 适用于：时效、技术、证据面过窄等高风险场景。
@@ -166,6 +188,8 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 实时题优先 `hotnews`，不要只看 `search`。
 - 实时体育、灾害预警、安全漏洞等垂直题优先读取 Guanlan 推荐的 direct source seeds，再扩大搜索。
 - 财经题不要只看一个搜索结果：行情要先走结构化股票数据并看时间戳，公告/财报要回到披露源，宏观数据要核发布机构，雪球/股吧只作情绪样本。动态财经页或雪球 WAF 读不出正文时，不要反复 `read`，改用 `guanlan stock detail|fundflow|rank|index` 和披露源补证。
+- 页面读不出来时，先 `diagnose page`，再按诊断建议切结构化源、scope 搜索、metadata 读取或 archive 流程；不要把搜索兜底内容当原文正文。
+- 高频垂直任务先 `recipe run`，把流程讲清楚，再执行对应命令；不要让 Agent 临场发明一套不稳定搜索路径。
 - 技术题优先 `research --preset tech` 或 `search + feeds`，不要只看社区搜索结果。
 - `source_type` 只作辅助，不要把它当唯一真相；结合 domain、authority_score、evidence_role 一起判断。
 - `compare` 若提示 `source_diversity_guard=warn`，先补公司一手、垂直媒体或社区样本，不要拿单站结果做横向结论。

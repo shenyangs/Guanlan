@@ -9,6 +9,7 @@ Keychain access are involved.
 from __future__ import annotations
 
 import base64
+import concurrent.futures
 import datetime as dt
 import difflib
 import hashlib
@@ -3711,9 +3712,11 @@ def read_batch(
     cache_ttl: int = 0,
     strict: bool = False,
     extract: str = "article",
+    concurrency: int = 1,
 ) -> list[dict[str, Any]]:
     """Read multiple URLs with per-item errors kept in the result list."""
     records: list[dict[str, Any]] = []
+    jobs: list[tuple[int, str]] = []
     for idx, url in enumerate(urls, start=1):
         clean_url = url.strip()
         if not clean_url:
@@ -3722,6 +3725,10 @@ def read_batch(
         if blocked_reason:
             records.append({"rank": idx, "url": clean_url, "status": "blocked", "error": blocked_reason})
             continue
+        jobs.append((idx, clean_url))
+
+    def read_one(job: tuple[int, str]) -> dict[str, Any]:
+        idx, clean_url = job
         try:
             content = read_url(
                 clean_url,
@@ -3734,9 +3741,18 @@ def read_batch(
                 strict=strict,
                 extract=extract,
             )
-            records.append({"rank": idx, "url": clean_url, "status": "ok", "content": content})
+            return {"rank": idx, "url": clean_url, "status": "ok", "content": content}
         except Exception as e:
-            records.append({"rank": idx, "url": clean_url, "status": "error", "error": str(e)})
+            return {"rank": idx, "url": clean_url, "status": "error", "error": str(e)}
+    workers = max(1, min(int(concurrency or 1), 8))
+    if workers == 1 or len(jobs) <= 1:
+        records.extend(read_one(job) for job in jobs)
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            records.extend(executor.map(read_one, jobs))
+        for item in records:
+            item["concurrency"] = workers
+    records.sort(key=lambda item: int(item.get("rank") or 0))
     return records
 
 

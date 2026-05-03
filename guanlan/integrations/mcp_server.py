@@ -177,6 +177,47 @@ def _tool_definitions() -> list[dict]:
             },
         },
         {
+            "name": "guanlan_page_diagnose",
+            "description": (
+                "Diagnose whether a public page is readable evidence, a dynamic shell, an access gate, "
+                "or search-fallback-only context. Use this before repeatedly calling read on weak pages."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                    "url": {"type": "string"},
+                    "max_chars": {"type": "integer", "default": 4000, "minimum": 1},
+                    "backend": {"type": "string", "enum": ["auto", "jina", "direct"], "default": "auto"},
+                    "fallback_search": {"type": "boolean", "default": True},
+                    "fallback_limit": {"type": "integer", "default": 5, "minimum": 1, "maximum": 20},
+                    "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
+                    "strict": {"type": "boolean", "default": False},
+                    "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
+                },
+            },
+        },
+        {
+            "name": "guanlan_recipe",
+            "description": (
+                "List or render reusable Guanlan research recipes, such as university advisor lookup, "
+                "finance risk, product reputation, entertainment pulse, security advisory, and tech radar. "
+                "Use recipes when the agent needs a stable multi-step workflow instead of one generic search."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "enum": ["list", "show", "run"], "default": "list"},
+                    "recipe_id": {"type": "string", "description": "Recipe id, e.g. finance-risk"},
+                    "query": {"type": "string", "description": "Research query for command=run"},
+                    "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
+                    "limit": {"type": "integer", "default": DEFAULT_RESEARCH_LIMIT, "minimum": 1, "maximum": MAX_RESEARCH_LIMIT},
+                    "read_top": {"type": "integer", "minimum": 0, "maximum": 10},
+                    "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
+                },
+            },
+        },
+        {
             "name": "guanlan_read",
             "description": "Read a public URL into Markdown with Jina/direct/search fallbacks.",
             "inputSchema": {
@@ -613,6 +654,50 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         if str(args.get("format") or "markdown") == "json":
             return decision.to_dict()
         return format_workflow_decision_markdown(decision)
+
+    if name == "guanlan_page_diagnose":
+        from guanlan.page_diagnosis import diagnose_page, format_page_diagnosis_markdown
+
+        payload = diagnose_page(
+            str(args.get("url", "")).strip(),
+            max_chars=int(args.get("max_chars") or 4000),
+            backend=str(args.get("backend") or "auto"),
+            fallback_search=bool(args.get("fallback_search", True)),
+            fallback_limit=int(args.get("fallback_limit") or 5),
+            profile=args.get("profile") or "china",
+            strict=bool(args.get("strict", False)),
+        )
+        if str(args.get("format") or "markdown") == "json":
+            return payload
+        return format_page_diagnosis_markdown(payload)
+
+    if name == "guanlan_recipe":
+        from guanlan.recipes import (
+            build_recipe_plan,
+            format_recipe_list_markdown,
+            format_recipe_plan_markdown,
+            get_recipe,
+            list_recipes,
+        )
+
+        command = str(args.get("command") or "list")
+        output_format = str(args.get("format") or "markdown")
+        if command == "list":
+            recipes = list_recipes()
+            return recipes if output_format == "json" else format_recipe_list_markdown(recipes)
+        if command == "show":
+            recipe = get_recipe(str(args.get("recipe_id") or "")).to_dict()
+            return recipe if output_format == "json" else format_recipe_list_markdown([recipe])
+        if command == "run":
+            plan = build_recipe_plan(
+                str(args.get("recipe_id") or ""),
+                str(args.get("query") or "").strip(),
+                profile=str(args.get("profile") or "china"),
+                limit=int(args.get("limit") or DEFAULT_RESEARCH_LIMIT),
+                read_top=int(args["read_top"]) if args.get("read_top") is not None else None,
+            )
+            return plan if output_format == "json" else format_recipe_plan_markdown(plan)
+        raise ValueError(f"unknown recipe command: {command}")
 
     if name == "guanlan_read":
         from guanlan.webtools import read_url

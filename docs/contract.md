@@ -119,3 +119,15 @@ Stable MCP tools include:
 The local HTTP service defaults to `127.0.0.1`. If exposed beyond localhost, use `--token` or `GUANLAN_SERVE_TOKEN` and treat local archive contents as private user data.
 
 Use `guanlan serve --print-token` to generate a local token without starting the service. `--token auto` may generate and print a token before starting; clients still authenticate with `Authorization: Bearer <token>` or `X-Guanlan-Token`.
+
+
+## 0.5.0 上层工作流新增字段
+
+- `workflow_decision`: `tier`、`recommended_entrypoint`、`recommended_limit`、`recommended_read_top`、`do_not_overthink` 和 `fallback_policy`。
+- `investigation`: `budget`、`dry_run`、`planned_steps`、`executed_steps`、`skipped_steps`、`limits`、`step_budget`、`timeout_budget_seconds`、`fallback_used`、`external_fetch_strategy`、`network_diagnosis`、`evidence_sufficiency` 和 `next_views`。
+- `sources`: `source_id`、`domain`、`scope_id`、`authority_score`、`sample_value`、`freshness_value`、`risk_tags`、`content_roles`、`best_for`、`not_for` 和 `stability`；`sources audit` 额外保留 `summary/checks/boundary/suggested_next`。
+- `eval_suite`: `suite`、`summary`、`category_summary`、`cases` 和每个 case 的 `workflow_decision` / `route` / `checks` / `failure_category`。
+- `archive_semantic`: 显式语义侧车输出 `retrieval_mode=semantic`、`semantic_score` 和原有 `metadata/source_card/read_quality`；无侧车时不得破坏 FTS/LIKE 回退。
+- `quality_performance`: `summary`、`checks` 和 `contract.metrics`，只做确定性性能护栏。
+
+这些字段只新增，不替换既有 `search/research/read/archive` 核心字段。

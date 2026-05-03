@@ -712,7 +712,7 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
     },
     {
         "intent": "tech",
-        "terms": ("技术", "开源", "框架", "github", "sdk", "api", "部署", "bug", "benchmark", "选型", "开发者", "mcp", "教程", "自动加字幕", "剪映", *_ROBOTICS_AI_TERMS),
+        "terms": ("技术", "开源", "框架", "github", "sdk", "api", "部署", "bug", "benchmark", "选型", "开发者", "mcp", "教程", "rag", "reranker", "ollama", "本地模型", "联网搜索", "自动加字幕", "剪映", *_ROBOTICS_AI_TERMS),
         "scopes": ("tech_dev",),
         "fallback": ("business", "social_web"),
         "sites": ("github.com", "v2ex.com", "juejin.cn", "segmentfault.com"),

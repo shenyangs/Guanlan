@@ -242,6 +242,20 @@ def main():
     p_workflow.add_argument("--read-top", type=int, default=None, help="Optional read count to plan for")
     p_workflow.add_argument("--json", action="store_true", help="Print workflow decision JSON instead of Markdown")
 
+    # ── diagnose ──
+    p_diagnose = sub.add_parser("diagnose", help="Diagnose why a URL is readable, weak, blocked, or only a fallback")
+    diagnose_sub = p_diagnose.add_subparsers(dest="diagnose_command", help="Diagnosis commands")
+    p_diagnose_page = diagnose_sub.add_parser("page", help="Diagnose one public page for evidence usability")
+    p_diagnose_page.add_argument("url", nargs="?", default="", help="URL to diagnose")
+    p_diagnose_page.add_argument("--backend", choices=["auto", "jina", "direct"], default="auto", help="Read backend")
+    p_diagnose_page.add_argument("--max-chars", type=int, default=4000, help="Maximum chars to inspect")
+    p_diagnose_page.add_argument("--fallback-search", action="store_true", default=True, help="Allow search context fallback")
+    p_diagnose_page.add_argument("--no-fallback-search", action="store_false", dest="fallback_search", help="Disable search fallback")
+    p_diagnose_page.add_argument("--fallback-limit", type=int, default=5, help="Search fallback result count")
+    p_diagnose_page.add_argument("--profile", choices=VALID_PROFILES, default="china", help="Region profile")
+    p_diagnose_page.add_argument("--strict", action="store_true", help="Use stricter read-quality gate")
+    p_diagnose_page.add_argument("--json", action="store_true", help="Print diagnosis JSON")
+
     # ── search ──
     p_search = sub.add_parser("search", help="Search the web for agent-ready results")
     p_search.add_argument("query", nargs="?", default="", help="Search query")
@@ -342,6 +356,9 @@ def main():
     p_investigate.add_argument("--profile", choices=VALID_PROFILES, default="", help="Region profile")
     p_investigate.add_argument("--limit", type=int, default=None, help="Broad candidate pool")
     p_investigate.add_argument("--read-top", type=int, default=None, help="Representative URLs to read")
+    p_investigate.add_argument("--budget", choices=["light", "standard", "deep"], default="standard",
+                               help="Investigation budget: light=route+research, standard=add scoped/read, deep=more sidecar views")
+    p_investigate.add_argument("--dry-run", action="store_true", help="Explain planned steps without search/read network calls")
     p_investigate.add_argument("--search-backend", default="auto", help="Search backend")
     p_investigate.add_argument("--read-backend", choices=["auto", "jina", "direct"], default="auto", help="Read backend")
     p_investigate.add_argument("--max-read-chars", type=int, default=None, help="Maximum characters per read excerpt")
@@ -351,6 +368,22 @@ def main():
     p_investigate.add_argument("--select-top", type=int, default=None, help="Representative evidence items")
     p_investigate.add_argument("--format", choices=["markdown", "json", "context"], default="markdown", help="Output format")
     p_investigate.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+
+    # ── recipe ──
+    p_recipe = sub.add_parser("recipe", help="Use reusable Guanlan research recipes")
+    recipe_sub = p_recipe.add_subparsers(dest="recipe_command", help="Recipe commands")
+    p_recipe_list = recipe_sub.add_parser("list", help="List built-in research recipes")
+    p_recipe_list.add_argument("--json", action="store_true", help="Print recipes JSON")
+    p_recipe_show = recipe_sub.add_parser("show", help="Show one research recipe")
+    p_recipe_show.add_argument("recipe_id", help="Recipe id, e.g. finance-risk")
+    p_recipe_show.add_argument("--json", action="store_true", help="Print recipe JSON")
+    p_recipe_run = recipe_sub.add_parser("run", help="Render a concrete recipe plan for a query")
+    p_recipe_run.add_argument("recipe_id", help="Recipe id, e.g. finance-risk")
+    p_recipe_run.add_argument("query", nargs="?", default="", help="Research query")
+    p_recipe_run.add_argument("--profile", choices=VALID_PROFILES, default="china", help="Region profile")
+    p_recipe_run.add_argument("--limit", type=int, default=DEFAULT_RESEARCH_LIMIT, help="Candidate pool size")
+    p_recipe_run.add_argument("--read-top", type=int, default=None, help="Representative URLs to read")
+    p_recipe_run.add_argument("--json", action="store_true", help="Print recipe plan JSON")
 
     # ── compare ──
     p_compare = sub.add_parser("compare", help="Compare multiple subjects with one evidence packet per subject")
@@ -396,6 +429,27 @@ def main():
     p_dossier.add_argument("--select-top", type=int, default=10, help="Representative evidence items")
     p_dossier.add_argument("--format", choices=["markdown", "json", "context"], default="markdown", help="Output format")
     p_dossier.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+
+    # ── sources ──
+    p_sources = sub.add_parser("sources", help="Inspect Guanlan's read-only source registry")
+    sources_sub = p_sources.add_subparsers(dest="sources_command", help="Source registry commands")
+    p_sources_list = sources_sub.add_parser("list", help="List source cards from scope/taxonomy registry")
+    p_sources_list.add_argument("--scope", default="", help="Optional scope id, e.g. gov, ecommerce, finance_disclosure")
+    p_sources_list.add_argument("--limit", type=int, default=50, help="Maximum source cards to show")
+    p_sources_list.add_argument("--format", choices=["markdown", "json"], default="markdown")
+    p_sources_show = sources_sub.add_parser("show", help="Show one source id, scope id, alias, or domain")
+    p_sources_show.add_argument("target", help="Source id, scope id, alias, or domain")
+    p_sources_show.add_argument("--format", choices=["markdown", "json"], default="markdown")
+    p_sources_explain = sources_sub.add_parser("explain", help="Explain which source cards fit a query")
+    p_sources_explain.add_argument("query", nargs="?", default="", help="Query or research need")
+    p_sources_explain.add_argument("--profile", choices=VALID_PROFILES, default="china")
+    p_sources_explain.add_argument("--limit", type=int, default=12)
+    p_sources_explain.add_argument("--format", choices=["markdown", "json"], default="markdown")
+    p_sources_explain.add_argument("--trace", action="store_true", help="Include read-only registry boundary diagnostics")
+    p_sources_audit = sources_sub.add_parser("audit", help="Audit source wording and stability consistency")
+    p_sources_audit.add_argument("--format", choices=["markdown", "json"], default="markdown")
+    p_sources_export = sources_sub.add_parser("export", help="Export the read-only source registry")
+    p_sources_export.add_argument("--format", choices=["json"], default="json")
 
     # ── prompt ──
     p_prompt = sub.add_parser(
@@ -519,6 +573,8 @@ def main():
                         help="Prefer failing/fallback over returning noisy extracted text")
     p_read.add_argument("--extract", choices=["article", "text", "metadata", "links"], default="article",
                         help="Direct-read extraction target")
+    p_read.add_argument("--concurrency", type=int, default=1,
+                        help="Explicit batch read concurrency; default 1 keeps legacy serial behavior")
     p_read.add_argument("--interval", default="",
                         help="Accepted for watch workflows; this CLI stores one snapshot per run")
 
@@ -562,6 +618,8 @@ def main():
                                help="Region profile for fallback search")
     p_archive_add.add_argument("--format", choices=["markdown", "json"], default="markdown",
                                help="Output format")
+    p_archive_add.add_argument("--concurrency", type=int, default=1,
+                               help="Explicit batch archive read concurrency; default 1 keeps serial behavior")
     p_archive_add.add_argument("--db", default="", help="Optional archive database path")
 
     p_archive_search = archive_sub.add_parser("search", help="Search the local archive")
@@ -573,6 +631,8 @@ def main():
                                   help="Print normalized JSON instead of Markdown")
     p_archive_search.add_argument("--trace", action="store_true",
                                   help="Include matched terms, fields, score, and retrieval boundary")
+    p_archive_search.add_argument("--semantic", action="store_true",
+                                  help="Use explicit local semantic sidecar when available; fallback to FTS/LIKE")
     p_archive_search.add_argument("--db", default="", help="Optional archive database path")
 
     p_archive_list = archive_sub.add_parser("list", help="List recently archived documents")
@@ -630,7 +690,17 @@ def main():
     p_archive_context.add_argument("--max-chars", type=int, default=1200, help="Maximum characters per evidence excerpt")
     p_archive_context.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_archive_context.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_archive_context.add_argument("--semantic", action="store_true",
+                                   help="Use explicit local semantic sidecar when available")
     p_archive_context.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_embed = archive_sub.add_parser("embed", help="Build an explicit local semantic sidecar for archive search")
+    p_archive_embed.add_argument("--backend", choices=["local", "ollama", "openai"], default="local",
+                                 help="Embedding backend; local is dependency-free, external backends are planned/opt-in")
+    p_archive_embed.add_argument("--limit", type=int, default=500, help="Maximum archive records to embed")
+    p_archive_embed.add_argument("--dry-run", action="store_true", help="Preview embedding without writing sidecar rows")
+    p_archive_embed.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_archive_embed.add_argument("--db", default="", help="Optional archive database path")
 
     p_archive_pack = archive_sub.add_parser("pack", help="Package archive matches as Markdown or RAG JSONL")
     p_archive_pack.add_argument("query", help="Question or topic to pack from the local archive")
@@ -710,6 +780,20 @@ def main():
     p_eval_benchmark.add_argument("--limit", type=int, default=50,
                                   help="Candidate pool size to verify in route plans")
     p_eval_benchmark.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
+    p_eval_suite = eval_sub.add_parser("suite", help="Run public deterministic eval suites")
+    suite_sub = p_eval_suite.add_subparsers(dest="eval_suite_command", help="Eval suite commands")
+    p_suite_list = suite_sub.add_parser("list", help="List available eval suites")
+    p_suite_list.add_argument("--format", choices=["markdown", "json"], default="markdown")
+    p_suite_run = suite_sub.add_parser("run", help="Run an eval suite")
+    p_suite_run.add_argument("suite_id", nargs="?", default="chinese-web-v1")
+    p_suite_run.add_argument("--mode", choices=["quick", "live"], default="quick")
+    p_suite_run.add_argument("--limit", type=int, default=80)
+    p_suite_run.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
+    p_suite_report = suite_sub.add_parser("report", help="Write an eval suite HTML report")
+    p_suite_report.add_argument("suite_id", nargs="?", default="chinese-web-v1")
+    p_suite_report.add_argument("--output", default="guanlan-eval-suite.html")
+    p_suite_report.add_argument("--mode", choices=["quick", "live"], default="quick")
+    p_suite_report.add_argument("--limit", type=int, default=80)
 
     # ── quality ──
     p_quality = sub.add_parser("quality", help="Run Guanlan quality gates")
@@ -752,6 +836,8 @@ def main():
     p_quality_live.add_argument("--strict", action="store_true",
                                 help="Exit non-zero if live smoke reports failures")
     p_quality_live.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
+    p_quality_perf = quality_sub.add_parser("performance", help="Run deterministic performance regression guards")
+    p_quality_perf.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
 
     # ── mcp ──
     p_mcp = sub.add_parser("mcp", help="MCP helpers for agent integration")
@@ -809,6 +895,8 @@ def _telemetry_command_name(args) -> str:
         "profile": "action",
         "report": "report_command",
         "stock": "stock_command",
+        "diagnose": "diagnose_command",
+        "recipe": "recipe_command",
     }
     attr = subcommand_attrs.get(command)
     if attr:
@@ -852,6 +940,8 @@ def _dispatch_command(args):
         _cmd_route(args)
     elif args.command == "workflow":
         _cmd_workflow(args)
+    elif args.command == "diagnose":
+        _cmd_diagnose(args)
     elif args.command == "search":
         _cmd_search(args)
     elif args.command == "feedback":
@@ -860,12 +950,16 @@ def _dispatch_command(args):
         _cmd_research(args)
     elif args.command == "investigate":
         _cmd_investigate(args)
+    elif args.command == "recipe":
+        _cmd_recipe(args)
     elif args.command == "compare":
         _cmd_compare(args)
     elif args.command == "timeline":
         _cmd_timeline(args)
     elif args.command == "dossier":
         _cmd_dossier(args)
+    elif args.command == "sources":
+        _cmd_sources(args)
     elif args.command in {"prompt", "context"}:
         _cmd_prompt(args)
     elif args.command == "pulse":
@@ -1411,6 +1505,36 @@ def _cmd_workflow(args):
         print(format_workflow_decision_markdown(decision))
 
 
+def _cmd_diagnose(args):
+    """Diagnose page readability and evidence usability."""
+
+    if not getattr(args, "diagnose_command", None):
+        print("Error: diagnose command is required (try: guanlan diagnose page URL)", file=sys.stderr)
+        sys.exit(2)
+    if args.diagnose_command != "page":
+        print(f"Error: unknown diagnose command: {args.diagnose_command}", file=sys.stderr)
+        sys.exit(2)
+    if not args.url:
+        print("Error: URL is required", file=sys.stderr)
+        sys.exit(2)
+    from guanlan.page_diagnosis import (
+        diagnose_page,
+        format_page_diagnosis_json,
+        format_page_diagnosis_markdown,
+    )
+
+    payload = diagnose_page(
+        args.url,
+        max_chars=max(args.max_chars, 1) if args.max_chars is not None else None,
+        backend=args.backend,
+        fallback_search=bool(args.fallback_search),
+        fallback_limit=max(args.fallback_limit, 1),
+        profile=args.profile or None,
+        strict=bool(args.strict),
+    )
+    print(format_page_diagnosis_json(payload) if args.json else format_page_diagnosis_markdown(payload))
+
+
 def _cmd_search(args):
     """Search the web and format results for agents."""
 
@@ -1738,6 +1862,8 @@ def _cmd_investigate(args):
             profile=args.profile or None,
             limit=max(args.limit, 1) if args.limit is not None else None,
             read_top=max(args.read_top, 0) if args.read_top is not None else None,
+            budget=args.budget,
+            dry_run=bool(args.dry_run),
             search_backend=args.search_backend,
             read_backend=args.read_backend,
             max_read_chars=max(args.max_read_chars, 1) if args.max_read_chars is not None else None,
@@ -1756,6 +1882,113 @@ def _cmd_investigate(args):
         print(format_investigation_context(packet))
     else:
         print(format_investigation_markdown(packet))
+
+
+def _cmd_recipe(args):
+    """Render reusable research recipe plans for agents."""
+
+    from guanlan.recipes import (
+        build_recipe_plan,
+        format_recipe_json,
+        format_recipe_list_markdown,
+        format_recipe_plan_markdown,
+        get_recipe,
+        list_recipes,
+    )
+
+    command = getattr(args, "recipe_command", None)
+    if not command:
+        print(format_recipe_list_markdown())
+        return
+    try:
+        if command == "list":
+            recipes = list_recipes()
+            print(format_recipe_json(recipes) if args.json else format_recipe_list_markdown(recipes))
+            return
+        if command == "show":
+            recipe = get_recipe(args.recipe_id).to_dict()
+            print(format_recipe_json(recipe) if args.json else format_recipe_list_markdown([recipe]))
+            return
+        if command == "run":
+            if not args.query:
+                print("Error: query is required", file=sys.stderr)
+                sys.exit(2)
+            plan = build_recipe_plan(
+                args.recipe_id,
+                args.query,
+                profile=args.profile,
+                limit=max(args.limit, 1),
+                read_top=args.read_top,
+            )
+            print(format_recipe_json(plan) if args.json else format_recipe_plan_markdown(plan))
+            return
+    except KeyError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
+    print(f"Error: unknown recipe command: {command}", file=sys.stderr)
+    sys.exit(2)
+
+
+def _cmd_sources(args):
+    """Inspect Guanlan's read-only source registry."""
+
+    from guanlan.source_registry import (
+        audit_source_registry,
+        explain_sources,
+        export_source_registry,
+        format_source_audit_markdown,
+        format_source_explain_markdown,
+        format_source_registry_export_json,
+        format_source_show_markdown,
+        format_sources_markdown,
+        list_source_cards,
+        show_source,
+    )
+
+    command = getattr(args, "sources_command", None)
+    if command == "list":
+        rows = list_source_cards(scope=args.scope or None, limit=max(args.limit, 1))
+        if args.format == "json":
+            print(json.dumps(rows, ensure_ascii=False, indent=2))
+        else:
+            suffix = f" / {args.scope}" if args.scope else ""
+            print(format_sources_markdown(rows, title=f"观澜信源矩阵{suffix}"))
+        return
+    if command == "show":
+        payload = show_source(args.target)
+        if args.format == "json":
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(format_source_show_markdown(payload))
+        return
+    if command == "explain":
+        if not args.query:
+            print("Error: query is required", file=sys.stderr)
+            sys.exit(2)
+        payload = explain_sources(args.query, profile=args.profile or None, limit=max(args.limit, 1))
+        if getattr(args, "trace", False):
+            payload["trace"] = {
+                "adapter": "source-registry-2.0",
+                "network": "not_used",
+                "boundary": payload.get("boundary", ""),
+            }
+        if args.format == "json":
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(format_source_explain_markdown(payload))
+        return
+    if command == "audit":
+        report = audit_source_registry()
+        if args.format == "json":
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        else:
+            print(format_source_audit_markdown(report))
+        return
+    if command == "export":
+        print(format_source_registry_export_json(export_source_registry()))
+        return
+    print("Error: sources command is required: list, show, explain, audit, or export", file=sys.stderr)
+    sys.exit(2)
 
 
 def _cmd_compare(args):
@@ -2035,6 +2268,7 @@ def _cmd_read(args):
                 fallback_limit=max(args.fallback_limit, 1),
                 profile=args.profile or None,
                 cache_ttl=max(args.cache_ttl, 0),
+                concurrency=max(args.concurrency, 1),
                 **_read_quality_kwargs(args),
             )
             if args.format == "json":
@@ -2160,6 +2394,7 @@ def _cmd_archive(args):
         archive_quality_summary,
         archive_search_diagnostics,
         archive_stats,
+        embed_archive,
         export_documents,
         format_archive_context,
         format_archive_export_jsonl,
@@ -2183,7 +2418,7 @@ def _cmd_archive(args):
 
     command = getattr(args, "archive_command", None)
     if not command:
-        print("Error: archive command is required: add, search, context, pack, wiki, ingest-search, ingest-research, list, inspect, remove, reindex, verify, stats, export", file=sys.stderr)
+        print("Error: archive command is required: add, search, context, pack, wiki, embed, ingest-search, ingest-research, list, inspect, remove, reindex, verify, stats, export", file=sys.stderr)
         sys.exit(2)
     db_path = args.db or None
 
@@ -2203,6 +2438,7 @@ def _cmd_archive(args):
                     fallback_limit=max(args.fallback_limit, 1),
                     profile=args.profile or None,
                     db_path=db_path,
+                    concurrency=max(args.concurrency, 1),
                 )
             else:
                 records = [
@@ -2223,8 +2459,8 @@ def _cmd_archive(args):
             return
 
         if command == "search":
-            records = search_documents(args.query, limit=max(args.limit, 1), trace=args.trace, db_path=db_path)
-            diagnostics = archive_search_diagnostics(args.query, records=records, db_path=db_path) if args.trace else None
+            records = search_documents(args.query, limit=max(args.limit, 1), trace=args.trace, semantic=args.semantic, db_path=db_path)
+            diagnostics = archive_search_diagnostics(args.query, records=records, semantic=args.semantic, db_path=db_path) if args.trace or args.semantic else None
             output_format = "json" if args.json else args.format
             if output_format == "json":
                 print(json.dumps({"records": records, "diagnostics": diagnostics} if diagnostics else records, ensure_ascii=False, indent=2))
@@ -2239,18 +2475,47 @@ def _cmd_archive(args):
             return
 
         if command == "context":
-            result = build_archive_wiki_context(
-                args.query,
-                limit=max(args.limit, 1),
-                min_quality=max(args.min_quality, 0),
-                max_chars=max(args.max_chars, 1),
-                db_path=db_path,
-            )
+            if args.semantic:
+                records = search_documents(args.query, limit=max(args.limit, 1), trace=True, semantic=True, db_path=db_path)
+                result = {
+                    "query": args.query,
+                    "records": records,
+                    "context": format_archive_context(records, title=f"观澜本地知识库语义上下文 / {args.query}"),
+                    "retrieval_mode": "semantic",
+                    "boundary": "显式语义侧车；无 embedding 时自动回退到 FTS/LIKE。",
+                }
+            else:
+                result = build_archive_wiki_context(
+                    args.query,
+                    limit=max(args.limit, 1),
+                    min_quality=max(args.min_quality, 0),
+                    max_chars=max(args.max_chars, 1),
+                    db_path=db_path,
+                )
             output_format = "json" if args.json else args.format
             if output_format == "json":
                 print(json.dumps(result, ensure_ascii=False, indent=2))
             else:
                 print(result["context"])
+            return
+
+        if command == "embed":
+            result = embed_archive(
+                backend=args.backend,
+                limit=max(args.limit, 1),
+                dry_run=args.dry_run,
+                db_path=db_path,
+            )
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print("# 观澜 Archive 语义侧车")
+                print()
+                print(f"- 状态: {result.get('status')}")
+                print(f"- 后端: {result.get('backend')}")
+                print(f"- 文档数: {result.get('documents', 0)}")
+                print(f"- 已写入: {result.get('embedded', 0)}")
+                print(f"- 边界: {result.get('boundary', '')}")
             return
 
         if command == "pack":
@@ -2503,16 +2768,51 @@ def _cmd_eval(args):
         format_benchmark_jsonl,
         format_benchmark_markdown,
         format_benchmark_tasks_markdown,
+        format_eval_suite_jsonl,
+        format_eval_suite_markdown,
+        format_eval_suites_markdown,
         format_evaluation_jsonl,
         format_evaluation_markdown,
         list_benchmark_tasks,
+        list_eval_suites,
         list_evaluation_scenarios,
         run_benchmark,
+        run_eval_suite,
+        write_eval_suite_html,
     )
 
     command = getattr(args, "eval_command", None)
-    if command not in {"scenarios", "tasks", "benchmark"}:
-        print("Error: eval command is required: scenarios, tasks, or benchmark", file=sys.stderr)
+    if command not in {"scenarios", "tasks", "benchmark", "suite"}:
+        print("Error: eval command is required: scenarios, tasks, benchmark, or suite", file=sys.stderr)
+        sys.exit(2)
+    if command == "suite":
+        suite_command = getattr(args, "eval_suite_command", None)
+        if suite_command == "list":
+            suites = list_eval_suites()
+            if args.format == "json":
+                print(json.dumps(suites, ensure_ascii=False, indent=2))
+            else:
+                print(format_eval_suites_markdown(suites))
+            return
+        if suite_command == "run":
+            report = run_eval_suite(args.suite_id, mode=args.mode, limit=max(args.limit, 1))
+            if args.format == "json":
+                print(json.dumps(report, ensure_ascii=False, indent=2))
+            elif args.format == "jsonl":
+                print(format_eval_suite_jsonl(report))
+            else:
+                print(format_eval_suite_markdown(report))
+            if report.get("summary", {}).get("fail", 0):
+                sys.exit(1)
+            return
+        if suite_command == "report":
+            report = run_eval_suite(args.suite_id, mode=args.mode, limit=max(args.limit, 1))
+            output = write_eval_suite_html(report, args.output)
+            print(f"Eval suite report written: {output}")
+            if report.get("summary", {}).get("fail", 0):
+                sys.exit(1)
+            return
+        print("Error: eval suite command is required: list, run, or report", file=sys.stderr)
         sys.exit(2)
     if command == "benchmark":
         report = run_benchmark(mode=args.mode, limit=max(args.limit, 1))
@@ -2550,20 +2850,22 @@ def _cmd_quality(args):
         format_coverage_jsonl,
         format_coverage_report,
         format_foundational_report,
+        format_performance_report,
         format_quality_jsonl,
         format_quality_report,
         format_regression_report,
         format_robustness_report,
         run_coverage_checks,
         run_foundational_checks,
+        run_performance_checks,
         run_quality_checks,
         run_regression_checks,
         run_robustness_checks,
     )
 
     command = getattr(args, "quality_command", None)
-    if command not in {"run", "foundational", "coverage", "regression", "robustness", "live-smoke"}:
-        print("Error: quality command is required: run, foundational, coverage, regression, robustness, or live-smoke", file=sys.stderr)
+    if command not in {"run", "foundational", "coverage", "regression", "robustness", "performance", "live-smoke"}:
+        print("Error: quality command is required: run, foundational, coverage, regression, robustness, performance, or live-smoke", file=sys.stderr)
         sys.exit(2)
     if command == "live-smoke":
         report = run_quality_checks(mode="live", limit=max(args.limit, 1), coverage=False)
@@ -2621,6 +2923,17 @@ def _cmd_quality(args):
             print(format_coverage_jsonl(report))
         else:
             print(format_robustness_report(report))
+        if report.get("summary", {}).get("fail", 0):
+            sys.exit(1)
+        return
+    if command == "performance":
+        report = run_performance_checks()
+        if args.format == "json":
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        elif args.format == "jsonl":
+            print(format_coverage_jsonl(report))
+        else:
+            print(format_performance_report(report))
         if report.get("summary", {}).get("fail", 0):
             sys.exit(1)
         return

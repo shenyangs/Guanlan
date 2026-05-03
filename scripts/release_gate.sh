@@ -5,31 +5,37 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 echo "== Guanlan release gate =="
-echo "1/9 ruff"
+echo "1/11 ruff"
 uv run ruff check $(git ls-files '*.py')
 
-echo "2/9 pytest"
+echo "2/11 pytest"
 uv run pytest -q
 
-echo "3/9 foundational guard"
+echo "3/11 foundational guard"
 uv run guanlan quality foundational
 
-echo "4/9 coverage guard"
+echo "4/11 coverage guard"
 uv run guanlan quality coverage
 
-echo "5/9 regression guard"
+echo "5/11 regression guard"
 uv run guanlan quality regression
 
-echo "6/9 robustness guard"
+echo "6/11 robustness guard"
 uv run guanlan quality robustness
 
-echo "7/9 benchmark"
+echo "7/11 benchmark"
 uv run guanlan eval benchmark
 
-echo "8/9 build"
+echo "8/11 performance guard"
+uv run guanlan quality performance
+
+echo "9/11 eval suite"
+uv run guanlan eval suite run chinese-web-v1
+
+echo "10/11 build"
 uv build
 
-echo "9/9 install smoke + version"
+echo "11/11 install smoke + version"
 scripts/release_smoke.sh
 uv run guanlan version
 

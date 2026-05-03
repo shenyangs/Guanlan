@@ -34,6 +34,8 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "guanlan_stock" in names
     assert "guanlan_route" in names
     assert "guanlan_workflow" in names
+    assert "guanlan_page_diagnose" in names
+    assert "guanlan_recipe" in names
     assert "guanlan_read" in names
     assert "guanlan_research" in names
     assert "guanlan_investigate" in names
@@ -61,9 +63,13 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     stock_tool = next(tool for tool in tools if tool["name"] == "guanlan_stock")
     route_tool = next(tool for tool in tools if tool["name"] == "guanlan_route")
     workflow_tool = next(tool for tool in tools if tool["name"] == "guanlan_workflow")
+    diagnose_tool = next(tool for tool in tools if tool["name"] == "guanlan_page_diagnose")
+    recipe_tool = next(tool for tool in tools if tool["name"] == "guanlan_recipe")
     investigate_tool = next(tool for tool in tools if tool["name"] == "guanlan_investigate")
     assert "evidence roles" in route_tool["description"]
     assert "avoid overthinking basic" in workflow_tool["description"]
+    assert "dynamic shell" in diagnose_tool["description"]
+    assert "stable multi-step workflow" in recipe_tool["description"]
     assert "workflow_decision" in investigate_tool["description"]
     assert "prompt" in search_tool["inputSchema"]["properties"]["format"]["enum"]
     assert "cache_ttl=3600" in search_tool["description"]
@@ -254,6 +260,31 @@ def test_mcp_investigate_uses_investigation_module(monkeypatch):
     assert payload["workflow_decision"]["tier"] == "investigate"
 
 
+def test_mcp_page_diagnose_uses_diagnosis_module(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.page_diagnosis.diagnose_page",
+        lambda url, **_kwargs: {
+            "url": url,
+            "page_type": "dynamic_shell",
+            "usable_as_evidence": False,
+        },
+    )
+
+    payload = mcp_server._run_tool("guanlan_page_diagnose", {"url": "https://example.com", "format": "json"})
+
+    assert payload["page_type"] == "dynamic_shell"
+
+
+def test_mcp_recipe_renders_plan():
+    payload = mcp_server._run_tool(
+        "guanlan_recipe",
+        {"command": "run", "recipe_id": "finance-risk", "query": "宁德时代 股价 财报", "format": "json"},
+    )
+
+    assert payload["recipe"]["id"] == "finance-risk"
+    assert any("guanlan stock detail" in command for command in payload["commands"])
+
+
 def test_mcp_capabilities_explains_entrypoints():
     text = mcp_server._run_tool("guanlan_capabilities", {})
 
@@ -261,6 +292,7 @@ def test_mcp_capabilities_explains_entrypoints():
     assert "能力发现" in text
     assert "guanlan search" in text
     assert "助理视角" in text
+    assert "页面诊断" in text
 
 
 def test_mcp_capabilities_can_return_json():

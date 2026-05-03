@@ -8,6 +8,35 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.5.0 - 2026-05-03
+
+### Added
+
+- 新增 `guanlan investigate --budget light|standard|deep` 与 `--dry-run`：把复杂研究拆成显式预算、timeout、兜底策略、网络诊断和证据充分性，不让基础 `search/read` 默认变重。
+- 新增 `guanlan sources list/show/explain/audit/export`：把信源矩阵做成只读、可解释、可审计的 Agent 入口，便于说明“为什么去这些地方搜”。
+- 新增 `guanlan eval suite list/run/report`，内置 `chinese-web-v1` 与 `chinese-web-live`，并把 `chinese-web-v1` 纳入 release gate。
+- 新增公开 Benchmark 报告 `docs/benchmark-report.md`：锁定 80 个真实中文互联网任务，按普通搜索、`guanlan search`、`guanlan route + research` 三组比较信源类型、证据边界、英文漂移、候选池和证据包。
+- 新增 Archive 语义 sidecar：`archive embed --backend local`、`archive search --semantic`、`archive context --semantic`，默认仍保持 SQLite FTS/LIKE，语义能力必须显式启用。
+- 新增批量读取与归档的显式并发参数：`read batch --concurrency`、`archive add batch --concurrency`，默认继续串行，避免为了性能牺牲稳定性。
+- 新增 `guanlan quality performance`，发布闸门扩展为 11 步，覆盖 ruff、全量 pytest、基础功能防回退、覆盖率、回归、稳健性、性能、benchmark、eval suite、构建和安装 smoke。
+- 新增 `guanlan diagnose page` 与 MCP `guanlan_page_diagnose`：诊断页面是可读正文、动态页壳、登录墙/访问门槛、搜索兜底还是弱正文，减少 Agent 对不可读页面的盲目重试。
+- 新增 `guanlan recipe list/show/run` 与 MCP `guanlan_recipe`：为高校导师、财经风险、产品口碑、文娱热度、安全公告、技术雷达等高频任务提供稳定研究模板。
+- 新增低风险 `channel_runtime` 适配器实验层，只做 read-only runtime 验证，不替换现有搜索、阅读、热榜主链路。
+
+### Changed
+
+- README 首页瘦身为 TL;DR、最稳能力、典型命令、安装、安全边界和文档入口；完整长手册迁移到 `docs/full-guide.md`。
+- Agent 文档、Playbook、Skill、AGENTS 规则同步加入页面诊断、recipe、source registry、Benchmark、语义 Archive、timeout 和 WebFetch 补证纪律。
+- `capabilities` 增加页面诊断、研究 recipe 和信源查询入口，让下游 Agent 能先发现能力再选择工作流。
+- 官网版本号同步到 `0.5.0`，保留官网目录为独立展示面。
+- `docs/contract.md` 补充 0.5.0 上层工作流字段，明确新增字段是增强，不允许静默删减基础证据字段。
+
+### Notes
+
+- 本版是 0.5.0 研究工作流引擎：重点不是继续堆平台，而是让 Agent 对复杂中文互联网任务有显式预算、信源矩阵、页面诊断、研究模板和可复现评测。
+- 基础命令保持轻路径：`search/read/hotnews/research` 不因 0.5.0 自动升级为深度工作流，默认候选池和 Agent-facing 证据字段不缩水。
+- 遥测策略保持不变：默认开启，但只采集克制的命令生命周期元数据，不采集 query、URL、正文、Cookie、Token、本地路径或配置值。
+
 ## v0.4.5 - 2026-05-03
 
 ### Added

@@ -28,14 +28,26 @@
 - Agent 平台外层 timeout 要宽松：不要用 10-30 秒去包住 `research`、`feeds` 或 `hotnews` 这种组合命令；超时只能说明网络/上游抖动，不代表没有证据。
 - 用户需要建议、影响判断、下一步行动，或询问“为什么会搜这个”时，优先使用 `research --advisor`，但把助理视角当作证据边界和写作规则，由你结合用户问题生成自然建议；不要机械复述模板，也不要当作用户真实意图。
 - 不确定该查哪些信源时，先用 `guanlan route "关键词"` 看需求路由；路由计划是软约束，优先源用于提高适配度，开放网页兜底用于防止信源池过窄。
+- 页面读不出来时，先用 `guanlan diagnose page "URL"` 判断是可读正文、动态页壳、访问门槛、搜索兜底还是弱正文；不要把搜索兜底当原文，也不要反复重试登录/WAF 页面。
+- 高频垂直任务用 `guanlan recipe list` / `guanlan recipe run <recipe> "问题"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`。
+
+## 信源矩阵与公开基准
+
+- 解释“为什么这些来源适合”时，用 `guanlan sources explain "关键词"`。
+- 查某个来源身份时，用 `guanlan sources show gov.cn` 或 `guanlan sources list --scope finance_disclosure`。
+- 做离线评测时，用 `guanlan eval suite run chinese-web-v1`；它是 100 题 deterministic suite，不联网，不把网络波动当失败。
+- 做真实任务样本复测时，用 `guanlan eval suite run chinese-web-live --mode live`；报告会区分路由、候选池、RSS/热榜调用、时间窗口和网络/上游问题。
+- 治理信源口径时，用 `guanlan sources audit`；它只做本地元数据体检，不联网、不自动改写。
+- 给本地模型/RAG 做长期记忆时，先用 `archive verify`，再显式 `guanlan archive embed --backend local`；语义侧车不替代 FTS。
 
 ## 轻重分流
 
 - 不确定该轻搜还是深查时，先跑 `guanlan workflow "关键词" --json`。它只做本地判断，不联网，不会改变基础搜索行为。
 - `direct`：简单官网、链接、事实入口和轻量资料，直接 `search -> read optional`，不要过度规划。
 - `guided`：政策、财经、安全、技术、热点、口碑等需要信源分层的问题，走 `route -> research -> scoped search`，科技题补 RSS，热点题补 hotnews。
-- `investigate`：用户明确要深度研究、对比、时间线、档案、高影响核验或可复用证据包时，使用 `guanlan investigate "关键词" --limit 80 --format context`。
+- `investigate`：用户明确要深度研究、对比、时间线、档案、高影响核验或可复用证据包时，使用 `guanlan investigate "关键词" --limit 80 --format context`；不确定开销时先 `--dry-run`。
 - 明确命中专门分类时，直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮。欧美娱乐、日韩娱乐、CVE/反诈、天气灾害、体育、财经/股票/宏观金融、科学新闻、职场薪资面经、播客、考试备考、高校招生导师、学术投稿检索、产品/公司口碑都属于强路由。
+- 重复出现的垂直研究模式先用 `recipe run` 输出计划，再执行对应 `search/read/research/stock/archive`，避免 Agent 临场拼错路由。
 - `research` 会附带证据审计提示：如果同一模型、版本号、价格、参数量或发布时间出现不同说法，先把冲突和来源日期讲清楚，再给取舍依据；不要把观澜的冲突提示当成最终裁决。
 
 ## 动态工作流档位
@@ -100,6 +112,8 @@
 | “查股票/公司财报公告/风险” | 先 `guanlan stock detail "宁德时代"`，再 `guanlan research "宁德时代 股价 财报 公告 最近风险" --preset finance --read-top 5 --advisor` |
 | “查行情/指数/股价” | `guanlan stock quote "上证指数"` 或 `guanlan stock quote "600519"`，再按需 `guanlan search "上证指数 今日 行情" --scope finance_quote --limit 80 --trace` |
 | “查资金流向/榜单/大盘概览” | `guanlan stock fundflow "600519"`、`guanlan-stock rank --sort turnover --limit 20`、`guanlan-stock index` |
+| “页面读出来像脚本/登录墙/兜底” | `guanlan diagnose page "URL"` |
+| “按固定流程查高校/财经/口碑/安全/技术” | `guanlan recipe list`，再 `guanlan recipe run finance-risk "问题"` |
 | “查公告/财报/监管/问询函” | `guanlan search "贵州茅台 公告 财报" --scope finance_disclosure --limit 80 --trace` |
 | “查宏观金融/央行/统计局数据” | `guanlan search "社融 CPI 降息 央行" --scope finance_macro --limit 80 --trace` |
 | “查雪球/股吧/投资者情绪” | `guanlan search "某股票 雪球 股吧 情绪" --scope finance_sentiment --limit 80 --trace` |
@@ -166,6 +180,7 @@
 | “查企业内部只读搜索后端” | `guanlan search "关键词" --backend plugin:my_company_api` |
 | “注册企业内部只读搜索 connector” | `guanlan plugin register my_company_api ./backend.py` |
 | “批量读一组链接” | `guanlan read batch urls.txt --format context` |
+| “批量读很多链接且网络允许” | `guanlan read batch urls.txt --concurrency 4 --format context` |
 | “追踪网页内容变化” | `guanlan read "URL" --watch` |
 | “看来源是否偏斜” | `guanlan search "关键词" --source-chart` |
 | “看研究路由是否偏斜” | `guanlan research "关键词" --route-chart` |
@@ -269,6 +284,20 @@ guanlan-stock index
 ```
 
 如果 `guanlan read` 对雪球等财经页返回 WAF、安全验证或动态页壳，Agent 不要反复重试，也不要读取 Cookie；改用结构化行情、公告披露源和财经新闻交叉补证。
+
+如果不确定页面是否真的可读，先诊断：
+
+```bash
+guanlan diagnose page "https://example.com/article"
+```
+
+如果不确定一类任务该怎么组织，先用 recipe：
+
+```bash
+guanlan recipe list
+guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"
+guanlan recipe run university-advisor "南京师范大学中北学院 计算机 导师 招生"
+```
 
 ```bash
 guanlan search "清华大学计算机系研究生招生 导师" --profile china --scope university
@@ -578,7 +607,7 @@ guanlan archive export --format langchain-jsonl
 guanlan archive export --format openwebui-jsonl
 ```
 
-Archive 默认保存在 `~/.guanlan/archive.db`。它只保存本机归档内容，不自动上传。当前本地检索是 SQLite FTS/LIKE 宽召回，不是向量语义搜索；`--trace` 会返回 matched terms、field hits、score 和 `semantic=not-vector`。`archive verify` 用来检查索引一致性、空正文、样本召回和 RAG/Wiki 就绪度；把 archive 交给长期 Agent 记忆前应先跑一遍。`archive wiki build` 只是把已有 archive records 组织成静态 Markdown/HTML Wiki，不代表全网知识；低质量资料会被标为 candidate。`rag-jsonl` 会导出本地 RAG 常用的 `id/text/source/title/domain/source_type/topic` 字段；`llamaindex-jsonl`、`langchain-jsonl`、`openwebui-jsonl` 适合常见本地加载器。如果需要完整元数据，用普通 `jsonl`。批量归档仍遵守高风险社交域名保护；遇到微博、小红书、抖音、Twitter/X、LinkedIn 等平台时，不要绕过授权边界批量读取。
+Archive 默认保存在 `~/.guanlan/archive.db`。它只保存本机归档内容，不自动上传。当前本地检索默认是 SQLite FTS/LIKE 宽召回；如果显式运行 `guanlan archive embed --backend local`，可以再用 `archive search/context --semantic` 调用本地轻量语义侧车。语义侧车不联网、不替代 FTS；`--trace` 会返回 matched terms、field hits、score 和语义边界。`archive verify` 用来检查索引一致性、空正文、样本召回和 RAG/Wiki 就绪度；把 archive 交给长期 Agent 记忆前应先跑一遍。`archive wiki build` 只是把已有 archive records 组织成静态 Markdown/HTML Wiki，不代表全网知识；低质量资料会被标为 candidate。`rag-jsonl` 会导出本地 RAG 常用的 `id/text/source/title/domain/source_type/topic` 字段；`llamaindex-jsonl`、`langchain-jsonl`、`openwebui-jsonl` 适合常见本地加载器。如果需要完整元数据，用普通 `jsonl`。批量归档仍遵守高风险社交域名保护；遇到微博、小红书、抖音、Twitter/X、LinkedIn 等平台时，不要绕过授权边界批量读取。
 
 自定义 backend 只在显式调用时启用。配置示例：
 

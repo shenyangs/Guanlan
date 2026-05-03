@@ -27,6 +27,7 @@ triggers:
   - finance: 雪球/股票/stock/xueqiu/行情/基金
   - entertainment: 文娱/娱乐/影视/电影/电视剧/综艺/明星/票房/豆瓣/猫眼/游戏/欧美娱乐/日韩娱乐/K-pop/J-pop
   - archive/wiki/rag: 本地知识库/archive/RAG/向量库/Agent Wiki/知识底座
+  - diagnose/recipe: 页面读不到/动态页/登录墙/WAF/研究模板/固定流程/recipe
   - report: 报表/html report/可视化报告/汇报页/出个报告
 metadata:
   openclaw:
@@ -47,7 +48,10 @@ metadata:
 - 显式年份/年份范围是强时间窗，窗口外材料只作背景，不应进入主时间线或写成最新证据。
 - 强路由命中时直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮；只有意图混合、拿不准信源角色、或需要解释路由时，才先跑 `guanlan route "query" --json`。
 - 强路由包括：欧美娱乐 `global_entertainment`、日韩娱乐 `jp_kr_entertainment`、CVE/反诈 `cybersecurity`、天气灾害 `weather_disaster`、体育 `sports`、财经/股票/宏观金融 `finance`、科学新闻 `science`、职场薪资面经 `career`、播客 `podcast`、考试备考 `test_prep`、高校招生导师 `university`、学术投稿检索 `academic`、产品/公司口碑 `reputation`。
+- 信源解释：当需要说明“为什么该看这些来源/某来源能不能当主证据”时，先用 `guanlan sources explain "query"` 或 `guanlan sources show gov.cn`；需要治理口径漂移时用 `guanlan sources audit`。这些都是只读信源元数据，不是实际搜索结果。
 - 轻重分流：不确定任务该轻搜还是深查时，先跑 `guanlan workflow "query" --json`；simple/direct 任务不要过度规划，复杂/高风险/对比/时间线/档案任务才用 `guanlan investigate "query" --limit 80 --format context`。
+- 页面诊断：当 `read` 读到动态页壳、登录墙、WAF、安全验证、搜索兜底或弱正文时，先跑 `guanlan diagnose page "URL"`；诊断只解释页面是否能当证据，不读取 Cookie，不执行浏览器动作。
+- 研究模板：高频垂直任务先用 `guanlan recipe list` / `guanlan recipe run <recipe> "query"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`。
 - 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究至少走 `route -> research -> scoped search`；热点题再补 `hotnews`；技术/AI 题再补 `feeds`；来源过窄时再补 `dossier/compare/timeline`。
 - 体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE、安全公告、科学机构声明、文娱榜单/票房、考试官方信息等高确定性垂直题，优先执行 `route` 推荐的 direct `guanlan read` 命令，再用匹配的 `preset/scope` 扩大证据面；不要只看搜索引擎是否返回。
 - 在完成当前档位要求的 Guanlan 工具前，不要立刻切 `web_search/web_fetch`。`quality_summary=warn` 通常表示证据包还不完整，不等于 Guanlan 搜索失败。
@@ -127,6 +131,9 @@ guanlan research "NBA季后赛2026年首轮战绩比分" --preset sports --read-
 guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80
 guanlan search "最近 query 热点" --profile china --trace
 guanlan search "中文问题" --profile china --limit 80 --trace  # 查看 Baidu/Bing/DDG 状态与 backend_recovery
+guanlan diagnose page "https://example.com/article"
+guanlan recipe list
+guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"
 guanlan search "query" --site zhihu.com --limit 80
 guanlan search "query" --site gov.cn --limit 80 --trace  # 硬过滤，空结果不放宽到域外
 guanlan search "query" --trace
@@ -137,6 +144,11 @@ guanlan search "query" --source-chart
 guanlan route "query"
 guanlan workflow "query" --json
 guanlan investigate "query" --limit 80 --format context
+guanlan investigate "query" --budget deep --dry-run
+guanlan sources explain "query"
+guanlan eval suite run chinese-web-v1
+guanlan sources audit
+guanlan quality performance
 guanlan research "query" --profile china --advisor
 guanlan research "query" --profile china --format prompt
 guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
@@ -162,6 +174,7 @@ guanlan read "URL" --max-chars 12000
 guanlan read "URL" --strict --trace
 guanlan read "URL" --backend direct --extract metadata
 guanlan read batch urls.txt --format context
+guanlan read batch urls.txt --concurrency 4 --format context
 guanlan read "URL" --watch
 guanlan feeds curated --limit 80
 guanlan feeds curated --category ai --min-score 85 --limit 80
@@ -175,6 +188,8 @@ guanlan archive add "URL"
 guanlan archive ingest-research "query" --limit 80
 guanlan archive ingest-research "query" --limit 80 --dry-run
 guanlan archive search "query" --format context --trace
+guanlan archive embed --backend local
+guanlan archive search "query" --semantic --format context --trace
 guanlan archive inspect 1
 guanlan archive reindex
 guanlan archive verify

@@ -72,6 +72,7 @@ def add_urls(
     fallback_limit: int = DEFAULT_READ_FALLBACK_LIMIT,
     profile: str | None = "china",
     db_path: str | Path | None = None,
+    concurrency: int = 1,
 ) -> list[dict[str, Any]]:
     """Read multiple URLs and persist successful records into the archive."""
     from guanlan.webtools import read_batch
@@ -83,6 +84,7 @@ def add_urls(
         fallback_search=fallback_search,
         fallback_limit=fallback_limit,
         profile=profile,
+        concurrency=concurrency,
     )
     records = []
     for item in batch:
@@ -384,6 +386,7 @@ def search_documents(
     query: str,
     limit: int = DEFAULT_ARCHIVE_SEARCH_LIMIT,
     trace: bool = False,
+    semantic: bool = False,
     db_path: str | Path | None = None,
 ) -> list[dict[str, Any]]:
     """Search the local archive with FTS when available and LIKE fallback."""
@@ -392,6 +395,10 @@ def search_documents(
         raise ValueError("query is required")
     limit = max(limit, 1)
     with _connect(db_path) as conn:
+        if semantic:
+            semantic_records = _search_semantic(conn, query, limit)
+            if semantic_records:
+                return semantic_records
         rows: list[sqlite3.Row] = []
         seen: set[int] = set()
         for row in _search_fts(conn, query, limit):
@@ -413,6 +420,7 @@ def archive_search_diagnostics(
     query: str,
     *,
     records: list[dict[str, Any]] | None = None,
+    semantic: bool = False,
     db_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Return retrieval diagnostics for local archive search."""
@@ -433,9 +441,77 @@ def archive_search_diagnostics(
         "content_chars": stats.get("content_chars", 0),
         "index": index,
         "results": record_count,
-        "retrieval": "sqlite-fts5+like",
+        "retrieval": "semantic+sqlite-fts5+like" if semantic else "sqlite-fts5+like",
+        "retrieval_mode": "semantic" if semantic else "fts",
         "semantic": index.get("semantic", "not-vector"),
         "guidance": guidance,
+    }
+
+
+def embed_archive(
+    *,
+    backend: str = "local",
+    db_path: str | Path | None = None,
+    limit: int = 500,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Build an explicit local semantic sidecar over existing archive rows."""
+
+    backend = (backend or "local").strip().lower()
+    if backend not in {"local", "ollama", "openai"}:
+        backend = "local"
+    if backend in {"ollama", "openai"}:
+        return {
+            "status": "planned",
+            "backend": backend,
+            "embedded": 0,
+            "boundary": "外部 embedding 后端尚未默认启用；请先用 backend=local 建本地轻量索引，或后续配置专用 provider。",
+            "next_steps": ["guanlan archive embed --backend local"],
+        }
+    path = _db_path(db_path)
+    with _connect(path) as conn:
+        rows = conn.execute(
+            "SELECT id, title, content, url, domain, content_hash FROM documents ORDER BY updated_at DESC LIMIT ?",
+            (max(limit, 1),),
+        ).fetchall()
+        if dry_run:
+            return {
+                "status": "preview",
+                "backend": backend,
+                "documents": len(rows),
+                "embedded": 0,
+                "path": str(path),
+                "boundary": "dry-run 未写入 archive_embeddings。",
+            }
+        embedded = 0
+        for row in rows:
+            vector = _local_embedding(" ".join([str(row["title"]), str(row["domain"]), str(row["content"])]))
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO archive_embeddings
+                    (document_id, backend, model, vector_json, content_hash, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(row["id"]),
+                    backend,
+                    "guanlan-local-lexical-v1",
+                    json.dumps(vector, ensure_ascii=False),
+                    str(row["content_hash"]),
+                    time.time(),
+                ),
+            )
+            embedded += 1
+        conn.execute("INSERT OR REPLACE INTO archive_meta (key, value) VALUES ('semantic', 'local')")
+        conn.commit()
+    return {
+        "status": "ok",
+        "backend": backend,
+        "model": "guanlan-local-lexical-v1",
+        "documents": len(rows),
+        "embedded": embedded,
+        "path": str(path),
+        "boundary": "显式本地轻量语义侧车；不联网、不替代 FTS，search/context 仍保留来源和质量元数据。",
     }
 
 
@@ -759,6 +835,8 @@ def archive_stats(db_path: str | Path | None = None) -> dict[str, Any]:
                 fts_count = int(conn.execute("SELECT COUNT(*) AS count FROM documents_fts").fetchone()["count"])
             except sqlite3.OperationalError:
                 fts_count = 0
+        semantic_count = int(conn.execute("SELECT COUNT(*) AS count FROM archive_embeddings").fetchone()["count"])
+        semantic_row = conn.execute("SELECT value FROM archive_meta WHERE key = 'semantic'").fetchone()
         domains = conn.execute(
             """
             SELECT domain, COUNT(*) AS count
@@ -779,7 +857,8 @@ def archive_stats(db_path: str | Path | None = None) -> dict[str, Any]:
             "fts": "enabled" if fts_enabled else "unavailable",
             "fts_documents": fts_count,
             "fallback": "LIKE",
-            "semantic": "not-vector",
+            "semantic": semantic_row["value"] if semantic_row else "not-vector",
+            "semantic_documents": semantic_count,
         },
         "domains": [{"domain": row["domain"], "count": int(row["count"])} for row in domains],
     }
@@ -948,6 +1027,19 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS archive_embeddings (
+            document_id INTEGER PRIMARY KEY,
+            backend TEXT NOT NULL,
+            model TEXT NOT NULL,
+            vector_json TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            updated_at REAL NOT NULL,
+            FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+        )
+        """
+    )
     try:
         conn.execute(
             """
@@ -985,6 +1077,47 @@ def _upsert_fts(conn: sqlite3.Connection, doc_id: int, title: str, content: str,
 def _has_fts(conn: sqlite3.Connection) -> bool:
     row = conn.execute("SELECT value FROM archive_meta WHERE key = 'fts'").fetchone()
     return bool(row and row["value"] == "1")
+
+
+def _has_semantic(conn: sqlite3.Connection) -> bool:
+    row = conn.execute("SELECT COUNT(*) AS count FROM archive_embeddings").fetchone()
+    return bool(row and int(row["count"]) > 0)
+
+
+def _search_semantic(conn: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+    if not _has_semantic(conn):
+        return []
+    query_vec = _local_embedding(query)
+    rows = conn.execute(
+        """
+        SELECT d.*, e.vector_json, e.backend, e.model
+        FROM archive_embeddings e
+        JOIN documents d ON d.id = e.document_id
+        ORDER BY d.updated_at DESC
+        LIMIT 1000
+        """
+    ).fetchall()
+    scored: list[tuple[float, sqlite3.Row]] = []
+    for row in rows:
+        try:
+            vector = [float(item) for item in json.loads(str(row["vector_json"]))]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        score = _cosine_similarity(query_vec, vector)
+        if score > 0:
+            scored.append((score, row))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    records: list[dict[str, Any]] = []
+    for score, row in scored[: max(limit, 1)]:
+        record = _row_to_record(row, query=query, trace=True)
+        record["semantic_score"] = round(score, 4)
+        record["retrieval_mode"] = "semantic"
+        trace = record.get("search_trace") if isinstance(record.get("search_trace"), dict) else {}
+        trace["semantic"] = "local-lexical"
+        trace["retrieval"] = "semantic+sqlite-fts5+like"
+        record["search_trace"] = trace
+        records.append(record)
+    return records
 
 
 def _search_fts(conn: sqlite3.Connection, query: str, limit: int) -> list[sqlite3.Row]:
@@ -1039,6 +1172,26 @@ def _search_like(conn: sqlite3.Connection, query: str, limit: int) -> list[sqlit
         """,
         params,
     ).fetchall()
+
+
+def _local_embedding(text: str, dims: int = 64) -> list[float]:
+    vector = [0.0] * dims
+    for term in _query_terms(text)[:512]:
+        digest = hashlib.sha256(term.lower().encode("utf-8")).digest()
+        idx = int.from_bytes(digest[:2], "big") % dims
+        weight = 1.0 + min(len(term), 12) / 12
+        vector[idx] += weight
+    norm = sum(value * value for value in vector) ** 0.5
+    if not norm:
+        return vector
+    return [round(value / norm, 6) for value in vector]
+
+
+def _cosine_similarity(left: list[float], right: list[float]) -> float:
+    if not left or not right:
+        return 0.0
+    size = min(len(left), len(right))
+    return sum(left[idx] * right[idx] for idx in range(size))
 
 
 def _is_low_value_ingest_candidate(query: str, item: dict[str, Any]) -> bool:

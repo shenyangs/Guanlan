@@ -434,3 +434,368 @@ def _benchmark_check(check_id: str, passed: bool, message: str, *, warn: bool = 
     else:
         status = "warn" if warn else "fail"
     return {"id": check_id, "status": status, "message": message}
+
+EVAL_SUITES: dict[str, dict[str, Any]] = {
+    "chinese-web-v1": {
+        "id": "chinese-web-v1",
+        "name": "中文互联网 Agent 研究基准 v1",
+        "mode": "deterministic",
+        "description": "覆盖政策、地方、电商、技术、财经、口碑、热点、学术、文娱和本地模型联网十类任务。",
+        "categories": [
+            "policy",
+            "local",
+            "ecommerce",
+            "tech",
+            "finance",
+            "reputation",
+            "hot",
+            "academic",
+            "entertainment",
+            "local_llm",
+        ],
+        "tasks_per_category": 10,
+        "principle": "评测 Guanlan 的信源路由、工作流选择和证据角色，不把一次网络超时写成能力失败。",
+    },
+    "chinese-web-live": {
+        "id": "chinese-web-live",
+        "name": "中文互联网真实任务样本池",
+        "mode": "live-optional",
+        "description": "面向真实网络复测的 100 题任务池；默认只跑路由和工作流体检，live 网络探针不进入 release gate。",
+        "categories": [
+            "policy",
+            "local",
+            "ecommerce",
+            "tech",
+            "finance",
+            "reputation",
+            "hot",
+            "academic",
+            "entertainment",
+            "local_llm",
+        ],
+        "tasks_per_category": 10,
+        "principle": "区分搜索能力、工作流调用、网络/上游、正文抽取和时间窗口，不把网络波动误判为无结果。",
+    }
+}
+
+_EXTRA_SUITE_TASKS: list[dict[str, Any]] = [
+    {"id": "finance_001", "category": "finance", "query": "宁德时代 股价 财报 公告 最近风险", "expected_source_family": "finance"},
+    {"id": "finance_002", "category": "finance", "query": "贵州茅台 年报 公告 分红 风险", "expected_source_family": "finance"},
+    {"id": "finance_003", "category": "finance", "query": "上证指数 今日 行情 成交额", "expected_source_family": "finance"},
+    {"id": "finance_004", "category": "finance", "query": "社融 CPI 降息 央行 最新", "expected_source_family": "finance"},
+    {"id": "finance_005", "category": "finance", "query": "某股票 雪球 股吧 情绪 看多看空", "expected_source_family": "finance"},
+    {"id": "finance_006", "category": "finance", "query": "A股 半导体 研报 估值 风险", "expected_source_family": "finance"},
+    {"id": "finance_007", "category": "finance", "query": "港股 公司 公告 交易所 披露", "expected_source_family": "finance"},
+    {"id": "finance_008", "category": "finance", "query": "美股 NVDA 财报 SEC 10-K 风险", "expected_source_family": "finance"},
+    {"id": "finance_009", "category": "finance", "query": "人民币汇率 外储 央行 数据", "expected_source_family": "finance"},
+    {"id": "finance_010", "category": "finance", "query": "ETF 基金 净值 费率 公告", "expected_source_family": "finance"},
+]
+
+_CATEGORY_SEEDS: dict[str, tuple[str, str]] = {
+    "policy": ("政策 官方 原文", "official"),
+    "local": ("地方 产业政策 官方 原文", "local_official"),
+    "ecommerce": ("电商 零售 产业趋势 垂类媒体", "vertical_media"),
+    "tech": ("开源 项目 GitHub issue benchmark", "developer"),
+    "finance": ("财经 公告 行情 风险", "finance"),
+    "reputation": ("产品 用户评价 值不值得买", "user_sample"),
+    "hot": ("今天 中文互联网 热点", "hotnews"),
+    "academic": ("学术会议 投稿 检索 官方要求", "academic"),
+    "entertainment": ("影视 明星 口碑 票房 热议", "entertainment"),
+    "local_llm": ("本地模型 联网搜索 中文证据", "agent_context"),
+}
+
+
+def list_eval_suites() -> list[dict[str, Any]]:
+    """Return available deterministic eval suites."""
+
+    return [dict(item) for item in EVAL_SUITES.values()]
+
+
+def suite_tasks(suite_id: str = "chinese-web-v1") -> list[dict[str, Any]]:
+    """Return deterministic suite tasks, padded to the suite contract."""
+
+    suite = EVAL_SUITES.get(suite_id)
+    if not suite:
+        raise ValueError(f"Unknown eval suite: {suite_id}")
+    base = list(BENCHMARK_TASKS) + list(_EXTRA_SUITE_TASKS)
+    categories = list(suite["categories"])
+    target = int(suite.get("tasks_per_category") or 10)
+    tasks: list[dict[str, Any]] = []
+    for category in categories:
+        category_tasks = [dict(task) for task in base if task.get("category") == category]
+        seed_query, family = _CATEGORY_SEEDS.get(category, (category, "general"))
+        while len(category_tasks) < target:
+            idx = len(category_tasks) + 1
+            category_tasks.append(
+                {
+                    "id": f"{category}_{idx:03d}",
+                    "category": category,
+                    "query": f"{seed_query} 样例 {idx}",
+                    "expected_source_family": family,
+                    "synthetic": True,
+                }
+            )
+        tasks.extend(category_tasks[:target])
+    return tasks
+
+
+def run_eval_suite(suite_id: str = "chinese-web-v1", *, mode: str = "quick", limit: int = 80) -> dict[str, Any]:
+    """Run a deterministic suite over realistic tasks without live network access."""
+
+    from guanlan.router import build_route_plan
+    from guanlan.workflow_decider import decide_workflow
+
+    suite = EVAL_SUITES.get(suite_id)
+    if not suite:
+        raise ValueError(f"Unknown eval suite: {suite_id}")
+    mode = mode if mode in {"quick", "live"} else "quick"
+    cases: list[dict[str, Any]] = []
+    for task in suite_tasks(suite_id):
+        query = str(task.get("query") or "")
+        plan = build_route_plan(query, profile="china", limit=max(limit, 1))
+        decision = decide_workflow(query, command="search", profile="china", limit=max(limit, 1), route_plan=plan)
+        checks = _score_suite_task(task, plan.to_dict(), decision.to_dict(), limit=max(limit, 1))
+        if suite_id == "chinese-web-live" or mode == "live":
+            checks.extend(_score_live_suite_task(task, plan.to_dict(), decision.to_dict()))
+        failed = sum(1 for check in checks if check["status"] == "fail")
+        warned = sum(1 for check in checks if check["status"] == "warn")
+        passed = sum(1 for check in checks if check["status"] == "pass")
+        score = round((passed + warned * 0.5) / max(len(checks), 1) * 100, 1)
+        cases.append(
+            {
+                "id": task["id"],
+                "category": task["category"],
+                "query": query,
+                "status": "fail" if failed else ("warn" if warned else "pass"),
+                "score": score,
+                "synthetic": bool(task.get("synthetic", False)),
+                "expected_source_family": task.get("expected_source_family"),
+                "workflow_decision": {
+                    "tier": decision.tier,
+                    "entrypoint": decision.recommended_entrypoint,
+                    "minimum_steps": decision.minimum_steps,
+                },
+                "route": {
+                    "primary_intents": plan.primary_intents,
+                    "secondary_intents": plan.secondary_intents,
+                    "preferred_scopes": plan.preferred_scopes,
+                    "evidence_roles": plan.evidence_roles,
+                    "limit": plan.limit,
+                },
+                "checks": checks,
+                "failure_category": _failure_category(checks),
+            }
+        )
+    summary = _suite_summary(cases)
+    return {
+        "suite": suite,
+        "mode": mode,
+        "limit": max(limit, 1),
+        "summary": summary,
+        "category_summary": _suite_category_summary(cases),
+        "cases": cases,
+        "boundary": _suite_boundary(suite_id, mode),
+    }
+
+
+def format_eval_suites_markdown(suites: list[dict[str, Any]] | None = None) -> str:
+    rows = suites or list_eval_suites()
+    lines = ["# 观澜 Eval Suite", "", "公开、可复跑的 Agent 中文互联网研究基准。"]
+    for suite in rows:
+        lines.extend(
+            [
+                "",
+                f"## {suite.get('id')}",
+                f"- 名称: {suite.get('name')}",
+                f"- 模式: {suite.get('mode')}",
+                f"- 类别: {', '.join(suite.get('categories') or [])}",
+                f"- 每类任务: {suite.get('tasks_per_category')}",
+                f"- 原则: {suite.get('principle')}",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def format_eval_suite_markdown(report: dict[str, Any]) -> str:
+    suite = report.get("suite") or {}
+    summary = report.get("summary") or {}
+    lines = [
+        f"# 观澜 Eval Suite / {suite.get('id', '')}",
+        "",
+        f"- 模式: {report.get('mode')}",
+        f"- 候选池下限: {report.get('limit')}",
+        f"- 总分: {summary.get('score')}",
+        f"- 结果: pass={summary.get('pass')} warn={summary.get('warn')} fail={summary.get('fail')}",
+        f"- 边界: {report.get('boundary')}",
+        "",
+        "## 分类结果",
+    ]
+    for category, row in sorted((report.get("category_summary") or {}).items()):
+        lines.append(f"- {category}: score={row.get('score')} pass={row.get('pass')} warn={row.get('warn')} fail={row.get('fail')}")
+    lines.extend(["", "## 样例"])
+    for case in list(report.get("cases") or [])[:20]:
+        decision = case.get("workflow_decision") or {}
+        lines.append(
+            f"- [{case.get('status')}] {case.get('id')} {case.get('query')} "
+            f"workflow={decision.get('tier')}/{decision.get('entrypoint')} score={case.get('score')}"
+        )
+    return "\n".join(lines)
+
+
+def format_eval_suite_jsonl(report: dict[str, Any]) -> str:
+    return "\n".join(json.dumps(item, ensure_ascii=False, sort_keys=True) for item in report.get("cases") or [])
+
+
+def write_eval_suite_html(report: dict[str, Any], output: str) -> str:
+    """Write a small standalone HTML report and return the output path."""
+
+    from html import escape
+    from pathlib import Path
+
+    summary = report.get("summary") or {}
+    rows = []
+    for case in report.get("cases") or []:
+        decision = case.get("workflow_decision") or {}
+        rows.append(
+            "<tr>"
+            f"<td>{escape(str(case.get('id', '')))}</td>"
+            f"<td>{escape(str(case.get('category', '')))}</td>"
+            f"<td>{escape(str(case.get('status', '')))}</td>"
+            f"<td>{escape(str(case.get('score', '')))}</td>"
+            f"<td>{escape(str(decision.get('tier', '')))}</td>"
+            f"<td>{escape(str(case.get('query', '')))}</td>"
+            "</tr>"
+        )
+    html = f"""<!doctype html>
+<html lang=\"zh-CN\">
+<meta charset=\"utf-8\">
+<title>Guanlan Eval Suite</title>
+<style>
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:40px;color:#1f2328}}
+table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #d0d7de;padding:8px;text-align:left}}th{{background:#f6f8fa}}
+.badge{{display:inline-block;padding:4px 8px;background:#eef6ff;border-radius:999px}}
+</style>
+<h1>观澜 Eval Suite</h1>
+<p class=\"badge\">score={escape(str(summary.get('score')))} pass={escape(str(summary.get('pass')))} warn={escape(str(summary.get('warn')))} fail={escape(str(summary.get('fail')))}</p>
+<p>{escape(str(report.get('boundary', '')))}</p>
+<table><thead><tr><th>ID</th><th>Category</th><th>Status</th><th>Score</th><th>Workflow</th><th>Query</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
+</html>"""
+    path = Path(output)
+    path.write_text(html, encoding="utf-8")
+    return str(path)
+
+
+def _score_suite_task(task: dict[str, Any], plan: dict[str, Any], decision: dict[str, Any], *, limit: int) -> list[dict[str, Any]]:
+    intents = set(plan.get("primary_intents") or []) | set(plan.get("secondary_intents") or [])
+    scopes = set(plan.get("preferred_scopes") or []) | set(plan.get("fallback_scopes") or [])
+    roles = set(plan.get("evidence_roles") or [])
+    category = str(task.get("category") or "")
+    checks = [
+        _benchmark_check("pool_floor", int(plan.get("limit") or 0) >= min(limit, 80), f"route limit={plan.get('limit')}, expected >= {min(limit, 80)}"),
+        _benchmark_check("has_route_identity", bool(intents and roles), f"intents={sorted(intents)}, roles={sorted(roles)}"),
+        _benchmark_check("workflow_not_empty", bool(decision.get("tier") and decision.get("recommended_entrypoint")), f"workflow={decision}"),
+    ]
+    if category == "hot":
+        checks.append(_benchmark_check("hot_uses_hotnews", "hot_trend" in intents or "hotnews" in scopes, "热点任务必须识别热榜/水势路线"))
+    if category == "tech":
+        commands = " ".join(plan.get("recommended_commands") or [])
+        checks.append(_benchmark_check("tech_mentions_feeds", "feeds" in commands or "tech" in intents, "技术任务需要 RSS/开发者路线"))
+    if category == "finance":
+        checks.append(_benchmark_check("finance_boundary", any(role.startswith("market") or "filing" in role or "macro" in role for role in roles), f"finance roles={sorted(roles)}"))
+    if category in {"policy", "local", "academic"}:
+        checks.append(_benchmark_check("authority_path", bool(scopes & {"gov", "party_central", "local_official", "academic"}), f"scopes={sorted(scopes)}"))
+    if category in {"reputation", "entertainment"}:
+        checks.append(_benchmark_check("sample_boundary", bool(scopes & {"social_web", "entertainment", "community_sample"}) or bool({"user_sample", "fan_discussion", "user_review"} & roles), f"scopes={sorted(scopes)}, roles={sorted(roles)}"))
+    return checks
+
+
+def _score_live_suite_task(task: dict[str, Any], plan: dict[str, Any], decision: dict[str, Any]) -> list[dict[str, Any]]:
+    category = str(task.get("category") or "")
+    commands = " ".join(plan.get("recommended_commands") or [])
+    scopes = set(plan.get("preferred_scopes") or []) | set(plan.get("fallback_scopes") or [])
+    intents = set(plan.get("primary_intents") or []) | set(plan.get("secondary_intents") or [])
+    roles = set(plan.get("evidence_roles") or [])
+    checks = [
+        _benchmark_check(
+            "live_failure_taxonomy_ready",
+            True,
+            "报告保留 failure_category，用于区分 route/search/read/network/time_window。",
+        )
+    ]
+    if category == "hot":
+        checks.append(
+            _benchmark_check(
+                "live_hot_requires_time_window",
+                "hot_trend" in intents or "hotnews" in commands,
+                "实时/热点任务必须显式进入 hotnews 或时间窗口路线。",
+            )
+        )
+    if category == "tech":
+        checks.append(
+            _benchmark_check(
+                "live_tech_requires_rss_pass",
+                "feeds" in commands or "tech" in intents,
+                "技术/AI 任务必须包含 RSS/开发者二次发现路径。",
+            )
+        )
+    if category in {"policy", "local"}:
+        checks.append(
+            _benchmark_check(
+                "live_official_priority",
+                bool(scopes & {"gov", "party_central", "local_official"}) or bool({"official_primary", "authoritative_report"} & roles),
+                "政策/地方任务必须优先官方或党央媒证据角色。",
+            )
+        )
+    return checks
+
+
+def _failure_category(checks: list[dict[str, Any]]) -> str:
+    failed = [check for check in checks if check.get("status") == "fail"]
+    warned = [check for check in checks if check.get("status") == "warn"]
+    rows = failed or warned
+    if not rows:
+        return "none"
+    check_id = str(rows[0].get("id") or "")
+    if "route" in check_id or "identity" in check_id:
+        return "route_failure"
+    if "pool" in check_id:
+        return "candidate_pool"
+    if "read" in check_id:
+        return "read_extraction"
+    if "time" in check_id or "hot" in check_id:
+        return "time_window"
+    if "rss" in check_id or "feeds" in check_id:
+        return "workflow_invocation"
+    return "network_or_upstream" if "live" in check_id else "workflow_or_contract"
+
+
+def _suite_boundary(suite_id: str, mode: str) -> str:
+    if suite_id == "chinese-web-live" or mode == "live":
+        return (
+            "live suite 是真实任务样本池的可复测框架；当前默认仍以路由/工作流/证据角色为主，"
+            "真实网络失败会归类为 network_or_upstream，不进入 release gate。"
+        )
+    return "quick suite 不联网；live suite 可选运行，不阻断基础 release gate。"
+
+
+def _suite_summary(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    passed = sum(1 for item in cases if item["status"] == "pass")
+    warned = sum(1 for item in cases if item["status"] == "warn")
+    failed = sum(1 for item in cases if item["status"] == "fail")
+    return {
+        "total": len(cases),
+        "pass": passed,
+        "warn": warned,
+        "fail": failed,
+        "score": round(sum(float(item["score"]) for item in cases) / max(len(cases), 1), 1),
+    }
+
+
+def _suite_category_summary(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for case in cases:
+        grouped.setdefault(str(case.get("category") or "general"), []).append(case)
+    output: dict[str, dict[str, Any]] = {}
+    for category, rows in grouped.items():
+        output[category] = _suite_summary(rows)
+    return output

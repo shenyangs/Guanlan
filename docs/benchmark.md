@@ -13,18 +13,18 @@ The deterministic gate is intentionally conservative. It proves that the tool st
 
 ## Current Task Pool
 
-The first public task pool contains 40 tasks across eight categories:
+The public live/manual report now locks 80 real-world tasks across eight categories:
 
 | Category | Count | What It Tests |
 | --- | ---: | --- |
-| `policy` | 5 | Official-source priority and policy wording boundaries. |
-| `local` | 5 | Local government and local official-media source routing. |
-| `ecommerce` | 5 | Vertical media, platform announcements, and industry context. |
-| `tech` | 5 | Developer-community and source-code oriented evidence. |
-| `reputation` | 5 | User-sample routing and sample-bias caveats. |
-| `hot` | 5 | Recent trend and hotnews observation paths. |
-| `academic` | 5 | Database, publisher, conference, and institution distinction. |
-| `local_llm` | 5 | Evidence packets for local models without native web access. |
+| `policy` | 10 | Official-source priority and policy wording boundaries. |
+| `local` | 10 | Local government and local official-media source routing. |
+| `ecommerce` | 10 | Vertical media, platform announcements, and industry context. |
+| `tech` | 10 | Developer-community, RSS, source-code, and docs-oriented evidence. |
+| `academic` | 10 | Database, publisher, conference, and institution distinction. |
+| `reputation` | 10 | User-sample routing and sample-bias caveats. |
+| `hot` | 10 | Recent trend, hotnews, and time-window observation paths. |
+| `local_llm` | 10 | Evidence packets and prompt-ready context for local models without native web access. |
 
 ## Suggested Live Comparison
 
@@ -50,6 +50,8 @@ Score each task on five simple signals:
 guanlan eval benchmark
 guanlan eval tasks --format markdown
 guanlan eval tasks --format jsonl > guanlan-benchmark-tasks.jsonl
+guanlan eval suite run chinese-web-v1
+guanlan eval suite run chinese-web-live --mode live
 guanlan quality live-smoke --limit 5
 ```
 
@@ -57,4 +59,5 @@ guanlan quality live-smoke --limit 5
 
 ## Public Reports
 
+- [v0.5.0 public benchmark report](benchmark-report.md): locks an 80-task real-world comparison matrix for ordinary search, Guanlan search, and Guanlan route + research.
 - [v0.3.7 benchmark and workflow report](benchmark-report-v0.3.7.md): records the first benchmark plan that includes compare/timeline/dossier, search-quality v2, read-quality summaries, and local-LLM workflow checks.

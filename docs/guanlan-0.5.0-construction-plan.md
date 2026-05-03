@@ -8,9 +8,9 @@
 
 观澜 0.5.0 不应把所有问题都变成“深度研究工程”。基础搜索必须继续轻、快、可解释；复杂研究才进入多步编排。
 
-## v0.4.5 先行落地状态
+## v0.5.0 发布状态
 
-本方案先在 `0.4.5` 落地 P0 基座：`guanlan workflow`、`guanlan investigate`、`guanlan quality foundational`、MCP `guanlan_workflow/guanlan_investigate`。这不是把 0.5.0 提前发布，而是先把轻重分流和基础护栏做稳，后续再继续推进更重的 source registry / benchmark / archive 语义能力。
+本方案已在 `0.5.0` 完成主线落地：`guanlan workflow`、`guanlan investigate --budget/--dry-run`、`guanlan sources`、`guanlan eval suite`、Archive 语义 sidecar、页面诊断、研究 recipe、`quality performance` 和 MCP 对应工具面均已进入主线。后续迭代继续围绕稳定契约、真实样本复跑和局部重构推进，不做会牵动基础搜索/阅读主链路的大重构。
 
 ## 一、版本目标
 
@@ -456,3 +456,252 @@ guanlan eval suite report --output report.html
 - 默认候选池和核心证据字段没有缩水。
 - 新能力失败时能解释边界，不影响基础命令继续可用。
 
+
+## 九、P2/P3 后续施工清单
+
+P2/P3 的目标不是继续堆平台，而是在 P0/P1 已经建立的轻重分流、信源矩阵和离线基准之上，提升复杂研究的稳健性、可复用性和可证明性。所有改动仍遵守同一原则：基础 `search/read/hotnews/research` 不变重，高级能力显式调用，失败时可降级、可解释。
+
+### P2：复杂研究质量层
+
+P2 只增强上层研究工作流，不接管基础命令。
+
+#### P2.1 Archive 语义桥接（可选后端）
+
+目标：让 Agent 搜过、读过、研究过的材料更容易沉淀为本地知识资产，但默认仍保持 SQLite FTS/LIKE，不引入默认 embedding 依赖。
+
+建议新增：
+
+```bash
+guanlan archive embed --backend ollama
+guanlan archive embed --backend openai --model text-embedding-3-small
+guanlan archive search "query" --semantic
+guanlan archive context "query" --semantic --limit 20
+```
+
+设计约束：
+
+- 默认不启用语义检索。
+- 没有 embedding 后端时，archive 行为与现在完全一致。
+- embedding 只处理本地 archive 记录，不主动联网。
+- 输出必须保留原始 `url/title/source_card/read_quality/ingest_audit`，不能只返回向量命中分。
+- 语义结果必须和 FTS 结果区分标记，例如 `retrieval_mode=semantic|hybrid|fts`。
+
+验收：
+
+- 未配置 embedding 时，`archive search/context` 全部原样可用。
+- 配置 Ollama 后，能对本地 20 条测试文档生成向量并检索。
+- RAG 导出不丢 `source_card`、`risk_tags`、`read_quality`。
+
+#### P2.2 Live Benchmark 样本池
+
+目标：把“观澜更适合中文互联网研究”从叙事推进到可复测证据。
+
+建议新增：
+
+```bash
+guanlan eval suite run chinese-web-live --mode live --limit 80
+guanlan eval suite report chinese-web-live --output report.html
+```
+
+样本结构：
+
+- 政策/官方 10
+- 地方/产业 10
+- 电商/消费 10
+- 技术/AI/RSS 10
+- 财经/公司 10
+- 口碑/社区 10
+- 热点/趋势 10
+- 学术/高校 10
+- 文娱/体育 10
+- 本地模型联网 10
+
+设计约束：
+
+- live suite 默认不进 release gate。
+- 网络失败要归类为 `network_or_upstream`，不能直接算“搜索能力失败”。
+- 对实时任务必须检查时间窗口。
+- 对技术/AI 任务必须检查 RSS 二次发现。
+- 对政策/官方任务必须检查官方源优先。
+
+验收：
+
+- 能生成 HTML/JSONL 报告。
+- 报告区分：路由失败、候选池不足、来源过窄、网络失败、正文抽取失败、时间窗口失败。
+- 至少保留 3 次历史报告用于对比趋势。
+
+#### P2.3 Source Registry 收束治理
+
+目标：降低 `source_registry`、`source_taxonomy`、`search_sources`、`channel_catalog` 之间口径漂移的风险，但不做一次性大重构。
+
+建议新增：
+
+```bash
+guanlan sources audit
+guanlan sources export --format json
+guanlan sources explain "query" --trace
+```
+
+设计约束：
+
+- 先做 audit/read-only，不直接移动数据结构。
+- 找出口径冲突：稳定性、授权要求、风险标签、scope 归属、证据角色。
+- 输出修复建议，不自动改写。
+
+验收：
+
+- `sources audit` 能发现高关注渠道（微信、知乎、小红书、微博、B站、抖音、雪球、RSS、web）的状态是否一致。
+- README、doctor/status、hotnews list、MCP/Skill 不出现同一平台互相矛盾的稳定性描述。
+
+#### P2.4 `investigate` 证据预算和降级策略
+
+目标：让深度研究更可靠，但不无限补证。
+
+建议增强字段：
+
+- `step_budget`
+- `timeout_budget_seconds`
+- `fallback_used`
+- `external_fetch_strategy`
+- `network_diagnosis`
+- `evidence_sufficiency`
+
+设计约束：
+
+- `light/standard/deep` 每档都有最大步骤数。
+- 搜索全挂时，只输出建议让宿主 Agent 临时调用 WebFetch，不在 Guanlan 内隐式调用。
+- 如果建议 WebFetch，必须说明这是增强搜索策略，不是 Guanlan 静默失败。
+
+验收：
+
+- 模拟搜索后端全挂时，`investigate` 能输出清晰降级建议。
+- 深度模式不会无限调用 read/search。
+- `--dry-run` 可以展示预算和降级路径。
+
+### P3：性能与长期架构治理
+
+P3 是稳定后的工程治理层。除非 P2 已稳定，否则不动主链路大结构。
+
+#### P3.1 并发读取和多后端搜索
+
+目标：提升 `research`、`read batch`、`archive ingest-research` 的吞吐，不改变输出字段和排序语义。
+
+设计约束：
+
+- 先用 `ThreadPoolExecutor` 做有限并发，不直接全量 asyncio 重写。
+- 默认并发保守，例如 `--concurrency 4`。
+- 每个任务有 timeout、错误隔离和结果顺序稳定策略。
+- 基础 `search "query"` 不因并发改造变慢或变不稳定。
+
+验收：
+
+- 10 个 URL 批量读取耗时明显下降。
+- 任意单个 URL 失败不影响其他 URL。
+- JSON 输出顺序可预测。
+- 测试覆盖 timeout、部分失败、缓存命中。
+
+#### P3.2 拆分神文件，但只做边界内抽离
+
+目标：降低 `cli.py`、`webtools.py` 的维护风险，但不在 0.5.0 前后做破坏性重构。
+
+建议顺序：
+
+1. 先抽纯 formatter/helper。
+2. 再抽 CLI command handler。
+3. 最后才考虑 runtime adapter。
+
+禁止：
+
+- 禁止一次性重写 `webtools.py` 主链路。
+- 禁止在没有契约测试保护时改 ranking/read/search 输出。
+- 禁止为了“架构好看”改变用户命令行为。
+
+验收：
+
+- 每次抽离后 full pytest + release gate 必须通过。
+- diff 应以移动代码为主，不混入行为变化。
+- Agent-facing JSON 字段零删除。
+
+#### P3.3 Channel Runtime Adapter 试点
+
+目标：验证是否值得把 channel 从 doctor/status 概念推进到运行时适配器，但只选低风险渠道试点。
+
+试点范围：
+
+- RSS
+- web/read
+- GitHub
+- V2EX
+
+建议接口：
+
+```python
+class ChannelRuntime:
+    def search(self, query: str, limit: int) -> list[SearchResult]: ...
+    def read(self, url: str) -> ReadResult: ...
+    def health(self) -> ChannelHealth: ...
+```
+
+设计约束：
+
+- 不触碰小红书、微博、知乎、抖音等高风控渠道。
+- 旧路径保留，新 adapter 只做内部可选试点。
+- adapter 输出必须转换回现有结果结构。
+
+验收：
+
+- RSS/web 试点通过 contract tests。
+- doctor/status 与 runtime health 不冲突。
+- 可随时回退旧路径。
+
+#### P3.4 性能基准和退化监控
+
+目标：防止优化后“看起来更高级，实际更慢、更窄、更脆”。
+
+建议新增：
+
+```bash
+guanlan quality performance
+guanlan eval compare-runs before.json after.json
+```
+
+指标：
+
+- 查询耗时 p50/p90
+- 结果池大小
+- 域名多样性
+- 官方/社区/媒体比例
+- read 正文占比
+- cache 命中率
+- timeout/fallback 次数
+
+验收：
+
+- 每次大改前后可对比。
+- 报告能明确“变慢但更准”或“更快但结果变窄”。
+- release gate 只纳入轻量 deterministic performance，不阻断真实网络波动。
+
+## 十、P2/P3 暂停条件
+
+出现以下情况，应停止继续做高级优化，回到基础稳定性：
+
+- `search/read/hotnews/research` 任一基础命令行为出现非预期变化。
+- 默认候选池缩水。
+- Agent-facing JSON 字段删除或改名。
+- release gate 失败。
+- 新增高级命令导致安装 smoke 失败。
+- 真实网络失败被误判为“无结果”。
+- 为了并发或重构引入不可解释的排序变化。
+
+## 十一、建议执行顺序
+
+1. P2.4 `investigate` 预算/降级字段。
+2. P2.3 `sources audit/export`，先治理口径。
+3. P2.2 live benchmark 报告，不进 release gate。
+4. P2.1 archive semantic 可选后端，默认关闭。
+5. P3.4 performance guard。
+6. P3.1 有限并发读取。
+7. P3.2 小步拆分 formatter/handler。
+8. P3.3 Channel Runtime Adapter 低风险试点。
+
+这个顺序的原因是：先增强可解释和可测性，再碰性能和架构。观澜不是为了显得复杂而复杂，所有高级能力都必须服务 Agent 更稳地拿到中文互联网证据。

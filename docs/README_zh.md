@@ -7,12 +7,14 @@
 | 文档 | 适合什么时候看 |
 | --- | --- |
 | [README.md](../README.md) | 第一次了解观澜：它是什么、为什么存在、默认边界是什么。 |
+| [完整使用手册](full-guide.md) | 查看从 README 首页瘦身迁出的长命令表、完整能力说明和案例。 |
 | [更新日志](../CHANGELOG.md) | 查看每个版本的能力变化、边界调整和下一步收口。 |
 | [本地大模型联网指南](local-llm.md) | 让 Ollama、LM Studio、Open WebUI 等无联网模型使用观澜证据包。 |
 | [Agent 使用说明](agent-usage.md) | 给 AI Agent 的搜索、阅读、热榜、社交平台和安全降级规则。 |
 | [Agent Playbook](agent-playbook.md) | 给 Agent 的长期操作记忆：动态工作流、benchmark 纪律、fallback 规则。 |
 | [Agent 输出契约](contract.md) | 给 Agent/MCP/HTTP/RAG 集成方看的稳定字段与边界承诺。 |
 | [Benchmark 说明](benchmark.md) | 离线契约评测、真实任务池和 live/manual benchmark 方法。 |
+| [公开 Benchmark 报告](benchmark-report.md) | 80 个真实任务样本、三组对比方法和评分指标。 |
 | [v0.3.7 Benchmark 报告](benchmark-report-v0.3.7.md) | 对比、时间线、档案、搜索质量 v2 与本地模型工作流的测试口径。 |
 | [安装指南](install.md) | 让 Agent 按步骤安装、配置和自检。 |
 | [排障手册](troubleshooting.md) | 遇到钥匙串弹窗、网络异常、Cookie 或平台失败时排查。 |
@@ -50,7 +52,7 @@
 - Jina Reader 已作为第一读取入口，但不是唯一依赖；读取不稳时可用 `guanlan read "URL" --backend direct` 直连原网页。
 - 本地知识库已经可用：`guanlan archive add "URL"`、`guanlan archive search "关键词" --format context --trace`、`guanlan archive inspect 1`、`guanlan archive reindex`、`guanlan archive export --format rag-jsonl`；联网入库会返回 `ingest_audit`，解释为什么保留或跳过候选。
 - Agent 输出契约已经开始固化，见 [Agent 输出契约](contract.md)；后续新增字段可以向后兼容，核心字段不应静默移除或改名。
-- 发版前稳健性闸门：`guanlan quality coverage`、`guanlan quality regression`、`guanlan quality robustness`、`guanlan eval benchmark`，或直接运行 `scripts/release_gate.sh`。真实网络探测可用 `guanlan quality live-smoke --limit 5`，默认不阻断发版。
+- 发版前稳健性闸门：`guanlan quality coverage`、`guanlan quality regression`、`guanlan quality robustness`、`guanlan quality performance`、`guanlan eval benchmark`、`guanlan eval suite run chinese-web-v1`，或直接运行 `scripts/release_gate.sh`。真实网络探测可用 `guanlan quality live-smoke --limit 5`，默认不阻断发版。
 - 本地模型联网入口已经可用：`guanlan prompt "问题"`、`guanlan research "问题" --format prompt`、`guanlan mcp config --client codex`。
 - 进阶能力已经有第一版骨架：`guanlan serve` 本地只读 HTTP、`hotnews --trends` 趋势归并、`archive ingest-research --dry-run` RAG 沉淀、`plugin register/template` 企业只读 connector、`eval scenarios` 评估集。
 - 第一批原生热榜命令已经可用：`guanlan hotnews list`、`guanlan hotnews baidu --limit 80`、`guanlan hotnews v2ex --json`；`zhihu` 是 experimental 源，失败时使用搜索 fallback。

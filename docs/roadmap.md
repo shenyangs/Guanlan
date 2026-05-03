@@ -17,18 +17,19 @@
 
 ### v0.5.0 研究工作流引擎
 
-> v0.4.5 已先行落地 P0 基座：`workflow`、`investigate`、`quality foundational` 和 MCP 工具面；后续 0.5.0 继续做更完整的 source registry / benchmark / archive 语义增强。
+> v0.5.0 已发布研究工作流引擎：`workflow/investigate`、`sources`、`eval suite`、Archive 语义 sidecar、页面诊断、研究 recipe 和 release gate 性能护栏已经进入主线。
 
 
 目标：在不加重基础搜索的前提下，新增显式的上层研究工作流。核心原则是“轻任务不打扰，重任务不偷懒”。
 
-计划方向：
+已落地方向：
 
 - 新增基础功能防回退闸门，确保 `search/read/hotnews/research/archive` 的候选池和核心字段不缩水。
 - 新增 Agent 升档决策器，区分 `direct / guided / investigate`，避免简单搜索过度规划。
 - 新增 `guanlan investigate`，只在用户明确需要深度研究、多实体比较、高风险准确性或复杂证据包时使用。
 - 新增 `guanlan sources` 只读信源查询，让 Agent 能解释某类问题为什么优先哪些信源。
 - 新增 `guanlan eval suite`，把中文互联网真实任务基准沉淀成可复现评测。
+- 新增 `guanlan diagnose page` 和 `guanlan recipe`，降低弱正文误判和垂直任务临场拼流程的风险。
 
 验收标准：
 

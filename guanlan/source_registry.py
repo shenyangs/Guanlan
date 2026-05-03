@@ -405,3 +405,311 @@ def list_optional_backend_sources(backend: str) -> dict[str, dict[str, Any]]:
         native_id = entry.id.split(":", 1)[1] if ":" in entry.id else entry.id
         result[native_id] = entry.to_dict()
     return result
+
+
+def list_source_cards(scope: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+    """Return read-only source cards adapted from search scopes and taxonomy.
+
+    This is Source Registry 2.0's safe adapter layer: it does not merge or
+    rewrite existing source structures; it exposes them in a stable shape for
+    agents and humans.
+    """
+
+    from guanlan.search_sources import SEARCH_SCOPES
+    from guanlan.source_taxonomy import source_card_for_domain
+
+    scope_key = (scope or "").strip().lower()
+    rows: list[dict[str, Any]] = []
+    for scope_id, search_scope in SEARCH_SCOPES.items():
+        if scope_key and scope_id != scope_key:
+            continue
+        for domain in search_scope.domains:
+            card = source_card_for_domain(domain, preferred_scope=scope_id).to_dict()
+            rows.append(_source_card_row(scope_id, search_scope.to_dict(), card))
+            if len(rows) >= max(limit, 1):
+                return rows
+    return rows
+
+
+def show_source(target: str) -> dict[str, Any]:
+    """Show one source by matrix id, alias, domain, or scope id."""
+
+    from guanlan.search_sources import SEARCH_SCOPES
+    from guanlan.source_taxonomy import source_card_for_domain
+
+    key = (target or "").strip().lower()
+    if not key:
+        return {}
+    matrix = get_source_metadata(key)
+    if matrix:
+        return {"kind": "matrix_source", **matrix}
+    if key in SEARCH_SCOPES:
+        scope = SEARCH_SCOPES[key]
+        rows = list_source_cards(scope=key, limit=len(scope.domains))
+        return {"kind": "scope", "scope": scope.to_dict(), "sources": rows}
+    card = source_card_for_domain(key).to_dict()
+    return {"kind": "domain", **_source_card_row(card.get("scope_id") or "", {}, card)}
+
+
+def explain_sources(query: str, *, profile: str | None = None, limit: int = 12) -> dict[str, Any]:
+    """Explain source routing for a query through the registry adapter."""
+
+    from guanlan.router import build_route_plan
+
+    plan = build_route_plan(query, profile=profile, limit=80)
+    plan_data = plan.to_dict()
+    rows: list[dict[str, Any]] = []
+    for scope_id in plan_data.get("preferred_scopes") or []:
+        rows.extend(list_source_cards(scope=scope_id, limit=3))
+        if len(rows) >= max(limit, 1):
+            break
+    if not rows:
+        rows = list_source_cards(limit=max(limit, 1))
+    return {
+        "query": query,
+        "route_plan": plan_data,
+        "sources": rows[: max(limit, 1)],
+        "explain": _source_explain_text(plan_data),
+        "boundary": "sources explain 是只读信源解释，不联网，不等同于实际搜索结果。",
+    }
+
+
+def export_source_registry() -> dict[str, Any]:
+    """Export source registry surfaces without rewriting their source modules."""
+
+    from guanlan.channel_catalog import CHANNEL_CATALOG
+
+    cards = list_source_cards(limit=500)
+    return {
+        "schema": "guanlan-source-registry-2.0",
+        "boundary": "只读导出：聚合 source matrix、search scopes、source taxonomy 和 channel catalog；不改写运行时。",
+        "matrix_sources": list_sources(),
+        "source_cards": cards,
+        "channel_catalog": CHANNEL_CATALOG,
+        "counts": {
+            "matrix_sources": len(SOURCE_MATRIX),
+            "source_cards": len(cards),
+            "channels": len(CHANNEL_CATALOG),
+        },
+    }
+
+
+def audit_source_registry() -> dict[str, Any]:
+    """Audit high-attention source wording for drift across registry surfaces."""
+
+    from guanlan.channel_catalog import CHANNEL_CATALOG
+
+    high_focus = ["wechat", "zhihu", "xiaohongshu", "weibo", "bilibili", "douyin", "xueqiu", "rss", "web"]
+    matrix_by_platform: dict[str, list[dict[str, Any]]] = {}
+    for entry in SOURCE_MATRIX.values():
+        row = entry.to_dict()
+        matrix_by_platform.setdefault(str(row.get("platform") or row.get("id") or ""), []).append(row)
+    checks: list[dict[str, Any]] = []
+    for platform in high_focus:
+        catalog = CHANNEL_CATALOG.get(platform, {})
+        matrix_rows = matrix_by_platform.get(platform, [])
+        if not catalog and not matrix_rows:
+            checks.append(
+                {
+                    "id": platform,
+                    "status": "warn",
+                    "issue": "missing_from_registry",
+                    "message": "高关注平台未在 channel catalog 或 source matrix 中出现。",
+                }
+            )
+            continue
+        catalog_stability = str(catalog.get("stability") or "")
+        matrix_status = sorted({str(row.get("status") or "") for row in matrix_rows if row.get("status")})
+        conflict = bool(
+            catalog_stability == "stable"
+            and any(status in {"experimental", "optional"} for status in matrix_status)
+        )
+        checks.append(
+            {
+                "id": platform,
+                "status": "warn" if conflict else "pass",
+                "catalog_stability": catalog_stability,
+                "catalog_verification": catalog.get("verification", ""),
+                "matrix_status": matrix_status,
+                "risk_level": catalog.get("risk_level", ""),
+                "auth": catalog.get("auth", ""),
+                "message": _audit_message(platform, catalog, matrix_rows, conflict=conflict),
+            }
+        )
+    summary = _audit_summary(checks)
+    return {
+        "summary": summary,
+        "checks": checks,
+        "boundary": "sources audit 是口径体检，不联网、不改变平台可用性，也不自动修复。",
+        "suggested_next": [
+            "若某平台 status 冲突，先统一 channel_catalog 与 source_registry 文案，再同步 README/Skill。",
+            "高风控平台继续保持 best-effort/opt-in/experimental 表述，避免端到端稳定承诺。",
+        ],
+    }
+
+
+def format_source_registry_export_json(payload: dict[str, Any]) -> str:
+    """Render source registry export as stable JSON text."""
+
+    import json
+
+    return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def format_source_audit_markdown(report: dict[str, Any]) -> str:
+    """Render source registry audit as Markdown."""
+
+    summary = report.get("summary") or {}
+    lines = [
+        "# 观澜信源口径体检",
+        "",
+        f"- 结果: pass={summary.get('pass', 0)} warn={summary.get('warn', 0)} fail={summary.get('fail', 0)}",
+        f"- 边界: {report.get('boundary', '')}",
+        "",
+        "## 高关注平台",
+    ]
+    for item in report.get("checks") or []:
+        lines.append(
+            f"- [{item.get('status')}] {item.get('id')}: "
+            f"catalog={item.get('catalog_stability', '')}/{item.get('catalog_verification', '')}; "
+            f"matrix={','.join(item.get('matrix_status') or []) or '-'}; {item.get('message', '')}"
+        )
+    if report.get("suggested_next"):
+        lines.extend(["", "## 下一步"])
+        lines.extend(f"- {step}" for step in report.get("suggested_next") or [])
+    return "\n".join(lines)
+
+
+def format_sources_markdown(rows: list[dict[str, Any]], title: str = "观澜信源矩阵") -> str:
+    """Render source card rows as Markdown."""
+
+    lines = [f"# {title}", "", "Source Registry 2.0 只读适配层：汇总现有 scope、taxonomy 和 source matrix，不重写搜索主链路。", ""]
+    if not rows:
+        lines.append("暂无匹配信源。")
+        return "\n".join(lines)
+    for row in rows:
+        lines.extend(
+            [
+                f"## {row.get('source_id') or row.get('domain')}",
+                f"- domain: {row.get('domain', '')}",
+                f"- scope: {row.get('scope_id', '')} / {row.get('source_type', '')}",
+                f"- authority/sample/freshness: {row.get('authority_score')} / {row.get('sample_value')} / {row.get('freshness_value')}",
+                f"- roles: {', '.join(row.get('content_roles') or [])}",
+                f"- risk_tags: {', '.join(row.get('risk_tags') or []) or 'none'}",
+                f"- best_for: {row.get('best_for', '')}",
+                f"- not_for: {row.get('not_for', '')}",
+                f"- stability: {row.get('stability', '')}",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip()
+
+
+def format_source_show_markdown(payload: dict[str, Any]) -> str:
+    """Render one source/scope/domain payload as Markdown."""
+
+    if not payload:
+        return "# 观澜信源详情\n\n未找到匹配信源。"
+    kind = payload.get("kind")
+    if kind == "scope":
+        scope = payload.get("scope") or {}
+        lines = [f"# 观澜 Scope / {scope.get('id', '')}", "", f"- 名称: {scope.get('name', '')}", f"- 类型: {scope.get('source_type', '')}", f"- trust_level: {scope.get('trust_level', '')}", f"- 说明: {scope.get('description', '')}", ""]
+        lines.append(format_sources_markdown(payload.get("sources") or [], title="Scope 内信源卡"))
+        return "\n".join(lines).rstrip()
+    if kind == "matrix_source":
+        lines = [f"# 观澜信源详情 / {payload.get('id', '')}", ""]
+        for key in ["name", "surface", "platform", "category", "backend", "status", "evidence_role", "source_domain", "quality", "route_when", "command", "caveat", "notes"]:
+            if payload.get(key):
+                lines.append(f"- {key}: {payload.get(key)}")
+        if payload.get("risk_tags"):
+            lines.append("- risk_tags: " + ", ".join(payload.get("risk_tags") or []))
+        return "\n".join(lines)
+    return format_sources_markdown([payload], title=f"观澜信源详情 / {payload.get('domain', '')}")
+
+
+def format_source_explain_markdown(payload: dict[str, Any]) -> str:
+    """Render source explanation as Markdown."""
+
+    lines = [f"# 观澜信源解释 / {payload.get('query', '')}", ""]
+    for item in payload.get("explain") or []:
+        lines.append(f"- {item}")
+    lines.append(f"- 边界: {payload.get('boundary', '')}")
+    lines.append("")
+    lines.append(format_sources_markdown(payload.get("sources") or [], title="推荐信源卡"))
+    return "\n".join(lines).rstrip()
+
+
+def _source_card_row(scope_id: str, scope: dict[str, Any], card: dict[str, Any]) -> dict[str, Any]:
+    domain = str(card.get("domain") or "")
+    source_id = f"{scope_id}:{domain}" if scope_id else domain
+    source_type = str(card.get("source_type") or scope.get("source_type") or "通用网页")
+    roles = list(card.get("content_roles") or [])
+    risk_tags = list(card.get("risk_tags") or [])
+    return {
+        "source_id": source_id,
+        "domain": domain,
+        "scope_id": scope_id or card.get("scope_id") or "open_web",
+        "source_type": source_type,
+        "authority_score": card.get("authority_score", 0.2),
+        "sample_value": card.get("sample_value", 0.2),
+        "freshness_value": card.get("freshness_value", 0.2),
+        "risk_tags": risk_tags,
+        "content_roles": roles,
+        "best_for": _best_for(scope, card),
+        "not_for": _not_for(card),
+        "stability": card.get("stability") or "best_effort",
+        "authority_role": card.get("authority_role") or "open_web",
+        "notes": card.get("notes") or scope.get("description") or "",
+    }
+
+
+def _best_for(scope: dict[str, Any], card: dict[str, Any]) -> str:
+    roles = ", ".join(card.get("content_roles") or [])
+    desc = str(scope.get("description") or "").strip()
+    if desc and roles:
+        return f"{desc}；适合作为 {roles}。"
+    return desc or (f"适合作为 {roles}。" if roles else "开放网页线索。")
+
+
+def _not_for(card: dict[str, Any]) -> str:
+    risks = set(card.get("risk_tags") or [])
+    if "not_investment_advice" in risks:
+        return "不能作为买入、卖出或持有建议。"
+    if {"sample_bias", "not_representative", "platform_framing"} & risks:
+        return "不能代表总体比例或最终事实，只能作公开样本。"
+    if {"bureaucratic_language", "slow_update"} & risks:
+        return "不适合单独解释现实执行效果，需要补媒体/样本。"
+    if {"vendor_framing", "marketing_language"} & risks:
+        return "不适合单独评价第三方口碑或真实性能。"
+    return "不应脱离来源身份单独下结论。"
+
+
+def _source_explain_text(plan: dict[str, Any]) -> list[str]:
+    intents = ", ".join(plan.get("primary_intents") or []) or "general"
+    scopes = ", ".join(plan.get("preferred_scopes") or []) or "open web"
+    roles = ", ".join(plan.get("evidence_roles") or []) or "broad_web"
+    lines = [f"主要意图为 {intents}，优先 scope 为 {scopes}。", f"需要覆盖的证据角色：{roles}。"]
+    if plan.get("warnings"):
+        lines.extend(str(item) for item in list(plan.get("warnings") or [])[:3])
+    return lines
+
+
+def _audit_message(platform: str, catalog: dict[str, Any], matrix_rows: list[dict[str, Any]], *, conflict: bool) -> str:
+    if conflict:
+        return "channel catalog 写 stable，但 source matrix 存在 experimental/optional，需要人工统一口径。"
+    if platform in {"xiaohongshu", "weibo", "douyin", "zhihu"}:
+        return "保持高风控/实验/最佳努力边界，不应包装成稳定端到端能力。"
+    if platform in {"rss", "web"}:
+        return "基础开放源应保持 stable/verified 口径。"
+    if catalog or matrix_rows:
+        return "口径未发现明显冲突。"
+    return "未找到足够元数据。"
+
+
+def _audit_summary(checks: list[dict[str, Any]]) -> dict[str, int]:
+    return {
+        "total": len(checks),
+        "pass": sum(1 for item in checks if item.get("status") == "pass"),
+        "warn": sum(1 for item in checks if item.get("status") == "warn"),
+        "fail": sum(1 for item in checks if item.get("status") == "fail"),
+    }

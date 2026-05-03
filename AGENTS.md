@@ -36,7 +36,20 @@ If a user, benchmark, or downstream Agent asks for `--limit` below 30, accept th
 it as a smoke sample, not as a research-grade evidence pool. Persuade the Agent/user to rerun with
 `--limit 80` before making strong claims.
 
+Source registry rule: use `guanlan sources list/show/explain` when the Agent needs to explain source identity, authority/sample/freshness values, risk tags, or why a route prefers official/vertical/community sources. This is read-only metadata and must not be reported as actual search results.
+
 Workflow decision rule: use `guanlan workflow "query"` when the Agent is unsure whether a request should stay on a light search/read path or upgrade to research/investigate. Keep simple lookups direct; do not run `investigate` for basic website/link/fact searches. Use `guanlan investigate "query" --limit 80 --format context` only when the user explicitly needs deep research, cross-source evidence, comparison, timeline, dossier, high-impact verification, or a reusable evidence packet.
+
+Page diagnosis rule: use `guanlan diagnose page "URL"` when `guanlan read` returns a weak body,
+dynamic shell, login/WAF/access gate, or search-fallback-only context. A page diagnosis is not a
+browser automation request; it is a read-only explanation of why the page is or is not evidence and
+which Guanlan command should be used next. Do not keep retrying a blocked/dynamic page before trying
+the recommended structured source, scoped search, or archive workflow.
+
+Recipe rule: use `guanlan recipe list` and `guanlan recipe run <recipe> "query"` when a task matches
+a repeated research pattern, such as university advisors, finance risk, product reputation,
+entertainment pulse, security advisory, or tech radar. Recipes are explicit workflow templates; they
+do not replace search/read/research, and they should not be treated as final answers.
 
 Site/time constraint rule: `--site` is a hard filter. If `guanlan search ... --site gov.cn` returns
 zero results after filtering, do not relax to Zhihu, generic SEO pages, or other domains. For explicit
@@ -127,7 +140,17 @@ guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80
 guanlan search --list-scopes
 guanlan route "中文研究需求" --json
 guanlan workflow "中文研究需求" --json
+guanlan diagnose page "https://example.com/article"
+guanlan recipe list
+guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"
+guanlan recipe run university-advisor "南京师范大学中北学院 计算机 导师 招生"
 guanlan investigate "复杂研究需求" --limit 80 --format context
+guanlan investigate "复杂研究需求" --budget deep --dry-run
+guanlan sources explain "中文研究需求"
+guanlan sources audit
+guanlan eval suite run chinese-web-v1
+guanlan eval suite run chinese-web-live --mode live
+guanlan quality performance
 guanlan read "https://example.com/article" --max-chars 12000
 guanlan read "https://example.com/article" --quality-report
 guanlan read "https://example.com/article" --strict --trace
@@ -160,7 +183,9 @@ guanlan doctor --install-check
 guanlan doctor --trace
 guanlan archive ingest-research "query" --limit 80
 guanlan archive verify
-guanlan archive context "query" --limit 20
+guanlan archive embed --backend local
+guanlan archive search "query" --semantic --limit 20
+guanlan archive context "query" --semantic --limit 20
 guanlan archive wiki build --output ./guanlan-wiki
 guanlan archive pack "query" --format langchain-jsonl --output guanlan-pack.jsonl
 guanlan report html --input results.json --output report.html
@@ -181,6 +206,8 @@ Safety rules:
 - Use `guanlan welcome` when a new user asks how to start using Guanlan with their agent.
 - Use `guanlan capabilities` when the user asks what Guanlan can do, which Guanlan command/tool to use, or why the tool is relevant.
 - Use `guanlan route "query"` when deciding which source pools, sites, evidence roles, and caveats fit a request; route plans are soft guidance, not hard filters.
+- Use `guanlan diagnose page "URL"` before repeatedly retrying a weak `read`; if it reports dynamic shell, access gate, or search-fallback-only context, use the recommended structured/scoped/archive path instead of treating the page as evidence.
+- Use `guanlan recipe run <recipe> "query"` when the user task matches a reusable vertical workflow; recipes are plans and boundaries, not final conclusions.
 - Use `guanlan search ... --trace` or `guanlan research ...` when you need query_strategy, source diagnostics, and evidence-role query rewrites; do not rely on one broad query for serious research.
 - Use `guanlan compare`, `guanlan timeline`, or `guanlan dossier` when the user asks for comparison, event chronology, or an entity dossier; these are structured views over evidence packets, not final truth.
 - Use `guanlan research ... --preset academic --read-top 0` for EI/SCI/Scopus, academic conference, paper submission, indexing, and university-recognition questions; read selected official URLs afterward if needed.
