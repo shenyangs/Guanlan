@@ -22,12 +22,14 @@ from guanlan.limits import (
     MAX_RESEARCH_LIMIT,
     MAX_SEARCH_LIMIT,
 )
+from guanlan.tool_registry import core_agent_tool_names
 
 
 def test_mcp_tool_definitions_include_agent_search_tools():
     tools = mcp_server._tool_definitions()
     names = {tool["name"] for tool in tools}
 
+    assert core_agent_tool_names() <= names
     assert "guanlan_status" in names
     assert "guanlan_capabilities" in names
     assert "guanlan_search" in names

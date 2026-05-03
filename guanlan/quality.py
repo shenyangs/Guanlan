@@ -7,7 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from guanlan import hotnews, webtools
+from guanlan import feeds, hotnews, webtools
+from guanlan.errors import classify_exception
 from guanlan.evaluation import list_evaluation_scenarios
 from guanlan.limits import (
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
@@ -16,6 +17,13 @@ from guanlan.limits import (
     DEFAULT_READ_FALLBACK_LIMIT,
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
+)
+from guanlan.search_quality import (
+    LOW_RELEVANCE_RESULT_STATUS,
+    UNSAFE_RESULT_STATUS,
+    assess_backend_batch_quality,
+    filter_unsafe_search_results,
+    query_relevance_terms,
 )
 
 SEARCH_RANKING_FIXTURES: list[dict[str, Any]] = [
@@ -37,6 +45,66 @@ SEARCH_RANKING_FIXTURES: list[dict[str, Any]] = [
             {"title": "Leo Jiménez Stats, Height, Weight, Position", "url": "https://www.baseball-reference.com/players/j/jimenle01.shtml", "snippet": "Baseball player statistics"},
             {"title": "国产新能源车到底值不值得买？用了3年，谈谈我的使用感受", "url": "https://zhuanlan.zhihu.com/p/123", "snippet": "车主评价、体验、优缺点和购买建议"},
             {"title": "新能源车销量榜", "url": "https://example.com/auto-sales", "snippet": "销量数据整理"},
+        ],
+    },
+]
+
+BACKEND_QUALITY_FIXTURES: list[dict[str, Any]] = [
+    {
+        "id": "bing_cjk_compound_not_split",
+        "backend": "bing",
+        "query": "固态电池量产时间表",
+        "expected_status": LOW_RELEVANCE_RESULT_STATUS,
+        "expected_reason_contains": "query_terms_missing",
+        "results": [
+            {"title": "什么是固本培元？", "url": "https://example.com/guben", "snippet": "中医养生内容"},
+            {"title": "胆固醇 HDL LDL 都是什么？", "url": "https://health.example.com/cholesterol", "snippet": "胆固醇 健康科普"},
+            {"title": "如何评价仆固怀恩？", "url": "https://history.example.com/pugu", "snippet": "历史人物介绍"},
+        ],
+    },
+    {
+        "id": "bing_requested_entities_missing",
+        "backend": "bing",
+        "query": "宁德时代 固态电池 进展",
+        "expected_status": LOW_RELEVANCE_RESULT_STATUS,
+        "expected_reason_contains": "cjk_compound_terms_missing",
+        "results": [
+            {"title": "CAT 机油滤芯型号大全", "url": "https://example.com/cat-filter", "snippet": "工程机械配件"},
+            {"title": "时代少年团演唱会行程", "url": "https://example.com/music", "snippet": "娱乐资讯"},
+            {"title": "锂电池基础知识", "url": "https://example.com/battery", "snippet": "电池分类介绍"},
+        ],
+    },
+    {
+        "id": "unsafe_adult_batch_filtered",
+        "backend": "bing",
+        "query": "宁德时代 固态电池 进展",
+        "expected_status": UNSAFE_RESULT_STATUS,
+        "results": [
+            {"title": "Today's selection - XNXX.COM", "url": "https://www.xnxx.com/", "snippet": "Free Porn, Sex, Tube Videos, XXX Pics"},
+        ],
+    },
+    {
+        "id": "policy_linkfarm_rejected",
+        "backend": "bing",
+        "query": "低空经济政策补贴",
+        "expected_status": LOW_RELEVANCE_RESULT_STATUS,
+        "expected_reason_contains": "single_domain_zero_query_overlap",
+        "results": [
+            {"title": "Best travel coupons", "url": "https://spam.example.com/a", "snippet": "coupon deals"},
+            {"title": "Cheap flights", "url": "https://spam.example.com/b", "snippet": "discount flights"},
+            {"title": "Hotel offers", "url": "https://spam.example.com/c", "snippet": "travel discounts"},
+            {"title": "Credit cards", "url": "https://spam.example.com/d", "snippet": "cashback cards"},
+        ],
+    },
+    {
+        "id": "good_gov_policy_kept",
+        "backend": "duckduckgo",
+        "query": "低空经济政策补贴",
+        "expected_status": "ok",
+        "results": [
+            {"title": "国家发展改革委 低空经济 政策", "url": "https://www.ndrc.gov.cn/a", "snippet": "低空经济 政策 支持"},
+            {"title": "广东省低空经济补贴政策", "url": "https://www.gd.gov.cn/a", "snippet": "低空经济 补贴 申报"},
+            {"title": "人民网解读低空经济", "url": "https://people.com.cn/a", "snippet": "政策 解读 产业发展"},
         ],
     },
 ]
@@ -193,9 +261,12 @@ def run_robustness_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any
     mode = mode if mode in {"quick", "live"} else "quick"
     checks: list[dict[str, Any]] = []
     checks.extend(run_regression_checks(mode="quick", limit=limit)["checks"])
+    checks.extend(run_backend_fixture_checks()["checks"])
     checks.extend(_check_archive_ingest_audit_contract())
     checks.extend(_check_archive_agent_contract_fields())
     checks.extend(_check_archive_failure_explanations())
+    checks.extend(_check_source_registry_audit_contract())
+    checks.extend(_check_tool_registry_contract())
     checks.extend(_check_release_gate_script_contract())
     if mode == "live":
         checks.extend(_check_live_coverage(limit=limit))
@@ -273,6 +344,100 @@ def run_performance_checks() -> dict[str, Any]:
             "metrics": ["candidate_pool", "read_batch_concurrency", "semantic_opt_in", "network_boundary"],
         },
     }
+
+
+def run_backend_fixture_checks() -> dict[str, Any]:
+    """Run deterministic backend quality fixtures for known bad result shapes."""
+
+    checks: list[dict[str, Any]] = []
+    for fixture in BACKEND_QUALITY_FIXTURES:
+        rows = [
+            webtools.SearchResult(
+                title=str(item.get("title") or ""),
+                url=str(item.get("url") or ""),
+                snippet=str(item.get("snippet") or ""),
+                source=str(fixture.get("backend") or "fixture"),
+            )
+            for item in fixture.get("results") or []
+        ]
+        safety = filter_unsafe_search_results(rows)
+        if safety["dropped_count"] and not safety["kept_results"]:
+            status = UNSAFE_RESULT_STATUS
+            reason = "unsafe_filtered"
+            gate: dict[str, Any] = {
+                "usable": False,
+                "reason": reason,
+                "note": "夹具触发成人/不安全结果过滤。",
+            }
+        else:
+            gate = assess_backend_batch_quality(str(fixture.get("query") or ""), safety["kept_results"], {})
+            status = "ok" if gate.get("usable") else LOW_RELEVANCE_RESULT_STATUS
+            reason = str(gate.get("reason") or "")
+        expected = str(fixture.get("expected_status") or "")
+        expected_reason = str(fixture.get("expected_reason_contains") or "")
+        ok = status == expected and (not expected_reason or expected_reason in reason)
+        checks.append(
+            {
+                "id": str(fixture.get("id") or ""),
+                "dimension": "backend_fixture",
+                "backend": fixture.get("backend"),
+                "query": fixture.get("query"),
+                "status": "pass" if ok else "fail",
+                "message": (
+                    f"observed={status}, expected={expected}, reason={reason or gate.get('note')}, "
+                    f"terms={query_relevance_terms(str(fixture.get('query') or ''))}"
+                ),
+                "observed_status": status,
+                "expected_status": expected,
+                "quality_gate": gate,
+                "safety_filter": {
+                    "dropped_count": safety["dropped_count"],
+                    "policy": safety["policy"],
+                },
+            }
+        )
+
+    passed = sum(1 for item in checks if item["status"] == "pass")
+    warned = sum(1 for item in checks if item["status"] == "warn")
+    failed = sum(1 for item in checks if item["status"] == "fail")
+    return {
+        "mode": "quick",
+        "summary": {
+            "total": len(checks),
+            "pass": passed,
+            "warn": warned,
+            "fail": failed,
+            "score": round((passed + warned * 0.5) / max(len(checks), 1) * 100, 1),
+        },
+        "checks": checks,
+        "contract": {
+            "principle": "搜索后端必须要么返回可用证据，要么返回结构化诊断，不能把污染结果交给 Agent。",
+            "statuses": ["ok", LOW_RELEVANCE_RESULT_STATUS, UNSAFE_RESULT_STATUS],
+            "fixture_count": len(BACKEND_QUALITY_FIXTURES),
+        },
+    }
+
+
+def run_live_smoke_checks(limit: int = 5, timeout_budget: int = 180, profile: str = "china") -> dict[str, Any]:
+    """Run optional live probes and annotate them with an outer timeout budget."""
+
+    report = run_quality_checks(mode="live", limit=max(limit, 1), coverage=False)
+    checks = report.get("checks") or []
+    report["contract"] = {
+        "principle": "live-smoke 是可选外网探针，用来发现网络/源站/后端波动；默认不阻断发版，--strict 才按失败退出。",
+        "blocking": False,
+        "timeout_budget_seconds": max(int(timeout_budget or 0), 1),
+        "profile": profile or "china",
+        "agent_timeout_hint": "Agent/自动化外层建议给 live-smoke 至少 120-180 秒；超时是网络证据，不等同于主题无结果。",
+        "sample_policy": "覆盖政策、产业、科技/RSS、热榜、正文读取和中文复合词后端漂移样本；单项 warn 不等同于发版失败。",
+    }
+    report["network_summary"] = {
+        "probe_count": len(checks),
+        "pass": sum(1 for item in checks if item.get("status") == "pass"),
+        "warn": sum(1 for item in checks if item.get("status") == "warn"),
+        "fail": sum(1 for item in checks if item.get("status") == "fail"),
+    }
+    return report
 
 
 def format_quality_report(report: dict[str, Any]) -> str:
@@ -384,6 +549,26 @@ def format_performance_report(report: dict[str, Any]) -> str:
     for metric in contract.get("metrics") or []:
         lines.append(f"- {metric}")
     lines.extend(["", "## 检查项"])
+    for item in report.get("checks") or []:
+        lines.append(f"- [{item.get('status')}] {item.get('id')}: {item.get('message')}")
+    return "\n".join(lines)
+
+
+def format_backend_fixtures_report(report: dict[str, Any]) -> str:
+    """Render backend fixture checks as Markdown."""
+
+    summary = report.get("summary") or {}
+    contract = report.get("contract") or {}
+    lines = [
+        "# 观澜 Backend Fixture Guard",
+        "",
+        f"- 模式: {report.get('mode', 'quick')}",
+        f"- 总分: {summary.get('score', 0)}",
+        f"- 结果: pass={summary.get('pass', 0)} warn={summary.get('warn', 0)} fail={summary.get('fail', 0)}",
+        f"- 原则: {contract.get('principle', '')}",
+        "",
+        "## 检查项",
+    ]
     for item in report.get("checks") or []:
         lines.append(f"- [{item.get('status')}] {item.get('id')}: {item.get('message')}")
     return "\n".join(lines)
@@ -723,17 +908,70 @@ def _check_archive_failure_explanations() -> list[dict[str, Any]]:
     ]
 
 
+def _check_source_registry_audit_contract() -> list[dict[str, Any]]:
+    from guanlan.source_registry import audit_source_registry
+
+    report = audit_source_registry()
+    summary = report.get("summary") or {}
+    warnings = [
+        item.get("id")
+        for item in report.get("checks") or []
+        if item.get("status") not in {"pass", "ok"}
+    ]
+    ok = int(summary.get("fail", 0) or 0) == 0 and not warnings
+    return [
+        {
+            "id": "robustness_source_registry_high_attention_wording_consistent",
+            "dimension": "robustness",
+            "status": "pass" if ok else "fail",
+            "message": f"summary={summary}, warnings={warnings}",
+        }
+    ]
+
+
+def _check_tool_registry_contract() -> list[dict[str, Any]]:
+    from guanlan.integrations.mcp_server import _tool_definitions
+    from guanlan.serve import dispatch_request
+    from guanlan.tool_registry import CORE_AGENT_TOOLS, core_agent_tool_names, http_routes
+
+    mcp_names = {tool.get("name") for tool in _tool_definitions()}
+    missing = sorted(core_agent_tool_names() - mcp_names)
+    status, tools_payload = dispatch_request("GET", "/tools")
+    http_tool_names = {tool.get("name") for tool in tools_payload.get("tools", [])} if status == 200 else set()
+    http_missing = sorted(core_agent_tool_names() - http_tool_names)
+    registered_http_routes = http_routes()
+    low_limits = [
+        tool.name
+        for tool in CORE_AGENT_TOOLS
+        if tool.min_default_limit and tool.min_default_limit < 20
+    ]
+    ok = not missing and not http_missing and status == 200 and registered_http_routes and not low_limits
+    return [
+        {
+            "id": "robustness_tool_registry_matches_mcp_surface",
+            "dimension": "robustness",
+            "status": "pass" if ok else "fail",
+            "message": (
+                f"mcp_missing={missing}, http_missing={http_missing}, low_limits={low_limits}, "
+                f"registry={len(CORE_AGENT_TOOLS)}, mcp={len(mcp_names)}, http_routes={len(registered_http_routes)}"
+            ),
+        }
+    ]
+
+
 def _check_release_gate_script_contract() -> list[dict[str, Any]]:
     root = Path(__file__).resolve().parents[1]
     script = root / "scripts" / "release_gate.sh"
     text = script.read_text(encoding="utf-8") if script.exists() else ""
     required = [
+        "pre_release_status.sh",
         "ruff check",
         "pytest -q",
         "quality foundational",
         "quality coverage",
         "quality regression",
         "quality robustness",
+        "quality backend-fixtures",
         "quality performance",
         "eval benchmark",
         "eval suite run chinese-web-v1",
@@ -967,29 +1205,66 @@ def _check_advisor_quality() -> list[dict[str, Any]]:
 
 def _check_live(limit: int = 5) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
-    try:
-        results = webtools.search_web("新质生产力 政策 原文 最新", profile="china", limit=max(limit, 3), trace=True)
-        preferred = [item for item in results if item.get("source_type") in {"政府/部委", "党央媒"}]
-        checks.append(
-            {
-                "id": "live_policy_search_has_official_source",
-                "dimension": "search_quality",
-                "status": "pass" if preferred else "warn",
-                "message": f"official-like results={len(preferred)}/{len(results)}",
-            }
-        )
-    except Exception as exc:
-        checks.append({"id": "live_policy_search_has_official_source", "dimension": "search_quality", "status": "warn", "message": str(exc)})
-    try:
-        items = hotnews.fetch_hotnews("today", limit=max(limit, 5))
-        checks.append(
-            {
-                "id": "live_hotnews_today_returns_items",
-                "dimension": "hotnews_freshness",
-                "status": "pass" if len(items) >= min(limit, 5) else "warn",
-                "message": f"items={len(items)}",
-            }
-        )
-    except Exception as exc:
-        checks.append({"id": "live_hotnews_today_returns_items", "dimension": "hotnews_freshness", "status": "warn", "message": str(exc)})
+    probes = [
+        ("live_policy_search_has_official_source", "search_quality", lambda: _live_search_probe("新质生产力 政策 原文 最新", limit, preferred_types={"政府/部委", "党央媒"})),
+        ("live_industry_search_has_policy_or_media_source", "search_quality", lambda: _live_search_probe("低空经济政策补贴", limit, min_results=1)),
+        ("live_cjk_compound_search_has_diagnostics_or_results", "search_quality", lambda: _live_search_probe("固态电池量产时间表", limit, min_results=0, require_diagnostics=True)),
+        ("live_company_battery_search_has_results_or_diagnostics", "search_quality", lambda: _live_search_probe("宁德时代 固态电池 进展", limit, min_results=0, require_diagnostics=True)),
+        ("live_cybersecurity_search_has_results_or_diagnostics", "search_quality", lambda: _live_search_probe("OpenSSL CVE 最新 漏洞 影响版本", limit, profile="english", min_results=0, require_diagnostics=True)),
+        ("live_hotnews_today_returns_items", "hotnews_freshness", lambda: _live_hotnews_probe(limit)),
+        ("live_feeds_curated_ai_returns_items_or_cache_status", "feeds_resilience", lambda: _live_feeds_probe(limit)),
+        ("live_read_govcn_has_body_or_quality_boundary", "read_quality", lambda: _live_read_probe()),
+    ]
+    for check_id, dimension, probe in probes:
+        try:
+            ok, message = probe()
+            checks.append({"id": check_id, "dimension": dimension, "status": "pass" if ok else "warn", "message": message})
+        except Exception as exc:
+            checks.append(
+                {
+                    "id": check_id,
+                    "dimension": dimension,
+                    "status": "warn",
+                    "message": f"{classify_exception(exc)}: {exc}",
+                }
+            )
     return checks
+
+
+def _live_search_probe(
+    query: str,
+    limit: int,
+    *,
+    profile: str = "china",
+    preferred_types: set[str] | None = None,
+    min_results: int = 1,
+    require_diagnostics: bool = False,
+) -> tuple[bool, str]:
+    results = webtools.search_web(query, profile=profile, limit=max(limit, 3), trace=True)
+    preferred = [item for item in results if item.get("source_type") in (preferred_types or set())]
+    diagnostics = getattr(results, "diagnostics", {}) or {}
+    backend_diagnostics = diagnostics.get("backend_diagnostics") or []
+    ok = len(results) >= min_results
+    if preferred_types:
+        ok = bool(preferred)
+    if require_diagnostics:
+        ok = ok or bool(backend_diagnostics)
+    return ok, f"results={len(results)}, preferred={len(preferred)}, backends={len(backend_diagnostics)}"
+
+
+def _live_hotnews_probe(limit: int) -> tuple[bool, str]:
+    items = hotnews.fetch_hotnews("today", limit=max(limit, 5))
+    return len(items) >= min(limit, 5), f"items={len(items)}"
+
+
+def _live_feeds_probe(limit: int) -> tuple[bool, str]:
+    items = feeds.fetch_feed_source("curated", limit=max(limit, 5), category="ai")
+    stale = sum(1 for item in items if (item.get("feed_status") or {}).get("status") == "stale_cache")
+    return bool(items), f"items={len(items)}, stale_cache={stale}"
+
+
+def _live_read_probe() -> tuple[bool, str]:
+    content = webtools.read_url("https://www.gov.cn/", max_chars=2000, backend="auto", fallback_search=False, profile="china")
+    quality = webtools.assess_read_quality(content)
+    score = int(quality.get("score") or 0)
+    return bool(content and score >= 30), f"chars={len(content)}, quality={quality.get('label')}/{score}"

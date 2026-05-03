@@ -27,6 +27,8 @@ This document records the fields Guanlan treats as stable for downstream agents,
 | `score` / `rank` | Ranking signal exposed to agents. |
 | `trace` | Optional explanation when `--trace` is used: backend order, cache status, route plan, query strategy, source diagnostics, recency. |
 
+When a backend is explicitly requested, it must still obey the same evidence-quality contract. If the batch is blocked, unsafe, low-relevance, or parser-drifted, Guanlan should return structured diagnostics such as `backend_diagnostics.status=low_relevance|unsafe_filtered|blocked|parser_miss` instead of passing polluted results to agents.
+
 ## Research Packet Contract
 
 `guanlan research`, `guanlan prompt`, MCP research, and HTTP `/research` should preserve:
@@ -99,6 +101,8 @@ Workflow JSON should stay compact enough for agents: public payloads should not 
 ## MCP And HTTP Contract
 
 MCP and HTTP surfaces should stay read-only. They may expose fewer formatting options than CLI, but should not remove the same evidence and boundary metadata from JSON payloads.
+
+The local HTTP service exposes `GET /tools` as a read-only registry view so agents can verify the supported tool surface before calling `/search`, `/research`, `/hotnews`, `/feeds`, or `/archive/search`.
 
 Stable MCP tools include:
 

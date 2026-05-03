@@ -3562,3 +3562,11 @@ def test_read_watch_outputs_diff(monkeypatch, tmp_path):
     assert "发现内容变化" in second
     assert "-line one" in second
     assert "+line two" in second
+
+
+def test_relative_result_date_ignores_unrealistic_year_offsets():
+    import datetime as dt
+
+    assert webtools._extract_relative_result_date("123456年 前的乱序片段", dt.date(2026, 5, 4)) is None
+    assert webtools._extract_relative_result_date("101年前", dt.date(2026, 5, 4)) is None
+    assert webtools._extract_relative_result_date("3年前", dt.date(2026, 5, 4)) == dt.date(2023, 5, 5)

@@ -37,6 +37,24 @@ from guanlan.limits import (
     DEFAULT_SEARCH_LIMIT,
 )
 from guanlan.router import build_route_plan, format_route_plan_markdown
+from guanlan.search_quality import (
+    LOW_RELEVANCE_RESULT_STATUS as _LOW_RELEVANCE_RESULT_STATUS,
+)
+from guanlan.search_quality import (
+    UNSAFE_RESULT_STATUS as _UNSAFE_RESULT_STATUS,
+)
+from guanlan.search_quality import (
+    assess_backend_batch_quality as _assess_backend_batch_quality,
+)
+from guanlan.search_quality import (
+    filter_unsafe_search_results as _filter_unsafe_search_results,
+)
+from guanlan.search_quality import (
+    query_relevance_terms as _query_relevance_terms,
+)
+from guanlan.search_quality import (
+    result_text_contains as _result_text_contains,
+)
 from guanlan.source_seeds import (
     direct_source_seeds,
     dominant_vertical_preset,
@@ -91,49 +109,6 @@ _SEARCH_BLOCK_MARKERS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-_LOW_RELEVANCE_RESULT_STATUS = "low_relevance"
-_UNSAFE_RESULT_STATUS = "unsafe_filtered"
-_KNOWN_LOW_VALUE_DOMAINS = {
-    "support.microsoft.com",
-}
-_UNSAFE_RESULT_DOMAINS = {
-    "xnxx.com",
-    "xvideos.com",
-    "pornhub.com",
-    "youporn.com",
-    "redtube.com",
-}
-_UNSAFE_RESULT_TERMS = (
-    "free porn",
-    "porn videos",
-    "sex videos",
-    "xxx",
-    "成人",
-    "色情",
-)
-_CJK_RELEVANCE_PHRASES = (
-    "固态电池",
-    "全固态电池",
-    "低空经济",
-    "新质生产力",
-    "人工智能",
-    "数据要素",
-    "人形机器人",
-    "具身智能",
-    "宁德时代",
-    "量产",
-    "时间表",
-    "政策",
-    "补贴",
-    "进展",
-    "财报",
-    "公告",
-    "风险",
-    "口碑",
-    "评价",
-    "热榜",
-    "热点",
-)
 _NETWORK_HEALTH_CACHE: dict[str, dict[str, Any]] = {}
 _VALID_NETWORK_MODES = {"auto", "current", "direct", "proxy"}
 _NETWORK_PROBLEM_STATUSES = {"network_unreachable", "proxy_error", "network_changed"}
@@ -2539,168 +2514,6 @@ def _preferred_quality_scope_for_domain(domain: str, preferred_scopes: list[str]
     except Exception:
         return None
     return None
-
-
-def _assess_backend_batch_quality(
-    query: str,
-    batch: list[SearchResult],
-    quality: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Reject obvious fallback drift before it can stop later backends.
-
-    This is intentionally conservative: it only blocks batches with strong signs
-    of being parser/search drift, such as known low-value domains or multi-entity
-    queries where none of the requested entities appear.
-    """
-    if not batch:
-        return {"usable": False, "reason": "empty", "note": "该后端未产出候选。"}
-    quality = quality or {}
-    terms = _query_relevance_terms(query)
-    entity_terms = _query_entity_terms(query)
-    domains = [_domain(item.url) for item in batch if item.url]
-    top_domain = ""
-    top_domain_ratio = 0.0
-    if domains:
-        counts = {domain: domains.count(domain) for domain in set(domains)}
-        top_domain, top_count = max(counts.items(), key=lambda row: row[1])
-        top_domain_ratio = top_count / max(len(domains), 1)
-
-    matched_terms = {
-        term
-        for term in terms
-        if any(_result_text_contains(item, term) for item in batch)
-    }
-    matched_entities = {
-        term
-        for term in entity_terms
-        if any(_result_text_contains(item, term) for item in batch)
-    }
-    term_coverage = len(matched_terms) / max(len(terms), 1) if terms else 1.0
-    entity_coverage = len(matched_entities) / max(len(entity_terms), 1) if entity_terms else 1.0
-    reasons: list[str] = []
-    if top_domain in _KNOWN_LOW_VALUE_DOMAINS and not _query_mentions_domain(query, top_domain):
-        reasons.append(f"known_low_value_domain:{top_domain}")
-    if len(entity_terms) >= 2 and entity_coverage == 0 and (_contains_cjk(query) or len(batch) >= 3):
-        reasons.append("requested_entities_missing")
-    if _contains_cjk(query) and len(terms) >= 3 and term_coverage < 0.5 and len(batch) >= 3:
-        reasons.append("cjk_compound_terms_missing")
-    if len(terms) >= 2 and term_coverage < 0.25 and len(batch) >= 3:
-        reasons.append("query_terms_missing")
-    if len(terms) >= 3 and term_coverage == 0 and top_domain_ratio >= 0.8 and len(batch) >= 4:
-        reasons.append("single_domain_zero_query_overlap")
-
-    if reasons:
-        return {
-            "usable": False,
-            "reason": ",".join(reasons),
-            "note": "该后端候选与查询意图明显不匹配，已继续尝试后续后端。",
-            "term_coverage": round(term_coverage, 3),
-            "entity_coverage": round(entity_coverage, 3),
-            "top_domain": top_domain,
-            "top_domain_ratio": round(top_domain_ratio, 3),
-            "matched_terms": sorted(matched_terms),
-            "matched_entities": sorted(matched_entities),
-            "quality_intent": quality.get("intent", "general"),
-        }
-    return {
-        "usable": True,
-        "reason": "ok",
-        "note": "候选批次通过粗粒度相关性门控。",
-        "term_coverage": round(term_coverage, 3),
-        "entity_coverage": round(entity_coverage, 3),
-        "top_domain": top_domain,
-        "top_domain_ratio": round(top_domain_ratio, 3),
-        "matched_terms": sorted(matched_terms),
-        "matched_entities": sorted(matched_entities),
-        "quality_intent": quality.get("intent", "general"),
-    }
-
-
-def _query_relevance_terms(query: str) -> list[str]:
-    terms: list[str] = []
-    for raw in re.findall(r"[\u4e00-\u9fffA-Za-z0-9+._-]+", _collapse_ws(query)):
-        term = raw.strip().lower()
-        if not term or term in _QUERY_TOKEN_STOPWORDS:
-            continue
-        if re.fullmatch(r"(?:19|20)\d{2}", term):
-            continue
-        if re.fullmatch(r"\d+", term):
-            continue
-        if len(term) < 2:
-            continue
-        terms.extend(_expand_relevance_term(term))
-    return _unique_keep_order(terms)
-
-
-def _expand_relevance_term(term: str) -> list[str]:
-    if not _contains_cjk(term):
-        return [term]
-    expanded = [phrase for phrase in _CJK_RELEVANCE_PHRASES if phrase in term]
-    if expanded:
-        # Keep the original term when it is short enough to be a meaningful
-        # compound, but avoid making a long unsplit Chinese sentence the only
-        # relevance key.
-        if len(term) <= 8:
-            expanded.insert(0, term)
-        return _unique_keep_order(expanded)
-    return [term]
-
-
-def _query_entity_terms(query: str) -> list[str]:
-    terms = []
-    for term in _query_relevance_terms(query):
-        if term in _QUERY_TOKEN_STOPWORDS:
-            continue
-        if term in {"人形机器人", "机器人", "具身智能", "人工智能", "大模型"}:
-            continue
-        if len(term) >= 2:
-            terms.append(term)
-    return _unique_keep_order(terms)
-
-
-def _result_text_contains(item: SearchResult, term: str) -> bool:
-    haystack = _collapse_ws(f"{item.title} {item.snippet} {item.url}").lower()
-    return term.lower() in haystack
-
-
-def _filter_unsafe_search_results(batch: list[SearchResult]) -> dict[str, Any]:
-    kept: list[SearchResult] = []
-    dropped: list[dict[str, str]] = []
-    for item in batch:
-        reason = _unsafe_search_result_reason(item)
-        if reason:
-            dropped.append(
-                {
-                    "title": item.title,
-                    "domain": item.domain or _domain(item.url),
-                    "reason": reason,
-                }
-            )
-            continue
-        kept.append(item)
-    return {
-        "kept_results": kept,
-        "dropped_count": len(dropped),
-        "dropped": dropped[:5],
-        "policy": "adult_or_unsafe_search_result_filter",
-    }
-
-
-def _unsafe_search_result_reason(item: SearchResult) -> str:
-    domain = (item.domain or _domain(item.url)).lower().removeprefix("www.")
-    if any(domain == unsafe or domain.endswith("." + unsafe) for unsafe in _UNSAFE_RESULT_DOMAINS):
-        return f"unsafe_domain:{domain}"
-    text = _collapse_ws(f"{item.title} {item.snippet} {item.url}").lower()
-    for term in _UNSAFE_RESULT_TERMS:
-        if term in text:
-            return f"unsafe_term:{term}"
-    return ""
-
-
-def _query_mentions_domain(query: str, domain: str) -> bool:
-    text = query.lower()
-    root = domain.removeprefix("www.").split(".", 1)[0]
-    return domain.lower() in text or root in text
 
 
 def _zero_result_backend_status(backend: str) -> str:
@@ -8191,16 +8004,22 @@ def _extract_relative_result_date(text: str, today: dt.date) -> dt.date | None:
 
     day_match = re.search(r"(\d+)\s*(?:天|日)\s*前", text)
     if day_match:
-        return today - dt.timedelta(days=int(day_match.group(1)))
+        days = min(int(day_match.group(1)), 36500)
+        return today - dt.timedelta(days=days)
     week_match = re.search(r"(\d+)\s*(?:周|星期|礼拜)\s*前", text)
     if week_match:
-        return today - dt.timedelta(days=int(week_match.group(1)) * 7)
+        weeks = min(int(week_match.group(1)), 5200)
+        return today - dt.timedelta(days=weeks * 7)
     month_match = re.search(r"(\d+)\s*(?:个)?月\s*前", text)
     if month_match:
-        return today - dt.timedelta(days=int(month_match.group(1)) * 30)
+        months = min(int(month_match.group(1)), 1200)
+        return today - dt.timedelta(days=months * 30)
     year_match = re.search(r"(\d+)\s*年\s*前", text)
     if year_match:
-        return today - dt.timedelta(days=int(year_match.group(1)) * 365)
+        years = int(year_match.group(1))
+        if years > 100:
+            return None
+        return today - dt.timedelta(days=years * 365)
     return None
 
 

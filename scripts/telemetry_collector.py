@@ -31,6 +31,20 @@ ADMIN_PASSWORD = os.environ.get("GUANLAN_ADMIN_PASSWORD", "")
 INGEST_TOKEN = os.environ.get("GUANLAN_INGEST_TOKEN", "")
 ACTIVE_TTL_SECONDS = int(os.environ.get("GUANLAN_ACTIVE_TTL_SECONDS", "180"))
 MAX_BODY_BYTES = 16 * 1024
+SYNTHETIC_QUERY_EXACT = set(
+    [
+        "query",
+        "blocked query",
+        "test",
+        "testing",
+        "demo",
+        "sample",
+        "placeholder",
+        "xxx",
+        "n/a",
+        "na",
+    ]
+)
 
 
 def now_ms():
@@ -44,6 +58,42 @@ def clamp_text(value, limit=160):
     if len(text) > limit:
         return text[:limit]
     return text
+
+
+def normalize_query_text(value):
+    return str(value or "").strip().lower()
+
+
+def is_synthetic_feedback_query(query_text):
+    normalized = normalize_query_text(query_text)
+    if not normalized:
+        return False
+    if normalized in SYNTHETIC_QUERY_EXACT:
+        return True
+    return (
+        normalized.startswith("test ")
+        or normalized.startswith("demo ")
+        or normalized.startswith("sample ")
+    )
+
+
+def feedback_real_sql(column="query_text"):
+    expr = "LOWER(TRIM(COALESCE(%s, '')))" % column
+    return (
+        "("
+        + expr
+        + " NOT IN ('query','blocked query','test','testing','demo','sample','placeholder','xxx','n/a','na') "
+        + "AND "
+        + expr
+        + " NOT LIKE 'test %' "
+        + "AND "
+        + expr
+        + " NOT LIKE 'demo %' "
+        + "AND "
+        + expr
+        + " NOT LIKE 'sample %'"
+        + ")"
+    )
 
 
 def db_connect():
@@ -355,19 +405,22 @@ def query_groups(conn, column, since_ms, limit=10):
     return [{"key": r["key"] or "unknown", "count": r["count"]} for r in rows]
 
 
-def query_feedback_groups(conn, column, since_ms, limit=10):
+def query_feedback_groups(conn, column, since_ms, limit=10, real_only=False):
     allowed = set(["command", "profile", "backend", "query_text", "reason_text", "agent_kind"])
     if column not in allowed:
         return []
+    where = "received_ms >= ?"
+    if real_only:
+        where += " AND " + feedback_real_sql("query_text")
     rows = conn.execute(
         """
         SELECT {column} AS key, COUNT(*) AS count
         FROM feedback
-        WHERE received_ms >= ?
+        WHERE {where}
         GROUP BY {column}
         ORDER BY count DESC, key ASC
         LIMIT ?
-        """.format(column=column),
+        """.format(column=column, where=where),
         (since_ms, limit),
     ).fetchall()
     return [{"key": r["key"] or "unknown", "count": r["count"]} for r in rows]
@@ -562,14 +615,25 @@ def summary():
             (day,),
         )
         orphan_starts_24h = query_orphan_starts(conn, day, current)
-        feedback_24h = query_one(
+        feedback_24h_total = query_one(
             conn,
             "SELECT COUNT(*) FROM feedback WHERE received_ms >= ?",
             (day,),
         )
-        feedback_7d = query_one(
+        feedback_7d_total = query_one(
             conn,
             "SELECT COUNT(*) FROM feedback WHERE received_ms >= ?",
+            (week,),
+        )
+        real_feedback_where = feedback_real_sql("query_text")
+        feedback_24h = query_one(
+            conn,
+            "SELECT COUNT(*) FROM feedback WHERE received_ms >= ? AND " + real_feedback_where,
+            (day,),
+        )
+        feedback_7d = query_one(
+            conn,
+            "SELECT COUNT(*) FROM feedback WHERE received_ms >= ? AND " + real_feedback_where,
             (week,),
         )
         data = {
@@ -622,7 +686,16 @@ def summary():
             "orphan_rate_24h": fmt_rate(orphan_starts_24h, calls_24h),
             "feedback_24h": feedback_24h,
             "feedback_7d": feedback_7d,
+            "feedback_24h_total": feedback_24h_total,
+            "feedback_7d_total": feedback_7d_total,
+            "feedback_24h_synthetic": max(0, int(feedback_24h_total) - int(feedback_24h)),
+            "feedback_7d_synthetic": max(0, int(feedback_7d_total) - int(feedback_7d)),
             "feedback_unique_agents_7d": query_one(
+                conn,
+                "SELECT COUNT(DISTINCT agent_id) FROM feedback WHERE received_ms >= ? AND " + real_feedback_where,
+                (week,),
+            ),
+            "feedback_unique_agents_7d_total": query_one(
                 conn,
                 "SELECT COUNT(DISTINCT agent_id) FROM feedback WHERE received_ms >= ?",
                 (week,),
@@ -646,9 +719,9 @@ def summary():
             "platform_unique_agents": query_platform_unique(conn, "agent_id", week),
             "platform_unique_devices_all": query_platform_unique(conn, "install_id"),
             "platform_unique_agents_all": query_platform_unique(conn, "agent_id"),
-            "feedback_commands": query_feedback_groups(conn, "command", week, 12),
-            "feedback_queries": query_feedback_groups(conn, "query_text", week, 12),
-            "feedback_reasons": query_feedback_groups(conn, "reason_text", week, 12),
+            "feedback_commands": query_feedback_groups(conn, "command", week, 12, real_only=True),
+            "feedback_queries": query_feedback_groups(conn, "query_text", week, 12, real_only=True),
+            "feedback_reasons": query_feedback_groups(conn, "reason_text", week, 12, real_only=True),
             "recent": [],
             "recent_feedback": [],
         }
@@ -671,7 +744,9 @@ def summary():
             """
         ).fetchall()
         for r in feedback_rows:
-            data["recent_feedback"].append(dict(r))
+            item = dict(r)
+            item["synthetic"] = bool(is_synthetic_feedback_query(item.get("query_text")))
+            data["recent_feedback"].append(item)
         return data
     finally:
         conn.close()
@@ -711,18 +786,73 @@ def render_key_values(title, rows):
     )
 
 
+def render_feedback_inbox(rows):
+    items = []
+    for index, row in enumerate(rows, 1):
+        received = format_time(row.get("received_ms"))
+        query_text = html.escape(row.get("query_text") or "")
+        reason_text = html.escape(row.get("reason_text") or "")
+        command = html.escape(row.get("command") or "")
+        profile = html.escape(row.get("profile") or "")
+        backend = html.escape(row.get("backend") or "")
+        agent_kind = html.escape(row.get("agent_kind") or "")
+        version = html.escape(row.get("version") or "")
+        synthetic = bool(row.get("synthetic"))
+        items.append(
+            """
+<details class="feedback-item">
+  <summary>
+    <span class="feedback-row">
+      <span class="feedback-index">#{index}</span>
+      <span class="feedback-time">{received}</span>
+      <span class="feedback-query">{query}</span>
+      <span class="feedback-reason-preview">{reason_preview}</span>
+      <span class="feedback-inline-meta">{command} · {profile} · {backend} · {agent_kind}</span>
+      <span class="feedback-version">v{version}</span>
+      <span class="feedback-kind {kind_class}">{kind_text}</span>
+      <span class="feedback-expand-hint">点击展开详情</span>
+    </span>
+  </summary>
+  <div class="feedback-body">
+    <p><strong>原因 / Reason</strong></p>
+    <p class="feedback-reason">{reason}</p>
+    <p class="feedback-meta">{command} · {profile} · {backend} · {agent_kind} · {version}</p>
+  </div>
+</details>
+            """.strip().format(
+                index=index,
+                received=received,
+                query=query_text or "(empty query)",
+                reason_preview=((reason_text[:80] + "...") if len(reason_text) > 80 else reason_text) or "(empty reason)",
+                reason=reason_text or "(empty reason)",
+                command=command or "unknown-command",
+                profile=profile or "unknown-profile",
+                backend=backend or "unknown-backend",
+                agent_kind=agent_kind or "unknown-agent",
+                version=version or "unknown",
+                kind_class="feedback-kind-synthetic" if synthetic else "feedback-kind-real",
+                kind_text="测试流量 / Synthetic" if synthetic else "真实反馈 / Real",
+            )
+        )
+    if not items:
+        items.append("<p class='feedback-empty'>暂无反馈 / No feedback yet</p>")
+    return "<section id='feedback-inbox' class='recent'><h2>反馈明细面板 / Feedback Inbox</h2>{}</section>".format(
+        "\n".join(items)
+    )
+
+
 def render_dashboard():
     data = summary()
     task_24h = data["task_duration_24h"]
     session_24h = data["session_24h"]
 
     core_cards = [
-        ("全部独立设备 / All-time Unique Devices", data["all_time_unique_installs"]),
-        ("全部独立 Agent / All-time Unique Agents", data["all_time_unique_agents"]),
-        ("24h 独立 Agent / 24h Unique Agents", data["unique_agents_24h"]),
-        ("24h 独立设备 / 24h Unique Devices", data["active_installs_24h"]),
-        ("24h 新增设备 / 24h New Devices", data["new_installs_24h"]),
-        ("24h 反馈 / 24h Feedback", data["feedback_24h"]),
+        {"label": "全部独立设备 / All-time Unique Devices", "value": data["all_time_unique_installs"]},
+        {"label": "全部独立 Agent / All-time Unique Agents", "value": data["all_time_unique_agents"]},
+        {"label": "24h 独立 Agent / 24h Unique Agents", "value": data["unique_agents_24h"]},
+        {"label": "24h 独立设备 / 24h Unique Devices", "value": data["active_installs_24h"]},
+        {"label": "24h 新增设备 / 24h New Devices", "value": data["new_installs_24h"]},
+        {"label": "24h 有效反馈 / 24h Real Feedback", "value": data["feedback_24h"], "href": "#feedback-inbox"},
     ]
     secondary_cards = [
         ("当前并发 / Active Concurrency", data["active_now"]),
@@ -730,7 +860,11 @@ def render_dashboard():
         ("24h 调用 / 24h Calls", data["calls_24h"]),
         ("7d 调用 / 7d Calls", data["calls_7d"]),
         ("7d 反馈 / 7d Feedback", data["feedback_7d"]),
+        ("24h 反馈总量 / 24h Feedback Total", data["feedback_24h_total"]),
+        ("24h 测试反馈 / 24h Synthetic Feedback", data["feedback_24h_synthetic"]),
+        ("7d 测试反馈 / 7d Synthetic Feedback", data["feedback_7d_synthetic"]),
         ("7d 反馈 Agent / 7d Feedback Agents", data["feedback_unique_agents_7d"]),
+        ("7d 反馈 Agent 总量 / 7d Feedback Agents Total", data["feedback_unique_agents_7d_total"]),
         ("7d 独立 Agent / 7d Unique Agents", data["unique_agents_7d"]),
         ("7d 独立设备 / 7d Unique Devices", data["active_installs_7d"]),
         ("24h 回访设备 / 24h Returning Devices", data["returning_installs_24h"]),
@@ -744,8 +878,19 @@ def render_dashboard():
         ("24h 异常结束率 / 24h Orphan Rate", data["orphan_rate_24h"]),
     ]
     core_card_html = "\n".join(
-        "<div class='core-card'><span>{}</span><strong>{}</strong></div>".format(label, value)
-        for label, value in core_cards
+        (
+            "<a class='core-card core-card-link' href='{href}'><span>{label}</span><strong>{value}</strong><em>打开逐条反馈</em></a>".format(
+                href=html.escape(str(card.get("href") or "")),
+                label=html.escape(str(card.get("label") or "")),
+                value=html.escape(str(card.get("value") or "")),
+            )
+            if card.get("href")
+            else "<div class='core-card'><span>{label}</span><strong>{value}</strong></div>".format(
+                label=html.escape(str(card.get("label") or "")),
+                value=html.escape(str(card.get("value") or "")),
+            )
+        )
+        for card in core_cards
     )
     secondary_card_html = "\n".join(
         "<div class='card'><span>{}</span><strong>{}</strong></div>".format(label, value)
@@ -767,23 +912,6 @@ def render_dashboard():
         )
     if not recent_rows:
         recent_rows.append("<tr><td colspan='8'>暂无事件 / No events yet</td></tr>")
-
-    recent_feedback_rows = []
-    for row in data["recent_feedback"]:
-        recent_feedback_rows.append(
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
-                html.escape(format_time(row["received_ms"])),
-                html.escape(row["query_text"] or ""),
-                html.escape(row["reason_text"] or ""),
-                html.escape(row["command"] or ""),
-                html.escape(row["profile"] or ""),
-                html.escape(row["backend"] or ""),
-                html.escape(row["agent_kind"] or ""),
-                html.escape(row["version"] or ""),
-            )
-        )
-    if not recent_feedback_rows:
-        recent_feedback_rows.append("<tr><td colspan='8'>暂无反馈 / No feedback yet</td></tr>")
 
     depth_panel = render_key_values(
         "使用深度 / Usage Depth",
@@ -842,6 +970,9 @@ def render_dashboard():
     .core-card {{ padding:14px 16px; min-height:96px; }}
     .core-card span {{ display:block; color:var(--muted); font-size:12px; }}
     .core-card strong {{ display:block; margin-top:8px; font-size:36px; line-height:1; }}
+    .core-card-link {{ text-decoration:none; color:inherit; position:relative; }}
+    .core-card-link:hover {{ border-color:#c8c9d4; box-shadow:0 8px 24px rgba(15,23,42,0.1); }}
+    .core-card-link em {{ position:absolute; right:14px; bottom:12px; color:#2563eb; font-style:normal; font-size:12px; }}
     .card {{ padding:14px 16px; }}
     .card span {{ display:block; color:var(--muted); font-size:12px; }}
     .card strong {{ display:block; margin-top:6px; font-size:26px; line-height:1.1; }}
@@ -852,8 +983,33 @@ def render_dashboard():
     td, th {{ padding:8px 6px; border-bottom:1px solid #eef0f3; text-align:left; white-space:nowrap; }}
     th {{ color:var(--muted); font-size:12px; }}
     .recent {{ margin-top:16px; }}
+    .feedback-item {{ border:1px solid #ececf2; border-radius:8px; margin-bottom:10px; background:#fff; }}
+    .feedback-item summary {{ cursor:pointer; list-style:none; padding:10px 12px; }}
+    .feedback-item summary::-webkit-details-marker {{ display:none; }}
+    .feedback-row {{ display:grid; grid-template-columns:70px 170px 1fr 1.2fr 1.1fr 80px 180px 130px; gap:10px; align-items:center; }}
+    .feedback-index {{ font-weight:600; color:#4b5563; }}
+    .feedback-time {{ color:#6e6e73; font-size:12px; }}
+    .feedback-query {{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+    .feedback-reason-preview {{ color:#3f3f46; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+    .feedback-inline-meta {{ color:#6e6e73; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+    .feedback-version {{ color:#0f172a; font-size:12px; font-weight:700; white-space:nowrap; }}
+    .feedback-kind {{ font-size:12px; font-weight:600; white-space:nowrap; }}
+    .feedback-kind-real {{ color:#0f766e; }}
+    .feedback-kind-synthetic {{ color:#b45309; }}
+    .feedback-expand-hint {{ justify-self:end; color:#2563eb; font-size:12px; }}
+    .feedback-item[open] .feedback-expand-hint {{ color:#4b5563; }}
+    .feedback-item[open] .feedback-expand-hint::after {{ content:"（已展开）"; }}
+    .feedback-body {{ border-top:1px solid #ececf2; padding:10px 12px 12px; }}
+    .feedback-body p {{ margin:0 0 8px; }}
+    .feedback-reason {{ white-space:pre-wrap; word-break:break-word; }}
+    .feedback-meta {{ color:#6e6e73; font-size:12px; }}
+    .feedback-empty {{ color:#6e6e73; margin:4px 0; }}
     @media (max-width: 1100px) {{
       .hero-grid {{ grid-template-columns:1fr; }}
+    }}
+    @media (max-width: 780px) {{
+      .feedback-row {{ grid-template-columns:1fr; gap:4px; }}
+      .feedback-expand-hint {{ justify-self:start; }}
     }}
   </style>
 </head>
@@ -895,13 +1051,7 @@ def render_dashboard():
         <tbody>{recent}</tbody>
       </table>
     </section>
-    <section class="recent">
-      <h2>搜索不满意反馈 / Search Feedback</h2>
-      <table>
-        <thead><tr><th>时间 / Time (CST)</th><th>搜索词 / Query</th><th>原因 / Reason</th><th>命令 / Command</th><th>Profile</th><th>Backend</th><th>Agent</th><th>版本 / Version</th></tr></thead>
-        <tbody>{recent_feedback}</tbody>
-      </table>
-    </section>
+    {feedback_inbox}
   </main>
 </body>
 </html>""".format(
@@ -916,13 +1066,13 @@ def render_dashboard():
         platforms=render_group("平台调用分布 / Platform Calls", data["platforms"]),
         platform_devices=render_group("平台独立设备 / Platform Unique Devices", data["platform_unique_devices"]),
         platform_agents=render_group("平台独立 Agent / Platform Unique Agents", data["platform_unique_agents"]),
-        feedback_commands=render_group("反馈命令 / Feedback Commands", data["feedback_commands"]),
-        feedback_queries=render_group("高频问题词 / Top Problem Queries", data["feedback_queries"]),
-        feedback_reasons=render_group("问题原因 / Pain Reasons", data["feedback_reasons"]),
+        feedback_commands=render_group("有效反馈命令 / Real Feedback Commands", data["feedback_commands"]),
+        feedback_queries=render_group("有效高频问题词 / Real Top Problem Queries", data["feedback_queries"]),
+        feedback_reasons=render_group("有效问题原因 / Real Pain Reasons", data["feedback_reasons"]),
         depth=depth_panel,
         quality=quality_panel,
         recent="\n".join(recent_rows),
-        recent_feedback="\n".join(recent_feedback_rows),
+        feedback_inbox=render_feedback_inbox(data["recent_feedback"]),
     )
 
 

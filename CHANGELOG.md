@@ -8,6 +8,28 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.5.2 - 2026-05-03
+
+### Added
+
+- 新增 `guanlan quality backend-fixtures`：用确定性坏样本检查搜索后端污染，包括中文复合词拆字、成人/不安全结果、站群刷屏、英文/低相关漂移和好结果误杀。
+- 新增 `scripts/pre_release_status.sh`：发布前核验版本号、lockfile、README/docs/website 版本文案、changelog 和工作区状态，防止多进程改动混入 release。
+- 新增只读 `guanlan.tool_registry`：作为 Agent/MCP 核心工具面的稳定登记表，帮助测试发现 CLI/MCP/文档漂移。
+- 新增 `guanlan.errors`：统一分类 timeout、blocked、parse_error、network_error 等边界错误，减少“全部 bad_request”的黑箱感。
+
+### Changed
+
+- `scripts/release_gate.sh` 扩展为 13 步，把发布前状态检查和 backend fixture guard 纳入阻断式发布闸门。
+- `guanlan quality robustness` 纳入后端坏样本、source registry 高关注平台口径和 MCP 工具登记表一致性检查。
+- `guanlan quality live-smoke` 增加 `--profile`、`--timeout-budget` 和更完整的真实网络样本池，明确 live smoke 是外网波动探针，默认不阻断发版。
+- 将搜索后端质量判断抽出为 `guanlan/search_quality.py`，先做无行为变化的小切片瘦身，降低 `webtools.py` 补丁沉积风险。
+- 将 archive CLI 实现迁移到 `guanlan.commands.archive`，保持命令行为不变，同时降低 `cli.py` 继续膨胀的风险。
+- 本地只读 HTTP 服务新增 `/tools`，从同一份 tool registry 暴露 Agent 工具面，降低 CLI/MCP/HTTP 漂移。
+
+### Fixed
+
+- 强化显式 backend 契约：坏后端批次必须返回 `low_relevance` / `unsafe_filtered` 等结构化诊断，不能把污染结果交给 Agent。
+
 ## v0.5.1 - 2026-05-03
 
 ### Fixed

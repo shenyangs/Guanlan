@@ -42,9 +42,10 @@ GitHub 侧 workflow 已使用 OIDC（`id-token: write`），无需保存 PyPI AP
 
 1. 更新版本号，例如 `0.5.0 -> 0.5.1`。
 2. 更新 `CHANGELOG.md`。
-3. 运行完整本地发布闸门：`scripts/release_gate.sh`。它会依次执行 `ruff`、全量 `pytest`、`guanlan quality foundational`、`guanlan quality coverage`、`guanlan quality regression`、`guanlan quality robustness`、`guanlan quality performance`、`guanlan eval benchmark`、`guanlan eval suite run chinese-web-v1`、`uv build`、安装 smoke 和版本核对。
-4. 提交代码并推送到 `main`。
-5. 打 tag 并推送，例如：
+3. 运行完整本地发布闸门：`scripts/release_gate.sh`。它会先执行 `scripts/pre_release_status.sh`，确认版本、changelog、文档版本和工作区状态没有漂移；随后依次执行 `ruff`、全量 `pytest`、`guanlan quality foundational`、`guanlan quality coverage`、`guanlan quality regression`、`guanlan quality robustness`、`guanlan quality backend-fixtures`、`guanlan quality performance`、`guanlan eval benchmark`、`guanlan eval suite run chinese-web-v1`、`uv build`、安装 smoke 和版本核对。
+4. 如果 `pre_release_status` 报告存在未提交文件，先判断这些文件是否属于本次发版；不要自动 revert 其他进程改动，也不要把未知半成品混入 release。只有本地诊断需要临时放行时，才使用 `GUANLAN_RELEASE_ALLOW_DIRTY=1 scripts/pre_release_status.sh`，正式发版不得依赖该放行。
+5. 提交代码并推送到 `main`。
+6. 打 tag 并推送，例如：
 
 ```bash
 git tag v0.5.1
@@ -52,7 +53,7 @@ git push origin main
 git push origin v0.5.1
 ```
 
-6. 等待 `release` workflow 完成：
+7. 等待 `release` workflow 完成：
    - Job `publish-pypi`：发布到 PyPI。
    - Job `update-homebrew-tap`：更新 tap 仓库公式，并从 tap 真实安装一次确认版本。
 

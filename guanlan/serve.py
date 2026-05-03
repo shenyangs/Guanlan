@@ -14,6 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from guanlan.errors import error_diagnostics
 from guanlan.limits import (
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
     DEFAULT_HOTNEWS_LIMIT,
@@ -42,6 +43,13 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                     surface=query_args.get("surface") or None,
                     backend=query_args.get("backend") or None,
                 )
+            }
+        if method == "GET" and route == "/tools":
+            from guanlan.tool_registry import list_agent_tools
+
+            return 200, {
+                "tools": list_agent_tools(),
+                "boundary": "只读工具面登记表；用于 Agent/HTTP/MCP 集成自检，不触发搜索或授权。",
             }
         if method == "POST" and route == "/route":
             from guanlan.router import build_route_plan
@@ -226,7 +234,8 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
             return 200, {"results": records}
         return 404, {"error": "not_found", "message": f"Unknown endpoint: {method} {route}"}
     except Exception as exc:
-        return 400, {"error": "bad_request", "message": str(exc)}
+        diagnostics = error_diagnostics(exc)
+        return 400, {"error": "bad_request", **diagnostics}
 
 
 def run_server(host: str = "127.0.0.1", port: int = 8765, token: str = "") -> None:
@@ -234,7 +243,7 @@ def run_server(host: str = "127.0.0.1", port: int = 8765, token: str = "") -> No
     server = ThreadingHTTPServer((host, int(port)), _GuanlanHandler)
     server.guanlan_token = token or os.environ.get("GUANLAN_SERVE_TOKEN", "")
     print(f"观澜只读服务启动: http://{host}:{port}")
-    print("Endpoints: /health, /sources, /route, /search, /research, /compare, /timeline, /dossier, /read, /hotnews, /feeds, /archive/search")
+    print("Endpoints: /health, /tools, /sources, /route, /search, /research, /compare, /timeline, /dossier, /read, /hotnews, /feeds, /archive/search")
     if server.guanlan_token:
         print("Access: token required via Authorization: Bearer <token> or X-Guanlan-Token")
     server.serve_forever()

@@ -103,11 +103,12 @@ def test_quality_cli_live_smoke_is_non_blocking_by_default(capsys):
         "checks": [{"id": "live_timeout", "status": "fail", "message": "upstream timeout"}],
     }
     with patch("guanlan.quality.run_quality_checks", return_value=fake_report):
-        with patch("sys.argv", ["guanlan", "quality", "live-smoke", "--format", "json"]):
+        with patch("sys.argv", ["guanlan", "quality", "live-smoke", "--format", "json", "--timeout-budget", "180"]):
             main()
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
 
     assert payload["mode"] == "live"
     assert payload["contract"]["blocking"] is False
+    assert payload["contract"]["timeout_budget_seconds"] == 180
     assert payload["summary"]["fail"] == 1

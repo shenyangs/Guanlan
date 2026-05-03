@@ -28,6 +28,12 @@ def test_serve_dispatch_health_and_route():
     assert status == 200
     assert body["sources"]["bilibili-hot-search"]["backend"] == "native"
 
+    status, tools = serve.dispatch_request("GET", "/tools")
+    assert status == 200
+    tool_names = {tool["name"] for tool in tools["tools"]}
+    assert {"guanlan_search", "guanlan_research", "guanlan_archive_search"} <= tool_names
+    assert "只读工具面" in tools["boundary"]
+
 
 def test_serve_dispatch_search_uses_webtools(monkeypatch):
     monkeypatch.setattr(
@@ -39,6 +45,18 @@ def test_serve_dispatch_search_uses_webtools(monkeypatch):
 
     assert status == 200
     assert body["results"][0]["title"] == "A"
+
+
+def test_serve_dispatch_errors_are_classified(monkeypatch):
+    def broken_search(*_args, **_kwargs):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr("guanlan.webtools.search_web", broken_search)
+
+    status, body = serve.dispatch_request("POST", "/search", {"query": "A"})
+
+    assert status == 400
+    assert body["error_type"] == "network_timeout"
 
 
 def test_serve_dispatch_defaults_use_expanded_agent_limits(monkeypatch):
