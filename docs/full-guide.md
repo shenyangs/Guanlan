@@ -1056,7 +1056,7 @@ Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会�
 - 热榜、网页阅读与公开搜索之间的降级链路。
 - 默认只读、低扰、显式授权的安全边界。
 
-更完整的设计与阶段路线见 [路线图](roadmap.md) 和 [中文互联网设计](chinese-web-design.md)。
+更完整的设计与阶段路线见 [路线图](roadmap.md) 和 [中文互联网设计依据](chinese-web-design.md)。
 
 ## 给 Agent 的使用方式
 

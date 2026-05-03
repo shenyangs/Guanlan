@@ -29,7 +29,7 @@
 | --- | --- |
 | [路线图](roadmap.md) | 跟踪后续迭代主线、验收标准和暂不做事项。 |
 | [Guanlan 0.5.0 施工方案](guanlan-0.5.0-construction-plan.md) | 约束 0.5.0 的轻重分流、上层工作流增强和基础功能防回退原则。 |
-| [中文互联网设计](chinese-web-design.md) | 查看产品方案、平台矩阵和阶段路线。 |
+| [中文互联网设计依据](chinese-web-design.md) | 查看产品方案、平台矩阵、信源取舍和阶段路线。 |
 | [质量测试计划](quality-test-plan.md) | 维护者发布前检查搜索、热榜、阅读、趋势和 advisor 质量。 |
 | [Guanlan 优化计划（2026-05）](guanlan-optimization-plan-2026-05.md) | 针对暴力测试暴露问题的修复优先级和验收标准。 |
 | [发布冒烟样本](release-smoke-samples.md) | 第一版发布前或回归测试时复跑真实中文查询样本。 |

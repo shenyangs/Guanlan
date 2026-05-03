@@ -149,7 +149,7 @@ guanlan status
 | 安装、升级和路径排查 | [安装指南](docs/install.md) / [更新指南](docs/update.md) / [故障排查](docs/troubleshooting.md) |
 | 本地模型联网 | [Local LLM 指南](docs/local-llm.md) |
 | 输出字段稳定契约 | [Contract](docs/contract.md) |
-| 中文互联网设计思路 | [Chinese Web Design](docs/chinese-web-design.md) |
+| 中文互联网设计依据 | [China-Aware Web Rationale](docs/chinese-web-design.md) |
 | 发版和质量闸门 | [Release Automation](docs/release-automation.md) / [Quality Test Plan](docs/quality-test-plan.md) |
 | 路线图 | [Roadmap](docs/roadmap.md) |
 
