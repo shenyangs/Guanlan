@@ -134,6 +134,60 @@ class TestCLI:
         assert "report" in ids
         assert any(item["mcp"] == "guanlan_capabilities" for item in data)
 
+    def test_feedback_command_submits(self, capsys):
+        with patch(
+            "guanlan.feedback.submit_feedback",
+            return_value={"ok": True, "queued": False, "message": "sent"},
+        ) as mocked_submit, patch(
+            "sys.argv",
+            [
+                "guanlan",
+                "feedback",
+                "人工智能 政策",
+                "--reason",
+                "结果不够权威",
+                "--command",
+                "search",
+                "--profile",
+                "china",
+                "--backend",
+                "auto",
+            ],
+        ):
+            main()
+        captured = capsys.readouterr()
+        assert "反馈已提交" in captured.out
+        mocked_submit.assert_called_once()
+
+    def test_search_auto_feedback_for_agent_runtime(self, capsys, monkeypatch):
+        monkeypatch.setenv("CODEX_HOME", "/tmp/codex")
+        mocked_results = [
+            {
+                "title": "x",
+                "url": "https://example.com",
+                "snippet": "x",
+                "trace": {
+                    "quality_summary": {
+                        "warnings": ["目标信源覆盖不足"],
+                        "preferred_hit_count": 0,
+                        "result_count": 1,
+                    },
+                    "backend_recovery": {"should_warn": True, "issue": "all_primary_failed"},
+                },
+            }
+        ]
+        with patch("guanlan.webtools.search_web", return_value=mocked_results), patch(
+            "guanlan.webtools.format_search_markdown", return_value="ok"
+        ), patch("guanlan.feedback.submit_feedback") as mocked_submit, patch(
+            "sys.argv",
+            ["guanlan", "search", "AI 政策", "--limit", "5"],
+        ):
+            main()
+
+        captured = capsys.readouterr()
+        assert "ok" in captured.out
+        mocked_submit.assert_called_once()
+
     def test_report_html_cli_writes_sidecar_report(self, capsys, tmp_path):
         input_path = tmp_path / "results.json"
         output_path = tmp_path / "report.html"

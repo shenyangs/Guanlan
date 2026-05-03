@@ -89,6 +89,15 @@ def test_search_quality_profile_detects_academic_intent():
     assert "学术/论文检索" in quality["preferred_source_types"]
 
 
+def test_search_quality_profile_detects_university_admissions_intent():
+    quality = webtools.detect_search_quality_profile("清华大学计算机系研究生招生 导师名单", profile="china")
+
+    assert quality["intent"] == "university_admissions"
+    assert "university" in quality["preferred_scopes"]
+    assert "高校/院系官网" in quality["preferred_source_types"]
+    assert "院系官网" in quality["guidance"]
+
+
 def test_search_quality_profile_detects_entertainment_intent():
     quality = webtools.detect_search_quality_profile("哪吒2 票房 豆瓣评分 最近热议", profile="china")
 
@@ -96,6 +105,131 @@ def test_search_quality_profile_detects_entertainment_intent():
     assert "entertainment" in quality["preferred_scopes"]
     assert "文娱/内容平台" in quality["preferred_source_types"]
     assert "单平台热度" in quality["guidance"]
+
+
+def test_search_quality_profile_detects_global_entertainment_intent():
+    quality = webtools.detect_search_quality_profile("Taylor Swift latest album tour", profile="english")
+
+    assert quality["intent"] == "global_entertainment"
+    assert "global_entertainment" in quality["preferred_scopes"]
+    assert "欧美文娱/音乐产业" in quality["preferred_source_types"]
+
+
+def test_search_quality_profile_detects_jp_kr_entertainment_intent():
+    quality = webtools.detect_search_quality_profile("BLACKPINK K-pop comeback Soompi", profile="hybrid")
+
+    assert quality["intent"] == "jp_kr_entertainment"
+    assert "jp_kr_entertainment" in quality["preferred_scopes"]
+    assert "日韩文娱/K-pop/J-pop" in quality["preferred_source_types"]
+
+
+def test_search_quality_profile_detects_new_route_intents():
+    cases = [
+        ("OpenSSL CVE 最新 漏洞 影响 版本 修复", "cybersecurity", "网络安全/漏洞/反诈"),
+        ("台风 路径 最新 中央气象台 日本气象厅", "weather_disaster", "天气/灾害/预警"),
+        ("梅西 今天比赛 数据 伤病 最新", "sports", "体育/赛事/转会"),
+        ("詹姆斯韦伯 发现 外星生命 真的假的 NASA", "science", "科学机构/科研新闻"),
+        ("字节 AI 产品经理 校招 薪资 面经", "career", "招聘/职场/薪资"),
+        ("最近 有哪些讲 AI 创业 的中文播客 小宇宙", "podcast", "播客/音频/RSS"),
+        ("雅思 口语 2026 题库 机经 靠谱吗", "test_prep", "考试/培训/备考"),
+    ]
+
+    for query, intent, source_type in cases:
+        quality = webtools.detect_search_quality_profile(query, profile="china")
+        assert quality["intent"] == intent
+        assert source_type in quality["preferred_source_types"]
+
+
+def test_entertainment_scopes_use_short_site_expression(monkeypatch):
+    captured_queries = []
+
+    def fake_search(query, limit=10):
+        captured_queries.append(query)
+        return [
+            webtools.SearchResult(
+                title="Taylor Swift news",
+                url="https://www.billboard.com/music/music-news/taylor-swift/",
+                snippet="Billboard coverage.",
+                source="duckduckgo",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    webtools.search_web(
+        "Taylor Swift latest album tour",
+        backend="duckduckgo",
+        profile="english",
+        scope="global_entertainment",
+    )
+
+    assert captured_queries
+    assert captured_queries[0].count("site:") == 4
+    assert "site:billboard.com" in captured_queries[0]
+    assert "site:rollingstone.com" not in captured_queries[0]
+
+
+def test_jp_kr_entertainment_scope_prioritizes_local_sources(monkeypatch):
+    captured_queries = []
+
+    def fake_search(query, limit=10):
+        captured_queries.append(query)
+        return [
+            webtools.SearchResult(
+                title="BLACKPINK comeback",
+                url="https://www.soompi.com/article/1",
+                snippet="Soompi coverage.",
+                source="duckduckgo",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    webtools.search_web(
+        "BLACKPINK K-pop comeback",
+        backend="duckduckgo",
+        profile="hybrid",
+        scope="jp_kr_entertainment",
+    )
+
+    assert captured_queries
+    assert captured_queries[0].count("site:") == 4
+    assert "site:soompi.com" in captured_queries[0]
+    assert "site:oricon.co.jp" in captured_queries[0]
+    assert "site:natalie.mu" in captured_queries[0]
+    assert "site:koreaherald.com" not in captured_queries[0]
+
+
+def test_scoped_search_retries_open_query_when_site_expression_is_empty(monkeypatch):
+    captured_queries = []
+
+    def fake_search(query, limit=10):
+        captured_queries.append(query)
+        if query.startswith("("):
+            return []
+        return [
+            webtools.SearchResult(
+                title="OpenSSL advisory",
+                url="https://www.openssl.org/news/secadv/20260503.txt",
+                snippet="Security advisory.",
+                source="duckduckgo",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web(
+        "OpenSSL CVE latest affected versions",
+        backend="duckduckgo",
+        profile="english",
+        scope="cybersecurity",
+        trace=True,
+    )
+
+    assert len(results) == 1
+    assert captured_queries[0].startswith("(")
+    assert captured_queries[1].startswith("OpenSSL CVE latest affected versions")
+    assert "retried the original query" in results[0]["trace"]["backend_diagnostics"][0]["note"]
 
 
 def test_search_quality_profile_detects_english_company_intent():
@@ -217,6 +351,16 @@ def test_query_strategy_builds_academic_variants():
     assert "institution_policy" in roles
 
 
+def test_query_strategy_builds_university_admissions_variants():
+    route = webtools.build_route_plan("清华大学计算机系研究生招生 导师名单", profile="china").to_dict()
+    strategy = webtools.build_query_strategy("清华大学计算机系研究生招生 导师名单", route_plan=route)
+
+    roles = {item["role"] for item in strategy["variants"]}
+    assert "university_official" in roles
+    assert "department_page" in roles
+    assert "admission_catalog" in roles
+
+
 def test_academic_query_penalizes_ei_math_noise():
     ranked = webtools.rank_results(
         [
@@ -241,6 +385,67 @@ def test_academic_query_penalizes_ei_math_noise():
 
     assert ranked[0].domain == "elsevier.com"
     assert ranked[-1].score_parts["semantic_noise_penalty"] < 0
+
+
+def test_university_admissions_query_promotes_named_school_entity():
+    quality = webtools.detect_search_quality_profile("北部湾大学 计算机学院 研究生招生 导师", profile="china")
+    route = webtools.build_route_plan("北部湾大学 计算机学院 研究生招生 导师", profile="china").to_dict()
+    quality = webtools._quality_with_route_plan(quality, route)
+
+    ranked = webtools.rank_results(
+        [
+            webtools.SearchResult(
+                title="2026年计算机学院研究生招生团队及导师目录",
+                url="https://scs.bupt.edu.cn/info/1020/3951.htm",
+                snippet="计算机学院导师联系方式、研究方向列表。",
+                source="duckduckgo",
+                rank=1,
+            ),
+            webtools.SearchResult(
+                title="导师队伍-北部湾大学研究生院",
+                url="https://yjs.bbgu.edu.cn/pygz/dsdw.htm",
+                snippet="北部湾大学研究生导师队伍与招生培养信息。",
+                source="duckduckgo",
+                rank=2,
+            ),
+        ],
+        query="北部湾大学 计算机学院 研究生招生 导师",
+        quality=quality,
+    )
+
+    assert ranked[0].domain == "yjs.bbgu.edu.cn"
+    assert ranked[0].score_parts["entity_match"] > 0
+    assert ranked[1].score_parts["entity_mismatch_penalty"] < 0
+
+
+def test_university_admissions_penalizes_parent_university_for_affiliated_college():
+    quality = webtools.detect_search_quality_profile("南京师范大学中北学院 计算机学院 研究生招生 导师", profile="china")
+    route = webtools.build_route_plan("南京师范大学中北学院 计算机学院 研究生招生 导师", profile="china").to_dict()
+    quality = webtools._quality_with_route_plan(quality, route)
+
+    ranked = webtools.rank_results(
+        [
+            webtools.SearchResult(
+                title="硕士生导师-南京师范大学计算机与电子信息学院",
+                url="https://ceai.njnu.edu.cn/yjsjy/sssds.htm",
+                snippet="南京师范大学硕士生导师名单。",
+                source="duckduckgo",
+                rank=1,
+            ),
+            webtools.SearchResult(
+                title="南京师范大学中北学院",
+                url="https://www.nnudy.edu.cn/",
+                snippet="南京师范大学中北学院官网。",
+                source="duckduckgo",
+                rank=2,
+            ),
+        ],
+        query="南京师范大学中北学院 计算机学院 研究生招生 导师",
+        quality=quality,
+    )
+
+    assert ranked[0].domain == "nnudy.edu.cn"
+    assert ranked[1].score_parts["entity_mismatch_penalty"] <= -2.0
 
 
 def test_format_search_trace_shows_query_quality(monkeypatch):
@@ -282,6 +487,21 @@ def test_search_quality_summary_suggests_missing_roles():
     )
 
     assert summary["missing_roles"] == ["official_primary"]
+    assert summary["status"] == "warn"
+    assert summary["quality_status"] == "quality_strict"
+    assert "Guanlan 已找到线索" in summary["user_facing_status"]
+    assert "缺少 `official_primary`" in "；".join(summary["why_cautious"])
+    assert summary["agent_execution_policy"]["should_run_followups"] is True
+    assert summary["agent_execution_policy"]["mode"] == "run_followups_now"
+    assert "不要停在建议" in summary["agent_execution_policy"]["instruction"]
+    assert any(action["label"] == "查看路由计划" for action in summary["followup_actions"])
+    assert all(action["run_policy"] == "run_immediately" for action in summary["followup_actions"])
+    assert any("guanlan research" in action["command"] for action in summary["followup_actions"])
+    assert "质量画像" in summary["interpretation"]
+    assert any("guanlan route" in item for item in summary["guanlan_next_steps"])
+    assert any("不要只看开放网页" in item for item in summary["guanlan_next_steps"])
+    assert any("不要向 AI 使用者概括为" in item for item in summary["agent_reporting_contract"])
+    assert any("未完全通过质量画像" in item for item in summary["agent_reporting_contract"])
     assert any("scope gov" in item for item in summary["suggestions"])
 
 
@@ -613,6 +833,73 @@ def test_search_recovery_plan_productizes_baidu_block(monkeypatch):
     assert "Baidu 当前被安全验证/反爬拦截" in rendered
 
 
+def test_search_web_continues_after_low_relevance_bing_batch(monkeypatch):
+    def blocked_baidu(query, limit=10):
+        raise RuntimeError("captcha_or_verification: 百度安全验证")
+
+    def noisy_bing(query, limit=10):
+        return [
+            webtools.SearchResult(
+                title=f"Microsoft Support {idx}",
+                url=f"https://support.microsoft.com/en-us/help/{idx}",
+                snippet="Contact Microsoft Support and find account help.",
+                source="bing",
+                rank=idx,
+            )
+            for idx in range(1, limit + 1)
+        ]
+
+    def useful_duckduckgo(query, limit=10):
+        return [
+            webtools.SearchResult(
+                title="智元机器人完成新一轮融资",
+                url="https://36kr.com/p/robot",
+                snippet="具身智能企业智元、宇树、傅利叶融资和产品动态。",
+                source="duckduckgo",
+                rank=1,
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_baidu", blocked_baidu)
+    monkeypatch.setattr(webtools, "_search_bing", noisy_bing)
+    monkeypatch.setattr(webtools, "_search_duckduckgo", useful_duckduckgo)
+
+    results = webtools.search_web(
+        "具身智能 企业 融资 2024 2025 智元 宇树 傅利叶",
+        profile="china",
+        limit=10,
+        trace=True,
+    )
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+    rendered = webtools.format_search_trace(results)
+
+    assert results[0]["source"] == "duckduckgo"
+    assert [item["status"] for item in diagnostics] == ["blocked", "low_relevance", "ok"]
+    assert diagnostics[1]["quality_gate"]["reason"]
+    assert "support.microsoft.com" in diagnostics[1]["quality_gate"]["top_domain"]
+    assert "backend_status: baidu=blocked, bing=low_relevance(10), duckduckgo=ok(1)" in rendered
+    assert "相关性门控未通过" in rendered
+
+
+def test_search_quality_profile_treats_robotics_funding_as_industry():
+    quality = webtools.detect_search_quality_profile(
+        "具身智能 企业 融资 2024 2025 智元 宇树 傅利叶",
+        profile="china",
+    )
+
+    assert quality["intent"] == "industry"
+    assert "business" in quality["preferred_scopes"]
+
+
+def test_recency_detects_explicit_year_range():
+    recency = webtools.detect_recency_intent("具身智能 企业 融资 2024 2025 智元 宇树 傅利叶")
+
+    assert recency["enabled"] is True
+    assert recency["label"] == "year_range"
+    assert recency["start_date"] == "2024-01-01"
+    assert recency["matched_terms"] == ["2024", "2025"]
+
+
 def test_search_block_detector_marks_captcha_pages():
     with pytest.raises(RuntimeError, match="captcha_or_verification"):
         webtools._raise_for_search_block("<html>百度安全验证 请输入验证码</html>", "baidu")
@@ -638,6 +925,114 @@ def test_search_web_applies_scope(monkeypatch):
     assert results[0]["title"] == "A"
     assert results[0]["source_type"] == "党央媒"
     assert results[0]["matched_scope"] == "party_central"
+
+
+def test_search_web_rewrites_academic_scope_for_university_admissions(monkeypatch):
+    requested = []
+
+    def fake_search(query, limit=10):
+        requested.append(query)
+        return [webtools.SearchResult(title="清华计算机系导师", url="https://cs.tsinghua.edu.cn/faculty")]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web(
+        "清华大学计算机系研究生招生 导师名单",
+        backend="duckduckgo",
+        scope="academic",
+        limit=1,
+        trace=True,
+    )
+
+    assert "site:edu.cn" in requested[0]
+    assert "engineeringvillage.com" not in requested[0]
+    assert results[0]["matched_scope"] == "university"
+    assert results[0]["trace"]["requested_scope"] == "academic"
+    assert results[0]["trace"]["effective_scope"] == "university"
+    assert results[0]["trace"]["scope_rewrite"] == "academic->university"
+
+
+def test_search_web_keeps_unknown_university_scope_broad(monkeypatch):
+    requested = []
+
+    def fake_search(query, limit=10):
+        requested.append(query)
+        return [webtools.SearchResult(title="北部湾大学研究生院", url="https://yjs.bbgu.edu.cn/")]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    webtools.search_web(
+        "北部湾大学 计算机学院 研究生招生 导师",
+        backend="duckduckgo",
+        scope="university",
+        limit=1,
+    )
+
+    assert requested[0].startswith("site:edu.cn ")
+    assert "tsinghua.edu.cn" not in requested[0]
+    assert "pku.edu.cn" not in requested[0]
+
+
+def test_search_web_university_scope_open_fallback_when_site_search_empty(monkeypatch):
+    requested = []
+
+    def fake_search(query, limit=10):
+        requested.append(query)
+        if query.startswith("site:edu.cn"):
+            return []
+        return [webtools.SearchResult(title="重庆文理学院研究生招生网", url="https://yjszs.cqwu.edu.cn/")]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web(
+        "重庆文理学院 计算机学院 研究生招生 导师",
+        backend="duckduckgo",
+        scope="university",
+        limit=1,
+        trace=True,
+    )
+
+    assert requested[0].startswith("site:edu.cn ")
+    assert requested[1] == "重庆文理学院 计算机学院 研究生招生 导师"
+    assert results[0]["domain"] == "yjszs.cqwu.edu.cn"
+    assert any(item["backend"] == "duckduckgo:open_fallback" for item in results[0]["trace"]["backend_diagnostics"])
+
+
+def test_search_web_university_scope_infers_school_site(monkeypatch):
+    requested = []
+
+    def fake_search(query, limit=10):
+        requested.append(query)
+        if query.startswith("site:cqwu.edu.cn"):
+            return [
+                webtools.SearchResult(
+                    title="重庆文理学院硕士研究生导师名单",
+                    url="https://graduate.cqwu.edu.cn/channel_24231.html",
+                )
+            ]
+        return [
+            webtools.SearchResult(
+                title="重庆文理学院 研究生招生网",
+                url="https://yjszs.cqwu.edu.cn/",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web(
+        "重庆文理学院 计算机学院 研究生招生 导师",
+        backend="duckduckgo",
+        scope="university",
+        limit=5,
+        trace=True,
+    )
+
+    assert requested[0].startswith("site:edu.cn ")
+    assert requested[1].startswith("site:cqwu.edu.cn ")
+    assert any(item["backend"] == "duckduckgo:site_inferred" for item in results[0]["trace"]["backend_diagnostics"])
+    assert any(item["url"] == "https://graduate.cqwu.edu.cn/channel_24231.html" for item in results)
+    context = webtools.format_search_context(results)
+    assert "已从结果识别学校主域 `cqwu.edu.cn`" in context
 
 
 def test_search_web_prefers_requested_scope_for_overlapping_domains(monkeypatch):
@@ -1211,6 +1606,17 @@ def test_research_cli_lists_presets(capsys):
     assert presets["policy"]["scope"] == "gov"
     assert "entertainment" in presets
     assert presets["entertainment"]["scope"] == "entertainment"
+    assert presets["global_entertainment"]["scope"] == "global_entertainment"
+    assert presets["jp_kr_entertainment"]["scope"] == "jp_kr_entertainment"
+    assert presets["cybersecurity"]["scope"] == "cybersecurity"
+    assert presets["sports"]["scope"] == "sports"
+    assert presets["weather_disaster"]["scope"] == "weather_disaster"
+    assert presets["science"]["scope"] == "science"
+    assert presets["career"]["scope"] == "career"
+    assert presets["podcast"]["scope"] == "podcast"
+    assert presets["test_prep"]["scope"] == "test_prep"
+    assert "university" in presets
+    assert presets["university"]["scope"] == "university"
 
 
 def test_search_cli_lists_scopes(capsys):
@@ -1561,6 +1967,91 @@ def test_format_search_context_is_compact_table():
 
     assert "来源 | 标题 | 摘要 | 可信度 | Topic" in context
     assert "[结果](https://example.com/a)" in context
+
+
+def test_format_search_context_surfaces_quality_guidance_before_web_fallback():
+    context = webtools.format_search_context(
+        [
+            {
+                "rank": 1,
+                "source_type": "通用网页",
+                "title": "普通结果",
+                "url": "https://example.com/a",
+                "snippet": "摘要",
+                "trace": {
+                    "quality_summary": {
+                        "quality_status": "quality_strict",
+                        "user_facing_status": "Guanlan 已找到线索，但质量画像提示还不适合直接下结论。",
+                        "interpretation": "当前提示是观澜质量画像在提醒“证据包覆盖不足”，不是主题没有资料。",
+                        "why_cautious": ["未命中当前意图偏好的信源类型。"],
+                        "guanlan_next_steps": [
+                            "先运行 `guanlan route \"问题\" --json` 看推荐的 source pools。",
+                            "只有 Guanlan 的多轮补证仍缺关键网页时，再用 web_search/web_fetch 作外部兜底。",
+                        ],
+                        "agent_execution_policy": {
+                            "mode": "run_followups_now",
+                            "should_run_followups": True,
+                            "instruction": "不要停在建议；直接按 followup_actions 顺序继续运行 Guanlan 补证。",
+                        },
+                        "followup_actions": [
+                            {
+                                "label": "跑深度研究",
+                                "command": "guanlan research \"问题\" --preset industry --advisor",
+                                "reason": "继续用 Guanlan 补证。",
+                                "run_policy": "run_immediately",
+                            }
+                        ],
+                        "agent_reporting_contract": [
+                            "不要向 AI 使用者概括为“Guanlan 搜索失败”。",
+                        ],
+                    }
+                },
+            }
+        ]
+    )
+
+    assert "质量画像" in context
+    assert "质量状态" in context
+    assert "当前进展" in context
+    assert "谨慎原因" in context
+    assert "执行策略" in context
+    assert "执行动作" in context
+    assert "run_immediately" in context
+    assert "guanlan research" in context
+    assert "观澜补证" in context
+    assert "汇报约束" in context
+    assert "Guanlan 搜索失败" in context
+    assert "web_search/web_fetch" in context
+
+
+def test_format_search_trace_includes_reporting_contract_for_quality_warn(monkeypatch):
+    monkeypatch.setattr(
+        webtools,
+        "_search_duckduckgo",
+        lambda query, limit=10: [
+            webtools.SearchResult(
+                title="普通网页",
+                url="https://example.com/a",
+                snippet="泛泛而谈",
+                source="duckduckgo",
+                rank=1,
+            )
+        ],
+    )
+
+    results = webtools.search_web("人工智能 政策", backend="duckduckgo", trace=True)
+    trace = webtools.format_search_trace(results)
+
+    assert "report_as:" in trace
+    assert "不要向 AI 使用者概括为" in trace
+    assert "未完全通过质量画像" in trace
+    assert "quality_status:" in trace
+    assert "user_facing_status:" in trace
+    assert "why_cautious:" in trace
+    assert "execution_policy:" in trace
+    assert "run_followups_now" in trace
+    assert "run_immediately" in trace
+    assert "action:" in trace
 
 
 def test_format_source_chart_shows_type_and_domain_distribution():

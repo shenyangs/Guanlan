@@ -99,6 +99,28 @@ def init_db():
                 last_seen_ms INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_active_last_seen ON active_invocations(last_seen_ms);
+
+            CREATE TABLE IF NOT EXISTS feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts_ms INTEGER NOT NULL,
+                received_ms INTEGER NOT NULL,
+                install_id TEXT NOT NULL,
+                agent_kind TEXT NOT NULL,
+                agent_id TEXT NOT NULL DEFAULT '',
+                surface TEXT NOT NULL,
+                command TEXT NOT NULL,
+                profile TEXT NOT NULL,
+                backend TEXT NOT NULL,
+                query_text TEXT NOT NULL,
+                reason_text TEXT NOT NULL,
+                version TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                python TEXT NOT NULL,
+                remote_addr TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_feedback_received ON feedback(received_ms);
+            CREATE INDEX IF NOT EXISTS idx_feedback_command ON feedback(command);
+            CREATE INDEX IF NOT EXISTS idx_feedback_agent ON feedback(agent_id);
             """
         )
         ensure_column(conn, "events", "agent_id", "TEXT NOT NULL DEFAULT ''")
@@ -266,6 +288,50 @@ def record_event(payload, remote_addr):
         conn.close()
 
 
+def record_feedback(payload, remote_addr):
+    current = now_ms()
+    row = {
+        "ts_ms": int(payload.get("ts") or current),
+        "received_ms": current,
+        "install_id": clamp_text(payload.get("install_id"), 96),
+        "agent_kind": clamp_text(payload.get("agent_kind"), 40),
+        "agent_id": clamp_text(payload.get("agent_id"), 96),
+        "surface": clamp_text(payload.get("surface"), 32),
+        "command": clamp_text(payload.get("command"), 40),
+        "profile": clamp_text(payload.get("profile"), 24),
+        "backend": clamp_text(payload.get("backend"), 40),
+        "query_text": clamp_text(payload.get("query_text"), 200),
+        "reason_text": clamp_text(payload.get("reason_text"), 600),
+        "version": clamp_text(payload.get("version"), 40),
+        "platform": clamp_text(payload.get("platform"), 40),
+        "python": clamp_text(payload.get("python"), 24),
+        "remote_addr": clamp_text(remote_addr, 80),
+    }
+    if not row["install_id"] or not row["query_text"] or not row["reason_text"]:
+        return False
+    if not row["agent_id"]:
+        row["agent_id"] = fallback_agent_id(row["install_id"], row["agent_kind"])
+
+    conn = db_connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO feedback (
+                ts_ms, received_ms, install_id, agent_kind, agent_id, surface, command,
+                profile, backend, query_text, reason_text, version, platform, python, remote_addr
+            ) VALUES (
+                :ts_ms, :received_ms, :install_id, :agent_kind, :agent_id, :surface, :command,
+                :profile, :backend, :query_text, :reason_text, :version, :platform, :python, :remote_addr
+            )
+            """,
+            row,
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
 def query_one(conn, sql, params=()):
     row = conn.execute(sql, params).fetchone()
     return list(row)[0] if row else 0
@@ -280,6 +346,24 @@ def query_groups(conn, column, since_ms, limit=10):
         SELECT {column} AS key, COUNT(*) AS count
         FROM events
         WHERE received_ms >= ? AND event = 'invocation_start'
+        GROUP BY {column}
+        ORDER BY count DESC, key ASC
+        LIMIT ?
+        """.format(column=column),
+        (since_ms, limit),
+    ).fetchall()
+    return [{"key": r["key"] or "unknown", "count": r["count"]} for r in rows]
+
+
+def query_feedback_groups(conn, column, since_ms, limit=10):
+    allowed = set(["command", "profile", "backend", "query_text", "reason_text", "agent_kind"])
+    if column not in allowed:
+        return []
+    rows = conn.execute(
+        """
+        SELECT {column} AS key, COUNT(*) AS count
+        FROM feedback
+        WHERE received_ms >= ?
         GROUP BY {column}
         ORDER BY count DESC, key ASC
         LIMIT ?
@@ -454,6 +538,16 @@ def summary():
             (day,),
         )
         orphan_starts_24h = query_orphan_starts(conn, day, current)
+        feedback_24h = query_one(
+            conn,
+            "SELECT COUNT(*) FROM feedback WHERE received_ms >= ?",
+            (day,),
+        )
+        feedback_7d = query_one(
+            conn,
+            "SELECT COUNT(*) FROM feedback WHERE received_ms >= ?",
+            (week,),
+        )
         data = {
             "generated_ms": current,
             "last_event_age_ms": max(
@@ -482,6 +576,13 @@ def summary():
             "error_rate_24h": fmt_rate(errors_24h, calls_24h),
             "orphan_starts_24h": orphan_starts_24h,
             "orphan_rate_24h": fmt_rate(orphan_starts_24h, calls_24h),
+            "feedback_24h": feedback_24h,
+            "feedback_7d": feedback_7d,
+            "feedback_unique_agents_7d": query_one(
+                conn,
+                "SELECT COUNT(DISTINCT agent_id) FROM feedback WHERE received_ms >= ?",
+                (week,),
+            ),
             "calls_per_agent_24h": round(float(calls_24h) / unique_agents_24h, 2)
             if unique_agents_24h
             else 0,
@@ -497,7 +598,11 @@ def summary():
             "agents": query_groups(conn, "agent_kind", week),
             "versions": query_groups(conn, "version", week),
             "platforms": query_groups(conn, "platform", week),
+            "feedback_commands": query_feedback_groups(conn, "command", week, 12),
+            "feedback_queries": query_feedback_groups(conn, "query_text", week, 12),
+            "feedback_reasons": query_feedback_groups(conn, "reason_text", week, 12),
             "recent": [],
+            "recent_feedback": [],
         }
         rows = conn.execute(
             """
@@ -509,6 +614,16 @@ def summary():
         ).fetchall()
         for r in rows:
             data["recent"].append(dict(r))
+        feedback_rows = conn.execute(
+            """
+            SELECT received_ms, query_text, reason_text, command, profile, backend, agent_kind, version
+            FROM feedback
+            ORDER BY id DESC
+            LIMIT 80
+            """
+        ).fetchall()
+        for r in feedback_rows:
+            data["recent_feedback"].append(dict(r))
         return data
     finally:
         conn.close()
@@ -557,6 +672,9 @@ def render_dashboard():
         ("最近事件 / Last Event", fmt_ms(data["last_event_age_ms"]) + " 前"),
         ("24h 调用 / 24h Calls", data["calls_24h"]),
         ("7d 调用 / 7d Calls", data["calls_7d"]),
+        ("24h 反馈 / 24h Feedback", data["feedback_24h"]),
+        ("7d 反馈 / 7d Feedback", data["feedback_7d"]),
+        ("7d 反馈 Agent / 7d Feedback Agents", data["feedback_unique_agents_7d"]),
         ("24h 独立 Agent / 24h Unique Agents", data["unique_agents_24h"]),
         ("7d 独立 Agent / 7d Unique Agents", data["unique_agents_7d"]),
         ("24h 独立设备 / 24h Unique Devices", data["active_installs_24h"]),
@@ -592,6 +710,23 @@ def render_dashboard():
         )
     if not recent_rows:
         recent_rows.append("<tr><td colspan='8'>暂无事件 / No events yet</td></tr>")
+
+    recent_feedback_rows = []
+    for row in data["recent_feedback"]:
+        recent_feedback_rows.append(
+            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+                html.escape(format_time(row["received_ms"])),
+                html.escape(row["query_text"] or ""),
+                html.escape(row["reason_text"] or ""),
+                html.escape(row["command"] or ""),
+                html.escape(row["profile"] or ""),
+                html.escape(row["backend"] or ""),
+                html.escape(row["agent_kind"] or ""),
+                html.escape(row["version"] or ""),
+            )
+        )
+    if not recent_feedback_rows:
+        recent_feedback_rows.append("<tr><td colspan='8'>暂无反馈 / No feedback yet</td></tr>")
 
     depth_panel = render_key_values(
         "使用深度 / Usage Depth",
@@ -667,6 +802,9 @@ def render_dashboard():
       {agents}
       {versions}
       {platforms}
+      {feedback_commands}
+      {feedback_queries}
+      {feedback_reasons}
       {depth}
       {quality}
     </div>
@@ -675,6 +813,13 @@ def render_dashboard():
       <table>
         <thead><tr><th>时间 / Time (CST)</th><th>事件 / Event</th><th>入口 / Surface</th><th>命令 / Command</th><th>Agent</th><th>版本 / Version</th><th>状态 / Status</th><th>耗时 / Duration (ms)</th></tr></thead>
         <tbody>{recent}</tbody>
+      </table>
+    </section>
+    <section class="recent">
+      <h2>搜索不满意反馈 / Search Feedback</h2>
+      <table>
+        <thead><tr><th>时间 / Time (CST)</th><th>搜索词 / Query</th><th>原因 / Reason</th><th>命令 / Command</th><th>Profile</th><th>Backend</th><th>Agent</th><th>版本 / Version</th></tr></thead>
+        <tbody>{recent_feedback}</tbody>
       </table>
     </section>
   </main>
@@ -686,9 +831,13 @@ def render_dashboard():
         agents=render_group("Agent 类型 / Agent Types", data["agents"]),
         versions=render_group("版本分布 / Versions", data["versions"]),
         platforms=render_group("平台分布 / Platforms", data["platforms"]),
+        feedback_commands=render_group("反馈命令 / Feedback Commands", data["feedback_commands"]),
+        feedback_queries=render_group("高频问题词 / Top Problem Queries", data["feedback_queries"]),
+        feedback_reasons=render_group("问题原因 / Pain Reasons", data["feedback_reasons"]),
         depth=depth_panel,
         quality=quality_panel,
         recent="\n".join(recent_rows),
+        recent_feedback="\n".join(recent_feedback_rows),
     )
 
 
@@ -760,7 +909,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path != "/v1/events":
+        if parsed.path not in ("/v1/events", "/v1/feedback"):
             self.send_text(404, "not found\n")
             return
         if not self.ingest_authorized(parsed):
@@ -781,7 +930,10 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             self.send_text(400, "bad payload\n")
             return
-        ok = record_event(payload, self.client_address[0])
+        if parsed.path == "/v1/events":
+            ok = record_event(payload, self.client_address[0])
+        else:
+            ok = record_feedback(payload, self.client_address[0])
         if not ok:
             self.send_text(400, "ignored\n")
             return

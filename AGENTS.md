@@ -2,6 +2,11 @@
 
 This repository is designed as a CLI-first search productivity tool for AI agents.
 
+Commit/release language rule: Guanlan is a Chinese-web research tool. Use Chinese-first
+commit subjects, changelog entries, and release notes. Keep conventional prefixes such as
+`feat:` / `fix:` / `docs:` when useful, but write the description in Chinese, for example
+`feat: 扩展垂直路由和搜索质量反馈`.
+
 Install/update rule: after installing or upgrading Guanlan, always do a full reinstall, not an
 incremental upgrade, before configuring MCP, optional channels, or auth. Prefer one clean path:
 `uv tool install --force --upgrade guanlan`; if the user explicitly wants Homebrew, run
@@ -43,7 +48,15 @@ guanlan search "中文问题" --profile china --limit 80
 guanlan search "政策或产业问题" --profile china --scope party_central
 guanlan search "电商零售问题" --profile china --scope ecommerce
 guanlan search "学术会议 投稿 检索问题" --profile china --scope academic
+guanlan search "高校 研究生招生 导师 院系官网" --profile china --scope university
 guanlan search "影视 综艺 游戏 明星 票房口碑" --profile china --scope entertainment
+guanlan search "Taylor Swift 最新动态" --profile english --scope global_entertainment
+guanlan search "K-pop 最新回归" --profile hybrid --scope jp_kr_entertainment
+guanlan search "OpenSSL CVE 最新 漏洞 影响版本" --scope cybersecurity --limit 80 --trace
+guanlan search "台风 路径 中央气象台 日本气象厅" --scope weather_disaster --limit 80 --trace
+guanlan search "梅西 比赛 伤病 最新" --scope sports --limit 80
+guanlan search "詹姆斯韦伯 外星生命 NASA" --scope science --profile english --limit 80
+guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80
 guanlan search --list-scopes
 guanlan route "中文研究需求" --json
 guanlan read "https://example.com/article" --max-chars 12000
@@ -51,7 +64,13 @@ guanlan read "https://example.com/article" --quality-report
 guanlan read "https://example.com/article" --strict --trace
 guanlan research "query" --profile china --advisor
 guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
+guanlan research "清华大学计算机系研究生招生 导师" --preset university --read-top 0
 guanlan research "影视 综艺 游戏 明星 票房口碑" --preset entertainment --read-top 0
+guanlan research "Taylor Swift 最新动态 新专辑 巡演" --preset global_entertainment --profile english
+guanlan research "BLACKPINK K-pop 最新回归" --preset jp_kr_entertainment --profile hybrid
+guanlan research "OpenSSL CVE 最新 漏洞 影响版本" --preset cybersecurity --read-top 5
+guanlan research "字节 AI 产品经理 校招 薪资 面经" --preset career --read-top 5
+guanlan research "雅思 口语 题库 机经" --preset test_prep --read-top 4
 guanlan research "产品 用户评价" --preset reputation --read-top 0 --advisor
 guanlan compare "A" "B" --focus "价格 口碑 风险" --limit 80 --format context
 guanlan timeline "某事件 最新进展" --limit 80 --format context
@@ -95,7 +114,13 @@ Safety rules:
 - Use `guanlan search ... --trace` or `guanlan research ...` when you need query_strategy, source diagnostics, and evidence-role query rewrites; do not rely on one broad query for serious research.
 - Use `guanlan compare`, `guanlan timeline`, or `guanlan dossier` when the user asks for comparison, event chronology, or an entity dossier; these are structured views over evidence packets, not final truth.
 - Use `guanlan research ... --preset academic --read-top 0` for EI/SCI/Scopus, academic conference, paper submission, indexing, and university-recognition questions; read selected official URLs afterward if needed.
+- Use `guanlan research ... --preset university --read-top 0` or `guanlan search ... --scope university` for graduate admissions, advisor/faculty lists, department pages, program catalogs, and university official notices. Do not use academic databases as primary evidence for admissions/advisor lists.
 - Use `guanlan research ... --preset entertainment --read-top 0` for film, drama, variety show, music, celebrity, game, box-office, rating, and fandom/public-discussion questions; separate platform metrics, user ratings, industry reports, promotion copy, and fandom samples.
+- Use `guanlan research ... --preset global_entertainment --profile english` for Western entertainment, Hollywood, pop stars, tours, albums, Billboard/Grammy/award questions; prioritize English trade media, charts/awards, and official artist/label statements over fan or tabloid claims.
+- Use `guanlan research ... --preset jp_kr_entertainment --profile hybrid` for Japanese/Korean entertainment, K-pop/J-pop, K-drama/J-drama, Oricon/Soompi/Naver questions; separate local media/charts, agency statements, translation sites, and fandom samples.
+- Use `guanlan research ... --preset cybersecurity` or `search --scope cybersecurity --trace` for CVE, vulnerabilities, patches, vendor advisories, phishing, fraud, and suspicious messages; prioritize CVE/NVD/CISA/vendor/regulator sources.
+- Use `guanlan search ... --scope weather_disaster --trace` for typhoon, weather alert, earthquake, disaster, and official safety questions; prioritize official meteorological/emergency sources and check timestamps.
+- Use `guanlan research ... --preset sports`, `--preset science`, `--preset career`, `--preset podcast`, or `--preset test_prep` for sports, science-news verification, job/salary/interview, podcast discovery, and exam-prep questions instead of leaving them as generic web search.
 - Use `guanlan hotnews tophub:*`, `guanlan hotnews uapis:*`, or `guanlan hotnews vvhan:*` only as optional external hotboard expansion. Keep the `external_backend` and cache/staleness metadata in mind; do not treat third-party aggregate lists as authoritative facts.
 - For technology/AI/developer routing, always include one RSS discovery pass. `guanlan research ... --preset tech` does this automatically; if you only run `route` or `search`, also run `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80` as a second pass.
 - Use `guanlan read ... --quality-report` when deciding whether a page body is clean enough for downstream reasoning; use `--strict` when noisy page chrome would be harmful; use `--extract metadata` or `--extract links` for source/date/link checks.

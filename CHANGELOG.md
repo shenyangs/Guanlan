@@ -8,6 +8,35 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.4.0 - 2026-05-03
+
+### Added
+
+- 大幅扩展路由体系：新增 `university`、`cybersecurity`、`weather_disaster`、`science`、`sports`、`career`、`podcast`、`test_prep`、`global_entertainment`、`jp_kr_entertainment` 等专门 scope / preset，让 Agent 不再把高校招生、漏洞补丁、台风预警、体育转会、科学新闻、薪资面经、播客和考试备考都塞进泛搜索。
+- 高校招生/导师场景新增专门路由：`academic` 继续负责 EI/SCI/Scopus、论文投稿和会议检索；`university` 优先研究生招生网、院系官网、导师主页、招生目录和官方通知，并对学校实体不匹配结果做降噪。
+- 文娱路由升级为分区研究：中文文娱继续走豆瓣、猫眼、B站、微博等平台；欧美娱乐走 Variety、Deadline、Hollywood Reporter、Billboard、Rolling Stone 等英文行业/榜单源；日韩娱乐走 Soompi、Oricon、Natalie、Naver 娱乐、本地媒体与经纪公司口径。
+- 新增网络安全/反诈路线：`cybersecurity` 优先 CVE/NVD/CISA、CNVD/CNNVD、厂商安全公告和补丁说明，避免把论坛复现、恐吓式安全营销或无编号转载当主证据。
+- 新增天气灾害、科学、体育、职场、播客、考试备考等路由画像，并同步接入 `route`、`search --scope`、`research --preset`、source taxonomy、能力清单、Skill、Agent 文档和评测场景。
+- 新增 agent 侧搜索质量反馈通道（`/v1/feedback`）：当 Agent 环境里的搜索/研究出现明显低质量信号时，可上报“搜索词、问题原因、命令上下文”到专门诊断队列，用于后续路由和排序治理。
+- 遥测采集端新增 `/v1/feedback` 接口、SQLite `feedback` 表和反馈面板，支持查看高频问题词、问题原因、反馈命令分布与最近反馈明细。
+
+### Changed
+
+- 搜索后端稳健性增强：当某个后端返回明显低相关候选时，会标记 `low_relevance` 并继续尝试后续后端，不再因为“看似有结果”的垃圾批次提前停止。
+- scope 搜索更稳：短站点表达会限制 `site:` 数量，避免查询过长导致无结果；scope 查询为空时会回到开放查询补搜，并继续保留 scope-aware 排序。
+- 高校搜索新增自动补救：`site:edu.cn` 未产出可用结果时会开放补搜；如果结果里识别到学校主域，会自动追加一轮站内搜索，并在 context/trace 里解释原因。
+- `--format context` 增加质量诊断：把质量状态、谨慎原因、观澜补证动作、Agent 执行策略和汇报约束直接放进上下文，提醒下游 Agent 不要把“低质量候选”包装成可靠结论。
+- `search --trace` 增加 `scope_rewrite`、`low_relevance`、补搜路径、质量解释、follow-up action 和汇报约束，便于排查为什么某些结果被降权或补搜。
+- 高风险场景的路由更保守：网络安全、天气灾害、医疗、法律、财经、全球政策等场景会收窄主证据范围，把社交、论坛、粉丝或经验样本降为辅助材料。
+- `docs/telemetry.md` 增补搜索不满意反馈的采集边界；遥测默认策略不变，但反馈路径会明确包含搜索词和问题原因，供质量治理使用。
+- README、AGENTS、Agent 使用文档、Skill、capabilities 和评测基准同步补充新路由、新命令和边界说明。
+- 官网展示版本号同步到 `0.4.0`。
+
+### Notes
+
+- 这是一次从“中文互联网研究工具”走向“多领域信源路由底座”的重要版本：核心目标不是堆平台，而是让 Agent 在更多真实问题里知道“该去哪里搜、什么能当主证据、什么只能作样本”。
+- 本版继续保持默认候选池不缩水；性能优化以跳过低价值后端、补救空 scope 和减少无效等待为主，不牺牲 Agent 拿到的证据量。
+
 ## v0.3.11 - 2026-05-03
 
 ### Added

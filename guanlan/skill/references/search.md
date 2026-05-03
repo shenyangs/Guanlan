@@ -109,6 +109,9 @@ guanlan search "query" --profile china --scope ecommerce
 # 科技与开发者社区
 guanlan search "query" --profile china --scope tech_dev
 
+# 高校招生、导师、院系官网和招生目录
+guanlan search "清华大学计算机系研究生招生 导师" --profile china --scope university
+
 # 财经与资本市场
 guanlan search "query" --profile china --scope finance
 ```

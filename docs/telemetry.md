@@ -59,7 +59,7 @@ still running:
   "invocation_id": "uuid",
   "surface": "cli",
   "command": "search",
-  "version": "0.3.11",
+  "version": "0.4.0",
   "agent_kind": "codex",
   "agent_id": "anonymous-hash",
   "platform": "darwin",
@@ -76,3 +76,14 @@ abandoned invocations.
 anonymous stable agent identifier: if `GUANLAN_AGENT_ID` is set, Guanlan hashes
 that value before sending it; otherwise it falls back to one agent instance per
 `install_id + agent_kind`.
+
+## Search dissatisfaction feedback
+
+For agent workflows, Guanlan can auto-submit diagnostic feedback when a search
+or research run shows clear low-quality signals (for example backend failures,
+low source-fit, or weak evidence mix). This record includes query text and
+reason text and is sent to a dedicated endpoint (`/v1/feedback`) for quality
+triage dashboards.
+
+This pathway is intended for agent-side automation rather than end-user manual
+submission.

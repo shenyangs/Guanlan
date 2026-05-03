@@ -25,7 +25,7 @@ triggers:
   - web: 网页/链接/文章/公众号/微信文章/rss/读一下/打开这个
   - video: youtube/视频/播客/字幕/小宇宙/转录/yt
   - finance: 雪球/股票/stock/xueqiu/行情/基金
-  - entertainment: 文娱/娱乐/影视/电影/电视剧/综艺/明星/票房/豆瓣/猫眼/游戏
+  - entertainment: 文娱/娱乐/影视/电影/电视剧/综艺/明星/票房/豆瓣/猫眼/游戏/欧美娱乐/日韩娱乐/K-pop/J-pop
   - archive/wiki/rag: 本地知识库/archive/RAG/向量库/Agent Wiki/知识底座
   - report: 报表/html report/可视化报告/汇报页/出个报告
 metadata:
@@ -45,6 +45,11 @@ metadata:
 - 超时只代表网络或上游源未完成，不代表没有证据；优先重试一次、加 `--cache-ttl 3600`，或把 `--read-top` 降到 0/1，不要为了速度把 80 条候选池砍成小样本。
 - 科技/AI/开发者/工程实践类问题必须额外补一轮 RSS/精品内容流；`research --preset tech` 会自动补，若只跑 `route` 或 `search`，再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。
 - 文娱/影视/综艺/明星/游戏/票房/评分/口碑类问题优先用 `route` 或 `research --preset entertainment`；把平台热度、用户评分、产业报道、宣发通稿和粉圈讨论分层看。
+- 欧美娱乐、Hollywood、Taylor Swift、Billboard、Grammy、巡演、新歌专辑等问题优先用 `research --preset global_entertainment --profile english`；英文行业媒体、榜单/奖项和艺人/厂牌一手信息优先于粉丝账号和八卦站。
+- 日韩娱乐、K-pop/J-pop、韩剧日剧、Soompi、Oricon、Naver 等问题优先用 `research --preset jp_kr_entertainment --profile hybrid`；区分本地媒体/榜单、经纪公司口径、英文翻译站和粉丝讨论。
+- CVE/漏洞/补丁/反诈/诈骗短信用 `research --preset cybersecurity` 或 `search --scope cybersecurity --trace`；优先 CVE/NVD/CISA/厂商公告/监管来源。
+- 台风/天气/地震/灾害预警用 `search --scope weather_disaster --trace`；优先官方气象和应急来源，并检查时间戳。
+- 体育、科学新闻、招聘薪资面经、播客、考试备考分别用 `sports`、`science`、`career`、`podcast`、`test_prep` preset/scope，不要停在泛搜索。
 - 如果新用户问“装好了怎么用/怎么让 Agent 用观澜”，先运行 `guanlan welcome`。
 - 如果用户或 Agent 不知道观澜有哪些功能、该用哪个命令，先运行 `guanlan capabilities`；MCP 模式下调用 `guanlan_capabilities`。
 - `--advisor` 输出的是证据边界和写作规则，Agent 需要据此生成自然建议，不要机械复述固定小标题。
@@ -65,6 +70,15 @@ metadata:
 | 网页/文章/公众号/RSS | web | [references/web.md](references/web.md) |
 | YouTube/B站/播客字幕 | video | [references/video.md](references/video.md) |
 | 文娱/影视/综艺/游戏/明星/票房口碑 | entertainment | `guanlan research "关键词" --preset entertainment` |
+| 欧美娱乐/音乐产业/明星动态 | global_entertainment | `guanlan research "关键词" --preset global_entertainment --profile english` |
+| 日韩娱乐/K-pop/J-pop/韩剧日剧 | jp_kr_entertainment | `guanlan research "关键词" --preset jp_kr_entertainment --profile hybrid` |
+| CVE/漏洞/反诈/补丁 | cybersecurity | `guanlan research "关键词" --preset cybersecurity` |
+| 天气/台风/地震/灾害预警 | weather_disaster | `guanlan search "关键词" --scope weather_disaster --trace` |
+| 体育赛事/伤病/转会 | sports | `guanlan research "关键词" --preset sports` |
+| 科学发现/NASA/论文核验 | science | `guanlan research "关键词" --preset science --profile english` |
+| 招聘/薪资/面经 | career | `guanlan research "关键词" --preset career` |
+| 播客/小宇宙/音频 RSS | podcast | `guanlan search "关键词" --scope podcast` |
+| 雅思/托福/题库/机经 | test_prep | `guanlan research "关键词" --preset test_prep` |
 
 ## 零配置快速命令
 
@@ -77,7 +91,14 @@ guanlan welcome
 guanlan capabilities
 guanlan search "query" --limit 80
 guanlan search "EI会议 投稿 检索" --profile china --scope academic
+guanlan search "清华大学计算机系研究生招生 导师" --profile china --scope university
 guanlan search "电影 票房 评分" --profile china --scope entertainment
+guanlan search "Taylor Swift latest" --profile english --scope global_entertainment
+guanlan search "BLACKPINK K-pop comeback" --profile hybrid --scope jp_kr_entertainment
+guanlan search "OpenSSL CVE 最新 漏洞 影响版本" --scope cybersecurity --limit 80 --trace
+guanlan search "台风 路径 中央气象台 日本气象厅" --scope weather_disaster --limit 80 --trace
+guanlan search "梅西 比赛 伤病 最新" --scope sports --limit 80
+guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80
 guanlan search "最近 query 热点" --profile china --trace
 guanlan search "中文问题" --profile china --limit 80 --trace  # 查看 Baidu/Bing/DDG 状态与 backend_recovery
 guanlan search "query" --site zhihu.com --limit 80
@@ -90,7 +111,13 @@ guanlan route "query"
 guanlan research "query" --profile china --advisor
 guanlan research "query" --profile china --format prompt
 guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
+guanlan research "清华大学计算机系研究生招生 导师" --preset university --read-top 0
 guanlan research "电影/综艺/游戏/明星 票房口碑" --preset entertainment --read-top 0
+guanlan research "Taylor Swift 最新动态 新专辑 巡演" --preset global_entertainment --profile english
+guanlan research "BLACKPINK K-pop 最新回归" --preset jp_kr_entertainment --profile hybrid
+guanlan research "OpenSSL CVE 最新 漏洞 影响版本" --preset cybersecurity --read-top 5
+guanlan research "字节 AI 产品经理 校招 薪资 面经" --preset career --read-top 5
+guanlan research "雅思 口语 题库 机经" --preset test_prep --read-top 4
 guanlan prompt "query" --profile china --style evidence
 guanlan context "query" --profile china --style evidence
 guanlan research "product 用户评价" --preset reputation --read-top 0 --advisor

@@ -36,19 +36,20 @@ GitHub 侧 workflow 已使用 OIDC（`id-token: write`），无需保存 PyPI AP
 - 版本号需要同时更新 `pyproject.toml` 和 `guanlan/__init__.py`。
 - 每次发版前同步更新 `CHANGELOG.md`，把已完成内容放入对应版本，把下一版计划保留在 `Unreleased`。
 - 默认直接推送到 `main`，不走长期 release 分支。
+- 提交信息和 GitHub Release note 中文优先；commit 可保留 `feat/fix/docs/test/refactor/chore:` 前缀，但冒号后使用中文说明，例如 `feat: 扩展垂直路由和搜索质量反馈`。
 
 流程：
 
-1. 更新版本号，例如 `0.3.10 -> 0.3.11`。
+1. 更新版本号，例如 `0.3.11 -> 0.4.0`。
 2. 更新 `CHANGELOG.md`。
 3. 运行完整本地发布闸门：`scripts/release_gate.sh`。它会依次执行 `ruff`、全量 `pytest`、`guanlan quality coverage`、`guanlan quality regression`、`guanlan quality robustness`、`guanlan eval benchmark`、`uv build`、安装 smoke 和版本核对。
 4. 提交代码并推送到 `main`。
 5. 打 tag 并推送，例如：
 
 ```bash
-git tag v0.3.11
+git tag v0.4.0
 git push origin main
-git push origin v0.3.11
+git push origin v0.4.0
 ```
 
 6. 等待 `release` workflow 完成：

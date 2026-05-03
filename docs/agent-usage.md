@@ -60,7 +60,17 @@
 | “查官方/央媒表述” | `guanlan search "关键词" --profile china --scope party_central` |
 | “查地方官媒/区域政策” | `guanlan search "关键词" --profile china --scope local_official` |
 | “查电商/零售/产业带” | `guanlan search "关键词" --profile china --scope ecommerce` |
+| “查高校招生/导师/院系官网” | `guanlan research "关键词" --preset university --read-top 0` |
 | “查影视/综艺/明星/游戏/票房口碑” | `guanlan research "关键词" --preset entertainment --read-top 0` |
+| “查欧美娱乐/明星/巡演/新专辑/榜单” | `guanlan research "Taylor Swift 最新动态" --preset global_entertainment --profile english` |
+| “查日韩娱乐/K-pop/J-pop/韩剧日剧” | `guanlan research "BLACKPINK K-pop 最新回归" --preset jp_kr_entertainment --profile hybrid` |
+| “查 CVE/漏洞/补丁/诈骗短信” | `guanlan research "OpenSSL CVE 最新 漏洞" --preset cybersecurity --read-top 5` |
+| “查台风路径/天气/地震/灾害预警” | `guanlan search "台风 路径 中央气象台" --scope weather_disaster --trace` |
+| “查体育比赛/伤病/转会” | `guanlan research "梅西 比赛 伤病 最新" --preset sports` |
+| “查科学发现/NASA/论文核验” | `guanlan research "詹姆斯韦伯 外星生命 NASA" --preset science --profile english` |
+| “查校招/薪资/面经” | `guanlan research "字节 AI 产品经理 校招 薪资 面经" --preset career` |
+| “查播客/小宇宙节目” | `guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80` |
+| “查雅思/托福/题库/机经” | `guanlan research "雅思 口语 题库 机经" --preset test_prep` |
 | “查英文公司官网/文档/价格/发布说明” | `guanlan research "OpenAI API pricing release notes" --preset company --profile english` |
 | “查英文政策/监管/标准原文” | `guanlan research "AI regulation NIST standard" --preset global_policy --profile english` |
 | “查英文社区/评价样本” | `guanlan research "Product reviews Reddit G2" --preset global_reputation --profile english --read-top 0` |
@@ -74,6 +84,8 @@
 | “查产品口碑/用户评价” | `guanlan research "关键词" --preset reputation` |
 | “查 EI/SCI/Scopus、学术会议、投稿/检索/收录要求” | `guanlan research "关键词" --preset academic --read-top 0` |
 | “查文娱口碑/票房/评分/粉圈讨论” | `guanlan research "关键词" --preset entertainment --read-top 0` |
+| “查欧美娱乐圈可靠动态” | `guanlan research "关键词" --preset global_entertainment --profile english` |
+| “查日韩娱乐圈可靠动态” | `guanlan research "关键词" --preset jp_kr_entertainment --profile hybrid` |
 | “查产品口碑并给购买/处理建议” | `guanlan research "关键词" --preset reputation --read-top 0 --advisor` |
 | “指定多个平台查口碑” | `guanlan research "关键词" --preset reputation --sites zhihu.com,weibo.com,xiaohongshu.com` |
 | “看话题是被夸还是被骂” | `guanlan pulse "关键词" --format context` |
@@ -199,6 +211,13 @@ guanlan search "某电影 票房 豆瓣评分" --profile china --scope entertain
 
 文娱、影视、综艺、明星、游戏、票房和评分问题使用文娱 scope。它是软路由，不会只看白名单；重点是让 Agent 分清平台热度、用户评分、产业报道、宣发通稿和粉圈讨论。
 
+```bash
+guanlan search "清华大学计算机系研究生招生 导师" --profile china --scope university
+guanlan research "清华大学计算机系研究生招生 导师" --preset university --read-top 0
+```
+
+高校招生、导师、院系官网、招生目录和培养方案问题使用 `university`。`academic` 保留给 EI/SCI/Scopus、论文投稿、会议 CFP 和数据库检索，不要把论文数据库首页当作导师/招生信息的主证据。
+
 公众号文章搜索优先使用站内定向搜索；当公开搜索结果不足且已安装可选依赖时，
 观澜会把 `wechat-sogou` 作为备份后端追加到末尾。搜狗微信反爬较强，后端遇到验证码会直接降级，
 不会自动打码或读取浏览器 Cookie：
@@ -309,8 +328,18 @@ Preset 会自动选择一个或多个 scope，并可包含平台定向站点。�
 | `ecommerce` | `ecommerce` + `business`；亿邦动力、网经社、雨果跨境 | 电商、零售、跨境、品牌和产业带。 |
 | `reputation` | `social_web` + `tech_dev` + `business`；知乎、微博、小红书、B站 | 产品口碑、用户评价、社交平台公开讨论。 |
 | `entertainment` | `entertainment` + `social_web` + `business`；豆瓣、猫眼/灯塔、B站、微博、TapTap | 影视、综艺、音乐、游戏、明星、票房、播放热度和公开口碑。 |
+| `global_entertainment` | `global_entertainment` + `community_sample` + `global_news`；Variety、Deadline、Hollywood Reporter、Billboard、Rolling Stone、People | 欧美娱乐、Hollywood、音乐榜单、奖项、巡演、新歌专辑和明星动态。 |
+| `jp_kr_entertainment` | `jp_kr_entertainment` + `global_entertainment` + `community_sample`；Soompi、Oricon、Natalie、Naver 娱乐、Korea Herald、Korea Times | 日韩娱乐、K-pop/J-pop、韩剧日剧、经纪公司动态、榜单和翻译站交叉验证。 |
+| `cybersecurity` | `cybersecurity` + `developer` + `global_official`；NVD、CISA、CNVD/CNNVD、厂商安全公告 | CVE、漏洞、补丁、反诈、诈骗短信和安全公告。 |
+| `sports` | `sports` + `global_news` + `community_sample`；ESPN、Sky Sports、联赛/俱乐部官方、虎扑/懂球帝 | 体育赛事、伤病、转会、合同和球迷讨论。 |
+| `weather_disaster` | `weather_disaster` + `gov` + `global_official`；中央气象台、日本气象厅、NOAA、USGS | 台风路径、天气预警、地震和灾害应急。 |
+| `science` | `science` + `academic` + `global_official`；NASA、ESA、Nature、Science、arXiv | 科学发现核验、航天/天文和科研新闻。 |
+| `career` | `career` + `social_web` + `business`；牛客、应届生、Boss、Levels.fyi、Glassdoor | 校招、薪资、面经、公司口碑和招聘供需。 |
+| `podcast` | `podcast` + `social_web` + `tech_dev`；小宇宙、Apple Podcasts、Spotify、Listen Notes | 播客节目、单集、主播、RSS 和听众样本。 |
+| `test_prep` | `test_prep` + `social_web` + `company_primary`；IELTS/ETS/NEEA、培训资料、考生经验 | 雅思、托福、题库、机经和考试政策。 |
 | `tech` | `tech_dev` + `social_web`；V2EX、掘金、SegmentFault、GitHub | 技术选型、开发者社区、工程实践。 |
 | `academic` | `academic` + `tech_dev` + `business`；Elsevier、Engineering Village、IEEE、CNKI、百度学术 | EI/SCI/Scopus、学术会议、论文投稿、数据库检索和高校认定口径。 |
+| `university` | `university` + `academic` + `tech_dev`；高校、研究生招生网和院系官网 | 研究生招生、导师名单、院系介绍、招生目录、招生简章、推免复试和培养方案。 |
 | `finance` | `finance` + `business`；财联社、东方财富、雪球 | 财经、资本市场、公司和宏观金融。 |
 | `local` | `local_official` + `gov` + `party_central` | 地方政策、区域产业、城市治理。 |
 

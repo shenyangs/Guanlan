@@ -18,13 +18,31 @@ def test_search_scopes_include_requested_china_sources():
     assert "ebrun.com" in scopes["ecommerce"]["domains"]
     assert "engineeringvillage.com" in scopes["academic"]["domains"]
     assert scopes["academic"]["source_type"] == "学术/论文检索"
+    assert "edu.cn" in scopes["university"]["domains"]
+    assert "cs.tsinghua.edu.cn" in scopes["university"]["domains"]
+    assert scopes["university"]["source_type"] == "高校/院系官网"
+    assert scopes["university"]["trust_level"] == 5
     assert "douban.com" in scopes["entertainment"]["domains"]
     assert "maoyan.com" in scopes["entertainment"]["domains"]
     assert scopes["entertainment"]["source_type"] == "文娱/内容平台"
+    assert "billboard.com" in scopes["global_entertainment"]["domains"]
+    assert "variety.com" in scopes["global_entertainment"]["domains"]
+    assert scopes["global_entertainment"]["source_type"] == "欧美文娱/音乐产业"
+    assert "soompi.com" in scopes["jp_kr_entertainment"]["domains"]
+    assert "oricon.co.jp" in scopes["jp_kr_entertainment"]["domains"]
+    assert scopes["jp_kr_entertainment"]["source_type"] == "日韩文娱/K-pop/J-pop"
     assert "sec.gov" in scopes["global_official"]["domains"]
     assert scopes["global_official"]["source_type"] == "英文官方/监管"
     assert "openai.com" in scopes["company_primary"]["domains"]
     assert "github.com" in scopes["developer"]["domains"]
+    assert "nvd.nist.gov" in scopes["cybersecurity"]["domains"]
+    assert scopes["cybersecurity"]["source_type"] == "网络安全/漏洞/反诈"
+    assert "espn.com" in scopes["sports"]["domains"]
+    assert "nmc.cn" in scopes["weather_disaster"]["domains"]
+    assert "nasa.gov" in scopes["science"]["domains"]
+    assert "xiaoyuzhoufm.com" in scopes["podcast"]["domains"]
+    assert "levels.fyi" in scopes["career"]["domains"]
+    assert "ielts.org" in scopes["test_prep"]["domains"]
 
 
 def test_resolve_scope_aliases():
@@ -32,10 +50,23 @@ def test_resolve_scope_aliases():
     assert resolve_scope("local").id == "local_official"
     assert resolve_scope("retail").id == "ecommerce"
     assert resolve_scope("scholar").id == "academic"
+    assert resolve_scope("admission").id == "university"
+    assert resolve_scope("graduate").id == "university"
+    assert resolve_scope("faculty").id == "university"
     assert resolve_scope("company").id == "company_primary"
     assert resolve_scope("reddit").id == "community_sample"
     assert resolve_scope("movie").id == "entertainment"
     assert resolve_scope("douban").id == "entertainment"
+    assert resolve_scope("hollywood").id == "global_entertainment"
+    assert resolve_scope("billboard").id == "global_entertainment"
+    assert resolve_scope("kpop").id == "jp_kr_entertainment"
+    assert resolve_scope("oricon").id == "jp_kr_entertainment"
+    assert resolve_scope("cve").id == "cybersecurity"
+    assert resolve_scope("weather").id == "weather_disaster"
+    assert resolve_scope("sports").id == "sports"
+    assert resolve_scope("podcast").id == "podcast"
+    assert resolve_scope("salary").id == "career"
+    assert resolve_scope("ielts").id == "test_prep"
 
 
 def test_resolve_scope_rejects_unknown():
@@ -72,14 +103,30 @@ def test_classify_domain_detects_academic_sources():
     assert meta["trust_level"] == 4
 
 
+def test_classify_domain_detects_university_sources():
+    meta = classify_domain("cs.tsinghua.edu.cn")
+
+    assert meta["source_type"] == "高校/院系官网"
+    assert meta["matched_scope"] == "university"
+    assert meta["trust_level"] == 5
+
+
 def test_classify_domain_detects_entertainment_sources():
     douban = classify_domain("movie.douban.com")
     maoyan = classify_domain("piaofang.maoyan.com")
+    billboard = classify_domain("www.billboard.com")
+    soompi = classify_domain("www.soompi.com")
+    oricon = classify_domain("www.oricon.co.jp")
 
     assert douban["source_type"] == "文娱/内容平台"
     assert douban["matched_scope"] == "entertainment"
     assert maoyan["source_type"] == "文娱/内容平台"
     assert maoyan["matched_scope"] == "entertainment"
+    assert billboard["source_type"] == "欧美文娱/音乐产业"
+    assert billboard["matched_scope"] == "global_entertainment"
+    assert soompi["source_type"] == "日韩文娱/K-pop/J-pop"
+    assert soompi["matched_scope"] == "jp_kr_entertainment"
+    assert oricon["matched_scope"] == "jp_kr_entertainment"
 
 
 def test_classify_domain_detects_english_source_scopes():

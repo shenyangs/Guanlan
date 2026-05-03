@@ -3,7 +3,7 @@
 ## Project
 观澜 / Guanlan — Python CLI + library for AI-agent search, reading, hotnews, and source routing across the Chinese web.
 Positioning: CLI-first, read-first router with explicit authorization boundaries.
-License: MIT | Version: 0.3.11
+License: MIT | Version: 0.4.0
 
 ## Commands
 - `pip install -e .` — Dev install
@@ -31,7 +31,7 @@ License: MIT | Version: 0.3.11
 - Each channel is a single file in `channels/`, inherits from `BaseChannel`
 - Channel contract: must implement `can_handle(url)`, `read(url)`, `search(query)`, `check()` methods
 - Use `loguru` for logging, `rich` for CLI output
-- Commit format: `type(scope): message` (one commit = one thing)
+- Commit format: `type(scope): 中文说明` or `type: 中文说明` (one commit = one thing). Guanlan is a Chinese-web tool, so commit messages, changelog entries, and release notes should be Chinese-first while code identifiers stay English.
 - All upstream tool calls go through public API/CLI, never hack internals
 
 ## Rules

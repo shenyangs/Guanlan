@@ -41,6 +41,19 @@ def test_route_plan_detects_academic_indexing_need():
     assert any("学术会议" in warning or "检索" in warning for warning in plan.warnings)
 
 
+def test_route_plan_detects_university_admissions_need():
+    plan = build_route_plan("清华大学计算机系研究生招生的导师情况", profile="china")
+
+    assert "university_admissions" in plan.primary_intents + plan.secondary_intents
+    assert "university" in plan.preferred_scopes
+    assert "academic" in plan.fallback_scopes
+    assert "cs.tsinghua.edu.cn" in plan.target_sites
+    assert "faculty_profile" in plan.evidence_roles
+    assert any("--preset university" in command for command in plan.recommended_commands)
+    assert "论文数据库首页" in plan.avoid_as_primary
+    assert any("学术数据库不是主证据" in warning for warning in plan.warnings)
+
+
 def test_route_plan_detects_entertainment_need():
     plan = build_route_plan("哪吒2 票房 口碑 豆瓣评分 最近热议", profile="china")
 
@@ -52,6 +65,78 @@ def test_route_plan_detects_entertainment_need():
     assert "粉圈控评" in plan.avoid_as_primary
     assert any("宣发" in warning or "单平台" in warning for warning in plan.warnings)
     assert plan.advisor_recommended is True
+
+
+def test_route_plan_detects_global_entertainment_need():
+    plan = build_route_plan("Taylor Swift 最新公开动态 新专辑 巡演", profile="china")
+
+    assert "global_entertainment" in plan.primary_intents + plan.secondary_intents
+    assert "global_entertainment" in plan.preferred_scopes
+    assert "billboard.com" in plan.target_sites
+    assert "variety.com" in plan.target_sites
+    assert plan.backend_hint == ["duckduckgo", "bing"]
+    assert any("--preset global_entertainment --profile english" in command for command in plan.recommended_commands)
+    assert any("--scope global_entertainment" in command for command in plan.recommended_commands)
+    assert "未证实恋情/巡演传闻" in plan.avoid_as_primary
+
+
+def test_route_plan_detects_jp_kr_entertainment_need():
+    plan = build_route_plan("BLACKPINK K-pop 最新回归 争议", profile="china")
+
+    assert "jp_kr_entertainment" in plan.primary_intents + plan.secondary_intents
+    assert "jp_kr_entertainment" in plan.preferred_scopes
+    assert "soompi.com" in plan.target_sites
+    assert "oricon.co.jp" in plan.target_sites
+    assert plan.backend_hint == ["duckduckgo", "bing"]
+    assert any("--preset jp_kr_entertainment --profile hybrid" in command for command in plan.recommended_commands)
+    assert "机翻搬运" in plan.avoid_as_primary
+
+
+def test_route_plan_detects_cross_region_entertainment_long_tail():
+    western = build_route_plan("Dune 3 casting latest Deadline Variety report", profile="english")
+    hbo = build_route_plan("HBO 最近有什么好看的新剧 烂番茄 评分", profile="china")
+    kpop = build_route_plan("Jennie 退团 真的假的 韩媒 有正式回应吗", profile="china")
+
+    assert "global_entertainment" in western.primary_intents + western.secondary_intents
+    assert "global_entertainment" in hbo.primary_intents + hbo.secondary_intents
+    assert hbo.backend_hint == ["duckduckgo", "bing"]
+    assert "jp_kr_entertainment" in kpop.primary_intents + kpop.secondary_intents
+    assert kpop.backend_hint == ["duckduckgo", "bing"]
+
+
+def test_route_plan_detects_security_weather_sports_science_gaps():
+    cve = build_route_plan("OpenSSL CVE 最新 漏洞 影响 版本 修复", profile="china")
+    weather = build_route_plan("台风 路径 最新 中央气象台 日本气象厅", profile="china")
+    sports = build_route_plan("梅西 今天比赛 数据 伤病 最新", profile="china")
+    science = build_route_plan("詹姆斯韦伯 发现 外星生命 真的假的 NASA", profile="china")
+
+    assert "cybersecurity" in cve.primary_intents + cve.secondary_intents
+    assert cve.risk_level == "high"
+    assert "cybersecurity" in cve.preferred_scopes
+    assert any("--scope cybersecurity" in command for command in cve.recommended_commands)
+    assert "weather_disaster" in weather.primary_intents + weather.secondary_intents
+    assert weather.risk_level == "high"
+    assert "weather_disaster" in weather.preferred_scopes
+    assert "sports" in sports.primary_intents + sports.secondary_intents
+    assert "sports" in sports.preferred_scopes
+    assert "science" in science.primary_intents + science.secondary_intents
+    assert "science" in science.preferred_scopes
+
+
+def test_route_plan_detects_career_ecommerce_podcast_test_prep():
+    career = build_route_plan("字节 AI 产品经理 校招 薪资 面经", profile="china")
+    ecommerce = build_route_plan("今年抖音小店还值得做吗 真实商家反馈", profile="china")
+    podcast = build_route_plan("最近 有哪些讲 AI 创业 的中文播客 小宇宙", profile="china")
+    exam = build_route_plan("雅思 口语 2026 题库 机经 靠谱吗", profile="china")
+
+    assert "career" in career.primary_intents + career.secondary_intents
+    assert "career" in career.preferred_scopes
+    assert "ecommerce" in ecommerce.primary_intents + ecommerce.secondary_intents
+    assert "ecommerce" in ecommerce.preferred_scopes
+    assert "podcast" in podcast.primary_intents + podcast.secondary_intents
+    assert "podcast" in podcast.preferred_scopes
+    assert "test_prep" in exam.primary_intents + exam.secondary_intents
+    assert "test_prep" in exam.preferred_scopes
 
 
 def test_route_plan_detects_english_company_primary_need():
@@ -125,6 +210,16 @@ def test_route_plan_recommends_rss_sources_by_need():
     assert any(command.startswith("guanlan feeds curated") for command in reading.recommended_commands)
 
 
+def test_route_plan_detects_embodied_ai_industry_need():
+    plan = build_route_plan("人形机器人 智元 宇树 傅利叶", profile="china")
+
+    assert "industry" in plan.primary_intents + plan.secondary_intents
+    assert "tech" in plan.primary_intents + plan.secondary_intents
+    assert "business" in plan.preferred_scopes
+    assert "tech_dev" in plan.preferred_scopes + plan.fallback_scopes
+    assert "ai" in plan.domains
+
+
 def test_format_route_plan_markdown_is_agent_readable():
     plan = build_route_plan("Python Agent 框架 对比 github issue")
     text = format_route_plan_markdown(plan)
@@ -149,12 +244,18 @@ def test_source_card_separates_authority_and_sample_value():
 def test_source_card_marks_entertainment_sources_as_sample_heavy():
     douban = source_card_for_domain("movie.douban.com")
     maoyan = source_card_for_domain("piaofang.maoyan.com")
+    billboard = source_card_for_domain("billboard.com")
+    soompi = source_card_for_domain("soompi.com")
 
     assert douban.scope_id == "entertainment"
     assert douban.sample_value > douban.authority_score
     assert "rating" in douban.content_roles
     assert maoyan.scope_id == "entertainment"
     assert "box_office" in maoyan.content_roles
+    assert billboard.scope_id == "global_entertainment"
+    assert "music_chart" in billboard.content_roles
+    assert soompi.scope_id == "jp_kr_entertainment"
+    assert "translation_layer" in soompi.risk_tags
 
 
 def test_route_cli_outputs_json(capsys):

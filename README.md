@@ -85,7 +85,7 @@ guanlan hotnews today --brief
 这些是当前最敢承诺、最适合作为默认工作流的能力：
 
 - **公开网页搜索**：`guanlan search "关键词" --profile china`
-- **中文信源白名单**：`--scope party_central/gov/local_official/ecommerce/entertainment`
+- **中文信源白名单**：`--scope party_central/gov/local_official/ecommerce/university/entertainment`
 - **英文互联网信源路由**：`guanlan search "OpenAI API pricing" --profile english --scope company_primary`
 - **网页阅读与降级**：`guanlan read "URL"`，Jina Reader、直连 HTML、搜索兜底组合使用。
 - **热榜观察**：原生多源入口 `guanlan hotnews today`，覆盖百度、微博、B站、IT之家、V2EX；NewsNow 可选增强源 `guanlan hotnews newsnow:36kr-quick`
@@ -223,7 +223,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.3.11`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.4.0`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -417,7 +417,14 @@ guanlan configure --from-browser chrome
 | `guanlan search "关键词" --scope party_central` | 在党央媒与中央重点媒体白名单内搜索。 |
 | `guanlan search "关键词" --scope ecommerce` | 在电商/零售垂类媒体白名单内搜索。 |
 | `guanlan search "电影 票房 评分" --scope entertainment` | 在文娱/内容平台信源内搜索，覆盖影视、综艺、明星、游戏、票房和口碑。 |
+| `guanlan search "Taylor Swift latest" --profile english --scope global_entertainment` | 在欧美娱乐、音乐产业、榜单/奖项和英文行业媒体内搜索。 |
+| `guanlan search "BLACKPINK K-pop comeback" --profile hybrid --scope jp_kr_entertainment` | 在日韩娱乐、K-pop/J-pop、Soompi、Oricon、Natalie、Naver 等来源内搜索。 |
+| `guanlan search "OpenSSL CVE 最新 漏洞" --scope cybersecurity --trace` | 在漏洞库、厂商安全公告和反诈/安全权威源内搜索。 |
+| `guanlan search "台风 路径 中央气象台" --scope weather_disaster --trace` | 在官方气象、灾害和应急信源内搜索。 |
+| `guanlan search "梅西 比赛 伤病 最新" --scope sports` | 在体育赛事、伤病、转会和可信体育媒体源内搜索。 |
+| `guanlan search "AI 创业 播客 小宇宙" --scope podcast` | 在播客目录、节目页、单集页和 RSS 相关来源内搜索。 |
 | `guanlan search "EI会议 投稿 检索" --scope academic` | 在学术数据库、出版商和论文检索相关信源内搜索。 |
+| `guanlan search "清华大学计算机系研究生招生 导师" --scope university` | 在高校、研究生招生网和院系官网信源内搜索。 |
 | `guanlan search "OpenAI API pricing" --profile english --scope company_primary` | 在英文公司一手资料、文档、价格页和发布说明中搜索。 |
 | `guanlan search "AI regulation NIST standard" --profile english --scope global_official` | 在英文官方、监管、标准和公共机构信源中搜索。 |
 | `guanlan research "关键词"` | 生成 Agent 可直接使用的研究证据包，并附带版本/叫法冲突、来源时间线和核验建议。 |
@@ -582,6 +589,8 @@ guanlan pulse "某产品 用户评价" --sites zhihu.com,weibo.com,xiaohongshu.c
 ```bash
 guanlan research "某电影 票房 豆瓣评分 最近热议" --preset entertainment --read-top 0 --format context
 guanlan search "某综艺 口碑 争议" --profile china --scope entertainment --limit 80
+guanlan research "Taylor Swift 最新动态 新专辑 巡演" --preset global_entertainment --profile english --format context
+guanlan research "BLACKPINK K-pop 最新回归 Soompi Oricon" --preset jp_kr_entertainment --profile hybrid --format context
 guanlan pulse "某明星 最近评价" --profile china --limit 80 --format context
 ```
 
@@ -615,6 +624,15 @@ guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
 guanlan search "EI会议 投稿 检索" --profile china --scope academic --format context
 ```
 
+### 10. 查高校招生、导师和院系官网
+
+适合研究生招生、导师名单、院系介绍、招生目录、招生简章、推免复试和培养方案。它和 `academic` 不同：`academic` 主要查论文数据库/出版商/会议检索，`university` 主要查高校与院系官方页面。
+
+```bash
+guanlan research "清华大学计算机系研究生招生 导师" --preset university --read-top 0
+guanlan search "清华大学计算机系研究生招生 导师" --profile china --scope university --format context
+```
+
 这类问题会优先区分数据库/出版商口径、会议 CFP、学校或单位认定口径和经验帖；不要把 SEO 代投文章当成最终标准。
 
 ### 高阶研究工作流：对比、时间线和档案
@@ -633,7 +651,7 @@ guanlan dossier "某公司" --focus "业务 口碑 风险 近期动态" --limit 
 - `timeline`：适合近期进展、事件演变、政策发布、版本发布；日期来自公开材料可见线索，缺日期的重要证据会单列。
 - `dossier`：适合做公司、产品、政策、事件的研究档案；输出的是可继续补证的骨架，不是最终定论。
 
-### 10. 读取单篇文章或网页
+### 11. 读取单篇文章或网页
 
 适合用户给你一个 URL，希望你读完再总结。默认会先尝试更干净的阅读路径，再按情况降级。
 
@@ -672,7 +690,7 @@ guanlan read "https://example.com/article" --backend direct --extract links
 
 `metadata` 适合核验标题、摘要、作者、发布时间；`links` 适合让 Agent 看页面里真正指向了哪些原文或相关材料。
 
-### 11. 批量读取一组链接
+### 12. 批量读取一组链接
 
 适合 Agent 已经搜到一批材料，需要统一读成上下文。
 
@@ -687,7 +705,7 @@ guanlan read batch urls.txt --format context --cache-ttl 3600
 
 批量读取会对微博、小红书、抖音、Twitter/X、LinkedIn 等高风险社交域名保留更谨慎的边界，避免不透明地触碰登录态。
 
-### 12. 追踪网页变化
+### 13. 追踪网页变化
 
 适合政策页、公告页、价格页、项目 README 这类“今天和上次有什么不同”的任务。
 
@@ -698,7 +716,7 @@ guanlan read "https://github.com/shenyangs/Guanlan" --watch
 
 第一次运行会保存本地快照；之后再次运行，会输出内容变化 diff。
 
-### 13. 看中文热榜，再顺藤摸瓜
+### 14. 看中文热榜，再顺藤摸瓜
 
 适合“今天有什么热点”“国内讨论在往哪里流”。
 
@@ -751,7 +769,7 @@ guanlan search "热点关键词" --site zhihu.com --profile china --limit 80
 guanlan research "热榜里的关键词" --profile china --format context
 ```
 
-### 14. 解释搜索结果为什么这样排
+### 15. 解释搜索结果为什么这样排
 
 适合排查“为什么这个结果在前面”“有没有缓存”“是不是 scope 生效了”。
 
@@ -768,7 +786,7 @@ guanlan search "最新 人工智能 政策" --profile china --cluster-threshold 
 
 从 `0.2.5` 开始，每条搜索结果还会带 `evidence_role`，例如 `official_primary`、`authoritative_report`、`user_sample`、`industry_report`。如果结果池缺少某类关键证据，`search --trace` 会给出“缺什么信源、建议补什么”的提示。
 
-### 15. 给 AI Agent 的最短工作流
+### 16. 给 AI Agent 的最短工作流
 
 如果你是在另一个 Agent、MCP 客户端或自动化脚本里调用观澜，优先使用这几类输出：
 
@@ -800,7 +818,7 @@ CLI 是默认主路径；如果当前 Agent 或平台支持 MCP，可以把 `gua
 
 如果超时，先重试一次；支持缓存的命令可加 `--cache-ttl 3600`。严肃研究优先降低 `--read-top` 到 0 或 1，而不是把 `--limit 80` 砍成很小样本。超时只能说明本轮网络或上游源未完成，不代表没有证据。
 
-### 16. 本地大模型联网
+### 17. 本地大模型联网
 
 很多本地模型本身没有搜索网页和读取网页的能力，例如通过 Ollama、LM Studio、llama.cpp、Jan、Open WebUI 或本地 Agent 运行的模型。观澜可以作为它们的联网前置器：先由观澜搜索、阅读和整理中文互联网证据，再把证据包交给本地模型回答。
 
@@ -874,7 +892,7 @@ curl -s http://127.0.0.1:8765/context \
   | python -c 'import json,sys; print(json.load(sys.stdin)["prompt"])'
 ```
 
-### 17. 把读过的网页沉淀成本地知识库
+### 18. 把读过的网页沉淀成本地知识库
 
 适合把 Agent 搜过、读过、核验过的材料保存下来，后续不用重复请求上游，也能导出给 RAG 系统。
 
@@ -905,7 +923,7 @@ guanlan archive export --format openwebui-jsonl > guanlan-openwebui.jsonl
 
 Agent Wiki 是 archive 的旁支组织层，不是全网知识库。`archive wiki build` 会把已归档资料导出成静态 Markdown/HTML，按 topic/source/domain 组织，并把低质量材料标为 candidate；`archive wiki context` 和 `archive context` 则更适合给 LM Studio、Ollama、Open WebUI 或其他 Agent 准备证据约束的上下文。`rag-jsonl` 会把每条材料收束成 `id/text/source/title/domain/source_type/topic/updated_at`；`llamaindex-jsonl`、`langchain-jsonl`、`openwebui-jsonl` 是面向常见本地 RAG/加载器的结构化导出。它不是云同步，也不会自动上传内容。
 
-### 18. 质量闸门
+### 19. 质量闸门
 
 适合维护者和高级用户在发版前快速检查“观澜是不是真的更好了”。
 
@@ -937,7 +955,7 @@ guanlan quality run --mode live --limit 5
 
 如果要做更接近真实使用的横向比较，可以参考 [Benchmark 说明](docs/benchmark.md)：同一任务分别跑普通搜索、`guanlan search --trace`、`guanlan route + research`，再看是否命中正确信源家族、是否保留来源身份、证据角色、候选池深度和漂移控制。观澜不是只比“搜到几条”，更要比 Agent 最后拿到的材料是否足够稳、足够明源。
 
-### 19. 安全检查和授权边界
+### 20. 安全检查和授权边界
 
 如果你担心配置里误存了 Cookie、Token、API key 或代理凭据，先跑：
 
@@ -980,7 +998,7 @@ guanlan research "某产品 用户评价" --preset reputation --read-top 0 --adv
 
 如果用户需要建议、下一步、风险提醒，或希望你判断“他为什么搜这个”，加 `--advisor`。助理视角规则会告诉 Agent 当前证据能支持什么、不能支持什么，以及回答时必须守住哪些边界；最终建议应由 Agent 结合用户问题自然生成，不能机械复述模板，也不能当作用户真实目的或高风险专业结论。
 
-Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会查 `gov + party_central`，`reputation` 会查 `social_web + tech_dev + business`，`entertainment` 会查 `entertainment + social_web + business` 并补充豆瓣、猫眼/灯塔、B站、微博、TapTap 等公开页证据块。用户显式传入 `--scope`、`--site` 或 `--sites` 时，以用户指定范围为准。
+Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会查 `gov + party_central`，`reputation` 会查 `social_web + tech_dev + business`，`entertainment` 会查 `entertainment + social_web + business` 并补充豆瓣、猫眼/灯塔、B站、微博、TapTap 等公开页证据块；`global_entertainment` 会查 Variety、Deadline、Hollywood Reporter、Billboard 等欧美文娱源；`jp_kr_entertainment` 会查 Soompi、Oricon、Natalie、Naver 娱乐等日韩源；`cybersecurity`、`weather_disaster`、`sports`、`science`、`career`、`podcast`、`test_prep` 会分别路由到漏洞/反诈、天气灾害、体育、科学、职场、播客和考试备考信源。用户显式传入 `--scope`、`--site` 或 `--sites` 时，以用户指定范围为准。
 
 ## 中文语境
 

@@ -32,7 +32,10 @@ Use `guanlan archive verify`, `archive context`, `archive wiki`, and `archive pa
 Use `guanlan report html` only as a sidecar renderer when the user asks for a static HTML report; it reads existing JSON/stdin/demo data and does not replace search/read/research/hotnews.
 If your agent/MCP runner supports tool timeouts, use generous outer budgets: 60-90s for search/read/status/doctor, 120s for hotnews/feeds/pulse/batch reads, 180-300s for research/compare/timeline/dossier/archive ingest, and 300-600s for install/update/release smoke. Treat timeouts as network/upstream evidence, not proof of no results; retry once, use cache_ttl where available, or reduce read_top before shrinking the result pool.
 For technology/AI/developer/engineering-practice routes, always add one RSS discovery pass. `guanlan research ... --preset tech` does this automatically; if you only run route or search, run `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80` as the second pass.
-For entertainment routes such as film, TV drama, variety shows, music, celebrities, games, box office, ratings, and fandom/public discussion, use `guanlan research ... --preset entertainment`; separate platform metrics, user ratings, industry reports, promotional copy, and fandom samples.
+For Chinese entertainment routes such as film, TV drama, variety shows, music, celebrities, games, box office, ratings, and fandom/public discussion, use `guanlan research ... --preset entertainment`; separate platform metrics, user ratings, industry reports, promotional copy, and fandom samples.
+For Western entertainment, Hollywood, pop stars, tours, albums, Billboard/Grammy/award questions, use `guanlan research ... --preset global_entertainment --profile english`; prioritize trade media, charts/awards, and official artist/label statements over fan or tabloid claims.
+For Japanese/Korean entertainment, K-pop/J-pop, K-drama/J-drama, Oricon/Soompi/Naver questions, use `guanlan research ... --preset jp_kr_entertainment --profile hybrid`; separate local media/charts, agency statements, translation sites, and fandom samples.
+For CVE/security advisories/fraud/weather disasters/sports/science/career/podcast/exam-prep queries, use the dedicated `cybersecurity`, `weather_disaster`, `sports`, `science`, `career`, `podcast`, or `test_prep` preset/scope instead of generic web search.
 
 ## ⚠️ Workspace Rules
 
@@ -52,6 +55,11 @@ guanlan capabilities
 mcporter call 'exa.web_search_exa(query: "query", numResults: 50)'
 mcporter call 'exa.get_code_context_exa(query: "code question", tokensNum: 3000)'
 guanlan research "film box office douban rating public discussion" --preset entertainment --read-top 0
+guanlan research "Taylor Swift latest album tour" --preset global_entertainment --profile english
+guanlan research "BLACKPINK K-pop comeback" --preset jp_kr_entertainment --profile hybrid
+guanlan research "OpenSSL CVE latest affected versions" --preset cybersecurity
+guanlan search "typhoon track JMA NOAA" --scope weather_disaster --trace
+guanlan research "AI product manager salary interview" --preset career
 ```
 
 ## Sidecar HTML Reports
