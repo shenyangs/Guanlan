@@ -40,6 +40,8 @@
 
 只有完成当前档位要求的 Guanlan 工具后，仍缺关键证据，才切到通用 `web_search` / `web_fetch`。
 
+对于体育比分/赛程、天气灾害、CVE/安全公告、科学机构声明、文娱榜单/票房、考试官方信息这类高确定性垂直题，先看 `guanlan route` 给出的 direct `guanlan read` 命令。这些是权威入口候选，应该先读取核验，再用 `research/search` 扩大信源面。
+
 ## Benchmark 纪律
 
 如果是在评测 Guanlan，不要用不符合最佳使用方式的打法：
@@ -47,6 +49,7 @@
 - 不要只跑一次 `search` 就定性 Guanlan 的最终能力。
 - 不要把 `quality_summary=warn` 直接写成 “Guanlan 搜索失败”。
 - 实时/热点题必须补 `hotnews`。
+- 实时体育、灾害预警、安全漏洞等垂直题必须读取 Guanlan 推荐的 direct source seeds。
 - 技术/AI 题必须补 `feeds` 或直接走 `research --preset tech`。
 - 政策/办事题优先 `search + read` 或 `research`，不要只测单次泛搜。
 
@@ -90,6 +93,7 @@
 | “查 CVE/漏洞/补丁/诈骗短信” | `guanlan research "OpenSSL CVE 最新 漏洞" --preset cybersecurity --read-top 5` |
 | “查台风路径/天气/地震/灾害预警” | `guanlan search "台风 路径 中央气象台" --scope weather_disaster --trace` |
 | “查体育比赛/伤病/转会” | `guanlan research "梅西 比赛 伤病 最新" --preset sports` |
+| “查 NBA/赛事实时比分和战绩” | `guanlan route "NBA季后赛2026年首轮战绩比分" --json` 后先读推荐的 ESPN/NBA direct read |
 | “查科学发现/NASA/论文核验” | `guanlan research "詹姆斯韦伯 外星生命 NASA" --preset science --profile english` |
 | “查校招/薪资/面经” | `guanlan research "字节 AI 产品经理 校招 薪资 面经" --preset career` |
 | “查播客/小宇宙节目” | `guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80` |

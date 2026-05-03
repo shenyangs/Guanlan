@@ -20,6 +20,7 @@ from guanlan.limits import (
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
 )
+from guanlan.source_seeds import direct_source_read_commands
 
 _ROBOTICS_AI_TERMS = (
     "具身智能",
@@ -1409,6 +1410,12 @@ def _recommended_commands(
     hotnews_limit = DEFAULT_HOTNEWS_LIMIT
     pulse_limit = DEFAULT_PULSE_LIMIT
     feeds_limit = DEFAULT_FEEDS_LIMIT
+    direct_reads = direct_source_read_commands(
+        query,
+        intents=intents,
+        scopes=preferred_scopes,
+        limit=3,
+    )
 
     if (
         "hot_trend" in intents
@@ -1456,6 +1463,7 @@ def _recommended_commands(
         commands.append(f"guanlan search {quoted} --profile hybrid --scope jp_kr_entertainment --limit {search_limit}")
         commands.append(f"guanlan pulse {quoted} --profile hybrid --limit {pulse_limit} --format context")
     elif "sports" in intents:
+        commands.extend(direct_reads)
         commands.append(f"guanlan search {quoted}{profile_part} --scope sports --backend duckduckgo --limit {search_limit} --trace")
         commands.append(f"guanlan research {quoted}{profile_part} --scope sports --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "global_reputation" in intents:
@@ -1493,6 +1501,10 @@ def _recommended_commands(
         scope = preferred_scopes[0] if preferred_scopes else ""
         scope_part = f" --scope {scope}" if scope else ""
         commands.append(f"guanlan search {quoted}{profile_part}{scope_part} --limit {search_limit}")
+
+    for command in direct_reads:
+        if command not in commands:
+            commands.append(command)
 
     if target_sites and not any(site in commands[0] for site in target_sites[:1]):
         target_profile_part = profile_part

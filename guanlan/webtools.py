@@ -14,10 +14,14 @@ import difflib
 import hashlib
 import html
 import json
+import os
 import re
+import socket
+import ssl
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass, field
@@ -32,12 +36,18 @@ from guanlan.limits import (
     DEFAULT_SEARCH_LIMIT,
 )
 from guanlan.router import build_route_plan, format_route_plan_markdown
+from guanlan.source_seeds import (
+    direct_source_seeds,
+    dominant_vertical_preset,
+    is_live_sports_lookup,
+)
 from guanlan.source_taxonomy import source_card_for_domain
 
 _UA = "Mozilla/5.0 (compatible; Guanlan/1.4)"
 _TIMEOUT = 20
 _SEARCH_TIMEOUT = 8
 _CACHE_VERSION = 2
+_NETWORK_HEALTH_TTL_SECONDS = 300
 _MIN_USEFUL_READ_CHARS = 180
 _RECENCY_DEFAULT_WINDOW_DAYS = 30
 _WEAK_READ_MARKERS = (
@@ -77,6 +87,9 @@ _LOW_RELEVANCE_RESULT_STATUS = "low_relevance"
 _KNOWN_LOW_VALUE_DOMAINS = {
     "support.microsoft.com",
 }
+_NETWORK_HEALTH_CACHE: dict[str, dict[str, Any]] = {}
+_VALID_NETWORK_MODES = {"auto", "current", "direct", "proxy"}
+_NETWORK_PROBLEM_STATUSES = {"network_unreachable", "proxy_error", "network_changed"}
 _QUERY_TOKEN_STOPWORDS = {
     "企业",
     "公司",
@@ -955,6 +968,15 @@ class SearchResults(list):
         self.diagnostics = diagnostics or {}
 
 
+class NetworkBackendError(RuntimeError):
+    """Backend failed across network paths; carries per-path attempts."""
+
+    def __init__(self, status: str, message: str, attempts: list[dict[str, Any]]):
+        super().__init__(f"{status}: {message}")
+        self.status = status
+        self.attempts = attempts
+
+
 class _DuckDuckGoHTMLParser(HTMLParser):
     """Small parser for DuckDuckGo's no-JS HTML results."""
 
@@ -1114,6 +1136,7 @@ def search_web(
     scope: str | None = None,
     backend: str = "auto",
     profile: str | None = None,
+    network_mode: str = "auto",
     trace: bool = False,
     cluster_threshold: str = "conservative",
     cache_ttl: int = 0,
@@ -1124,9 +1147,11 @@ def search_web(
     query = original_query
     if not original_query:
         raise ValueError("query is required")
+    network_mode = _normalize_network_mode(network_mode)
     requested_scope = scope
     effective_scope = _effective_search_scope(original_query, scope)
     profile = resolve_query_profile(original_query, profile)
+    network_profile = build_network_profile(network_mode=network_mode, profile=profile)
     recency = detect_recency_intent(original_query)
     quality = detect_search_quality_profile(original_query, scope=effective_scope, site=site, profile=profile)
     route_plan = build_route_plan(
@@ -1233,6 +1258,7 @@ def search_web(
             },
             backend_recovery={},
             errors=[],
+            network_profile=network_profile,
         )
         return SearchResults([], diagnostics=shared_diagnostics)
     query = str(query_shape.get("backend_query") or original_query)
@@ -1275,6 +1301,7 @@ def search_web(
                 "requested_scope": requested_scope or "",
                 "backend": backend,
                 "profile": profile or "",
+                "network_mode": network_mode,
                 "cluster_threshold": cluster_threshold,
                 "recency": {
                     "enabled": recency["enabled"],
@@ -1321,12 +1348,31 @@ def search_web(
             continue
         try:
             batch: list[SearchResult]
+            network_attempts: list[dict[str, Any]] = []
             if name == "duckduckgo":
-                batch = _search_duckduckgo(query, limit=limit)
+                batch, network_attempts = _search_backend_with_network(
+                    name,
+                    query,
+                    limit=limit,
+                    network_mode=network_mode,
+                    profile=profile,
+                )
             elif name == "bing":
-                batch = _search_bing(query, limit=limit)
+                batch, network_attempts = _search_backend_with_network(
+                    name,
+                    query,
+                    limit=limit,
+                    network_mode=network_mode,
+                    profile=profile,
+                )
             elif name == "baidu":
-                batch = _search_baidu(query, limit=limit)
+                batch, network_attempts = _search_backend_with_network(
+                    name,
+                    query,
+                    limit=limit,
+                    network_mode=network_mode,
+                    profile=profile,
+                )
             elif name == "wechat-sogou":
                 if backend == "auto" and len(_dedupe_results(results)) >= limit:
                     attempt.update(
@@ -1349,18 +1395,41 @@ def search_web(
                 and name in {"duckduckgo", "bing", "baidu"}
             ):
                 fallback_batch: list[SearchResult] = []
+                fallback_attempts: list[dict[str, Any]] = []
                 if name == "duckduckgo":
-                    fallback_batch = _search_duckduckgo(fallback_open_query, limit=limit)
+                    fallback_batch, fallback_attempts = _search_backend_with_network(
+                        name,
+                        fallback_open_query,
+                        limit=limit,
+                        network_mode=network_mode,
+                        profile=profile,
+                    )
                 elif name == "bing":
-                    fallback_batch = _search_bing(fallback_open_query, limit=limit)
+                    fallback_batch, fallback_attempts = _search_backend_with_network(
+                        name,
+                        fallback_open_query,
+                        limit=limit,
+                        network_mode=network_mode,
+                        profile=profile,
+                    )
                 elif name == "baidu":
-                    fallback_batch = _search_baidu(fallback_open_query, limit=limit)
+                    fallback_batch, fallback_attempts = _search_backend_with_network(
+                        name,
+                        fallback_open_query,
+                        limit=limit,
+                        network_mode=network_mode,
+                        profile=profile,
+                    )
                 if fallback_batch:
                     batch = fallback_batch
+                    network_attempts.extend(fallback_attempts)
                     attempt["note"] = (
                         "scoped query returned no results; retried the original query and kept scope-aware ranking."
                     )
             attempt["result_count"] = len(batch)
+            if network_attempts:
+                attempt["network_attempts"] = network_attempts
+                attempt["network_mode"] = _first_ok_network_mode(network_attempts)
             batch_quality = _assess_backend_batch_quality(original_query, batch, quality)
             attempt["quality_gate"] = batch_quality
             if backend == "auto" and batch and not batch_quality["usable"]:
@@ -1373,9 +1442,13 @@ def search_web(
             results.extend(batch)
         except Exception as e:
             errors.append(f"{name}: {e}")
+            network_attempts = getattr(e, "attempts", None)
+            if isinstance(network_attempts, list) and network_attempts:
+                attempt["network_attempts"] = network_attempts
+                attempt["network_mode"] = _first_ok_network_mode(network_attempts)
             attempt.update(
                 {
-                    "status": _exception_backend_status(str(e)),
+                    "status": getattr(e, "status", None) or _exception_backend_status(str(e)),
                     "error": str(e),
                     "note": _backend_error_note(name, str(e)),
                 }
@@ -1395,6 +1468,8 @@ def search_web(
             recency=recency,
             quality=quality,
             limit=limit,
+            network_mode=network_mode,
+            profile=profile,
         )
 
     if backend in {"auto", "duckduckgo"} and not site and effective_scope != "university":
@@ -1409,7 +1484,19 @@ def search_web(
             recency=recency,
             quality=quality,
             limit=limit,
+            network_mode=network_mode,
+            profile=profile,
         )
+
+    _append_direct_source_seed_results(
+        results,
+        diagnostics=backend_diagnostics,
+        original_query=original_query,
+        route_plan=route_plan.to_dict(),
+        effective_scope=effective_scope,
+        site=site,
+        limit=limit,
+    )
 
     if not results and effective_scope == "university" and not site and backend in {"auto", "duckduckgo"}:
         fallback_query = _apply_recency_query(original_query, recency)
@@ -1421,15 +1508,27 @@ def search_web(
             "note": "高校 scope 站点约束未产出结果，自动用开放网页补搜，并继续按高校实体和信源类型排序。",
         }
         try:
-            batch = _search_duckduckgo(fallback_query, limit=limit)
+            batch, network_attempts = _search_backend_with_network(
+                "duckduckgo",
+                fallback_query,
+                limit=limit,
+                network_mode=network_mode,
+                profile=profile,
+            )
             attempt["result_count"] = len(batch)
+            attempt["network_attempts"] = network_attempts
+            attempt["network_mode"] = _first_ok_network_mode(network_attempts)
             attempt["status"] = "ok" if batch else "no_results_or_parser_miss"
             results.extend(batch)
         except Exception as e:
             errors.append(f"duckduckgo:open_fallback: {e}")
+            network_attempts = getattr(e, "attempts", None)
+            if isinstance(network_attempts, list) and network_attempts:
+                attempt["network_attempts"] = network_attempts
+                attempt["network_mode"] = _first_ok_network_mode(network_attempts)
             attempt.update(
                 {
-                    "status": _exception_backend_status(str(e)),
+                    "status": getattr(e, "status", None) or _exception_backend_status(str(e)),
                     "error": str(e),
                     "note": _backend_error_note("duckduckgo:open_fallback", str(e)),
                 }
@@ -1450,8 +1549,16 @@ def search_web(
                 "site": domain,
             }
             try:
-                batch = _search_duckduckgo(site_query, limit=limit)
+                batch, network_attempts = _search_backend_with_network(
+                    "duckduckgo",
+                    site_query,
+                    limit=limit,
+                    network_mode=network_mode,
+                    profile=profile,
+                )
                 attempt["result_count"] = len(batch)
+                attempt["network_attempts"] = network_attempts
+                attempt["network_mode"] = _first_ok_network_mode(network_attempts)
                 batch_quality = _assess_backend_batch_quality(original_query, batch, quality)
                 attempt["quality_gate"] = batch_quality
                 if batch and not batch_quality["usable"]:
@@ -1462,9 +1569,13 @@ def search_web(
                 results.extend(batch)
             except Exception as e:
                 errors.append(f"duckduckgo:site_inferred: {e}")
+                network_attempts = getattr(e, "attempts", None)
+                if isinstance(network_attempts, list) and network_attempts:
+                    attempt["network_attempts"] = network_attempts
+                    attempt["network_mode"] = _first_ok_network_mode(network_attempts)
                 attempt.update(
                     {
-                        "status": _exception_backend_status(str(e)),
+                        "status": getattr(e, "status", None) or _exception_backend_status(str(e)),
                         "error": str(e),
                         "note": _backend_error_note("duckduckgo:site_inferred", str(e)),
                     }
@@ -1483,6 +1594,9 @@ def search_web(
                     or "captcha_or_verification" in error.lower()
                     or "百度安全验证" in error
                 )
+                or "network_unreachable" in error
+                or "proxy_error" in error
+                or "network_changed" in error
             )
         ]
         if fatal_errors:
@@ -1532,6 +1646,8 @@ def search_web(
                 "backend_diagnostics": backend_diagnostics,
                 "backend_summary": backend_summary,
                 "backend_recovery": backend_recovery,
+                "network_profile": network_profile,
+                "network_health": network_health_snapshot(),
                 "errors": list(errors),
             }
         )
@@ -1560,6 +1676,7 @@ def search_web(
         backend_summary=backend_summary,
         backend_recovery=backend_recovery,
         errors=errors,
+        network_profile=network_profile,
     )
     return SearchResults(output, diagnostics=shared_diagnostics)
 
@@ -1584,6 +1701,7 @@ def _search_shared_diagnostics(
     backend_summary: dict[str, Any],
     backend_recovery: dict[str, Any],
     errors: list[str],
+    network_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "query": original_query,
@@ -1608,8 +1726,84 @@ def _search_shared_diagnostics(
         "backend_diagnostics": backend_diagnostics,
         "backend_summary": backend_summary,
         "backend_recovery": backend_recovery,
+        "network_profile": network_profile or build_network_profile(),
+        "network_health": network_health_snapshot(),
         "errors": list(errors),
     }
+
+
+def _append_direct_source_seed_results(
+    results: list[SearchResult],
+    *,
+    diagnostics: list[dict[str, Any]],
+    original_query: str,
+    route_plan: dict[str, Any],
+    effective_scope: str | None,
+    site: str | None,
+    limit: int,
+) -> None:
+    """Add small authoritative entrypoint candidates for high-confidence vertical tasks."""
+    if site:
+        return
+    intents = list(route_plan.get("primary_intents") or []) + list(route_plan.get("secondary_intents") or [])
+    scopes = _unique_keep_order([scope for scope in [effective_scope, *(route_plan.get("preferred_scopes") or [])] if scope])
+    if results and not is_live_sports_lookup(original_query, intents=intents, scopes=scopes):
+        return
+    seeds = direct_source_seeds(
+        original_query,
+        intents=intents,
+        scopes=scopes,
+        limit=min(max(limit, 1), 8),
+    )
+    if not seeds:
+        return
+    existing = {_canonical_url(item.url) for item in results if item.url}
+    added: list[SearchResult] = []
+    for seed in seeds:
+        url = str(seed.get("url") or "")
+        key = _canonical_url(url)
+        if not url or key in existing:
+            continue
+        existing.add(key)
+        role = str(seed.get("evidence_role") or "open_web_context")
+        item = SearchResult(
+            title=str(seed.get("title") or url),
+            url=url,
+            snippet=str(seed.get("snippet") or ""),
+            source=str(seed.get("source") or "direct_source"),
+            rank=len(results) + len(added) + 1,
+            domain=_domain(url),
+            source_type=str(seed.get("source_type") or "通用网页"),
+            matched_scope=str(seed.get("matched_scope") or effective_scope or ""),
+            trust_level=int(seed.get("trust_level") or 3),
+            evidence_role=role,
+        )
+        item.trace.update(
+            {
+                "direct_source_seed": True,
+                "seed_id": str(seed.get("seed_id") or ""),
+                "seed_reason": "high_confidence_vertical_entrypoint",
+                "evidence_role_hint": role,
+            }
+        )
+        added.append(item)
+    if not added:
+        return
+    results.extend(added)
+    scopes_text = ",".join(_unique_keep_order([item.matched_scope for item in added if item.matched_scope])) or "vertical"
+    diagnostics.append(
+        {
+            "backend": f"direct:{scopes_text}:seed",
+            "status": "ok",
+            "result_count": len(added),
+            "error": "",
+            "note": (
+                "命中高确定性垂直场景，已直接加入权威入口候选；"
+                "不要只依赖搜索引擎发现，下一步应 read 这些入口核验正文。"
+            ),
+            "seed_ids": [str(item.trace.get("seed_id") or "") for item in added],
+        }
+    )
 
 
 def _run_duckduckgo_recovery_pass(
@@ -1624,6 +1818,8 @@ def _run_duckduckgo_recovery_pass(
     recency: dict[str, Any],
     quality: dict[str, Any],
     limit: int,
+    network_mode: str,
+    profile: str | None,
 ) -> None:
     """Try lower-friction DuckDuckGo queries after blocked/over-narrow attempts."""
     if _usable_candidate_count(results, original_query, quality) >= _recovery_target_count(limit):
@@ -1655,6 +1851,8 @@ def _run_duckduckgo_recovery_pass(
                 limit=limit,
                 note=f"scope 查询未产出足够候选，自动拆成单域名站内补搜：{domain}。",
                 site=domain,
+                network_mode=network_mode,
+                profile=profile,
             )
 
     if _usable_candidate_count(results, original_query, quality) < _recovery_target_count(limit):
@@ -1670,6 +1868,8 @@ def _run_duckduckgo_recovery_pass(
                 quality=quality,
                 limit=limit,
                 note="主后端受阻或 scope 过窄，自动用原始 query 开放补搜，并继续按信源质量排序。",
+                network_mode=network_mode,
+                profile=profile,
             )
 
     for variant in _duckduckgo_recovery_query_variants(original_query, effective_scope, quality):
@@ -1689,6 +1889,8 @@ def _run_duckduckgo_recovery_pass(
             quality=quality,
             limit=limit,
             note="短词/特殊字符/歧义 query 未产出足够候选，自动追加保守 query variant。",
+            network_mode=network_mode,
+            profile=profile,
         )
 
 
@@ -1704,6 +1906,8 @@ def _run_multi_entity_fanout_pass(
     recency: dict[str, Any],
     quality: dict[str, Any],
     limit: int,
+    network_mode: str,
+    profile: str | None,
 ) -> None:
     """Add bounded entity-specific passes for broad comparison/list queries."""
     if not query_shape.get("multi_entity"):
@@ -1759,6 +1963,8 @@ def _run_multi_entity_fanout_pass(
                 "检测到多实体查询，自动按实体拆分补搜，避免只保留第一个实体造成对比失真。"
             ),
             extra={"entity": entity, "fanout_total": len(fanout_entities)},
+            network_mode=network_mode,
+            profile=profile,
         )
 
 
@@ -1806,7 +2012,15 @@ def _recovery_needed(
         return False
     if _usable_candidate_count(results, original_query, quality) < _recovery_target_count(limit):
         return True
-    problem_statuses = {"parser_miss", "no_results", "no_results_or_parser_miss", _LOW_RELEVANCE_RESULT_STATUS, "blocked", "error"}
+    problem_statuses = {
+        "parser_miss",
+        "no_results",
+        "no_results_or_parser_miss",
+        _LOW_RELEVANCE_RESULT_STATUS,
+        "blocked",
+        "error",
+        *_NETWORK_PROBLEM_STATUSES,
+    }
     return any(item.get("status") in problem_statuses for item in diagnostics)
 
 
@@ -1823,6 +2037,8 @@ def _run_duckduckgo_recovery_attempt(
     note: str,
     site: str = "",
     extra: dict[str, Any] | None = None,
+    network_mode: str = "auto",
+    profile: str | None = None,
 ) -> None:
     attempt: dict[str, Any] = {
         "backend": backend_name,
@@ -1837,7 +2053,15 @@ def _run_duckduckgo_recovery_attempt(
     if extra:
         attempt.update(extra)
     try:
-        batch = _search_duckduckgo(query, limit=limit)
+        batch, network_attempts = _search_backend_with_network(
+            "duckduckgo",
+            query,
+            limit=limit,
+            network_mode=network_mode,
+            profile=profile,
+        )
+        attempt["network_attempts"] = network_attempts
+        attempt["network_mode"] = _first_ok_network_mode(network_attempts)
         attempt["result_count"] = len(batch)
         batch_quality = _assess_backend_batch_quality(original_query, batch, quality)
         attempt["quality_gate"] = batch_quality
@@ -1851,9 +2075,13 @@ def _run_duckduckgo_recovery_attempt(
         results.extend(batch)
     except Exception as e:
         errors.append(f"{backend_name}: {e}")
+        network_attempts = getattr(e, "attempts", None)
+        if isinstance(network_attempts, list) and network_attempts:
+            attempt["network_attempts"] = network_attempts
+            attempt["network_mode"] = _first_ok_network_mode(network_attempts)
         attempt.update(
             {
-                "status": _exception_backend_status(str(e)),
+                "status": getattr(e, "status", None) or _exception_backend_status(str(e)),
                 "error": str(e),
                 "note": _backend_error_note(backend_name, str(e)),
             }
@@ -2115,6 +2343,12 @@ def _zero_result_backend_note(backend: str) -> str:
 
 def _exception_backend_status(error: str) -> str:
     lowered = error.lower()
+    if "proxy_error" in lowered or "proxy" in lowered and ("refused" in lowered or "tunnel" in lowered):
+        return "proxy_error"
+    if "network_unreachable" in lowered or "timed out" in lowered or "timeout" in lowered:
+        return "network_unreachable"
+    if "network_changed" in lowered:
+        return "network_changed"
     if "captcha" in lowered or "verification" in lowered or "安全验证" in error or "验证码" in error:
         return "blocked"
     return "error"
@@ -2122,6 +2356,12 @@ def _exception_backend_status(error: str) -> str:
 
 def _backend_error_note(backend: str, error: str) -> str:
     lowered = error.lower()
+    if "proxy_error" in lowered or ("proxy" in lowered and ("refused" in lowered or "tunnel" in lowered)):
+        return f"{backend} 代理路径不可用；不要把它当作无资料，应切换 direct/current 或等待代理恢复。"
+    if "network_unreachable" in lowered or "timed out" in lowered or "timeout" in lowered:
+        return f"{backend} 当前网络路径不可达/超时；Guanlan 会尝试其他网络路径，仍失败时应报告为网络证据而非空结果。"
+    if "network_changed" in lowered:
+        return f"{backend} 多个网络路径状态不一致，可能刚切换代理或 DNS；建议立即用 --network direct/proxy 复测一次。"
     if "captcha" in lowered or "verification" in lowered or "安全验证" in error or "验证码" in error:
         return f"{backend} 疑似触发验证/反爬；不要把它当作无相关资料，应改用其他后端或 scope 补搜。"
     if "timed out" in lowered or "timeout" in lowered:
@@ -2142,11 +2382,21 @@ def _backend_diagnostic_summary(diagnostics: list[dict[str, Any]]) -> dict[str, 
     low_relevance = [item["backend"] for item in diagnostics if item.get("status") == _LOW_RELEVANCE_RESULT_STATUS]
     blocked = [item["backend"] for item in diagnostics if item.get("status") == "blocked"]
     errors = [item["backend"] for item in diagnostics if item.get("status") == "error"]
+    network_errors = [item["backend"] for item in diagnostics if item.get("status") in _NETWORK_PROBLEM_STATUSES]
+    problem_statuses = {
+        "parser_miss",
+        "no_results",
+        "no_results_or_parser_miss",
+        _LOW_RELEVANCE_RESULT_STATUS,
+        "blocked",
+        "error",
+        *_NETWORK_PROBLEM_STATUSES,
+    }
     first_ok_index = next((idx for idx, item in enumerate(diagnostics) if item.get("status") == "ok"), None)
     fallback_used = bool(
         first_ok_index is not None
         and any(
-            item.get("status") in {"parser_miss", "no_results", "no_results_or_parser_miss", _LOW_RELEVANCE_RESULT_STATUS, "blocked", "error"}
+            item.get("status") in problem_statuses
             for item in diagnostics[:first_ok_index]
         )
     )
@@ -2156,6 +2406,7 @@ def _backend_diagnostic_summary(diagnostics: list[dict[str, Any]]) -> dict[str, 
         "zero_results": zero_results,
         "low_relevance": low_relevance,
         "blocked": blocked,
+        "network_errors": network_errors,
         "errors": errors,
         "fallback_used": fallback_used,
         "primary_backend": diagnostics[0]["backend"] if diagnostics else "",
@@ -2176,7 +2427,15 @@ def build_search_recovery_plan(
     if not diagnostics:
         return {}
     route_plan = route_plan or {}
-    problem_statuses = {"parser_miss", "no_results", "no_results_or_parser_miss", _LOW_RELEVANCE_RESULT_STATUS, "blocked", "error"}
+    problem_statuses = {
+        "parser_miss",
+        "no_results",
+        "no_results_or_parser_miss",
+        _LOW_RELEVANCE_RESULT_STATUS,
+        "blocked",
+        "error",
+        *_NETWORK_PROBLEM_STATUSES,
+    }
     problems = [item for item in diagnostics if item.get("status") in problem_statuses]
     ok_backends = [str(item.get("backend")) for item in diagnostics if item.get("status") == "ok"]
     if not problems:
@@ -2196,6 +2455,7 @@ def build_search_recovery_plan(
     blocked = [str(item.get("backend")) for item in problems if item.get("status") == "blocked"]
     parser_miss = [str(item.get("backend")) for item in problems if item.get("status") == "parser_miss"]
     low_relevance = [str(item.get("backend")) for item in problems if item.get("status") == _LOW_RELEVANCE_RESULT_STATUS]
+    network_errors = [str(item.get("backend")) for item in problems if item.get("status") in _NETWORK_PROBLEM_STATUSES]
     errors = [str(item.get("backend")) for item in problems if item.get("status") == "error"]
 
     guidance: list[str] = []
@@ -2205,6 +2465,11 @@ def build_search_recovery_plan(
         guidance.append(f"{', '.join(parser_miss)} 页面可访问但解析器未抓到结果，应视为解析器/模板问题而非资料不存在。")
     if low_relevance:
         guidance.append(f"{', '.join(low_relevance)} 返回了候选但相关性门控未通过，已继续补充后续后端。")
+    if network_errors:
+        guidance.append(
+            f"{', '.join(network_errors)} 当前网络路径不可用或刚发生代理切换；"
+            "不要汇报为无资料，应使用 --network direct/proxy/current 复测或等待网络健康缓存刷新。"
+        )
     if auto_downgrade and ok_backends:
         guidance.append(f"已自动降级到 {', '.join(ok_backends)}，当前结果仍可继续使用，但应补充定向信源核验。")
     if errors and not ok_backends:
@@ -2223,6 +2488,7 @@ def build_search_recovery_plan(
         "blocked_backends": blocked,
         "parser_miss_backends": parser_miss,
         "low_relevance_backends": low_relevance,
+        "network_error_backends": network_errors,
         "error_backends": errors,
         "auto_downgrade": auto_downgrade,
         "guidance": _unique_keep_order(guidance),
@@ -2265,6 +2531,250 @@ def _shell_quote_for_command(value: str) -> str:
     return f'"{escaped}"'
 
 
+def _normalize_network_mode(value: str | None = None) -> str:
+    mode = (value or os.environ.get("GUANLAN_NETWORK") or "auto").strip().lower().replace("_", "-")
+    aliases = {
+        "": "auto",
+        "default": "auto",
+        "public": "auto",
+        "system": "current",
+        "env": "current",
+        "none": "direct",
+        "no-proxy": "direct",
+    }
+    mode = aliases.get(mode, mode)
+    if mode not in _VALID_NETWORK_MODES:
+        return "auto"
+    return mode
+
+
+def _configured_proxy_url() -> str:
+    for key in (
+        "GUANLAN_PROXY_URL",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "HTTP_PROXY",
+        "http_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+    ):
+        value = os.environ.get(key, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _redact_proxy_url(value: str) -> str:
+    if not value:
+        return ""
+    parsed = urllib.parse.urlsplit(value)
+    if not parsed.scheme or not parsed.netloc:
+        return "<configured>"
+    host = parsed.hostname or ""
+    port = f":{parsed.port}" if parsed.port else ""
+    auth = "***@" if parsed.username or parsed.password else ""
+    return urllib.parse.urlunsplit((parsed.scheme, f"{auth}{host}{port}", "", "", ""))
+
+
+def build_network_profile(network_mode: str | None = None, profile: str | None = None) -> dict[str, Any]:
+    mode = _normalize_network_mode(network_mode)
+    proxy_url = _configured_proxy_url()
+    return {
+        "mode": mode,
+        "profile": profile or "",
+        "proxy_detected": bool(proxy_url),
+        "proxy": _redact_proxy_url(proxy_url),
+        "attempt_order": _network_modes_for_backend("auto", mode, profile=profile),
+        "preflight": "lazy_per_backend",
+        "direct_available": True,
+        "proxy_available": bool(proxy_url),
+        "agent_instruction": (
+            "本机能上网不等于所有搜索后端都可用；看到 network_unreachable/proxy_error 时不要报告为无资料，"
+            "应切换 network/backend 或使用缓存。"
+        ),
+    }
+
+
+def network_health_snapshot() -> dict[str, Any]:
+    now = time.time()
+    snapshot: dict[str, Any] = {}
+    for key, item in list(_NETWORK_HEALTH_CACHE.items()):
+        if now - float(item.get("updated_at", 0) or 0) > _NETWORK_HEALTH_TTL_SECONDS:
+            _NETWORK_HEALTH_CACHE.pop(key, None)
+            continue
+        clean = dict(item)
+        clean["updated_age_sec"] = round(now - float(item.get("updated_at", 0) or 0), 3)
+        clean.pop("updated_at", None)
+        snapshot[key] = clean
+    return snapshot
+
+
+def _record_network_health(backend: str, mode: str, status: str, error: str = "") -> None:
+    _NETWORK_HEALTH_CACHE[f"{backend}:{mode}"] = {
+        "backend": backend,
+        "mode": mode,
+        "status": status,
+        "error": _collapse_ws(error)[:180],
+        "updated_at": time.time(),
+        "ttl_sec": _NETWORK_HEALTH_TTL_SECONDS,
+    }
+
+
+def _network_modes_for_backend(backend: str, requested: str, profile: str | None = None) -> list[str]:
+    requested = _normalize_network_mode(requested)
+    proxy_url = _configured_proxy_url()
+    if requested != "auto":
+        if requested == "proxy" and not proxy_url:
+            return ["proxy"]
+        return [requested]
+    if backend == "baidu" or profile == "china":
+        modes = ["current", "direct", "proxy"]
+    else:
+        modes = ["current", "proxy", "direct"]
+    if not proxy_url:
+        modes = [mode for mode in modes if mode != "proxy"]
+    return _unique_keep_order(modes)
+
+
+def _open_url_with_network(req: urllib.request.Request, *, timeout: int, network_mode: str):
+    mode = _normalize_network_mode(network_mode)
+    if mode == "direct":
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        return opener.open(req, timeout=timeout)
+    if mode == "proxy":
+        proxy = _configured_proxy_url()
+        if not proxy:
+            raise RuntimeError("proxy_error: proxy mode requested but no proxy is configured")
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+        return opener.open(req, timeout=timeout)
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def _classify_network_exception(exc: Exception, mode: str) -> str:
+    text = str(exc).lower()
+    if mode == "proxy" and (
+        "proxy" in text
+        or "tunnel" in text
+        or "connection refused" in text
+        or "timed out" in text
+        or "timeout" in text
+    ):
+        return "proxy_error"
+    if isinstance(exc, TimeoutError) or "timed out" in text or "timeout" in text:
+        return "network_unreachable"
+    if isinstance(exc, urllib.error.URLError):
+        reason = getattr(exc, "reason", None)
+        if isinstance(reason, (socket.gaierror, TimeoutError, ConnectionError, ssl.SSLError, OSError)):
+            return "network_unreachable"
+    if isinstance(exc, (socket.gaierror, ConnectionError, ssl.SSLError, OSError)):
+        return "network_unreachable"
+    if "name or service not known" in text or "nodename nor servname" in text or "temporary failure" in text:
+        return "network_unreachable"
+    return ""
+
+
+def _search_backend_with_network(
+    backend: str,
+    query: str,
+    *,
+    limit: int,
+    network_mode: str,
+    profile: str | None,
+) -> tuple[list[SearchResult], list[dict[str, Any]]]:
+    attempts: list[dict[str, Any]] = []
+    non_network_errors: list[Exception] = []
+    for mode in _network_modes_for_backend(backend, network_mode, profile=profile):
+        attempt = {
+            "backend": backend,
+            "network_mode": mode,
+            "status": "unknown",
+            "error": "",
+            "latency_ms": 0,
+            "proxy_detected": bool(_configured_proxy_url()),
+        }
+        started = time.time()
+        try:
+            batch = _call_search_backend_once(backend, query, limit=limit, network_mode=mode)
+            attempt["status"] = "ok"
+            attempt["result_count"] = len(batch)
+            attempt["latency_ms"] = int((time.time() - started) * 1000)
+            _record_network_health(backend, mode, "ok")
+            attempts.append(attempt)
+            return batch, attempts
+        except Exception as exc:  # noqa: BLE001 - classified into diagnostics
+            attempt["latency_ms"] = int((time.time() - started) * 1000)
+            network_status = _classify_network_exception(exc, mode)
+            if network_status:
+                attempt["status"] = network_status
+                attempt["error"] = str(exc)
+                _record_network_health(backend, mode, network_status, str(exc))
+                attempts.append(attempt)
+                continue
+            attempt["status"] = _exception_backend_status(str(exc))
+            attempt["error"] = str(exc)
+            _record_network_health(backend, mode, attempt["status"], str(exc))
+            attempts.append(attempt)
+            non_network_errors.append(exc)
+            if attempt["status"] == "blocked":
+                continue
+            break
+    if non_network_errors:
+        exc = non_network_errors[-1]
+        if attempts:
+            setattr(exc, "attempts", attempts)
+        raise exc
+    status = _network_failure_status(attempts)
+    raise NetworkBackendError(status, _network_failure_message(attempts), attempts)
+
+
+def _call_search_backend_once(
+    backend: str,
+    query: str,
+    *,
+    limit: int,
+    network_mode: str,
+) -> list[SearchResult]:
+    fn = {
+        "duckduckgo": _search_duckduckgo,
+        "bing": _search_bing,
+        "baidu": _search_baidu,
+    }[backend]
+    try:
+        return fn(query, limit=limit, network_mode=network_mode)
+    except TypeError as exc:
+        if "network_mode" not in str(exc):
+            raise
+        return fn(query, limit=limit)
+
+
+def _network_failure_status(attempts: list[dict[str, Any]]) -> str:
+    statuses = {str(item.get("status") or "") for item in attempts}
+    if "ok" in statuses:
+        return "network_changed"
+    if "proxy_error" in statuses and statuses <= {"proxy_error", "unknown"}:
+        return "proxy_error"
+    if statuses & {"network_unreachable", "proxy_error"}:
+        return "network_unreachable"
+    return "network_changed"
+
+
+def _network_failure_message(attempts: list[dict[str, Any]]) -> str:
+    bits = []
+    for item in attempts:
+        mode = item.get("network_mode", "")
+        status = item.get("status", "")
+        error = _collapse_ws(str(item.get("error") or ""))[:120]
+        bits.append(f"{mode}={status}{': ' + error if error else ''}")
+    return "; ".join(bits) or "network path unavailable"
+
+
+def _first_ok_network_mode(attempts: list[dict[str, Any]]) -> str:
+    for item in attempts:
+        if item.get("status") == "ok":
+            return str(item.get("network_mode") or "")
+    return str(attempts[-1].get("network_mode") or "") if attempts else ""
+
+
 def _raise_for_search_block(page: str, backend: str) -> None:
     markers = _SEARCH_BLOCK_MARKERS.get(backend, ())
     page_lower = page.lower()
@@ -2273,7 +2783,11 @@ def _raise_for_search_block(page: str, backend: str) -> None:
             raise RuntimeError(f"captcha_or_verification: {marker}")
 
 
-def _search_duckduckgo(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchResult]:
+def _search_duckduckgo(
+    query: str,
+    limit: int = DEFAULT_SEARCH_LIMIT,
+    network_mode: str = "current",
+) -> list[SearchResult]:
     url = "https://duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
     req = urllib.request.Request(
         url,
@@ -2282,7 +2796,7 @@ def _search_duckduckgo(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[Se
             "Accept": "text/html,application/xhtml+xml",
         },
     )
-    with urllib.request.urlopen(req, timeout=_SEARCH_TIMEOUT) as resp:
+    with _open_url_with_network(req, timeout=_SEARCH_TIMEOUT, network_mode=network_mode) as resp:
         page = resp.read().decode("utf-8", errors="replace")
     _raise_for_search_block(page, "duckduckgo")
 
@@ -2291,7 +2805,11 @@ def _search_duckduckgo(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[Se
     return _dedupe_results(parser.results)[:limit]
 
 
-def _search_bing(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchResult]:
+def _search_bing(
+    query: str,
+    limit: int = DEFAULT_SEARCH_LIMIT,
+    network_mode: str = "current",
+) -> list[SearchResult]:
     url = "https://www.bing.com/search?" + urllib.parse.urlencode({"q": query, "count": min(max(limit, 1), 50)})
     req = urllib.request.Request(
         url,
@@ -2300,7 +2818,7 @@ def _search_bing(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchRe
             "Accept": "text/html,application/xhtml+xml",
         },
     )
-    with urllib.request.urlopen(req, timeout=_SEARCH_TIMEOUT) as resp:
+    with _open_url_with_network(req, timeout=_SEARCH_TIMEOUT, network_mode=network_mode) as resp:
         page = resp.read().decode("utf-8", errors="replace")
     _raise_for_search_block(page, "bing")
 
@@ -2328,7 +2846,11 @@ def _search_bing(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchRe
     return results
 
 
-def _search_baidu(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchResult]:
+def _search_baidu(
+    query: str,
+    limit: int = DEFAULT_SEARCH_LIMIT,
+    network_mode: str = "current",
+) -> list[SearchResult]:
     # Baidu redirects HTTPS to HTTP for classic result HTML in some regions.
     url = "http://www.baidu.com/s?" + urllib.parse.urlencode({"wd": query, "rn": min(max(limit, 1), 50)})
     req = urllib.request.Request(
@@ -2338,7 +2860,7 @@ def _search_baidu(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchR
             "Accept": "text/html,application/xhtml+xml",
         },
     )
-    with urllib.request.urlopen(req, timeout=_SEARCH_TIMEOUT) as resp:
+    with _open_url_with_network(req, timeout=_SEARCH_TIMEOUT, network_mode=network_mode) as resp:
         page = resp.read().decode("utf-8", errors="replace")
     _raise_for_search_block(page, "baidu")
 
@@ -2997,6 +3519,37 @@ def build_research_packet(
     preset_config = _research_preset_for_profile(preset_config, effective_profile)
     explicit_scope = scope if scope not in (None, "") else None
     explicit_sites = _normalize_sites(([site] if site else []) + (sites or []))
+    preset_override: dict[str, str] = {}
+    if explicit_scope is None and not explicit_sites:
+        raw_route_plan = build_route_plan(
+            query,
+            scope=None,
+            site=site,
+            sites=explicit_sites,
+            profile=effective_profile,
+            limit=effective_limit,
+            read_top=read_top,
+        )
+        override_preset = dominant_vertical_preset(
+            query,
+            current_preset=str(preset_config.get("id") or ""),
+            route_intents=list(raw_route_plan.primary_intents) + list(raw_route_plan.secondary_intents),
+        )
+        if override_preset:
+            old_preset = str(preset_config.get("id") or "")
+            preset_config = resolve_research_preset(override_preset)
+            effective_limit = max(limit if limit is not None else preset_config["limit"], 1)
+            if profile is None:
+                effective_profile = preset_config["profile"]
+            preset_config = _research_preset_for_profile(preset_config, effective_profile)
+            preset_override = {
+                "from": old_preset,
+                "to": str(preset_config.get("id") or override_preset),
+                "reason": (
+                    "用户 query 已明显命中更强的垂直路由，自动纠正不匹配 preset，"
+                    "避免把简单场景带到错误信源池。"
+                ),
+            }
     route_plan = build_route_plan(
         query,
         preset=_route_preset_for_profile(preset_config["id"], effective_profile),
@@ -3093,6 +3646,7 @@ def build_research_packet(
         "query": query,
         "preset": preset_config["id"],
         "preset_name": preset_config["name"],
+        "preset_override": preset_override,
         "profile": effective_profile or "",
         "site": site or "",
         "sites": effective_sites,
@@ -3116,6 +3670,14 @@ def build_research_packet(
         "readings": readings,
         "read_quality_summary": _read_quality_summary(readings),
         "guidance": list(preset_config.get("guidance", [])) + [
+            *(
+                [
+                    f"已自动将 preset 从 {preset_override.get('from')} 纠正为 {preset_override.get('to')}；"
+                    "这是为了保护明显垂直场景不被错误参数带偏。"
+                ]
+                if preset_override
+                else []
+            ),
             "这是一份证据上下文，不是最终结论。",
             "先看“精选代表证据”，再回到完整搜索池补充细节；不要只凭第一条结果下判断。",
             "优先使用不同 topic、不同 source_type 的材料交叉验证。",
@@ -3163,6 +3725,12 @@ def format_research_markdown(packet: dict[str, Any]) -> str:
         lines.append(f"- Sites: {', '.join(packet['sites'])}")
     if packet.get("preset"):
         lines.append(f"- Preset: {packet.get('preset')} / {packet.get('preset_name', '')}")
+    preset_override = packet.get("preset_override")
+    if isinstance(preset_override, dict) and preset_override:
+        lines.append(
+            "- Preset 纠偏: "
+            f"{preset_override.get('from')} -> {preset_override.get('to')}；{preset_override.get('reason', '')}"
+        )
     if packet.get("search_errors"):
         lines.append(f"- 部分搜索失败: {'；'.join(packet['search_errors'])}")
     query_strategy = packet.get("query_strategy") or {}
@@ -3780,6 +4348,8 @@ def _query_for_research_job(
             role_preferences = ["user_sample", "developer_discussion", "review"]
         elif target in {"business", "ecommerce", "finance"}:
             role_preferences = ["industry_report", "fresh_news"]
+        elif target == "sports":
+            role_preferences = ["official_stat", "sports_report", "fresh_news", "base"]
         elif target == "university":
             role_preferences = ["university_official", "department_page", "admission_catalog", "faculty_profile", "base"]
         elif target == "academic":
@@ -3803,6 +4373,8 @@ def _query_for_research_job(
             role_preferences = ["technical_primary", "developer_discussion", "base"]
         elif any(site in target for site in ("openai", "anthropic", "microsoft", "google", "amazon", "meta")):
             role_preferences = ["company_primary", "technical_primary", "fresh_news"]
+        elif any(site in target for site in ("espn", "nba.com", "fifa", "uefa", "skysports", "theathletic")):
+            role_preferences = ["official_stat", "sports_report", "fresh_news", "base"]
     elif job_type == "general":
         role_preferences = ["fresh_news", "base"]
     for role in role_preferences:
@@ -5214,6 +5786,8 @@ def _search_context_diagnostics(results: list[dict[str, Any]]) -> list[str]:
         backend = str(item.get("backend") or "")
         status = str(item.get("status") or "")
         note = str(item.get("note") or "")
+        if backend.startswith("direct:") and status == "ok":
+            lines.append(f"> 诊断: {note}")
         if backend == "duckduckgo:open_fallback" and status == "ok":
             lines.append("> 诊断: `site:edu.cn` 未产出可用高校结果，已开放补搜，并继续按学校实体和高校信源降噪。")
         if backend == "duckduckgo:site_inferred" and status == "ok":
@@ -5271,6 +5845,8 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
                 parts.append(f"{backend_name}=no_results")
             elif status == "blocked":
                 parts.append(f"{backend_name}=blocked")
+            elif status in _NETWORK_PROBLEM_STATUSES:
+                parts.append(f"{backend_name}={status}")
             elif status == _LOW_RELEVANCE_RESULT_STATUS:
                 parts.append(f"{backend_name}=low_relevance({count})")
             elif status == "error":
@@ -5285,10 +5861,28 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
         for item in backend_diagnostics:
             note = str(item.get("note") or "")
             if note and (
-                item.get("status") in {"parser_miss", "no_results", "no_results_or_parser_miss", _LOW_RELEVANCE_RESULT_STATUS, "blocked", "error"}
+                item.get("status")
+                in {
+                    "parser_miss",
+                    "no_results",
+                    "no_results_or_parser_miss",
+                    _LOW_RELEVANCE_RESULT_STATUS,
+                    "blocked",
+                    "error",
+                    *_NETWORK_PROBLEM_STATUSES,
+                }
                 or item.get("backend") in {"duckduckgo:open_fallback", "duckduckgo:site_inferred"}
             ):
                 lines.append(f"  backend_note:{item.get('backend')} => {note}")
+            for network_attempt in item.get("network_attempts") or []:
+                n_status = str(network_attempt.get("status") or "")
+                if n_status and n_status != "ok":
+                    mode = str(network_attempt.get("network_mode") or "")
+                    error = _collapse_ws(str(network_attempt.get("error") or ""))[:100]
+                    lines.append(
+                        f"  network_attempt:{item.get('backend')}[{mode}] => {n_status}"
+                        f"{' / ' + error if error else ''}"
+                    )
     if backend_recovery and backend_recovery.get("status") != "ok":
         active = ",".join(backend_recovery.get("active_backends") or []) or "none"
         lines.append(
@@ -5811,6 +6405,14 @@ def _quality_has_strong_primary_evidence(
         "standard_original",
         "statute_original",
         "clinical_guideline",
+        "official_stat",
+        "sports_report",
+        "official_alert",
+        "forecast_track",
+        "vulnerability_record",
+        "security_advisory",
+        "institution_primary",
+        "chart_metric",
     }
     strong_source_types = {
         "政府/部委",
@@ -5825,6 +6427,11 @@ def _quality_has_strong_primary_evidence(
         "标准/合规",
         "法律/司法",
         "医疗/健康",
+        "体育/赛事/转会",
+        "文娱/内容平台",
+        "欧美文娱/音乐产业",
+        "日韩文娱/K-pop/J-pop",
+        "考试/培训/备考",
     }
     preferred_scopes = {str(scope) for scope in quality.get("preferred_scopes") or [] if str(scope)}
     preferred_ratio = len(preferred_hits) / max(len(results), 1)
@@ -6269,6 +6876,13 @@ def _quality_followup_preset(intent: str, route_intents: list[str]) -> str:
         "global_entertainment": "global_entertainment",
         "jp_kr_entertainment": "jp_kr_entertainment",
         "company_primary": "company",
+        "sports": "sports",
+        "weather_disaster": "weather_disaster",
+        "cybersecurity": "cybersecurity",
+        "science": "science",
+        "career": "career",
+        "podcast": "podcast",
+        "test_prep": "test_prep",
     }
     for candidate in candidates:
         clean = str(candidate).split(":", 1)[-1]
@@ -6481,6 +7095,9 @@ def build_query_strategy(
         add("company_context", f"{clean_query} investor relations annual report official", "补公司一手资料和投资者关系材料")
     if "tech" in intents:
         add("developer_discussion", f"{clean_query} github issue benchmark 开源", "技术问题补开发者与可复现线索")
+    if "sports" in intents:
+        add("official_stat", f"{clean_query} official scoreboard schedule standings", "体育实时问题优先找官方比分、赛程和榜单入口")
+        add("sports_report", f"{clean_query} ESPN NBA official scores playoffs schedule", "补可信体育媒体的战报、专题页和实时比分")
     if "university_admissions" in intents:
         add("university_official", f"{clean_query} 官网 研究生招生 导师 招生目录", "高校招生/导师问题先找学校和招生官网")
         add("department_page", f"{clean_query} 院系 导师 研究方向", "补院系官网和导师主页")
@@ -6701,12 +7318,21 @@ def _infer_evidence_role(
     source_type = str(item.source_type or "")
     title_blob = f"{item.title} {item.snippet}".lower()
     route_roles = {str(role) for role in (quality or {}).get("route_evidence_roles") or []}
+    role_hint = str((item.trace or {}).get("evidence_role_hint") or "")
+    if role_hint:
+        return role_hint
     if scope == "university" or roles & {"faculty_profile", "admission_catalog", "department_page", "official_notice"}:
         if "faculty_profile" in roles:
             return "faculty_profile"
         if "admission_catalog" in roles:
             return "admission_catalog"
         return "university_official"
+    if scope == "sports" or roles & {"official_stat", "sports_report", "transfer_report", "fan_discussion"}:
+        if "official_stat" in route_roles or re.search(r"比分|赛果|赛程|战绩|积分榜|score|scores|scoreboard|schedule|standings|bracket", title_blob):
+            return "official_stat"
+        if "transfer_report" in route_roles or re.search(r"转会|合同|续约|transfer|contract", title_blob):
+            return "transfer_report"
+        return "sports_report"
     if scope in {"gov", "global_official"} or "primary_source" in roles or "regulation" in roles or "notice" in roles:
         return "official_primary"
     if scope in {"party_central", "local_official"} or "authoritative_report" in roles:

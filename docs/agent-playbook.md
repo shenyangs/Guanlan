@@ -95,6 +95,12 @@ guanlan search "华为手机" --scope social_web --limit 80 --trace
 
 只有完成当前档位要求后，仍缺关键证据，才允许切到通用 `web_search` / `web_fetch`。
 
+## 垂直权威入口
+
+有些问题不该只赌搜索引擎发现。例如体育比分、天气灾害、CVE 漏洞、科学机构声明、文娱榜单/票房、考试官方信息，用户真正需要的是“先去哪个权威入口核验”。Guanlan 会在这些高确定性场景里自动加入少量 direct source seeds，并在 `route` 里给出 `guanlan read` 命令。
+
+Agent 应该把这些入口当作下一步要读的权威候选，而不是把它们当最终答案。正确做法是先读这些入口，再用 `search/research` 扩大信源面；不要在 Baidu/Bing/DuckDuckGo 低相关或被验证码拦截后直接宣布 Guanlan 失败。
+
 ## Benchmark 规则
 
 不要用不符合 Guanlan 最佳使用方式的打法去评价 Guanlan。
@@ -145,6 +151,7 @@ guanlan search "华为手机" --scope social_web --limit 80 --trace
 - 超长 query 要拆成多个问题，不要一次塞 200 字。
 - 多实体对比要拆成单实体检索，再用 `compare` / `dossier` 汇总。
 - 实时题优先 `hotnews`，不要只看 `search`。
+- 实时体育、灾害预警、安全漏洞等垂直题优先读取 Guanlan 推荐的 direct source seeds，再扩大搜索。
 - 技术题优先 `research --preset tech` 或 `search + feeds`，不要只看社区搜索结果。
 - `source_type` 只作辅助，不要把它当唯一真相；结合 domain、authority_score、evidence_role 一起判断。
 

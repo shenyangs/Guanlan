@@ -43,6 +43,14 @@ weather/disaster alerts (`weather_disaster`), sports (`sports`), science-news ve
 (`test_prep`), university admissions/advisor pages (`university`), academic indexing/submission
 (`academic`), and product/company reputation (`reputation`).
 
+Vertical entrypoint rule: for high-confidence vertical lookup tasks, Guanlan may inject direct
+source seeds and `guanlan read` followups before or alongside search results. Treat these as
+authoritative entrypoints to read, not as final answers. This is especially important for sports
+scores/schedules/standings, weather or disaster alerts, CVE/security advisories, science agency
+claims, entertainment charts/ratings/box office, academic indexing, and exam-official information.
+Do not report "Guanlan found nothing" until the recommended direct `read` commands and the matching
+scope/preset search have been tried.
+
 Agent workflow ladder rule: do not reduce Guanlan to one generic `search` call. Use a dynamic
 minimum workflow:
 - 2-step: `search -> read` when the result set is already clearly usable and you only need to verify a representative original page.
@@ -84,6 +92,7 @@ guanlan search "K-pop 最新回归" --profile hybrid --scope jp_kr_entertainment
 guanlan search "OpenSSL CVE 最新 漏洞 影响版本" --scope cybersecurity --limit 80 --trace
 guanlan search "台风 路径 中央气象台 日本气象厅" --scope weather_disaster --limit 80 --trace
 guanlan search "梅西 比赛 伤病 最新" --scope sports --limit 80
+guanlan research "NBA季后赛2026年首轮战绩比分" --preset sports --read-top 5
 guanlan search "詹姆斯韦伯 外星生命 NASA" --scope science --profile english --limit 80
 guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80
 guanlan search --list-scopes

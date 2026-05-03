@@ -388,6 +388,21 @@ class TestCLI:
         capsys.readouterr()
         assert calls[0]["limit"] == DEFAULT_SEARCH_LIMIT
 
+    def test_search_network_option_is_passed_to_webtools(self, capsys, monkeypatch):
+        calls = []
+
+        def fake_search_web(*_args, **kwargs):
+            calls.append(kwargs)
+            return []
+
+        monkeypatch.setattr("guanlan.webtools.search_web", fake_search_web)
+
+        with patch("sys.argv", ["guanlan", "search", "人工智能", "--network", "direct", "--json"]):
+            main()
+
+        capsys.readouterr()
+        assert calls[0]["network_mode"] == "direct"
+
     def test_hotnews_default_limit_is_expanded(self, capsys, monkeypatch):
         calls = []
 

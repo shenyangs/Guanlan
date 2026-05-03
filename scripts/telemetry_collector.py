@@ -555,6 +555,26 @@ def summary():
                 current - (query_one(conn, "SELECT MAX(received_ms) FROM events") or current),
             ),
             "active_now": query_one(conn, "SELECT COUNT(*) FROM active_invocations"),
+            "all_time_unique_installs": query_one(
+                conn,
+                """
+                SELECT COUNT(DISTINCT install_id) FROM (
+                    SELECT install_id FROM events WHERE install_id <> ''
+                    UNION
+                    SELECT install_id FROM feedback WHERE install_id <> ''
+                )
+                """,
+            ),
+            "all_time_unique_agents": query_one(
+                conn,
+                """
+                SELECT COUNT(DISTINCT agent_id) FROM (
+                    SELECT agent_id FROM events WHERE agent_id <> ''
+                    UNION
+                    SELECT agent_id FROM feedback WHERE agent_id <> ''
+                )
+                """,
+            ),
             "calls_24h": calls_24h,
             "calls_7d": calls_7d,
             "active_installs_24h": active_installs_24h,
@@ -670,6 +690,8 @@ def render_dashboard():
     cards = [
         ("当前并发 / Active Concurrency", data["active_now"]),
         ("最近事件 / Last Event", fmt_ms(data["last_event_age_ms"]) + " 前"),
+        ("全部独立设备 / All-time Unique Devices", data["all_time_unique_installs"]),
+        ("全部独立 Agent / All-time Unique Agents", data["all_time_unique_agents"]),
         ("24h 调用 / 24h Calls", data["calls_24h"]),
         ("7d 调用 / 7d Calls", data["calls_7d"]),
         ("24h 反馈 / 24h Feedback", data["feedback_24h"]),

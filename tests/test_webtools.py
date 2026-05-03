@@ -10,6 +10,7 @@ import pytest
 
 from guanlan import webtools
 from guanlan.limits import DEFAULT_READ_FALLBACK_LIMIT, DEFAULT_RESEARCH_LIMIT, DEFAULT_SEARCH_LIMIT
+from guanlan.source_seeds import direct_source_seeds, is_live_sports_lookup
 
 
 class _FakeResponse:
@@ -138,6 +139,50 @@ def test_search_quality_profile_detects_new_route_intents():
         quality = webtools.detect_search_quality_profile(query, profile="china")
         assert quality["intent"] == intent
         assert source_type in quality["preferred_source_types"]
+
+
+def test_direct_source_seeds_cover_vertical_lookups_without_treating_dev_tasks_as_scores():
+    nba_seeds = direct_source_seeds(
+        "NBA季后赛2026年首轮战绩比分",
+        intents=["sports"],
+        scopes=["sports"],
+    )
+    weather_seeds = direct_source_seeds("台风 路径 最新 中央气象台 日本气象厅", intents=["weather_disaster"])
+    security_seeds = direct_source_seeds("CVE-2026-12345 OpenSSL 漏洞 影响版本", intents=["cybersecurity"])
+
+    assert any("espn.com/nba/story" in item["url"] for item in nba_seeds)
+    assert any("nmc.cn" in item["url"] for item in weather_seeds)
+    assert any("CVE-2026-12345" in item["url"] for item in security_seeds)
+    assert is_live_sports_lookup("NBA季后赛2026年首轮战绩比分", intents=["sports"])
+    assert not is_live_sports_lookup("NBA API 开源项目 教程", intents=["tech", "sports"])
+
+
+def test_search_web_adds_direct_sports_seeds_when_search_is_empty(monkeypatch):
+    requested = []
+
+    def fake_search(query, limit=10):
+        requested.append(query)
+        return []
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web(
+        "NBA季后赛2026年5月战绩 首轮比分",
+        backend="duckduckgo",
+        profile="china",
+        scope="sports",
+        limit=5,
+        trace=True,
+    )
+
+    urls = [item["url"] for item in results]
+    assert requested
+    assert any("espn.com/nba/story" in url for url in urls)
+    assert any("nba.com/games" in url for url in urls)
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+    assert any(item["backend"].startswith("direct:sports") and item["status"] == "ok" for item in diagnostics)
+    context = webtools.format_search_context(results)
+    assert "高确定性垂直场景" in context
 
 
 def test_entertainment_scopes_use_short_site_expression(monkeypatch):
@@ -1392,6 +1437,50 @@ def test_research_english_profile_adapts_legacy_tech_preset(monkeypatch):
     assert packet["route_plan"]["recommended_commands"]
 
 
+def test_research_overrides_wrong_tech_preset_for_live_sports_lookup(monkeypatch):
+    search_calls = []
+
+    def fake_search(query, **kwargs):
+        search_calls.append(kwargs)
+        scope = kwargs.get("scope") or ""
+        return [
+            {
+                "title": "ESPN NBA Scoreboard",
+                "url": "https://www.espn.com/nba/scoreboard",
+                "snippet": "NBA scores schedule standings.",
+                "source": "fixture",
+                "rank": 1,
+                "domain": "espn.com",
+                "source_type": "体育/赛事/转会",
+                "matched_scope": scope or "sports",
+                "trust_level": 4,
+                "evidence_role": "official_stat",
+                "score": 5.0,
+                "topic_key": "nba",
+                "topic_role": "single",
+                "topic_size": 1,
+                "trace": {},
+            }
+        ]
+
+    monkeypatch.setattr(webtools, "search_web", fake_search)
+    monkeypatch.setattr("guanlan.feeds.fetch_feed_source", lambda *_args, **_kwargs: [])
+
+    packet = webtools.build_research_packet(
+        "NBA季后赛2026年首轮战绩比分",
+        preset="tech",
+        profile="china",
+        read_top=0,
+    )
+
+    assert packet["preset"] == "sports"
+    assert packet["preset_override"]["from"] == "tech"
+    assert packet["preset_override"]["to"] == "sports"
+    assert "sports" in packet["scopes"]
+    assert any(call.get("scope") == "sports" for call in search_calls)
+    assert not any(group.get("type") == "feed" for group in packet["result_groups"])
+
+
 def test_research_tech_route_forces_rss_discovery(monkeypatch):
     search_calls = []
     feed_calls = []
@@ -2387,6 +2476,86 @@ def test_format_search_trace_includes_reporting_contract_for_quality_warn(monkey
     assert "run_followups_now" in trace
     assert "run_immediately" in trace
     assert "action:" in trace
+
+
+def test_search_auto_network_falls_back_to_proxy_and_redacts_credentials(monkeypatch):
+    monkeypatch.setenv("GUANLAN_PROXY_URL", "http://user:pass@127.0.0.1:7890")
+    monkeypatch.setattr(webtools, "_NETWORK_HEALTH_CACHE", {})
+    seen_modes = []
+
+    def fake_bing(query, limit=10, network_mode="current"):
+        seen_modes.append(network_mode)
+        if network_mode != "proxy":
+            raise TimeoutError("timed out")
+        return [
+            webtools.SearchResult(
+                title="Agent search result",
+                url="https://example.com/network",
+                snippet="agent search result",
+                source="bing",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_bing", fake_bing)
+
+    results = webtools.search_web("agent search", backend="bing", profile="english", trace=True)
+
+    assert seen_modes == ["current", "proxy"]
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+    assert diagnostics[0]["status"] == "ok"
+    assert diagnostics[0]["network_mode"] == "proxy"
+    assert diagnostics[0]["network_attempts"][0]["status"] == "network_unreachable"
+    assert diagnostics[0]["network_attempts"][1]["status"] == "ok"
+    network_profile = results[0]["trace"]["network_profile"]
+    assert network_profile["proxy_detected"] is True
+    assert network_profile["proxy"] == "http://***@127.0.0.1:7890"
+    assert "user:pass" not in json.dumps(network_profile)
+
+
+def test_search_direct_network_bypasses_proxy_auto_fallback(monkeypatch):
+    monkeypatch.setenv("GUANLAN_PROXY_URL", "http://127.0.0.1:7890")
+    seen_modes = []
+
+    def fake_duckduckgo(query, limit=10, network_mode="current"):
+        seen_modes.append(network_mode)
+        return [
+            webtools.SearchResult(
+                title="Direct network result",
+                url="https://example.com/direct",
+                snippet="direct network result",
+                source="duckduckgo",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_duckduckgo)
+
+    results = webtools.search_web(
+        "direct network result",
+        backend="duckduckgo",
+        network_mode="direct",
+        trace=True,
+    )
+
+    assert seen_modes == ["direct"]
+    assert results[0]["trace"]["backend_diagnostics"][0]["network_mode"] == "direct"
+
+
+def test_search_trace_marks_network_failure_as_not_empty_evidence(monkeypatch):
+    monkeypatch.delenv("GUANLAN_PROXY_URL", raising=False)
+    monkeypatch.setattr(webtools, "_NETWORK_HEALTH_CACHE", {})
+
+    def fake_duckduckgo(query, limit=10, network_mode="current"):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_duckduckgo)
+
+    results = webtools.search_web("network failure", backend="duckduckgo", trace=True)
+    trace = webtools.format_search_trace(results)
+
+    assert not results
+    assert results.diagnostics["backend_diagnostics"][0]["status"] == "network_unreachable"
+    assert "network_unreachable" in trace
+    assert "不要汇报为无资料" in trace
 
 
 def test_format_source_chart_shows_type_and_domain_distribution():

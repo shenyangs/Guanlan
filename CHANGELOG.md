@@ -8,6 +8,31 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.4.2 - 2026-05-03
+
+### Added
+
+- 新增搜索网络路径控制：`guanlan search ... --network auto/current/direct/proxy`，用于在代理、直连、当前环境之间显式切换，降低弱网、代理失效或环境切换时的误判。
+- 搜索 trace/context 新增 `network_profile`、`network_health` 与逐后端 `network_attempts`，会标记 `network_unreachable`、`proxy_error`、`network_changed` 等状态，提醒 Agent 不要把网络问题汇报成“没有资料”。
+- 新增 `guanlan/source_seeds.py`：为体育比分/赛程、天气灾害、CVE/安全公告、科学机构声明、文娱榜单/票房、学术索引、考试官方信息等高确定性垂直任务提供 direct source seeds。
+- `route` 推荐命令现在可在高确定性垂直场景里优先给出 `guanlan read` 权威入口，例如 NBA/ESPN 赛程比分、中央气象台/日本气象厅、NVD/CVE/CISA、NASA/ESA、Billboard/Oricon、NEEA/IELTS/ETS 等。
+- 遥测 dashboard 新增全部独立设备与全部独立 Agent 统计，帮助观察真实使用覆盖面。
+
+### Changed
+
+- 搜索后端调用统一走网络路径封装：`auto` 会按场景尝试 current/direct/proxy，不再把单一路径超时直接当作后端失败或资料为空。
+- DuckDuckGo 恢复补搜、多实体 fan-out、高校开放补搜和站内补搜都继承网络路径诊断，trace 能看到每次补搜使用的网络模式。
+- 高确定性垂直场景会在搜索候选不足或实时体育任务中注入少量 direct source seeds；这些入口只作为“先读哪里”的权威候选，不被包装成最终答案。
+- `research` 增加 preset 纠偏：当用户 query 明显命中体育、天气、安全、文娱、考试等更强垂直路线时，会自动纠正不匹配 preset，避免把任务带到错误信源池。
+- 体育信源分类补充 NBA.com、ESPN 等域名，并为体育结果补充 `official_stat`、`sports_report`、`transfer_report` 等证据角色。
+- Agent 文档、Playbook、Skill 和 AGENTS 规则同步补充“垂直权威入口”使用纪律：先 read direct seeds，再用匹配的 preset/scope 扩大证据面。
+- 官网展示版本号同步到 `0.4.2`。
+
+### Notes
+
+- 本版继续保持默认候选池不缩水；direct source seeds 是补强“该先读哪个权威入口”，不是减少搜索结果池。
+- 网络路径诊断只解释当前搜索后端的可达性，不替代事实判断；看到 `network_unreachable/proxy_error` 时应复测网络或切换 `--network`，不要写成“中文互联网没有相关信息”。
+
 ## v0.4.1 - 2026-05-03
 
 ### Added

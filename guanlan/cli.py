@@ -242,6 +242,8 @@ def main():
                           help="Search backend: auto, duckduckgo, bing, baidu, wechat-sogou, or plugin:name")
     p_search.add_argument("--profile", choices=VALID_PROFILES, default="",
                           help="Region profile: global, china, english, or hybrid")
+    p_search.add_argument("--network", choices=["auto", "current", "direct", "proxy"], default="auto",
+                          help="Network path for search backends: auto, current env, direct, or proxy")
     p_search.add_argument("--format", choices=["markdown", "json", "context", "prompt"], default="markdown",
                           help="Output format")
     p_search.add_argument("--json", action="store_true",
@@ -1337,6 +1339,7 @@ def _cmd_search(args):
             scope=args.scope or None,
             backend=args.backend,
             profile=args.profile or None,
+            network_mode=args.network,
             trace=args.trace,
             cluster_threshold=args.cluster_threshold,
             cache_ttl=max(args.cache_ttl, 0),

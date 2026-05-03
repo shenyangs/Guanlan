@@ -45,6 +45,7 @@ metadata:
 - 强路由命中时直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮；只有意图混合、拿不准信源角色、或需要解释路由时，才先跑 `guanlan route "query" --json`。
 - 强路由包括：欧美娱乐 `global_entertainment`、日韩娱乐 `jp_kr_entertainment`、CVE/反诈 `cybersecurity`、天气灾害 `weather_disaster`、体育 `sports`、科学新闻 `science`、职场薪资面经 `career`、播客 `podcast`、考试备考 `test_prep`、高校招生导师 `university`、学术投稿检索 `academic`、产品/公司口碑 `reputation`。
 - 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究至少走 `route -> research -> scoped search`；热点题再补 `hotnews`；技术/AI 题再补 `feeds`；来源过窄时再补 `dossier/compare/timeline`。
+- 体育比分/赛程、天气灾害、CVE、安全公告、科学机构声明、文娱榜单/票房、考试官方信息等高确定性垂直题，优先执行 `route` 推荐的 direct `guanlan read` 命令，再用匹配的 `preset/scope` 扩大证据面；不要只看搜索引擎是否返回。
 - 在完成当前档位要求的 Guanlan 工具前，不要立刻切 `web_search/web_fetch`。`quality_summary=warn` 通常表示证据包还不完整，不等于 Guanlan 搜索失败。
 - 做 benchmark 时不要误用：实时题必须带 `hotnews`，技术/AI 题必须带 `feeds` 或 `research --preset tech`，政策题不要只测单次泛搜。
 - 如果 Agent/MCP/自动化平台能设置工具 timeout：`search/read/status/doctor` 用 60-90 秒；`hotnews/feeds/pulse/read batch` 用 120 秒；`research/compare/timeline/dossier/archive ingest-research` 用 180-300 秒；安装/升级/发布 smoke 用 300-600 秒。
@@ -104,6 +105,7 @@ guanlan search "BLACKPINK K-pop comeback" --profile hybrid --scope jp_kr_enterta
 guanlan search "OpenSSL CVE 最新 漏洞 影响版本" --scope cybersecurity --limit 80 --trace
 guanlan search "台风 路径 中央气象台 日本气象厅" --scope weather_disaster --limit 80 --trace
 guanlan search "梅西 比赛 伤病 最新" --scope sports --limit 80
+guanlan research "NBA季后赛2026年首轮战绩比分" --preset sports --read-top 5
 guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80
 guanlan search "最近 query 热点" --profile china --trace
 guanlan search "中文问题" --profile china --limit 80 --trace  # 查看 Baidu/Bing/DDG 状态与 backend_recovery

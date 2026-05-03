@@ -123,6 +123,17 @@ def test_route_plan_detects_security_weather_sports_science_gaps():
     assert "science" in science.preferred_scopes
 
 
+def test_route_plan_recommends_direct_reads_for_live_nba_lookup():
+    plan = build_route_plan("NBA季后赛2026年首轮战绩比分", profile="china")
+
+    assert plan.primary_intents[0] == "sports"
+    assert any(command.startswith("guanlan read ") and "espn.com/nba/story" in command for command in plan.recommended_commands)
+    assert any("nba.com/games" in command for command in plan.recommended_commands)
+    read_index = next(idx for idx, command in enumerate(plan.recommended_commands) if command.startswith("guanlan read "))
+    search_index = next(idx for idx, command in enumerate(plan.recommended_commands) if command.startswith("guanlan search "))
+    assert read_index < search_index
+
+
 def test_route_plan_detects_career_ecommerce_podcast_test_prep():
     career = build_route_plan("字节 AI 产品经理 校招 薪资 面经", profile="china")
     ecommerce = build_route_plan("今年抖音小店还值得做吗 真实商家反馈", profile="china")
