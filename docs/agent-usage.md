@@ -28,7 +28,14 @@
 - Agent 平台外层 timeout 要宽松：不要用 10-30 秒去包住 `research`、`feeds` 或 `hotnews` 这种组合命令；超时只能说明网络/上游抖动，不代表没有证据。
 - 用户需要建议、影响判断、下一步行动，或询问“为什么会搜这个”时，优先使用 `research --advisor`，但把助理视角当作证据边界和写作规则，由你结合用户问题生成自然建议；不要机械复述模板，也不要当作用户真实意图。
 - 不确定该查哪些信源时，先用 `guanlan route "关键词"` 看需求路由；路由计划是软约束，优先源用于提高适配度，开放网页兜底用于防止信源池过窄。
-- 明确命中专门分类时，直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮。欧美娱乐、日韩娱乐、CVE/反诈、天气灾害、体育、科学新闻、职场薪资面经、播客、考试备考、高校招生导师、学术投稿检索、产品/公司口碑都属于强路由。
+
+## 轻重分流
+
+- 不确定该轻搜还是深查时，先跑 `guanlan workflow "关键词" --json`。它只做本地判断，不联网，不会改变基础搜索行为。
+- `direct`：简单官网、链接、事实入口和轻量资料，直接 `search -> read optional`，不要过度规划。
+- `guided`：政策、财经、安全、技术、热点、口碑等需要信源分层的问题，走 `route -> research -> scoped search`，科技题补 RSS，热点题补 hotnews。
+- `investigate`：用户明确要深度研究、对比、时间线、档案、高影响核验或可复用证据包时，使用 `guanlan investigate "关键词" --limit 80 --format context`。
+- 明确命中专门分类时，直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮。欧美娱乐、日韩娱乐、CVE/反诈、天气灾害、体育、财经/股票/宏观金融、科学新闻、职场薪资面经、播客、考试备考、高校招生导师、学术投稿检索、产品/公司口碑都属于强路由。
 - `research` 会附带证据审计提示：如果同一模型、版本号、价格、参数量或发布时间出现不同说法，先把冲突和来源日期讲清楚，再给取舍依据；不要把观澜的冲突提示当成最终裁决。
 
 ## 动态工作流档位
@@ -42,7 +49,7 @@
 只有完成当前档位要求的 Guanlan 工具后，仍缺关键证据，才切到通用 `web_search` / `web_fetch`。
 如果 trace 或 context 中出现 `external_fetch_strategy`，可以临时调用宿主平台的 WebFetch/WebRead 读取 Guanlan 推荐 URL。外显时要说清楚：这是 Guanlan 主动规划的“定点补证”策略，不是 Guanlan 搜索失败。
 
-对于体育比分/赛程、天气灾害、CVE/安全公告、科学机构声明、文娱榜单/票房、考试官方信息这类高确定性垂直题，先看 `guanlan route` 给出的 direct `guanlan read` 命令。这些是权威入口候选，应该先读取核验，再用 `research/search` 扩大信源面。
+对于体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE/安全公告、科学机构声明、文娱榜单/票房、考试官方信息这类高确定性垂直题，先看 `guanlan route` 给出的 direct `guanlan read` 命令。这些是权威入口候选，应该先读取核验，再用 `research/search` 扩大信源面。
 
 ## Benchmark 纪律
 
@@ -90,6 +97,12 @@
 | “查电商/零售/产业带” | `guanlan search "关键词" --profile china --scope ecommerce` |
 | “查高校招生/导师/院系官网” | `guanlan research "关键词" --preset university --read-top 0` |
 | “查影视/综艺/明星/游戏/票房口碑” | `guanlan research "关键词" --preset entertainment --read-top 0` |
+| “查股票/公司财报公告/风险” | 先 `guanlan stock detail "宁德时代"`，再 `guanlan research "宁德时代 股价 财报 公告 最近风险" --preset finance --read-top 5 --advisor` |
+| “查行情/指数/股价” | `guanlan stock quote "上证指数"` 或 `guanlan stock quote "600519"`，再按需 `guanlan search "上证指数 今日 行情" --scope finance_quote --limit 80 --trace` |
+| “查资金流向/榜单/大盘概览” | `guanlan stock fundflow "600519"`、`guanlan-stock rank --sort turnover --limit 20`、`guanlan-stock index` |
+| “查公告/财报/监管/问询函” | `guanlan search "贵州茅台 公告 财报" --scope finance_disclosure --limit 80 --trace` |
+| “查宏观金融/央行/统计局数据” | `guanlan search "社融 CPI 降息 央行" --scope finance_macro --limit 80 --trace` |
+| “查雪球/股吧/投资者情绪” | `guanlan search "某股票 雪球 股吧 情绪" --scope finance_sentiment --limit 80 --trace` |
 | “查欧美娱乐/明星/巡演/新专辑/榜单” | `guanlan research "Taylor Swift 最新动态" --preset global_entertainment --profile english` |
 | “查日韩娱乐/K-pop/J-pop/韩剧日剧” | `guanlan research "BLACKPINK K-pop 最新回归" --preset jp_kr_entertainment --profile hybrid` |
 | “查 CVE/漏洞/补丁/诈骗短信” | `guanlan research "OpenSSL CVE 最新 漏洞" --preset cybersecurity --read-top 5` |
@@ -104,6 +117,8 @@
 | “查英文政策/监管/标准原文” | `guanlan research "AI regulation NIST standard" --preset global_policy --profile english` |
 | “查英文社区/评价样本” | `guanlan research "Product reviews Reddit G2" --preset global_reputation --profile english --read-top 0` |
 | “我该去哪搜/怎么分信源/该跑哪个命令” | `guanlan route "关键词"`，先看 `recommended_commands` |
+| “这个任务该轻搜还是深查” | `guanlan workflow "关键词" --json` |
+| “我要系统深查/证据包/高影响核验” | `guanlan investigate "关键词" --limit 80 --format context` |
 | “帮我查清楚并给依据” | `guanlan research "关键词" --profile china` |
 | “查完后给建议/下一步/可能原因” | `guanlan research "关键词" --profile china --advisor` |
 | “帮我对比/竞品分析/多个方案怎么选” | `guanlan compare "A" "B" --focus "价格 口碑 风险" --limit 80 --format context` |
@@ -172,7 +187,7 @@
 | “导出真实任务评测池” | `guanlan eval tasks --format jsonl` |
 | “发版前检查稳健性” | `guanlan quality robustness` |
 
-CLI 是默认主路径；命令选择不确定时先跑 `guanlan route "用户需求"`，按 `recommended_commands` 起手。若当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_capabilities`、`guanlan_search`、`guanlan_route`、`guanlan_read`、`guanlan_research`、`guanlan_compare`、`guanlan_timeline`、`guanlan_dossier`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_feeds`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
+CLI 是默认主路径；命令轻重不确定时先跑 `guanlan workflow "用户需求"`，信源不确定时再跑 `guanlan route "用户需求"`，按 `recommended_commands` 起手。若当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_capabilities`、`guanlan_search`、`guanlan_workflow`、`guanlan_route`、`guanlan_read`、`guanlan_research`、`guanlan_compare`、`guanlan_timeline`、`guanlan_dossier`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_feeds`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
 
 本地 HTTP 服务默认只建议监听 `127.0.0.1`。如果用户明确要求监听局域网或服务器公网地址，必须提醒其设置 `--token` 或 `GUANLAN_SERVE_TOKEN`，因为只读接口也可能暴露本地 archive 内容和搜索行为。
 
@@ -242,6 +257,18 @@ guanlan search "某电影 票房 豆瓣评分" --profile china --scope entertain
 ```
 
 文娱、影视、综艺、明星、游戏、票房和评分问题使用文娱 scope。它是软路由，不会只看白名单；重点是让 Agent 分清平台热度、用户评分、产业报道、宣发通稿和粉圈讨论。
+
+财经、股票、行情、资金流向和榜单问题先走结构化数据层，避免把雪球、东方财富等动态行情页当成普通文章硬读。`guanlan stock` 是主 CLI 入口，`guanlan-stock` 是同能力的独立入口；它只整理公开行情证据，不输出买卖建议。
+
+```bash
+guanlan stock quote "贵州茅台"
+guanlan stock detail "600519"
+guanlan stock fundflow "宁德时代"
+guanlan-stock rank --sort turnover --limit 20
+guanlan-stock index
+```
+
+如果 `guanlan read` 对雪球等财经页返回 WAF、安全验证或动态页壳，Agent 不要反复重试，也不要读取 Cookie；改用结构化行情、公告披露源和财经新闻交叉补证。
 
 ```bash
 guanlan search "清华大学计算机系研究生招生 导师" --profile china --scope university
@@ -372,7 +399,7 @@ Preset 会自动选择一个或多个 scope，并可包含平台定向站点。�
 | `tech` | `tech_dev` + `social_web`；V2EX、掘金、SegmentFault、GitHub | 技术选型、开发者社区、工程实践。 |
 | `academic` | `academic` + `tech_dev` + `business`；Elsevier、Engineering Village、IEEE、CNKI、百度学术 | EI/SCI/Scopus、学术会议、论文投稿、数据库检索和高校认定口径。 |
 | `university` | `university` + `academic` + `tech_dev`；高校、研究生招生网和院系官网 | 研究生招生、导师名单、院系介绍、招生目录、招生简章、推免复试和培养方案。 |
-| `finance` | `finance` + `business`；财联社、东方财富、雪球 | 财经、资本市场、公司和宏观金融。 |
+| `finance` | `finance_disclosure` + `finance_quote` + `finance_news` + `finance_macro` + `finance_research` + `finance_sentiment`；巨潮、交易所、东方财富、财联社、央行/统计局、雪球 | 股票/基金/ETF、行情、公告财报、监管风险、宏观金融、研报观点和投资者情绪；必须分层，不输出投资建议。 |
 | `local` | `local_official` + `gov` + `party_central` | 地方政策、区域产业、城市治理。 |
 
 然后选择 2-4 个高质量结果继续读原文：

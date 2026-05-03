@@ -94,6 +94,33 @@ def _tool_definitions() -> list[dict]:
             },
         },
         {
+            "name": "guanlan_stock",
+            "description": (
+                "Fetch structured public stock data without reading dynamic finance pages: quote, detail, "
+                "fundflow, news, plate, rank, index, or search. Use this before guanlan_read when finance "
+                "pages are WAF-protected or only return a dynamic shell. Output is evidence data, not "
+                "investment advice."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "enum": ["quote", "detail", "fundflow", "news", "plate", "rank", "index", "search"],
+                        "default": "quote",
+                    },
+                    "target": {"type": "string", "description": "Stock code/name/ticker, e.g. 600519, 贵州茅台, NVDA"},
+                    "query": {"type": "string", "description": "Stock search keyword or noisy finance query"},
+                    "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
+                    "news_limit": {"type": "integer", "default": 12, "minimum": 1, "maximum": 50},
+                    "sort": {"type": "string", "default": "turnover"},
+                    "direct": {"type": "string", "enum": ["down", "up"], "default": "down"},
+                    "offset": {"type": "integer", "default": 0, "minimum": 0},
+                    "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
+                },
+            },
+        },
+        {
             "name": "guanlan_route",
             "description": (
                 "Explain Guanlan's source and demand routing plan before searching. Use this when the "
@@ -116,6 +143,34 @@ def _tool_definitions() -> list[dict]:
                         "minimum": 1,
                         "maximum": MAX_RESEARCH_LIMIT,
                     },
+                    "read_top": {"type": "integer", "minimum": 0, "maximum": 10},
+                    "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
+                },
+            },
+        },
+        {
+            "name": "guanlan_workflow",
+            "description": (
+                "Decide whether a user request should stay on a light search/read path or move to "
+                "research/compare/timeline/dossier/investigate. Use this to avoid overthinking basic "
+                "search while still escalating serious research."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string"},
+                    "command": {
+                        "type": "string",
+                        "enum": ["search", "read", "route", "research", "compare", "timeline", "dossier", "investigate"],
+                        "default": "search",
+                    },
+                    "preset": {"type": "string", "default": "general"},
+                    "scope": {"type": "string"},
+                    "site": {"type": "string"},
+                    "sites": {"type": "array", "items": {"type": "string"}},
+                    "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
+                    "limit": {"type": "integer", "default": DEFAULT_SEARCH_LIMIT, "minimum": 1, "maximum": MAX_RESEARCH_LIMIT},
                     "read_top": {"type": "integer", "minimum": 0, "maximum": 10},
                     "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
                 },
@@ -186,6 +241,31 @@ def _tool_definitions() -> list[dict]:
                         "default": "brief",
                         "description": "Style for advisor guidance when advisor=true.",
                     },
+                },
+            },
+        },
+        {
+            "name": "guanlan_investigate",
+            "description": (
+                "Run Guanlan's explicit upper-layer investigation workflow. This composes route + "
+                "research evidence packets and returns workflow_decision metadata; it does not change "
+                "the lightweight behavior of guanlan_search."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string"},
+                    "preset": {"type": "string", "default": "general"},
+                    "limit": {"type": "integer", "default": DEFAULT_RESEARCH_LIMIT, "minimum": 1, "maximum": MAX_RESEARCH_LIMIT},
+                    "read_top": {"type": "integer", "minimum": 0, "maximum": 10},
+                    "search_backend": {"type": "string", "default": "auto"},
+                    "read_backend": {"type": "string", "enum": ["auto", "jina", "direct"], "default": "auto"},
+                    "max_read_chars": {"type": "integer", "minimum": 1},
+                    "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"]},
+                    "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "context"},
+                    "advisor": {"type": "boolean", "default": True},
+                    "advisor_style": {"type": "string", "enum": ["brief", "decision", "risk", "strategy"], "default": "strategy"},
                 },
             },
         },
@@ -479,8 +559,14 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             return format_search_prompt(results, query=str(args.get("query") or ""))
         return format_search_context(results, title=f"观澜搜索上下文 / {args.get('query', '')}")
 
+    if name == "guanlan_stock":
+        from guanlan.stock_cli import run_stock_tool
+
+        return run_stock_tool(args)
+
     if name == "guanlan_route":
         from guanlan.router import build_route_plan, format_route_plan_markdown
+        from guanlan.workflow_decider import decide_workflow, format_workflow_decision_markdown
 
         plan = build_route_plan(
             str(args.get("query", "")).strip(),
@@ -492,9 +578,41 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             limit=int(args.get("limit") or DEFAULT_RESEARCH_LIMIT),
             read_top=int(args["read_top"]) if args.get("read_top") is not None else None,
         )
+        decision = decide_workflow(
+            str(args.get("query", "")).strip(),
+            command="route",
+            preset=args.get("preset") or "general",
+            scope=args.get("scope") or None,
+            site=args.get("site") or None,
+            sites=args.get("sites") or None,
+            profile=args.get("profile") or "china",
+            limit=int(args.get("limit") or DEFAULT_RESEARCH_LIMIT),
+            read_top=int(args["read_top"]) if args.get("read_top") is not None else None,
+            route_plan=plan,
+        )
         if str(args.get("format") or "markdown") == "json":
-            return plan.to_dict()
-        return format_route_plan_markdown(plan)
+            payload = plan.to_dict()
+            payload["workflow_decision"] = decision.to_dict()
+            return payload
+        return format_route_plan_markdown(plan) + "\n\n" + format_workflow_decision_markdown(decision)
+
+    if name == "guanlan_workflow":
+        from guanlan.workflow_decider import decide_workflow, format_workflow_decision_markdown
+
+        decision = decide_workflow(
+            str(args.get("query", "")).strip(),
+            command=str(args.get("command") or "search"),
+            preset=args.get("preset") or "general",
+            scope=args.get("scope") or None,
+            site=args.get("site") or None,
+            sites=args.get("sites") or None,
+            profile=args.get("profile") or "china",
+            limit=int(args.get("limit") or DEFAULT_SEARCH_LIMIT),
+            read_top=int(args["read_top"]) if args.get("read_top") is not None else None,
+        )
+        if str(args.get("format") or "markdown") == "json":
+            return decision.to_dict()
+        return format_workflow_decision_markdown(decision)
 
     if name == "guanlan_read":
         from guanlan.webtools import read_url
@@ -550,6 +668,32 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         if output_format == "prompt":
             return format_research_prompt(packet)
         return format_research_markdown(packet)
+
+    if name == "guanlan_investigate":
+        from guanlan.investigation import (
+            build_investigation_packet,
+            format_investigation_context,
+            format_investigation_markdown,
+        )
+
+        packet = build_investigation_packet(
+            str(args.get("query", "")).strip(),
+            preset=str(args.get("preset") or "general"),
+            limit=int(args["limit"]) if args.get("limit") is not None else None,
+            read_top=int(args["read_top"]) if args.get("read_top") is not None else None,
+            search_backend=str(args.get("search_backend") or "auto"),
+            read_backend=str(args.get("read_backend") or "auto"),
+            max_read_chars=int(args["max_read_chars"]) if args.get("max_read_chars") is not None else None,
+            profile=args.get("profile") or None,
+            advisor=bool(args.get("advisor", True)),
+            advisor_style=str(args.get("advisor_style") or "strategy"),
+        )
+        output_format = str(args.get("format") or "context")
+        if output_format == "json":
+            return packet
+        if output_format == "markdown":
+            return format_investigation_markdown(packet)
+        return format_investigation_context(packet)
 
     if name == "guanlan_compare":
         from guanlan.research_workflows import (

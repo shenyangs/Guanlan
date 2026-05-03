@@ -15,6 +15,31 @@
 
 ## 版本路线
 
+### v0.5.0 研究工作流引擎
+
+> v0.4.5 已先行落地 P0 基座：`workflow`、`investigate`、`quality foundational` 和 MCP 工具面；后续 0.5.0 继续做更完整的 source registry / benchmark / archive 语义增强。
+
+
+目标：在不加重基础搜索的前提下，新增显式的上层研究工作流。核心原则是“轻任务不打扰，重任务不偷懒”。
+
+计划方向：
+
+- 新增基础功能防回退闸门，确保 `search/read/hotnews/research/archive` 的候选池和核心字段不缩水。
+- 新增 Agent 升档决策器，区分 `direct / guided / investigate`，避免简单搜索过度规划。
+- 新增 `guanlan investigate`，只在用户明确需要深度研究、多实体比较、高风险准确性或复杂证据包时使用。
+- 新增 `guanlan sources` 只读信源查询，让 Agent 能解释某类问题为什么优先哪些信源。
+- 新增 `guanlan eval suite`，把中文互联网真实任务基准沉淀成可复现评测。
+
+验收标准：
+
+- `guanlan search "query"`、`guanlan read "URL"` 默认行为不变重。
+- `investigate` 只复用现有 route/search/read/research/hotnews/feeds/workflow 模块，不另写搜索主链路。
+- 简单事实、入口、链接、轻量搜索不被强制升级为深度研究。
+- 复杂研究任务能输出执行步骤、证据包、质量边界、来源分布和下一步。
+- release gate 增加基础功能防回退检查。
+
+详细施工边界见 [Guanlan 0.5.0 施工方案](guanlan-0.5.0-construction-plan.md)。
+
 ### v0.1.8 搜索质量层
 
 目标：让 Agent 不只是“搜到东西”，而是知道搜索结果为什么可信、为什么靠前、哪里还不够。

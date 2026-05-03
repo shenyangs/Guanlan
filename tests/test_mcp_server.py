@@ -31,9 +31,12 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "guanlan_status" in names
     assert "guanlan_capabilities" in names
     assert "guanlan_search" in names
+    assert "guanlan_stock" in names
     assert "guanlan_route" in names
+    assert "guanlan_workflow" in names
     assert "guanlan_read" in names
     assert "guanlan_research" in names
+    assert "guanlan_investigate" in names
     assert "guanlan_compare" in names
     assert "guanlan_timeline" in names
     assert "guanlan_dossier" in names
@@ -55,11 +58,18 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "backend" in hotnews_tool["inputSchema"]["properties"]
     assert "newsnow_base_url" in hotnews_tool["inputSchema"]["properties"]
     search_tool = next(tool for tool in tools if tool["name"] == "guanlan_search")
+    stock_tool = next(tool for tool in tools if tool["name"] == "guanlan_stock")
     route_tool = next(tool for tool in tools if tool["name"] == "guanlan_route")
+    workflow_tool = next(tool for tool in tools if tool["name"] == "guanlan_workflow")
+    investigate_tool = next(tool for tool in tools if tool["name"] == "guanlan_investigate")
     assert "evidence roles" in route_tool["description"]
+    assert "avoid overthinking basic" in workflow_tool["description"]
+    assert "workflow_decision" in investigate_tool["description"]
     assert "prompt" in search_tool["inputSchema"]["properties"]["format"]["enum"]
     assert "cache_ttl=3600" in search_tool["description"]
     assert "do not shrink the evidence pool" in search_tool["description"]
+    assert "dynamic finance pages" in stock_tool["description"]
+    assert "detail" in stock_tool["inputSchema"]["properties"]["command"]["enum"]
     assert "prompt" in research_tool["inputSchema"]["properties"]["format"]["enum"]
     compare_tool = next(tool for tool in tools if tool["name"] == "guanlan_compare")
     timeline_tool = next(tool for tool in tools if tool["name"] == "guanlan_timeline")
@@ -217,6 +227,31 @@ def test_mcp_route_explains_source_plan():
     assert "reputation" in text
     assert "purchase_advice" in text
     assert "social_web" in text
+    assert "观澜工作流分流" in text
+
+
+def test_mcp_workflow_keeps_basic_search_light():
+    payload = mcp_server._run_tool("guanlan_workflow", {"query": "观澜 官网", "format": "json"})
+
+    assert payload["tier"] == "direct"
+    assert payload["recommended_entrypoint"] == "search"
+    assert payload["do_not_overthink"] is True
+
+
+def test_mcp_investigate_uses_investigation_module(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.investigation.build_investigation_packet",
+        lambda query, **_kwargs: {
+            "query": query,
+            "selected_evidence": [],
+            "workflow_decision": {"tier": "investigate", "query": query},
+            "investigation": {"principle": "先取证", "next_views": []},
+        },
+    )
+
+    payload = mcp_server._run_tool("guanlan_investigate", {"query": "某公司 风险", "format": "json"})
+
+    assert payload["workflow_decision"]["tier"] == "investigate"
 
 
 def test_mcp_capabilities_explains_entrypoints():
@@ -234,6 +269,18 @@ def test_mcp_capabilities_can_return_json():
     ids = {item["id"] for item in payload}
     assert "discover" in ids
     assert "hotnews" in ids
+
+
+def test_mcp_stock_tool_returns_markdown(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.stock_cli.run_stock_tool",
+        lambda args: "# 观澜行情\n\n- 名称: 贵州茅台",
+    )
+
+    text = mcp_server._run_tool("guanlan_stock", {"command": "quote", "target": "600519"})
+
+    assert "观澜行情" in text
+    assert "贵州茅台" in text
 
 
 def test_mcp_archive_search_uses_archive(monkeypatch):

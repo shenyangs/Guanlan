@@ -134,6 +134,41 @@ def test_route_plan_recommends_direct_reads_for_live_nba_lookup():
     assert read_index < search_index
 
 
+def test_route_plan_detects_finance_layers_and_commands():
+    plan = build_route_plan("宁德时代 股价 财报 公告 最近风险", profile="china")
+    intents = plan.primary_intents + plan.secondary_intents
+
+    assert "finance" in intents
+    assert "finance_quote" in intents
+    assert "finance_disclosure" in intents
+    assert "finance_disclosure" in plan.preferred_scopes
+    assert "finance_quote" in plan.preferred_scopes
+    assert "company_filing" in plan.evidence_roles
+    assert "market_quote" in plan.evidence_roles
+    assert plan.risk_level == "high"
+    assert "社交荐股" in plan.avoid_as_primary
+    assert any(command.startswith("guanlan stock quote") for command in plan.recommended_commands)
+    assert any(command.startswith("guanlan stock detail") for command in plan.recommended_commands)
+    assert any("--preset finance" in command for command in plan.recommended_commands)
+    assert any("--scope finance_disclosure" in command for command in plan.recommended_commands)
+    assert any(command.startswith("guanlan read ") and ("cninfo.com.cn" in command or "sse.com.cn" in command) for command in plan.recommended_commands)
+    assert any("投资建议" in warning for warning in plan.warnings)
+
+
+def test_route_plan_detects_macro_and_sentiment_finance_needs():
+    macro = build_route_plan("社融 CPI 降息 央行 最新", profile="china")
+    sentiment = build_route_plan("某股票 雪球 股吧 看多看空 情绪", profile="china")
+
+    assert "finance_macro" in macro.primary_intents + macro.secondary_intents
+    assert "finance_macro" in macro.preferred_scopes
+    assert "macro_data" in macro.evidence_roles
+    assert any("--scope finance_macro" in command for command in macro.recommended_commands)
+    assert "finance_sentiment" in sentiment.primary_intents + sentiment.secondary_intents
+    assert "finance_sentiment" in sentiment.preferred_scopes
+    assert "sentiment_sample" in sentiment.evidence_roles
+    assert any("--scope finance_sentiment" in command for command in sentiment.recommended_commands)
+
+
 def test_route_plan_detects_career_ecommerce_podcast_test_prep():
     career = build_route_plan("字节 AI 产品经理 校招 薪资 面经", profile="china")
     ecommerce = build_route_plan("今年抖音小店还值得做吗 真实商家反馈", profile="china")
@@ -267,6 +302,20 @@ def test_source_card_marks_entertainment_sources_as_sample_heavy():
     assert "music_chart" in billboard.content_roles
     assert soompi.scope_id == "jp_kr_entertainment"
     assert "translation_layer" in soompi.risk_tags
+
+
+def test_source_card_marks_finance_layers():
+    cninfo = source_card_for_domain("www.cninfo.com.cn")
+    quote = source_card_for_domain("quote.eastmoney.com")
+    xueqiu = source_card_for_domain("xueqiu.com")
+
+    assert cninfo.scope_id == "finance_disclosure"
+    assert "company_filing" in cninfo.content_roles
+    assert cninfo.authority_score > xueqiu.authority_score
+    assert quote.scope_id == "finance_quote"
+    assert "market_quote" in quote.content_roles
+    assert "sentiment_sample" in xueqiu.content_roles
+    assert "sample_bias" in xueqiu.risk_tags
 
 
 def test_route_cli_outputs_json(capsys):

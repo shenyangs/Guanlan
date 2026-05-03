@@ -373,22 +373,26 @@ def query_feedback_groups(conn, column, since_ms, limit=10):
     return [{"key": r["key"] or "unknown", "count": r["count"]} for r in rows]
 
 
-def query_platform_unique(conn, field, since_ms, limit=10):
+def query_platform_unique(conn, field, since_ms=None, limit=10):
     allowed = set(["install_id", "agent_id"])
     if field not in allowed:
         return []
+    where = "platform <> '' AND {field} <> ''".format(field=field)
+    params = []
+    if since_ms is not None:
+        where = "received_ms >= ? AND " + where
+        params.append(since_ms)
+    params.append(limit)
     rows = conn.execute(
         """
         SELECT platform AS key, COUNT(DISTINCT {field}) AS count
         FROM events
-        WHERE received_ms >= ?
-          AND platform <> ''
-          AND {field} <> ''
+        WHERE {where}
         GROUP BY platform
         ORDER BY count DESC, key ASC
         LIMIT ?
-        """.format(field=field),
-        (since_ms, limit),
+        """.format(field=field, where=where),
+        tuple(params),
     ).fetchall()
     return [{"key": r["key"] or "unknown", "count": r["count"]} for r in rows]
 
@@ -640,6 +644,8 @@ def summary():
             "platforms": query_groups(conn, "platform", week),
             "platform_unique_devices": query_platform_unique(conn, "install_id", week),
             "platform_unique_agents": query_platform_unique(conn, "agent_id", week),
+            "platform_unique_devices_all": query_platform_unique(conn, "install_id"),
+            "platform_unique_agents_all": query_platform_unique(conn, "agent_id"),
             "feedback_commands": query_feedback_groups(conn, "command", week, 12),
             "feedback_queries": query_feedback_groups(conn, "query_text", week, 12),
             "feedback_reasons": query_feedback_groups(conn, "reason_text", week, 12),
@@ -709,21 +715,24 @@ def render_dashboard():
     data = summary()
     task_24h = data["task_duration_24h"]
     session_24h = data["session_24h"]
-    cards = [
-        ("当前并发 / Active Concurrency", data["active_now"]),
-        ("最近事件 / Last Event", fmt_ms(data["last_event_age_ms"]) + " 前"),
+
+    core_cards = [
         ("全部独立设备 / All-time Unique Devices", data["all_time_unique_installs"]),
         ("全部独立 Agent / All-time Unique Agents", data["all_time_unique_agents"]),
+        ("24h 独立 Agent / 24h Unique Agents", data["unique_agents_24h"]),
+        ("24h 独立设备 / 24h Unique Devices", data["active_installs_24h"]),
+        ("24h 新增设备 / 24h New Devices", data["new_installs_24h"]),
+        ("24h 反馈 / 24h Feedback", data["feedback_24h"]),
+    ]
+    secondary_cards = [
+        ("当前并发 / Active Concurrency", data["active_now"]),
+        ("最近事件 / Last Event", fmt_ms(data["last_event_age_ms"]) + " 前"),
         ("24h 调用 / 24h Calls", data["calls_24h"]),
         ("7d 调用 / 7d Calls", data["calls_7d"]),
-        ("24h 反馈 / 24h Feedback", data["feedback_24h"]),
         ("7d 反馈 / 7d Feedback", data["feedback_7d"]),
         ("7d 反馈 Agent / 7d Feedback Agents", data["feedback_unique_agents_7d"]),
-        ("24h 独立 Agent / 24h Unique Agents", data["unique_agents_24h"]),
         ("7d 独立 Agent / 7d Unique Agents", data["unique_agents_7d"]),
-        ("24h 独立设备 / 24h Unique Devices", data["active_installs_24h"]),
         ("7d 独立设备 / 7d Unique Devices", data["active_installs_7d"]),
-        ("24h 新增设备 / 24h New Devices", data["new_installs_24h"]),
         ("24h 回访设备 / 24h Returning Devices", data["returning_installs_24h"]),
         ("Agent 日均调用 / Daily Calls per Agent", data["calls_per_agent_24h"]),
         ("设备日均调用 / Daily Calls per Device", data["calls_per_device_24h"]),
@@ -734,9 +743,13 @@ def render_dashboard():
         ("24h 错误率 / 24h Error Rate", data["error_rate_24h"]),
         ("24h 异常结束率 / 24h Orphan Rate", data["orphan_rate_24h"]),
     ]
-    card_html = "\n".join(
+    core_card_html = "\n".join(
+        "<div class='core-card'><span>{}</span><strong>{}</strong></div>".format(label, value)
+        for label, value in core_cards
+    )
+    secondary_card_html = "\n".join(
         "<div class='card'><span>{}</span><strong>{}</strong></div>".format(label, value)
-        for label, value in cards
+        for label, value in secondary_cards
     )
     recent_rows = []
     for row in data["recent"]:
@@ -806,26 +819,42 @@ def render_dashboard():
   <title>Guanlan Telemetry</title>
   <link rel="icon" href="/assets/guanlan-logo.svg" type="image/svg+xml">
   <style>
-    body {{ margin:0; font:14px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif; background:#f6f7f9; color:#20242a; }}
-    header {{ background:#111827; color:white; padding:18px 28px; }}
+    :root {{
+      --bg: #f5f5f7;
+      --card: #ffffff;
+      --card-border: #e7e7ec;
+      --text: #1d1d1f;
+      --muted: #6e6e73;
+      --shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+    }}
+    body {{ margin:0; font:14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }}
+    header {{ background:rgba(255,255,255,0.86); border-bottom:1px solid #e8e8ee; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding:14px 24px; position:sticky; top:0; z-index:10; }}
     .brand {{ display:flex; align-items:center; gap:12px; }}
     .brand img {{ width:38px; height:38px; border-radius:8px; }}
     .brand-title {{ display:flex; flex-direction:column; }}
     .brand-title strong {{ font-size:20px; letter-spacing:0; }}
-    .brand-title span {{ color:#b8c2d6; font-size:12px; }}
-    main {{ padding:22px 28px 40px; max-width:1180px; margin:0 auto; }}
-    .cards {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; }}
-    .card, section {{ background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,.04); }}
+    .brand-title span {{ color:var(--muted); font-size:12px; }}
+    main {{ padding:20px 24px 36px; max-width:1240px; margin:0 auto; }}
+    .hero-cards {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }}
+    .hero-grid {{ display:grid; grid-template-columns:2fr 1fr 1fr; gap:12px; align-items:stretch; margin-top:10px; }}
+    .stats-cards {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-top:14px; }}
+    .core-card, .card, section {{ background:var(--card); border:1px solid var(--card-border); border-radius:8px; box-shadow:var(--shadow); }}
+    .core-card {{ padding:14px 16px; min-height:96px; }}
+    .core-card span {{ display:block; color:var(--muted); font-size:12px; }}
+    .core-card strong {{ display:block; margin-top:8px; font-size:36px; line-height:1; }}
     .card {{ padding:14px 16px; }}
-    .card span {{ display:block; color:#667085; font-size:12px; }}
-    .card strong {{ display:block; margin-top:6px; font-size:28px; }}
+    .card span {{ display:block; color:var(--muted); font-size:12px; }}
+    .card strong {{ display:block; margin-top:6px; font-size:26px; line-height:1.1; }}
     .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px; margin-top:16px; }}
     section {{ padding:14px 16px; overflow:auto; }}
     h2 {{ margin:0 0 10px; font-size:15px; }}
     table {{ width:100%; border-collapse:collapse; }}
     td, th {{ padding:8px 6px; border-bottom:1px solid #eef0f3; text-align:left; white-space:nowrap; }}
-    th {{ color:#667085; font-size:12px; }}
+    th {{ color:var(--muted); font-size:12px; }}
     .recent {{ margin-top:16px; }}
+    @media (max-width: 1100px) {{
+      .hero-grid {{ grid-template-columns:1fr; }}
+    }}
   </style>
 </head>
 <body>
@@ -839,18 +868,23 @@ def render_dashboard():
     </div>
   </header>
   <main>
-    <div class="cards">{cards}</div>
+    <div class="hero-grid">
+      <div class="hero-cards">{core_cards}</div>
+      {core_platform_devices}
+      {core_platform_agents}
+    </div>
+    <div class="stats-cards">{secondary_cards}</div>
     <div class="grid">
       {surface}
-        {commands}
-        {agents}
-        {versions}
-        {platforms}
-        {platform_devices}
-        {platform_agents}
-        {feedback_commands}
-        {feedback_queries}
-        {feedback_reasons}
+      {commands}
+      {agents}
+      {versions}
+      {platforms}
+      {platform_devices}
+      {platform_agents}
+      {feedback_commands}
+      {feedback_queries}
+      {feedback_reasons}
       {depth}
       {quality}
     </div>
@@ -871,7 +905,10 @@ def render_dashboard():
   </main>
 </body>
 </html>""".format(
-        cards=card_html,
+        core_cards=core_card_html,
+        secondary_cards=secondary_card_html,
+        core_platform_devices=render_group("平台独立设备 / Platform Unique Devices (All-time)", data["platform_unique_devices_all"]),
+        core_platform_agents=render_group("平台独立 Agent / Platform Unique Agents (All-time)", data["platform_unique_agents_all"]),
         surface=render_group("入口分布 / Surface", data["surface"]),
         commands=render_group("命令分布 / Commands", data["commands"]),
         agents=render_group("Agent 类型 / Agent Types", data["agents"]),

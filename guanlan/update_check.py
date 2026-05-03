@@ -7,17 +7,21 @@ by human-facing entrypoints such as welcome, doctor, and check-update.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import requests
 
 PYPI_JSON_URL = "https://pypi.org/pypi/guanlan/json"
 DEFAULT_TIMEOUT_SECONDS = 1.2
+DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -97,6 +101,46 @@ def format_update_notice(info: UpdateInfo) -> str:
             "如果版本号或路径不对，请停止配置 MCP；Homebrew 仍然装到旧版时，临时使用 uv 路径。",
         ]
     )
+
+
+def format_compact_update_notice(info: UpdateInfo) -> str:
+    """Render a short stderr-safe update notice for routine commands."""
+    return "\n".join(
+        [
+            f"版本提醒：当前 v{info.current}，{info.source} 最新 v{info.latest}。",
+            "建议更新：uv tool install --force --upgrade guanlan",
+            "可运行 `guanlan doctor --install-check` 检查路径和版本漂移。",
+        ]
+    )
+
+
+def cached_update_info(
+    current: str,
+    *,
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    ttl_seconds: int | None = None,
+) -> UpdateInfo | None:
+    """Return update info using a small local cache to avoid per-command latency."""
+    if not update_checks_enabled():
+        return None
+    ttl = _cache_ttl_seconds(ttl_seconds)
+    cached = _load_update_cache()
+    now = time.time()
+    cached_latest = str((cached or {}).get("latest") or "").strip()
+    cached_source = str((cached or {}).get("source") or "PyPI")
+    checked_at = float((cached or {}).get("checked_at") or 0)
+    if cached and checked_at > 0 and now - checked_at <= ttl:
+        if cached_latest and is_newer_version(cached_latest, current):
+            return UpdateInfo(current=current, latest=cached_latest, source=cached_source)
+        return None
+
+    latest = latest_pypi_version(timeout=timeout)
+    _save_update_cache(latest, source="PyPI", checked_at=now)
+    if latest and is_newer_version(latest, current):
+        return UpdateInfo(current=current, latest=latest, source="PyPI")
+    if latest is None and cached_latest and is_newer_version(cached_latest, current):
+        return UpdateInfo(current=current, latest=cached_latest, source=cached_source)
+    return None
 
 
 def run_install_check(
@@ -215,3 +259,47 @@ def _unique_paths(paths: list[str] | None) -> list[str]:
         seen.add(normalized)
         output.append(path)
     return output
+
+
+def _cache_ttl_seconds(ttl_seconds: int | None = None) -> int:
+    if ttl_seconds is not None:
+        return max(int(ttl_seconds), 0)
+    raw = os.environ.get("GUANLAN_UPDATE_CHECK_TTL_SECONDS", "").strip()
+    if raw:
+        try:
+            return max(int(raw), 0)
+        except ValueError:
+            return DEFAULT_CACHE_TTL_SECONDS
+    return DEFAULT_CACHE_TTL_SECONDS
+
+
+def _update_cache_path() -> Path:
+    raw = os.environ.get("GUANLAN_UPDATE_CHECK_CACHE", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return Path.home() / ".guanlan" / "cache" / "update-check.json"
+
+
+def _load_update_cache() -> dict[str, object] | None:
+    path = _update_cache_path()
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _save_update_cache(latest: str | None, *, source: str, checked_at: float) -> None:
+    path = _update_cache_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "checked_at": checked_at,
+            "latest": latest or "",
+            "source": source,
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        return

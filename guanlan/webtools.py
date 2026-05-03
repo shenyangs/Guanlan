@@ -39,6 +39,7 @@ from guanlan.router import build_route_plan, format_route_plan_markdown
 from guanlan.source_seeds import (
     direct_source_seeds,
     dominant_vertical_preset,
+    is_finance_lookup,
     is_live_sports_lookup,
 )
 from guanlan.source_taxonomy import source_card_for_domain
@@ -59,6 +60,12 @@ _WEAK_READ_MARKERS = (
     "请完成安全验证",
     "访问受限",
     "验证码",
+    "访问过于频繁",
+    "请验证以继续访问",
+    "系统检测到您的ip",
+    "upgrade_browser",
+    "window.location.href",
+    "galileotelemetry",
     "登录后查看",
     "请先登录",
 )
@@ -363,10 +370,10 @@ _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
     "finance": {
         "name": "财经/资本市场",
         "terms": ("财经", "股票", "股价", "财报", "融资", "上市", "投资", "基金", "债券", "宏观", "资本市场", "英伟达", "nvidia", "大跌", "etf", "质押", "银行倒闭", "fedwatch", "降息"),
-        "preferred_scopes": ("finance", "business"),
-        "preferred_source_types": ("财经/资本市场", "商业/产业媒体"),
-        "caution_source_types": ("社交/内容平台",),
-        "guidance": "优先公告、财报、财经快讯和权威财经媒体，市场观点不等于建议。",
+        "preferred_scopes": ("finance", "finance_disclosure", "finance_company", "finance_quote", "finance_news", "finance_macro"),
+        "preferred_source_types": ("财经/公告披露", "财经/行情数据", "财经/新闻报道", "财经/宏观数据", "财经/资本市场", "商业/产业媒体"),
+        "caution_source_types": ("社交/内容平台", "财经/情绪样本", "财经/研报观点"),
+        "guidance": "优先公告披露、交易所/监管、行情入口、宏观官方数据和可信财经新闻；研报/情绪只作观点或样本，不输出投资建议。",
     },
     "tech": {
         "name": "技术/开发者",
@@ -860,15 +867,19 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
     },
     "finance": {
         "name": "财经研究",
-        "description": "优先财经与资本市场信源，适合公司、股票、市场和宏观金融。",
+        "description": "优先公告披露、行情入口、财经新闻、宏观数据、研报观点和情绪样本分层，适合公司、股票、市场和宏观金融。",
         "profile": "china",
         "scope": "finance",
-        "scopes": ["finance", "business"],
-        "sites": ["cls.cn", "eastmoney.com", "xueqiu.com"],
+        "scopes": ["finance_disclosure", "finance_company", "finance_quote", "finance_news", "finance_macro", "finance_research", "finance_sentiment"],
+        "sites": ["cninfo.com.cn", "sse.com.cn", "szse.cn", "csrc.gov.cn", "eastmoney.com", "cls.cn", "xueqiu.com"],
         "limit": DEFAULT_RESEARCH_LIMIT,
-        "read_top": 3,
-        "max_read_chars": 2800,
-        "guidance": ["财经内容注意时效性和风险，不把市场观点当作投资建议。"],
+        "read_top": 5,
+        "max_read_chars": 3200,
+        "guidance": [
+            "先分清行情、公告披露、交易所/监管、宏观官方数据、财经新闻、研报观点和投资者情绪。",
+            "行情页可能动态渲染或延迟，必须标注时间/来源；雪球、股吧、微博只作情绪样本。",
+            "财经研究只能整理公开证据和风险边界，不能写成买入、卖出或持有建议。",
+        ],
     },
     "local": {
         "name": "地方研究",
@@ -2011,7 +2022,8 @@ def _append_direct_source_seed_results(
         return
     intents = list(route_plan.get("primary_intents") or []) + list(route_plan.get("secondary_intents") or [])
     scopes = _unique_keep_order([scope for scope in [effective_scope, *(route_plan.get("preferred_scopes") or [])] if scope])
-    if results and not is_live_sports_lookup(original_query, intents=intents, scopes=scopes):
+    should_seed_with_results = is_live_sports_lookup(original_query, intents=intents, scopes=scopes) or is_finance_lookup(original_query, intents=intents, scopes=scopes)
+    if results and not should_seed_with_results:
         return
     seeds = direct_source_seeds(
         original_query,
@@ -2048,6 +2060,7 @@ def _append_direct_source_seed_results(
                 "seed_id": str(seed.get("seed_id") or ""),
                 "seed_reason": "high_confidence_vertical_entrypoint",
                 "evidence_role_hint": role,
+                "read_ready": bool(seed.get("read_ready", True)),
             }
         )
         added.append(item)
@@ -3492,6 +3505,11 @@ def assess_read_quality(text: str) -> dict[str, Any]:
         "下一篇",
         "发表评论",
         "版权声明",
+        "行情中心",
+        "数据加载中",
+        "自选股",
+        "沪深京",
+        "客户端下载",
     )
     noise_hits = [term for term in noise_terms if term.lower() in normalized.lower()]
     cjk_chars = sum(1 for char in normalized if "\u4e00" <= char <= "\u9fff")
@@ -3552,7 +3570,20 @@ def build_read_quality_report(
     link_like_lines = sum(1 for line in lines if re.search(r"https?://|阅读原文|点击|打开APP|下载", line, flags=re.I))
     body_ratio = round(max(0.0, 1.0 - min(quality.get("noise_ratio", 0) * 3 + link_like_lines / max(len(lines), 1), 0.95)), 3)
     blocked_markers = [marker for marker in _WEAK_READ_MARKERS if marker in _collapse_ws(normalized).lower()]
-    usable = bool(quality.get("score", 0) >= 55 and quality.get("chars", 0) >= 160 and not blocked_markers)
+    dynamic_shell = _looks_like_dynamic_finance_shell(
+        normalized,
+        url=url,
+        quality=quality,
+        body_ratio=body_ratio,
+    )
+    fallback = bool(quality.get("fallback"))
+    usable = bool(
+        quality.get("score", 0) >= 55
+        and quality.get("chars", 0) >= 160
+        and not blocked_markers
+        and not dynamic_shell
+        and not fallback
+    )
     recommendations: list[str] = []
     if quality.get("fallback"):
         recommendations.append("当前内容来自搜索兜底，只能作为线索，建议补读原文或更稳定转载页。")
@@ -3560,6 +3591,8 @@ def build_read_quality_report(
         recommendations.append("疑似登录墙/安全验证/访问限制，建议改用公开转载、官方来源或人工授权后的平台能力。")
     if quality.get("noise_hits"):
         recommendations.append("正文中仍有导航、登录或推荐阅读噪音，回答时优先引用连续正文段落。")
+    if dynamic_shell:
+        recommendations.append("疑似动态财经页壳或行情入口，正文不可直接作为事实证据；建议改用 `guanlan stock ...` 结构化行情、公告/监管源或可导出的数据页补证。")
     if quality.get("chars", 0) < 500:
         recommendations.append("正文较短，可能只读到摘要或页面片段，建议扩大 read 或补充 search/research。")
     if not recommendations:
@@ -3569,6 +3602,7 @@ def build_read_quality_report(
         "label": quality.get("label", "unknown"),
         "score": quality.get("score", 0),
         "usable": usable,
+        "fallback": fallback,
         "body_ratio": body_ratio,
         "chars": quality.get("chars", 0),
         "cjk_chars": quality.get("cjk_chars", 0),
@@ -3578,6 +3612,7 @@ def build_read_quality_report(
         "link_like_line_count": link_like_lines,
         "noise_hits": quality.get("noise_hits", []),
         "blocked_markers": blocked_markers,
+        "dynamic_shell": dynamic_shell,
         "selected_backend": trace.get("selected_backend", ""),
         "cache": trace.get("cache", "disabled"),
         "recommendations": recommendations,
@@ -3599,11 +3634,67 @@ def format_read_quality_report(report_or_packet: dict[str, Any]) -> str:
     blocked = report.get("blocked_markers") or []
     if blocked:
         lines.append(f"- blocked_markers: {', '.join(str(item) for item in blocked)}")
+    if report.get("dynamic_shell"):
+        lines.append("- dynamic_shell: true")
+    if report.get("fallback"):
+        lines.append("- fallback: search_context_only")
     recommendations = report.get("recommendations") or []
     if recommendations:
         lines.append("- 建议:")
         lines.extend(f"  - {item}" for item in recommendations[:4])
     return "\n".join(lines)
+
+
+def _looks_like_dynamic_finance_shell(
+    text: str,
+    *,
+    url: str,
+    quality: dict[str, Any],
+    body_ratio: float,
+) -> bool:
+    domain = _domain(url)
+    if domain not in {
+        "quote.eastmoney.com",
+        "eastmoney.com",
+        "finance.sina.com.cn",
+        "xueqiu.com",
+        "guba.eastmoney.com",
+        "10jqka.com.cn",
+        "cn.investing.com",
+        "finance.yahoo.com",
+        "nasdaq.com",
+    }:
+        return False
+    normalized = _collapse_ws(text).lower()
+    markers = (
+        "行情中心",
+        "自选股",
+        "沪深京",
+        "数据加载中",
+        "客户端下载",
+        "打开app",
+        "stock quote",
+        "market activity",
+        "portfolio",
+        "系统检测到您的ip",
+        "访问过于频繁",
+        "请验证以继续访问",
+        "upgrade_browser",
+        "window.location.href",
+        "galileotelemetry",
+        "new aegis",
+        "公司概况",
+        "股权信息",
+        "股票交易",
+    )
+    marker_hits = sum(1 for marker in markers if marker.lower() in normalized)
+    if domain == "xueqiu.com" and any(marker.lower() in normalized for marker in ("访问过于频繁", "请验证以继续访问")):
+        return True
+    if any(marker in normalized for marker in ("upgrade_browser", "galileotelemetry", "window.location.href")):
+        return True
+    weak_size = int(quality.get("chars") or 0) < 900
+    noisy_shape = body_ratio < 0.45 or int(quality.get("line_count") or 0) < 8
+    return bool(marker_hits >= 2 and (weak_size or noisy_shape))
 
 
 def _contains_cjk(text: str) -> bool:
@@ -4615,7 +4706,19 @@ def _query_for_research_job(
         elif target == "ecommerce":
             role_preferences = ["review", "user_sample", "industry_report", "fresh_news", "base"]
         elif target == "finance":
-            role_preferences = ["official_primary", "market_context", "industry_report", "fresh_news", "base"]
+            role_preferences = ["company_filing", "regulatory_notice", "market_quote", "market_news", "macro_data", "sentiment_sample", "base"]
+        elif target in {"finance_disclosure", "finance_company"}:
+            role_preferences = ["company_filing", "regulatory_notice", "exchange_announcement", "base"]
+        elif target == "finance_quote":
+            role_preferences = ["market_quote", "index_data", "market_news", "base"]
+        elif target == "finance_macro":
+            role_preferences = ["macro_data", "central_bank_notice", "market_expectation", "base"]
+        elif target == "finance_sentiment":
+            role_preferences = ["sentiment_sample", "market_news", "base"]
+        elif target == "finance_research":
+            role_preferences = ["analyst_opinion", "industry_report", "company_filing", "base"]
+        elif target == "finance_news":
+            role_preferences = ["market_news", "fresh_news", "base"]
         elif target == "business":
             role_preferences = ["industry_report", "company_context", "fresh_news", "base"]
         elif target == "sports":
@@ -4645,6 +4748,14 @@ def _query_for_research_job(
             role_preferences = ["company_primary", "technical_primary", "fresh_news"]
         elif any(site in target for site in ("espn", "nba.com", "fifa", "uefa", "skysports", "theathletic")):
             role_preferences = ["official_stat", "sports_report", "fresh_news", "base"]
+        elif any(site in target for site in ("cninfo", "sse.com", "szse", "hkexnews", "sec.gov", "csrc.gov")):
+            role_preferences = ["company_filing", "regulatory_notice", "exchange_announcement", "base"]
+        elif any(site in target for site in ("eastmoney", "finance.sina", "xueqiu", "nasdaq", "finance.yahoo")):
+            role_preferences = ["market_quote", "sentiment_sample", "market_news", "base"]
+        elif any(site in target for site in ("stats.gov.cn", "pbc.gov.cn", "safe.gov.cn", "fred.stlouisfed", "cmegroup")):
+            role_preferences = ["macro_data", "central_bank_notice", "market_expectation", "base"]
+        elif any(site in target for site in ("cls.cn", "stcn", "cnstock", "yicai")):
+            role_preferences = ["market_news", "fresh_news", "base"]
     elif job_type == "general":
         role_preferences = ["fresh_news", "base"]
     for role in role_preferences:
@@ -5724,7 +5835,23 @@ def build_source_mix_guard(
     route_plan = route_plan or {}
     intents = set(route_plan.get("primary_intents") or []) | set(route_plan.get("secondary_intents") or [])
     ugc_results = [item for item in results if _is_ugc_result(item)]
-    authority_results = [item for item in results if str(item.get("evidence_role") or "") in {"official_primary", "authoritative_report", "company_primary", "technical_primary"}]
+    authority_results = [
+        item
+        for item in results
+        if str(item.get("evidence_role") or "")
+        in {
+            "official_primary",
+            "authoritative_report",
+            "company_primary",
+            "technical_primary",
+            "company_filing",
+            "regulatory_notice",
+            "macro_data",
+            "central_bank_notice",
+            "statistics_release",
+            "market_quote",
+        }
+    ]
     industry_results = [item for item in results if str(item.get("evidence_role") or "") in {"industry_report", "market_context", "fresh_news"}]
     total = max(len(results), 1)
     ugc_ratio = len(ugc_results) / total
@@ -5737,6 +5864,10 @@ def build_source_mix_guard(
         "medical_health",
         "legal_judicial",
         "finance",
+        "finance_quote",
+        "finance_disclosure",
+        "finance_macro",
+        "finance_research",
     }
     sample_intents = {
         "reputation",
@@ -6763,6 +6894,13 @@ def _quality_has_strong_primary_evidence(
         "security_advisory",
         "institution_primary",
         "chart_metric",
+        "market_quote",
+        "company_filing",
+        "exchange_announcement",
+        "regulatory_notice",
+        "macro_data",
+        "central_bank_notice",
+        "statistics_release",
     }
     strong_source_types = {
         "政府/部委",
@@ -6778,6 +6916,10 @@ def _quality_has_strong_primary_evidence(
         "法律/司法",
         "医疗/健康",
         "体育/赛事/转会",
+        "财经/公告披露",
+        "财经/行情数据",
+        "财经/宏观数据",
+        "财经/新闻报道",
         "文娱/内容平台",
         "欧美文娱/音乐产业",
         "日韩文娱/K-pop/J-pop",
@@ -7158,7 +7300,7 @@ def _expand_search_query(
             additions.extend(["知乎", "微博", "小红书", "讨论"])
         elif intent == "policy":
             additions.extend(["官方", "原文", "通知"])
-        elif intent == "finance":
+        elif intent in {"finance", "finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"} or str(effective_scope or "").startswith("finance"):
             additions.extend(["财报", "公告", "市场"])
         elif intent == "tech":
             additions.extend(["官方", "文档", "benchmark"])
@@ -7216,6 +7358,11 @@ def _quality_followup_preset(intent: str, route_intents: list[str]) -> str:
         "industry": "industry",
         "global_industry": "global_industry",
         "finance": "finance",
+        "finance_quote": "finance",
+        "finance_disclosure": "finance",
+        "finance_macro": "finance",
+        "finance_sentiment": "finance",
+        "finance_research": "finance",
         "tech": "tech",
         "academic": "academic",
         "university_admissions": "university",
@@ -7275,6 +7422,15 @@ def _role_gap_suggestion(role: str) -> str:
         "clinical_guideline": "缺少临床指南/专业机构材料，直接补搜 WHO、CDC、FDA、卫健委或学术数据库。",
         "statute_original": "缺少法律条文原文，直接补搜 `--scope gov` 或指定人大、法院、司法部等站点。",
         "case_record": "缺少案例/裁判文书材料，直接补搜法院、裁判文书或权威法律数据库。",
+        "market_quote": "缺少行情/指数数据入口，直接补搜 `--scope finance_quote`，并标注行情时间和可能延迟。",
+        "company_filing": "缺少公告/财报/披露原文，直接补搜 `--scope finance_disclosure` 或指定巨潮、交易所、SEC。",
+        "exchange_announcement": "缺少交易所公告入口，直接补搜 `--scope finance_disclosure` 或指定上交所/深交所/HKEXnews。",
+        "regulatory_notice": "缺少监管函、问询、处罚或风险提示，直接补搜 `--scope finance_disclosure` 和监管机构站点。",
+        "macro_data": "缺少宏观官方数据，直接补搜 `--scope finance_macro` 或指定统计局、央行、FRED。",
+        "central_bank_notice": "缺少央行/货币政策口径，直接补搜 `--scope finance_macro` 或指定央行站点。",
+        "sentiment_sample": "缺少投资者情绪样本，直接补搜 `--scope finance_sentiment`，但只能作为样本线索。",
+        "analyst_opinion": "缺少研报/机构观点，直接补搜 `--scope finance_research`，并和公告财报交叉验证。",
+        "market_news": "缺少财经新闻时间线，直接补搜 `--scope finance_news` 或财联社、证券时报、第一财经等站点。",
     }
     return mapping.get(role, f"缺少 `{role}` 角色证据，直接补充对应信源后再下判断。")
 
@@ -7468,9 +7624,22 @@ def build_query_strategy(
     if "ecommerce" in intents or str(quality.get("requested_scope") or "") == "ecommerce":
         add("industry_report", f"{clean_query} 电商 零售 行业 数据 案例", "电商问题先看垂类媒体和行业材料")
         add("review", f"{clean_query} 价格 售后 投诉 用户评价 值不值得买", "补购买决策、售后和用户样本")
-    elif "finance" in intents or str(quality.get("requested_scope") or "") == "finance":
-        add("official_primary", f"{clean_query} 财报 公告 投资者关系 交易所 披露", "财经问题先找公告、财报、交易所和投资者关系")
-        add("market_context", f"{clean_query} 研报 监管 风险 业绩 估值", "补市场语境和风险提示")
+    finance_intents = {"finance", "finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"}
+    requested_scope = str(quality.get("requested_scope") or "")
+    if finance_intents & set(intents) or requested_scope.startswith("finance"):
+        if "finance_quote" in intents or requested_scope == "finance_quote":
+            add("market_quote", f"{clean_query} 行情 股价 涨跌幅 指数 东方财富 新浪财经", "行情问题先找可核验的市场数据入口并标注时间/延迟")
+        if "finance_disclosure" in intents or "finance" in intents or requested_scope in {"finance", "finance_disclosure", "finance_company"}:
+            add("company_filing", f"{clean_query} 巨潮资讯 交易所 公告 财报", "公司/股票问题先找公告、财报和交易所披露")
+            add("regulatory_notice", f"{clean_query} 监管 问询函 处罚 风险提示", "补监管函、问询、处罚和风险披露")
+        if "finance_macro" in intents or requested_scope == "finance_macro":
+            add("macro_data", f"{clean_query} 央行 统计局 官方 数据", "宏观金融问题先找官方统计和央行口径")
+            add("market_expectation", f"{clean_query} FedWatch 利率 预期 市场定价", "市场预期应和政策决定分开")
+        if "finance_research" in intents or requested_scope == "finance_research":
+            add("analyst_opinion", f"{clean_query} 研报 券商 评级 估值", "研报和评级属于观点层，不能替代披露")
+        if "finance_sentiment" in intents or requested_scope == "finance_sentiment":
+            add("sentiment_sample", f"{clean_query} 雪球 股吧 热议 情绪", "公开讨论只作情绪样本，不作事实主证据")
+        add("market_news", f"{clean_query} 财经 快讯 新闻 事件", "补财经新闻时间线和事件背景")
     elif {"industry"} & set(intents):
         add("industry_report", f"{clean_query} 行业 趋势 公司 案例", "产业/商业问题补行业材料")
     if "global_industry" in intents:
@@ -7717,6 +7886,41 @@ def _infer_evidence_role(
         if "transfer_report" in route_roles or re.search(r"转会|合同|续约|transfer|contract", title_blob):
             return "transfer_report"
         return "sports_report"
+    finance_scopes = {"finance", "finance_quote", "finance_company", "finance_disclosure", "finance_news", "finance_macro", "finance_sentiment", "finance_research"}
+    finance_roles = {
+        "market_quote",
+        "index_data",
+        "fund_quote",
+        "company_filing",
+        "exchange_announcement",
+        "annual_report",
+        "financial_statement",
+        "regulatory_notice",
+        "risk_disclosure",
+        "macro_data",
+        "central_bank_notice",
+        "statistics_release",
+        "market_expectation",
+        "sentiment_sample",
+        "analyst_opinion",
+        "market_news",
+    }
+    if scope in finance_scopes or roles & finance_roles or "finance" in fit_tags:
+        if roles & {"market_quote", "index_data", "fund_quote"} or re.search(r"行情|股价|涨跌|指数|quote|market activity", title_blob):
+            return "market_quote"
+        if roles & {"company_filing", "annual_report", "financial_statement"} or re.search(r"公告|财报|年报|季报|披露|10-k|10-q|filing", title_blob):
+            return "company_filing"
+        if roles & {"exchange_announcement", "regulatory_notice", "risk_disclosure"} or re.search(r"监管|问询|处罚|风险提示|交易所", title_blob):
+            return "regulatory_notice"
+        if roles & {"macro_data", "central_bank_notice", "statistics_release"} or re.search(r"央行|统计局|gdp|cpi|ppi|社融|m2|利率|汇率|外储", title_blob):
+            return "macro_data"
+        if roles & {"market_expectation"}:
+            return "market_expectation"
+        if roles & {"sentiment_sample"} or re.search(r"雪球|股吧|热议|情绪|看多|看空", title_blob):
+            return "sentiment_sample"
+        if roles & {"analyst_opinion"} or re.search(r"研报|券商|评级|目标价|估值|分析师", title_blob):
+            return "analyst_opinion"
+        return "market_news"
     if scope in {"gov", "global_official"} or "primary_source" in roles or "regulation" in roles or "notice" in roles:
         return "official_primary"
     if scope in {"party_central", "local_official"} or "authoritative_report" in roles:
@@ -7940,7 +8144,8 @@ def _score_result_parts(
     authority_score = float(source_card.get("authority_score") or 0.0)
     sample_value = float(source_card.get("sample_value") or 0.0)
     freshness_value = float(source_card.get("freshness_value") or 0.0)
-    if route_intents & {"policy", "official_position", "local", "finance", "global_policy", "company_primary"}:
+    finance_intents = {"finance", "finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"}
+    if route_intents & {"policy", "official_position", "local", "global_policy", "company_primary", *finance_intents}:
         parts["authority_fit"] = authority_score * 0.45
     if route_intents & {"tech", "cybersecurity"} and (
         {"documentation", "source_code", "release", "official_specs", "security_advisory", "vendor_patch"} & content_roles
@@ -7954,7 +8159,7 @@ def _score_result_parts(
         parts["intent_fit"] += 0.18
     if risk_tags & {"soft_article", "sponsored_content", "seo_content", "commercial_content"}:
         parts["source_risk_penalty"] -= 0.18
-    if risk_tags & {"sample_bias", "not_representative"} and route_intents & {"policy", "global_policy", "finance"}:
+    if risk_tags & {"sample_bias", "not_representative"} and route_intents & {"policy", "global_policy", *finance_intents}:
         parts["source_risk_penalty"] -= 0.22
     title_text = (item.title + " " + item.snippet).lower()
     terms = [t.lower() for t in re.split(r"\s+", query) if t and not t.startswith("site:")]

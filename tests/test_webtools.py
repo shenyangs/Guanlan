@@ -10,7 +10,7 @@ import pytest
 
 from guanlan import webtools
 from guanlan.limits import DEFAULT_READ_FALLBACK_LIMIT, DEFAULT_RESEARCH_LIMIT, DEFAULT_SEARCH_LIMIT
-from guanlan.source_seeds import direct_source_seeds, is_live_sports_lookup
+from guanlan.source_seeds import direct_source_seeds, is_finance_lookup, is_live_sports_lookup
 
 
 class _FakeResponse:
@@ -133,6 +133,7 @@ def test_search_quality_profile_detects_new_route_intents():
         ("字节 AI 产品经理 校招 薪资 面经", "career", "招聘/职场/薪资"),
         ("最近 有哪些讲 AI 创业 的中文播客 小宇宙", "podcast", "播客/音频/RSS"),
         ("雅思 口语 2026 题库 机经 靠谱吗", "test_prep", "考试/培训/备考"),
+        ("宁德时代 股价 财报 公告 最近风险", "finance", "财经/公告披露"),
     ]
 
     for query, intent, source_type in cases:
@@ -155,6 +156,21 @@ def test_direct_source_seeds_cover_vertical_lookups_without_treating_dev_tasks_a
     assert any("CVE-2026-12345" in item["url"] for item in security_seeds)
     assert is_live_sports_lookup("NBA季后赛2026年首轮战绩比分", intents=["sports"])
     assert not is_live_sports_lookup("NBA API 开源项目 教程", intents=["tech", "sports"])
+
+
+def test_direct_source_seeds_cover_finance_layers():
+    seeds = direct_source_seeds(
+        "贵州茅台 600519 股价 财报 公告 雪球",
+        intents=["finance"],
+        scopes=["finance"],
+        limit=8,
+    )
+
+    assert is_finance_lookup("贵州茅台 600519 股价 财报 公告 雪球", intents=["finance"])
+    assert any(item["matched_scope"] == "finance_quote" and "quote.eastmoney.com/sh600519" in item["url"] for item in seeds)
+    assert any(item["matched_scope"] == "finance_disclosure" and "cninfo.com.cn" in item["url"] for item in seeds)
+    assert any(item["matched_scope"] == "finance_sentiment" and "xueqiu.com" in item["url"] for item in seeds)
+    assert any(item["evidence_role"] == "company_filing" for item in seeds)
 
 
 def test_search_web_adds_direct_sports_seeds_when_search_is_empty(monkeypatch):
@@ -183,6 +199,28 @@ def test_search_web_adds_direct_sports_seeds_when_search_is_empty(monkeypatch):
     assert any(item["backend"].startswith("direct:sports") and item["status"] == "ok" for item in diagnostics)
     context = webtools.format_search_context(results)
     assert "高确定性垂直场景" in context
+
+
+def test_search_web_adds_direct_finance_seeds_even_with_search_results(monkeypatch):
+    def fake_search(query, limit=10):
+        return [webtools.SearchResult(title="Random generic page", url="https://example.com/random", snippet="noise")]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web(
+        "贵州茅台 600519 股价 财报 公告",
+        backend="duckduckgo",
+        profile="china",
+        scope="finance",
+        limit=8,
+        trace=True,
+    )
+
+    urls = [item["url"] for item in results]
+    assert any("cninfo.com.cn" in url for url in urls)
+    assert any("quote.eastmoney.com/sh600519" in url for url in urls)
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+    assert any(item["backend"].startswith("direct:finance") and item["status"] == "ok" for item in diagnostics)
 
 
 def test_entertainment_scopes_use_short_site_expression(monkeypatch):
@@ -681,7 +719,10 @@ def test_query_strategy_distinguishes_vertical_scopes():
 
     assert "technical_primary" in {item["role"] for item in tech["variants"]}
     assert "review" in {item["role"] for item in ecommerce["variants"]}
-    assert "market_context" in {item["role"] for item in finance["variants"]}
+    finance_roles = {item["role"] for item in finance["variants"]}
+    assert "company_filing" in finance_roles
+    assert "regulatory_notice" in finance_roles
+    assert "market_news" in finance_roles
 
 
 def test_query_strategy_builds_university_admissions_variants():
@@ -1696,7 +1737,29 @@ def test_search_web_parses_bing_html(monkeypatch):
     assert results[0]["source"] == "bing"
     assert results[0]["title"] == "Bing A"
     assert results[0]["url"] == "https://example.com/a"
-    assert results[0]["snippet"] == "Bing snippet"
+
+
+def test_search_web_parses_bing_html_with_extra_li_attributes(monkeypatch):
+    html = """
+    <ol id="b_results">
+      <li class="b_algo" data-id="SERP.1234" iid="SERP.5678">
+        <h2><a href="https://www.bing.com/ck/a?u=a1aHR0cHM6Ly9leGFtcGxlLmNvbS9i">Bing B</a></h2>
+        <p>Bing snippet with new li attributes</p>
+      </li>
+    </ol>
+    """
+
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda req, timeout=None: _FakeResponse(html),
+    )
+
+    results = webtools.search_web("agent search", backend="bing", limit=5)
+
+    assert results[0]["source"] == "bing"
+    assert results[0]["title"] == "Bing B"
+    assert results[0]["url"] == "https://example.com/b"
+    assert results[0]["snippet"] == "Bing snippet with new li attributes"
 
 
 def test_search_web_parses_baidu_html(monkeypatch):
@@ -2165,6 +2228,9 @@ def test_research_cli_lists_presets(capsys):
     assert presets["career"]["scope"] == "career"
     assert presets["podcast"]["scope"] == "podcast"
     assert presets["test_prep"]["scope"] == "test_prep"
+    assert presets["finance"]["scope"] == "finance"
+    assert "finance_disclosure" in presets["finance"]["scopes"]
+    assert "finance_quote" in presets["finance"]["scopes"]
     assert "university" in presets
     assert presets["university"]["scope"] == "university"
 
@@ -2381,6 +2447,83 @@ def test_read_cli_quality_report_uses_trace_packet(capsys):
 
     assert "阅读质量报告" in captured.out
     assert "阅读 Trace" not in captured.out
+
+
+def test_read_quality_report_flags_dynamic_finance_shell():
+    text = "\n".join(
+        [
+            "东方财富行情中心",
+            "沪深京 自选股 登录 注册",
+            "数据加载中 请下载客户端 打开APP",
+            "行情 板块 排名",
+        ]
+    )
+
+    report = webtools.build_read_quality_report(
+        text,
+        url="https://quote.eastmoney.com/sh600519.html",
+        quality=webtools.assess_read_quality(text),
+    )
+
+    assert report["dynamic_shell"] is True
+    assert report["usable"] is False
+    assert any("动态财经页壳" in item for item in report["recommendations"])
+    rendered = webtools.format_read_quality_report(report)
+    assert "dynamic_shell: true" in rendered
+
+
+def test_read_quality_report_flags_xueqiu_waf_as_unusable():
+    text = "\n".join(
+        [
+            "雪球-聪明的投资者都在这里",
+            "登录 下载App",
+            "系统检测到您的IP最近访问过于频繁，请验证以继续访问",
+            "点击按钮进行验证 请点击重试",
+        ]
+    )
+
+    report = webtools.build_read_quality_report(
+        text,
+        url="https://xueqiu.com/snowman/provider/zz/gp_detail?symbol=SH600519",
+        quality=webtools.assess_read_quality(text),
+    )
+
+    assert report["usable"] is False
+    assert report["dynamic_shell"] is True
+
+
+def test_read_quality_report_flags_finance_upgrade_browser_shell():
+    text = (
+        "window.location.href='//finance.qq.com/gsfinance/upgrade_browser.htm' "
+        "var url = 'https://galileotelemetry.tencent.com/collect'; "
+        "window.AegisV2 = new Aegis({ id: 'SDK-demo' });"
+    )
+
+    report = webtools.build_read_quality_report(
+        text,
+        url="https://xueqiu.com/snowman/provider/zz/gp_detail?symbol=SH600519",
+        quality=webtools.assess_read_quality(text),
+    )
+
+    assert report["usable"] is False
+    assert report["dynamic_shell"] is True
+    assert "upgrade_browser" in report["blocked_markers"]
+
+
+def test_read_quality_report_marks_search_fallback_as_context_only():
+    text = "# 观澜阅读兜底\n\n1. 搜索结果摘要，可作为继续核验线索。" + "补充内容" * 80
+
+    report = webtools.build_read_quality_report(
+        text,
+        url="https://example.com/noisy",
+        quality=webtools.assess_read_quality(text),
+        trace={"selected_backend": "search_fallback"},
+    )
+
+    assert report["fallback"] is True
+    assert report["usable"] is False
+    assert webtools.format_read_quality_report(report).find("fallback: search_context_only") >= 0
+    assert any("搜索兜底" in item for item in report["recommendations"])
 
 
 def test_direct_article_extractor_uses_paragraph_density_when_container_is_noisy():

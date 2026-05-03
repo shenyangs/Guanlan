@@ -27,6 +27,15 @@ def test_format_update_notice_mentions_safe_upgrade_paths():
     assert 'guanlan hotnews today --limit 5 --trends' in notice
 
 
+def test_format_compact_update_notice_mentions_upgrade_and_install_check():
+    notice = update_check.format_compact_update_notice(UpdateInfo(current="0.4.3", latest="0.4.4"))
+
+    assert "当前 v0.4.3" in notice
+    assert "最新 v0.4.4" in notice
+    assert "uv tool install --force --upgrade guanlan" in notice
+    assert "guanlan doctor --install-check" in notice
+
+
 def test_doctor_prints_update_notice_when_newer_version_available(capsys):
     import guanlan.cli as cli
 
@@ -68,6 +77,23 @@ def test_install_check_reports_duplicate_paths_and_stale_version():
     assert report["multiple_paths"] is True
     assert "多个 guanlan 路径" in text
     assert "uv tool install --force --upgrade guanlan" in text
+
+
+def test_cached_update_info_reuses_local_cache(tmp_path, monkeypatch):
+    cache_path = tmp_path / "update-check.json"
+    monkeypatch.setenv("GUANLAN_UPDATE_CHECK", "1")
+    monkeypatch.setenv("GUANLAN_UPDATE_CHECK_CACHE", str(cache_path))
+
+    with patch("guanlan.update_check.latest_pypi_version", return_value="0.4.4"):
+        info = update_check.cached_update_info("0.4.3", timeout=0.01, ttl_seconds=3600)
+
+    assert info == UpdateInfo(current="0.4.3", latest="0.4.4")
+    assert cache_path.exists()
+
+    with patch("guanlan.update_check.latest_pypi_version", side_effect=AssertionError("should use cache")):
+        cached = update_check.cached_update_info("0.4.3", timeout=0.01, ttl_seconds=3600)
+
+    assert cached == UpdateInfo(current="0.4.3", latest="0.4.4")
 
 
 def test_doctor_install_check_cli(capsys):

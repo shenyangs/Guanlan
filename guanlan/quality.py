@@ -71,6 +71,41 @@ def run_quality_checks(mode: str = "quick", limit: int = 5, coverage: bool = Fal
     }
 
 
+def run_foundational_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any]:
+    """Run foundational guards for light/heavy workflow stability."""
+    mode = mode if mode in {"quick", "live"} else "quick"
+    checks: list[dict[str, Any]] = []
+    checks.extend(_check_default_limits())
+    checks.extend(_check_workflow_light_path_contract())
+    checks.extend(_check_workflow_guided_path_contract())
+    checks.extend(_check_workflow_investigate_path_contract())
+    if mode == "live":
+        checks.extend(_check_live_coverage(limit=limit))
+    passed = sum(1 for item in checks if item["status"] == "pass")
+    warned = sum(1 for item in checks if item["status"] == "warn")
+    failed = sum(1 for item in checks if item["status"] == "fail")
+    return {
+        "mode": mode,
+        "summary": {
+            "total": len(checks),
+            "pass": passed,
+            "warn": warned,
+            "fail": failed,
+            "score": round((passed + warned * 0.5) / max(len(checks), 1) * 100, 1),
+        },
+        "checks": checks,
+        "contract": {
+            "principle": "轻任务不打扰，重任务不偷懒；上层工作流不能让基础 search/read/hotnews 变重或变窄。",
+            "tiers": ["direct", "guided", "investigate"],
+            "minimum_pool": {
+                "search": 80,
+                "research": 80,
+                "hotnews": 80,
+            },
+        },
+    }
+
+
 def run_coverage_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any]:
     """Guard against releases that shrink downstream agent context."""
     mode = mode if mode in {"quick", "live"} else "quick"
@@ -282,6 +317,28 @@ def format_robustness_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def format_foundational_report(report: dict[str, Any]) -> str:
+    """Render foundational workflow checks as Markdown."""
+    summary = report.get("summary") or {}
+    contract = report.get("contract") or {}
+    lines = [
+        "# 观澜 Foundational Guard",
+        "",
+        f"- 模式: {report.get('mode', 'quick')}",
+        f"- 总分: {summary.get('score', 0)}",
+        f"- 结果: pass={summary.get('pass', 0)} warn={summary.get('warn', 0)} fail={summary.get('fail', 0)}",
+        f"- 原则: {contract.get('principle', '')}",
+        "",
+        "## 分流层级",
+    ]
+    for tier in contract.get("tiers") or []:
+        lines.append(f"- {tier}")
+    lines.extend(["", "## 检查项"])
+    for item in report.get("checks") or []:
+        lines.append(f"- [{item.get('status')}] {item.get('id')}: {item.get('message')}")
+    return "\n".join(lines)
+
+
 def format_quality_jsonl(report: dict[str, Any]) -> str:
     """Render checks as JSONL for external harnesses."""
     return "\n".join(json.dumps(item, ensure_ascii=False, sort_keys=True) for item in report.get("checks") or [])
@@ -395,6 +452,73 @@ def _check_archive_metadata_contract() -> list[dict[str, Any]]:
             "dimension": "coverage_guard",
             "status": "pass" if not missing else "fail",
             "message": "metadata keys=" + ",".join(sorted(metadata.keys())),
+        }
+    ]
+
+
+def _check_workflow_light_path_contract() -> list[dict[str, Any]]:
+    from guanlan.workflow_decider import DIRECT, decide_workflow
+
+    decision = decide_workflow("观澜 官网", command="search", profile="china")
+    ok = (
+        decision.tier == DIRECT
+        and decision.recommended_entrypoint == "search"
+        and decision.do_not_overthink
+        and decision.recommended_limit >= 80
+    )
+    return [
+        {
+            "id": "foundational_direct_search_stays_light",
+            "dimension": "foundational_guard",
+            "status": "pass" if ok else "fail",
+            "message": (
+                f"tier={decision.tier}, entrypoint={decision.recommended_entrypoint}, "
+                f"do_not_overthink={decision.do_not_overthink}, limit={decision.recommended_limit}"
+            ),
+        }
+    ]
+
+
+def _check_workflow_guided_path_contract() -> list[dict[str, Any]]:
+    from guanlan.workflow_decider import GUIDED, decide_workflow
+
+    decision = decide_workflow("人工智能 监管 政策 最新通知", command="search", profile="china")
+    ok = (
+        decision.tier == GUIDED
+        and decision.recommended_entrypoint == "research"
+        and "route" in decision.command_path
+        and "research" in decision.command_path
+        and decision.recommended_limit >= 80
+    )
+    return [
+        {
+            "id": "foundational_policy_query_uses_guided_research",
+            "dimension": "foundational_guard",
+            "status": "pass" if ok else "fail",
+            "message": f"tier={decision.tier}, path={decision.command_path}, limit={decision.recommended_limit}",
+        }
+    ]
+
+
+def _check_workflow_investigate_path_contract() -> list[dict[str, Any]]:
+    from guanlan.workflow_decider import INVESTIGATE, decide_workflow
+
+    decision = decide_workflow("OpenAI Claude Gemini 对比 价格 风险", command="search", profile="china")
+    ok = (
+        decision.tier == INVESTIGATE
+        and decision.recommended_entrypoint == "compare"
+        and decision.minimum_steps >= 3
+        and decision.recommended_limit >= 80
+    )
+    return [
+        {
+            "id": "foundational_compare_query_uses_investigate_tier",
+            "dimension": "foundational_guard",
+            "status": "pass" if ok else "fail",
+            "message": (
+                f"tier={decision.tier}, entrypoint={decision.recommended_entrypoint}, "
+                f"steps={decision.minimum_steps}, limit={decision.recommended_limit}"
+            ),
         }
     ]
 
@@ -534,6 +658,7 @@ def _check_release_gate_script_contract() -> list[dict[str, Any]]:
     required = [
         "ruff check",
         "pytest -q",
+        "quality foundational",
         "quality coverage",
         "quality regression",
         "quality robustness",

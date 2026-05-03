@@ -108,7 +108,7 @@ guanlan search "华为手机" --scope social_web --limit 80 --trace
 
 ## 垂直权威入口
 
-有些问题不该只赌搜索引擎发现。例如体育比分、天气灾害、CVE 漏洞、科学机构声明、文娱榜单/票房、考试官方信息，用户真正需要的是“先去哪个权威入口核验”。Guanlan 会在这些高确定性场景里自动加入少量 direct source seeds，并在 `route` 里给出 `guanlan read` 命令。
+有些问题不该只赌搜索引擎发现。例如体育比分、财经行情/公告披露/宏观数据、天气灾害、CVE 漏洞、科学机构声明、文娱榜单/票房、考试官方信息，用户真正需要的是“先去哪个权威入口核验”。Guanlan 会在这些高确定性场景里自动加入少量 direct source seeds，并在 `route` 里给出 `guanlan read` 命令。
 
 Agent 应该把这些入口当作下一步要读的权威候选，而不是把它们当最终答案。正确做法是先读这些入口，再用 `search/research` 扩大信源面；不要在 Baidu/Bing/DuckDuckGo 低相关或被验证码拦截后直接宣布 Guanlan 失败。
 
@@ -123,6 +123,7 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 用 `search` 测“今天热搜”“刚刚地震”“最新发布”却不跑 `hotnews`
 - 用 `search` 测技术/AI，却不补 `feeds`
 - 把实时数据题、专用行情题当作普通网页搜索题
+- 把股票/财经题只当泛搜题，不区分结构化行情、公告披露、监管/宏观数据、研报观点和投资者情绪
 - 用超长 query 一次性塞进全部约束，不做拆解
 - 用多实体 query 期待一次返回完整对比，不做拆分
 
@@ -131,6 +132,7 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 先判断是否强路由命中，再决定 `preset` / `scope`
 - 热点题必须带 `hotnews`
 - 技术/AI 题必须带 `feeds`
+- 财经题必须先选 `finance` preset 或对应 scope；行情、榜单、资金流优先用 `guanlan stock ...` / `guanlan-stock ...`，公告/财报/监管用 `finance_disclosure`，宏观用 `finance_macro`，情绪样本用 `finance_sentiment`
 - 政策/办事题至少 `search + read`，复杂时直接 `research`
 - 评价 Guanlan 时区分三件事：
   - 搜索相关性
@@ -163,6 +165,7 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 多实体对比要拆成单实体检索，再用 `compare` / `dossier` 汇总。
 - 实时题优先 `hotnews`，不要只看 `search`。
 - 实时体育、灾害预警、安全漏洞等垂直题优先读取 Guanlan 推荐的 direct source seeds，再扩大搜索。
+- 财经题不要只看一个搜索结果：行情要先走结构化股票数据并看时间戳，公告/财报要回到披露源，宏观数据要核发布机构，雪球/股吧只作情绪样本。动态财经页或雪球 WAF 读不出正文时，不要反复 `read`，改用 `guanlan stock detail|fundflow|rank|index` 和披露源补证。
 - 技术题优先 `research --preset tech` 或 `search + feeds`，不要只看社区搜索结果。
 - `source_type` 只作辅助，不要把它当唯一真相；结合 domain、authority_score、evidence_role 一起判断。
 - `compare` 若提示 `source_diversity_guard=warn`，先补公司一手、垂直媒体或社区样本，不要拿单站结果做横向结论。

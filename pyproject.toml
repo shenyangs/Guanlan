@@ -1,6 +1,6 @@
 [project]
 name = "guanlan"
-version = "0.4.3"
+version = "0.4.5"
 description = "Guanlan: a China-aware source and platform router for AI agents."
 readme = "README.md"
 license = {text = "MIT"}
@@ -54,6 +54,7 @@ dev = [
 [project.scripts]
 guanlan = "guanlan.cli:main"
 guanlan-mcp = "guanlan.integrations.mcp_server:cli_main"
+guanlan-stock = "guanlan.stock_cli:main"
 
 [build-system]
 requires = ["hatchling"]

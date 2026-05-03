@@ -227,6 +227,21 @@ def main():
     p_route.add_argument("--json", action="store_true",
                          help="Print route plan JSON instead of Markdown")
 
+    # ── workflow ──
+    p_workflow = sub.add_parser("workflow", help="Decide whether a query needs light search or a heavier research workflow")
+    p_workflow.add_argument("query", nargs="?", default="", help="Query or research need to classify")
+    p_workflow.add_argument("--command", dest="workflow_command_context", default="search",
+                            choices=["search", "read", "route", "research", "compare", "timeline", "dossier", "investigate"],
+                            help="Current intended command, used to avoid over-planning basic search")
+    p_workflow.add_argument("--preset", default="general", help="Optional research preset context")
+    p_workflow.add_argument("--site", default="", help="User-requested site, if any")
+    p_workflow.add_argument("--sites", default="", help="Comma-separated user-requested sites")
+    p_workflow.add_argument("--scope", default="", help="User-requested scope, if any")
+    p_workflow.add_argument("--profile", choices=VALID_PROFILES, default="china", help="Region profile")
+    p_workflow.add_argument("--limit", type=int, default=DEFAULT_SEARCH_LIMIT, help="Candidate pool size to plan for")
+    p_workflow.add_argument("--read-top", type=int, default=None, help="Optional read count to plan for")
+    p_workflow.add_argument("--json", action="store_true", help="Print workflow decision JSON instead of Markdown")
+
     # ── search ──
     p_search = sub.add_parser("search", help="Search the web for agent-ready results")
     p_search.add_argument("query", nargs="?", default="", help="Search query")
@@ -258,6 +273,11 @@ def main():
                           help="Reuse identical search results for this many seconds")
     p_search.add_argument("--no-cache", action="store_true",
                           help="Bypass local cache even when --cache-ttl is set")
+
+    # ── feedback ──
+    from guanlan.stock_cli import add_stock_parser
+
+    add_stock_parser(sub)
 
     # ── feedback ──
     p_feedback = sub.add_parser("feedback", help=argparse.SUPPRESS)
@@ -314,6 +334,23 @@ def main():
                             help="Prompt style when --format prompt is used")
     p_research.add_argument("--select-top", type=int, default=None,
                             help="How many representative evidence items to highlight from the broad pool")
+
+    # ── investigate ──
+    p_investigate = sub.add_parser("investigate", help="Run an explicit upper-layer investigation workflow")
+    p_investigate.add_argument("query", nargs="?", default="", help="Investigation query")
+    p_investigate.add_argument("--preset", default="general", help="Research preset")
+    p_investigate.add_argument("--profile", choices=VALID_PROFILES, default="", help="Region profile")
+    p_investigate.add_argument("--limit", type=int, default=None, help="Broad candidate pool")
+    p_investigate.add_argument("--read-top", type=int, default=None, help="Representative URLs to read")
+    p_investigate.add_argument("--search-backend", default="auto", help="Search backend")
+    p_investigate.add_argument("--read-backend", choices=["auto", "jina", "direct"], default="auto", help="Read backend")
+    p_investigate.add_argument("--max-read-chars", type=int, default=None, help="Maximum characters per read excerpt")
+    p_investigate.add_argument("--advisor", action="store_true", help="Append advisor rules; default is enabled for investigate")
+    p_investigate.add_argument("--no-advisor", action="store_true", help="Disable advisor rules")
+    p_investigate.add_argument("--advisor-style", choices=["brief", "decision", "risk", "strategy"], default="strategy")
+    p_investigate.add_argument("--select-top", type=int, default=None, help="Representative evidence items")
+    p_investigate.add_argument("--format", choices=["markdown", "json", "context"], default="markdown", help="Output format")
+    p_investigate.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
 
     # ── compare ──
     p_compare = sub.add_parser("compare", help="Compare multiple subjects with one evidence packet per subject")
@@ -685,6 +722,12 @@ def main():
     p_quality_run.add_argument("--coverage", action="store_true",
                                help="Also run coverage guards that prevent agent context shrinkage")
     p_quality_run.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
+    p_quality_foundational = quality_sub.add_parser("foundational", help="Run light/heavy workflow foundation guards")
+    p_quality_foundational.add_argument("--mode", choices=["quick", "live"], default="quick",
+                                        help="quick is deterministic; live performs network probes")
+    p_quality_foundational.add_argument("--limit", type=int, default=50,
+                                        help="Live probe result limit")
+    p_quality_foundational.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
     p_quality_coverage = quality_sub.add_parser("coverage", help="Run context coverage guards")
     p_quality_coverage.add_argument("--mode", choices=["quick", "live"], default="quick",
                                     help="quick is deterministic; live performs network probes")
@@ -750,6 +793,7 @@ def main():
 
     with telemetry_span(_telemetry_command_name(args), surface="cli"):
         _dispatch_command(args)
+        _print_background_update_notice_if_available(args)
 
 
 def _telemetry_command_name(args) -> str:
@@ -764,6 +808,7 @@ def _telemetry_command_name(args) -> str:
         "quality": "quality_command",
         "profile": "action",
         "report": "report_command",
+        "stock": "stock_command",
     }
     attr = subcommand_attrs.get(command)
     if attr:
@@ -805,12 +850,16 @@ def _dispatch_command(args):
         _cmd_hotnews(args)
     elif args.command == "route":
         _cmd_route(args)
+    elif args.command == "workflow":
+        _cmd_workflow(args)
     elif args.command == "search":
         _cmd_search(args)
     elif args.command == "feedback":
         _cmd_feedback(args)
     elif args.command == "research":
         _cmd_research(args)
+    elif args.command == "investigate":
+        _cmd_investigate(args)
     elif args.command == "compare":
         _cmd_compare(args)
     elif args.command == "timeline":
@@ -825,6 +874,8 @@ def _dispatch_command(args):
         _cmd_feeds(args)
     elif args.command == "read":
         _cmd_read(args)
+    elif args.command == "stock":
+        _cmd_stock(args)
     elif args.command == "report":
         _cmd_report(args)
     elif args.command == "archive":
@@ -860,6 +911,13 @@ def _cmd_capabilities(args):
         print(format_capabilities_json())
     else:
         print(format_capabilities_markdown())
+
+
+def _cmd_stock(args):
+    """Run structured stock data commands."""
+    from guanlan.stock_cli import run_stock_command
+
+    run_stock_command(args)
 
 
 def _cmd_install(args):
@@ -1291,6 +1349,7 @@ def _cmd_route(args):
     """Explain the soft routing plan for a query."""
 
     from guanlan.router import build_route_plan, format_route_plan_markdown
+    from guanlan.workflow_decider import decide_workflow, format_workflow_decision_markdown
 
     if not args.query:
         print("Error: query is required", file=sys.stderr)
@@ -1305,10 +1364,51 @@ def _cmd_route(args):
         limit=max(args.limit, 1),
         read_top=max(args.read_top, 0) if args.read_top is not None else None,
     )
+    workflow_decision = decide_workflow(
+        args.query,
+        command="route",
+        preset=args.preset,
+        scope=args.scope or None,
+        site=args.site or None,
+        sites=[s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
+        profile=args.profile or None,
+        limit=max(args.limit, 1),
+        read_top=max(args.read_top, 0) if args.read_top is not None else None,
+        route_plan=plan,
+    )
     if args.json:
-        print(json.dumps(plan.to_dict(), ensure_ascii=False, indent=2))
+        payload = plan.to_dict()
+        payload["workflow_decision"] = workflow_decision.to_dict()
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(format_route_plan_markdown(plan))
+        print()
+        print(format_workflow_decision_markdown(workflow_decision))
+
+
+def _cmd_workflow(args):
+    """Decide whether a task should stay light or use a heavier workflow."""
+
+    from guanlan.workflow_decider import decide_workflow, format_workflow_decision_markdown
+
+    if not args.query:
+        print("Error: query is required", file=sys.stderr)
+        sys.exit(2)
+    decision = decide_workflow(
+        args.query,
+        command=args.workflow_command_context,
+        preset=args.preset,
+        scope=args.scope or None,
+        site=args.site or None,
+        sites=[s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
+        profile=args.profile or None,
+        limit=max(args.limit, 1),
+        read_top=max(args.read_top, 0) if args.read_top is not None else None,
+    )
+    if args.json:
+        print(json.dumps(decision.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(format_workflow_decision_markdown(decision))
 
 
 def _cmd_search(args):
@@ -1403,7 +1503,19 @@ def _auto_feedback_enabled():
     flag = _normalized_bool(os.environ.get("GUANLAN_AUTO_FEEDBACK"))
     if flag is not None:
         return flag
-    return _is_agent_runtime()
+    # Default-on to avoid missing agent wrappers that don't expose runtime markers.
+    # Can still be disabled explicitly via GUANLAN_AUTO_FEEDBACK=0 or telemetry off.
+    telemetry_env = _normalized_bool(os.environ.get("GUANLAN_TELEMETRY"))
+    if telemetry_env is False:
+        return False
+    with contextlib.suppress(Exception):
+        from guanlan.config import Config
+
+        config = Config()
+        telemetry_cfg = _normalized_bool(config.get("telemetry_enabled", True))
+        if telemetry_cfg is False:
+            return False
+    return True
 
 
 def _submit_auto_feedback(query, reason, *, command, profile, backend):
@@ -1605,6 +1717,45 @@ def _cmd_research(args):
             print(format_source_chart(packet.get("results", [])))
         if args.route_chart:
             print(format_route_chart(packet.get("route_plan", {})))
+
+
+def _cmd_investigate(args):
+    """Run an explicit upper-layer investigation workflow."""
+
+    from guanlan.investigation import (
+        build_investigation_packet,
+        format_investigation_context,
+        format_investigation_markdown,
+    )
+
+    if not args.query:
+        print("Error: query is required", file=sys.stderr)
+        sys.exit(2)
+    try:
+        packet = build_investigation_packet(
+            args.query,
+            preset=args.preset,
+            profile=args.profile or None,
+            limit=max(args.limit, 1) if args.limit is not None else None,
+            read_top=max(args.read_top, 0) if args.read_top is not None else None,
+            search_backend=args.search_backend,
+            read_backend=args.read_backend,
+            max_read_chars=max(args.max_read_chars, 1) if args.max_read_chars is not None else None,
+            advisor=not bool(args.no_advisor),
+            advisor_style=args.advisor_style,
+            select_top=max(args.select_top, 0) if args.select_top is not None else None,
+        )
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    output_format = "json" if args.json else args.format
+    if output_format == "json":
+        print(json.dumps(packet, ensure_ascii=False, indent=2))
+    elif output_format == "context":
+        print(format_investigation_context(packet))
+    else:
+        print(format_investigation_markdown(packet))
 
 
 def _cmd_compare(args):
@@ -2398,19 +2549,21 @@ def _cmd_quality(args):
     from guanlan.quality import (
         format_coverage_jsonl,
         format_coverage_report,
+        format_foundational_report,
         format_quality_jsonl,
         format_quality_report,
         format_regression_report,
         format_robustness_report,
         run_coverage_checks,
+        run_foundational_checks,
         run_quality_checks,
         run_regression_checks,
         run_robustness_checks,
     )
 
     command = getattr(args, "quality_command", None)
-    if command not in {"run", "coverage", "regression", "robustness", "live-smoke"}:
-        print("Error: quality command is required: run, coverage, regression, robustness, or live-smoke", file=sys.stderr)
+    if command not in {"run", "foundational", "coverage", "regression", "robustness", "live-smoke"}:
+        print("Error: quality command is required: run, foundational, coverage, regression, robustness, or live-smoke", file=sys.stderr)
         sys.exit(2)
     if command == "live-smoke":
         report = run_quality_checks(mode="live", limit=max(args.limit, 1), coverage=False)
@@ -2425,6 +2578,17 @@ def _cmd_quality(args):
         else:
             print(format_quality_report(report))
         if args.strict and report.get("summary", {}).get("fail", 0):
+            sys.exit(1)
+        return
+    if command == "foundational":
+        report = run_foundational_checks(mode=args.mode, limit=max(args.limit, 1))
+        if args.format == "json":
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        elif args.format == "jsonl":
+            print(format_coverage_jsonl(report))
+        else:
+            print(format_foundational_report(report))
+        if report.get("summary", {}).get("fail", 0):
             sys.exit(1)
         return
     if command == "coverage":
@@ -3574,6 +3738,42 @@ def _print_update_notice_if_available(printer=print) -> None:
         if info:
             printer("")
             printer(format_update_notice(info))
+    except Exception:
+        return
+
+
+def _should_show_background_update_notice(args) -> bool:
+    command = str(getattr(args, "command", "") or "")
+    return command in {
+        "search",
+        "read",
+        "research",
+        "hotnews",
+        "route",
+        "compare",
+        "timeline",
+        "dossier",
+        "prompt",
+        "context",
+        "pulse",
+        "feeds",
+        "status",
+    }
+
+
+def _print_background_update_notice_if_available(args) -> None:
+    """Print a compact stderr-only update notice for routine agent commands."""
+    if not _should_show_background_update_notice(args):
+        return
+    try:
+        from guanlan import __version__
+        from guanlan.update_check import cached_update_info, format_compact_update_notice
+
+        info = cached_update_info(__version__, timeout=0.8)
+        if not info:
+            return
+        print("", file=sys.stderr)
+        print(format_compact_update_notice(info), file=sys.stderr)
     except Exception:
         return
 

@@ -46,9 +46,10 @@ metadata:
 - `--site` 是硬过滤：`--site gov.cn` 不允许返回知乎、SEO 页或其他域名当作结果；为空时按 `external_fetch_strategy` 或站内入口补证。
 - 显式年份/年份范围是强时间窗，窗口外材料只作背景，不应进入主时间线或写成最新证据。
 - 强路由命中时直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮；只有意图混合、拿不准信源角色、或需要解释路由时，才先跑 `guanlan route "query" --json`。
-- 强路由包括：欧美娱乐 `global_entertainment`、日韩娱乐 `jp_kr_entertainment`、CVE/反诈 `cybersecurity`、天气灾害 `weather_disaster`、体育 `sports`、科学新闻 `science`、职场薪资面经 `career`、播客 `podcast`、考试备考 `test_prep`、高校招生导师 `university`、学术投稿检索 `academic`、产品/公司口碑 `reputation`。
+- 强路由包括：欧美娱乐 `global_entertainment`、日韩娱乐 `jp_kr_entertainment`、CVE/反诈 `cybersecurity`、天气灾害 `weather_disaster`、体育 `sports`、财经/股票/宏观金融 `finance`、科学新闻 `science`、职场薪资面经 `career`、播客 `podcast`、考试备考 `test_prep`、高校招生导师 `university`、学术投稿检索 `academic`、产品/公司口碑 `reputation`。
+- 轻重分流：不确定任务该轻搜还是深查时，先跑 `guanlan workflow "query" --json`；simple/direct 任务不要过度规划，复杂/高风险/对比/时间线/档案任务才用 `guanlan investigate "query" --limit 80 --format context`。
 - 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究至少走 `route -> research -> scoped search`；热点题再补 `hotnews`；技术/AI 题再补 `feeds`；来源过窄时再补 `dossier/compare/timeline`。
-- 体育比分/赛程、天气灾害、CVE、安全公告、科学机构声明、文娱榜单/票房、考试官方信息等高确定性垂直题，优先执行 `route` 推荐的 direct `guanlan read` 命令，再用匹配的 `preset/scope` 扩大证据面；不要只看搜索引擎是否返回。
+- 体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE、安全公告、科学机构声明、文娱榜单/票房、考试官方信息等高确定性垂直题，优先执行 `route` 推荐的 direct `guanlan read` 命令，再用匹配的 `preset/scope` 扩大证据面；不要只看搜索引擎是否返回。
 - 在完成当前档位要求的 Guanlan 工具前，不要立刻切 `web_search/web_fetch`。`quality_summary=warn` 通常表示证据包还不完整，不等于 Guanlan 搜索失败。
 - 如果 Guanlan 输出 `external_fetch_strategy`，可以调用宿主 Agent 的 WebFetch/WebRead 读取候选 URL；外显时说明这是“Guanlan 规划信源 + WebFetch 定点补证”的搜索策略，不是 Guanlan 脆弱。
 - 做 benchmark 时不要误用：实时题必须带 `hotnews`，技术/AI 题必须带 `feeds` 或 `research --preset tech`，政策题不要只测单次泛搜。
@@ -58,6 +59,7 @@ metadata:
 - 文娱/影视/综艺/明星/游戏/票房/评分/口碑类问题优先用 `route` 或 `research --preset entertainment`；把平台热度、用户评分、产业报道、宣发通稿和粉圈讨论分层看。
 - 欧美娱乐、Hollywood、Taylor Swift、Billboard、Grammy、巡演、新歌专辑等问题优先用 `research --preset global_entertainment --profile english`；英文行业媒体、榜单/奖项和艺人/厂牌一手信息优先于粉丝账号和八卦站。
 - 日韩娱乐、K-pop/J-pop、韩剧日剧、Soompi、Oricon、Naver 等问题优先用 `research --preset jp_kr_entertainment --profile hybrid`；区分本地媒体/榜单、经纪公司口径、英文翻译站和粉丝讨论。
+- 财经、股票、行情、公告、财报、监管、宏观金融、ETF/基金、雪球/股吧情绪和研报问题优先用 `guanlan stock ...` / `guanlan-stock ...` 获取结构化行情、榜单、资金流向和大盘概览，再用 `research --preset finance` 或 `search --scope finance_quote|finance_disclosure|finance_macro|finance_sentiment|finance_research` 扩展证据；把行情、公告披露、监管/宏观、新闻、研报观点和投资者情绪分层看，不输出买卖建议。
 - CVE/漏洞/补丁/反诈/诈骗短信用 `research --preset cybersecurity` 或 `search --scope cybersecurity --trace`；优先 CVE/NVD/CISA/厂商公告/监管来源。
 - 台风/天气/地震/灾害预警用 `search --scope weather_disaster --trace`；优先官方气象和应急来源，并检查时间戳。
 - 体育、科学新闻、招聘薪资面经、播客、考试备考分别用 `sports`、`science`、`career`、`podcast`、`test_prep` preset/scope，不要停在泛搜索。
@@ -83,6 +85,10 @@ metadata:
 | 文娱/影视/综艺/游戏/明星/票房口碑 | entertainment | `guanlan research "关键词" --preset entertainment` |
 | 欧美娱乐/音乐产业/明星动态 | global_entertainment | `guanlan research "关键词" --preset global_entertainment --profile english` |
 | 日韩娱乐/K-pop/J-pop/韩剧日剧 | jp_kr_entertainment | `guanlan research "关键词" --preset jp_kr_entertainment --profile hybrid` |
+| 财经/股票/行情/财报公告/宏观金融 | finance | `guanlan research "关键词" --preset finance --advisor` |
+| 行情/指数/股价/ETF | finance_quote | `guanlan search "关键词" --scope finance_quote --trace` |
+| 公告/财报/监管/问询函 | finance_disclosure | `guanlan search "关键词" --scope finance_disclosure --trace` |
+| 宏观/央行/统计局/利率 | finance_macro | `guanlan search "关键词" --scope finance_macro --trace` |
 | CVE/漏洞/反诈/补丁 | cybersecurity | `guanlan research "关键词" --preset cybersecurity` |
 | 天气/台风/地震/灾害预警 | weather_disaster | `guanlan search "关键词" --scope weather_disaster --trace` |
 | 体育赛事/伤病/转会 | sports | `guanlan research "关键词" --preset sports` |
@@ -104,6 +110,14 @@ guanlan search "query" --limit 80
 guanlan search "EI会议 投稿 检索" --profile china --scope academic
 guanlan search "清华大学计算机系研究生招生 导师" --profile china --scope university
 guanlan search "电影 票房 评分" --profile china --scope entertainment
+guanlan search "贵州茅台 公告 财报" --profile china --scope finance_disclosure --limit 80 --trace
+guanlan search "上证指数 今日 行情" --profile china --scope finance_quote --limit 80 --trace
+guanlan search "社融 CPI 降息 央行" --profile china --scope finance_macro --limit 80 --trace
+guanlan stock quote "贵州茅台"
+guanlan stock detail "600519"
+guanlan stock fundflow "宁德时代"
+guanlan-stock rank --sort turnover --limit 20
+guanlan-stock index
 guanlan search "Taylor Swift latest" --profile english --scope global_entertainment
 guanlan search "BLACKPINK K-pop comeback" --profile hybrid --scope jp_kr_entertainment
 guanlan search "OpenSSL CVE 最新 漏洞 影响版本" --scope cybersecurity --limit 80 --trace
@@ -121,11 +135,14 @@ guanlan search "query" --format context
 guanlan search "query" --format prompt
 guanlan search "query" --source-chart
 guanlan route "query"
+guanlan workflow "query" --json
+guanlan investigate "query" --limit 80 --format context
 guanlan research "query" --profile china --advisor
 guanlan research "query" --profile china --format prompt
 guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
 guanlan research "清华大学计算机系研究生招生 导师" --preset university --read-top 0
 guanlan research "电影/综艺/游戏/明星 票房口碑" --preset entertainment --read-top 0
+guanlan research "宁德时代 股价 财报 公告 最近风险" --preset finance --read-top 5 --advisor
 guanlan research "Taylor Swift 最新动态 新专辑 巡演" --preset global_entertainment --profile english
 guanlan research "BLACKPINK K-pop 最新回归" --preset jp_kr_entertainment --profile hybrid
 guanlan research "OpenSSL CVE 最新 漏洞 影响版本" --preset cybersecurity --read-top 5

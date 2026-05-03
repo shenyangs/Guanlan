@@ -8,6 +8,31 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.4.5 - 2026-05-03
+
+### Added
+
+- 新增 `guanlan workflow`：本地判断任务应保持 `direct` 轻搜索、升级 `guided` 研究链路，还是进入 `investigate` 上层工作流；输出 `do_not_overthink`、建议候选池、读取数、timeout 和兜底策略。
+- 新增 `guanlan investigate`：显式深查入口，复用既有 `route/research/read/feeds/hotnews` 证据包能力，并附带 `workflow_decision`，不改变基础 `search/read/hotnews` 的轻路径默认行为。
+- MCP 新增 `guanlan_workflow` 与 `guanlan_investigate`，`guanlan_route` 输出同步携带工作流分流信息。
+- 新增 `guanlan quality foundational`，把“轻任务不打扰，重任务不偷懒”固化成发版前护栏，并纳入 `scripts/release_gate.sh`。
+- 新增财经结构化能力：`guanlan stock ...` 与独立入口 `guanlan-stock`，支持行情搜索、报价、详情、资金流、新闻、板块、大盘和榜单等公开数据读取。
+
+### Changed
+
+- 财经路由体系扩展为行情、公告披露、公司一手、财经新闻、宏观数据、研报观点和投资者情绪等分层 scope / evidence role，并同步到 route、search、research、MCP、Agent 文档和 Skill。
+- `route` Markdown/JSON 现在同时展示需求路由和轻重分流，帮助 Agent 在“只搜一下”和“系统深查”之间做更稳的选择。
+- `capabilities`、README、Agent Playbook、Agent Usage、Skill 和 0.5.0 施工方案同步说明 `workflow/investigate` 的使用边界：高级工作流只作为显式入口，不接管基础命令。
+- 发布闸门从 8 步扩展为 9 步，先跑 foundational guard，再跑 coverage/regression/robustness/benchmark/build/smoke。
+- 后台更新提示与 telemetry dashboard 继续收口：更新提示走缓存和短超时，不污染 JSON stdout；dashboard 增强平台独立设备/Agent 统计。
+- 官网展示版本号同步到 `0.4.5`。
+
+### Notes
+
+- 本版是 `0.5.0` 研究工作流引擎的 P0 基座，不作为 0.5.0 发布；先把分流器、显式深查入口和基础护栏做稳。
+- 遥测策略保持不变：默认开启，但只采集克制的命令生命周期元数据；本版没有改成 opt-in。
+- 财经能力只整理公开证据和数据边界，不提供买入、卖出或持有建议。
+
 ## v0.4.3 - 2026-05-03
 
 ### Added

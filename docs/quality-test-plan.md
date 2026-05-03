@@ -6,6 +6,7 @@
 
 | 维度 | 目标 | 最低验收 |
 | --- | --- | --- |
+| 轻重分流 | 简单任务保持 direct，政策/高风险任务 guided，对比/档案任务 investigate。 | `guanlan workflow` 与 `quality foundational` 不让基础 search 被上层工作流拖重。 |
 | 搜索质量 | 查询能被正确路由到适合的中文信源，并保留开放网页兜底。 | 结果数量足够；前列结果与意图匹配；`--trace` 能解释 route、scope、质量评分和缓存。 |
 | 热点时效 | 热榜能反映当天或近期水势，单源失败不拖垮整体。 | `today` 多源可返回；单源有状态说明；结果含 rank/source/time 线索。 |
 | 正文抽取 | `read` 输出应尽量接近正文，而不是导航、登录、推荐和页脚。 | 中文新闻/官方页正文占比明显高于噪声；失败时能给搜索兜底。 |
@@ -82,6 +83,7 @@
 
 - `ruff check .`
 - `pytest -q`
+- `guanlan quality foundational`
 - `guanlan quality coverage`
 - `guanlan quality regression`
 - `guanlan eval benchmark`

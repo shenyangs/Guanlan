@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.4.3`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.4.5`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -413,6 +413,8 @@ guanlan configure --from-browser chrome
 | `guanlan status` | 显示渠道运行、就绪、验证、稳定性、授权边界和本地缓存概览。 |
 | `guanlan route "关键词"` | 解释需求路由、证据角色、优先 scope、推荐站点、推荐 RSS 和边界提醒。 |
 | `guanlan route "关键词" --json` | 给 Agent 前置路由，输出 `recommended_commands` 作为下一步命令起手式。 |
+| `guanlan workflow "关键词"` | 本地判断该轻搜、按路由研究，还是显式进入 `investigate`；不会联网，也不会让基础 search 自动变重。 |
+| `guanlan investigate "复杂问题" --limit 80 --format context` | 显式上层深查入口：复用 route/research/read/feeds/hotnews，把工作流决策和证据包放在一起。 |
 | `guanlan search "关键词"` | 搜索网页，输出适合 Agent 阅读的结果列表。 |
 | `guanlan search "关键词" --trace` | 展示评分因子、后端顺序、聚类阈值和缓存命中状态。 |
 | `guanlan search "最近 关键词 热点" --trace` | 自动识别时效性意图，收束到近期窗口，并在 trace 中解释结果日期。 |
@@ -499,6 +501,7 @@ guanlan configure --from-browser chrome
 | `guanlan eval tasks --format jsonl` | 输出真实中文研究任务池骨架，用于 live/manual benchmark。 |
 | `guanlan eval benchmark` | 跑离线确定性评测，检查路由、证据角色和候选池是否守住 Agent 契约。 |
 | `guanlan quality run` | 一键跑搜索/阅读/热榜/advisor 质量闸门。 |
+| `guanlan quality foundational` | 发版前检查轻重分流、默认候选池和基础工作流不回退。 |
 | `guanlan quality coverage` | 发版前检查默认结果池和证据字段没有缩水。 |
 | `guanlan quality regression` | 发版前检查结果池、来源多样性、RSS 兜底、正文抽取和 advisor 动态性没有退化。 |
 | `guanlan quality robustness` | 更深的稳健性闸门，检查 Archive 入库审计、Agent 字段契约、空结果解释和发布脚本完整性。 |
@@ -508,6 +511,8 @@ guanlan configure --from-browser chrome
 | `guanlan profile set china` | 切换到中文场景画像。 |
 | `guanlan configure --from-browser chrome` | 显式从浏览器提取支持平台的 Cookie。 |
 | `guanlan skill --install` | 将观澜使用说明安装到 Agent skills 目录。 |
+
+工作流分流遵循“轻任务不打扰，重任务不偷懒”：简单官网、链接、事实查找继续走 `search/read`；政策、财经、安全、医疗、法律、复杂对比、时间线和档案类问题才升级到 `research/investigate/compare/timeline/dossier`。
 
 默认候选池从 `v0.1.10` 起按 Agent 研究场景放大：`search`、`research`、`archive search` 默认 80 条，`feeds` 默认 80 条，`hotnews` 默认 80 条且 MCP 最高 100 条，`read` 的搜索兜底默认 20 条。`v0.2.5` 增加 Coverage Guard，发版前会检查这些下限和关键证据字段，避免下游 Agent 因更新拿到的材料大面积变少。
 
@@ -939,6 +944,7 @@ Agent Wiki 是 archive 的旁支组织层，不是全网知识库。`archive wik
 guanlan quality run
 guanlan quality run --format json
 guanlan quality run --coverage
+guanlan quality foundational
 guanlan quality coverage
 guanlan quality regression
 guanlan quality robustness
@@ -950,6 +956,8 @@ guanlan quality run --mode live --limit 5
 ```
 
 默认 `quick` 模式不依赖网络，会检查搜索排序、中文错配、正文质量评分、趋势归并和 advisor 自然度；`live` 模式会额外跑少量真实网络探测。
+
+`quality foundational` 是轻重分流和基础能力护栏：检查简单任务仍保持 direct、政策/高风险任务会升级 guided、对比/档案任务会进入 investigate，同时确认默认候选池不缩水。
 
 `quality coverage` 是给发版用的防缩水护栏：检查 `search/research/archive/hotnews/read fallback` 的默认结果池下限，检查搜索结果是否保留 `evidence_role`，检查 research/read/archive 是否保留质量元数据。它不保证每个网络请求都成功，但能防止一次更新把 Agent 赖以判断的信息面悄悄变窄。
 

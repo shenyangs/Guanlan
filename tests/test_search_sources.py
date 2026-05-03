@@ -43,6 +43,13 @@ def test_search_scopes_include_requested_china_sources():
     assert "xiaoyuzhoufm.com" in scopes["podcast"]["domains"]
     assert "levels.fyi" in scopes["career"]["domains"]
     assert "ielts.org" in scopes["test_prep"]["domains"]
+    assert "cninfo.com.cn" in scopes["finance_disclosure"]["domains"]
+    assert scopes["finance_disclosure"]["source_type"] == "财经/公告披露"
+    assert "quote.eastmoney.com" in scopes["finance_quote"]["domains"]
+    assert scopes["finance_quote"]["source_type"] == "财经/行情数据"
+    assert "stats.gov.cn" in scopes["finance_macro"]["domains"]
+    assert "xueqiu.com" in scopes["finance_sentiment"]["domains"]
+    assert "data.eastmoney.com" in scopes["finance_research"]["domains"]
 
 
 def test_resolve_scope_aliases():
@@ -67,6 +74,12 @@ def test_resolve_scope_aliases():
     assert resolve_scope("podcast").id == "podcast"
     assert resolve_scope("salary").id == "career"
     assert resolve_scope("ielts").id == "test_prep"
+    assert resolve_scope("quote").id == "finance_quote"
+    assert resolve_scope("stock").id == "finance_quote"
+    assert resolve_scope("filing").id == "finance_disclosure"
+    assert resolve_scope("macro").id == "finance_macro"
+    assert resolve_scope("xueqiu").id == "finance_sentiment"
+    assert resolve_scope("brokerage").id == "finance_research"
 
 
 def test_resolve_scope_rejects_unknown():
@@ -142,3 +155,18 @@ def test_classify_domain_detects_english_source_scopes():
     assert developer["source_type"] == "英文开发者/开源"
     assert developer["matched_scope"] == "developer"
     assert community["source_type"] == "英文社区样本"
+
+
+def test_classify_domain_detects_finance_layers():
+    cninfo = classify_domain("www.cninfo.com.cn")
+    quote = classify_domain("quote.eastmoney.com")
+    macro = classify_domain("www.stats.gov.cn", preferred_scope="finance_macro")
+    sentiment = classify_domain("guba.eastmoney.com")
+
+    assert cninfo["source_type"] == "财经/公告披露"
+    assert cninfo["matched_scope"] == "finance_disclosure"
+    assert cninfo["trust_level"] == 5
+    assert quote["source_type"] == "财经/行情数据"
+    assert quote["matched_scope"] == "finance_quote"
+    assert macro["matched_scope"] == "finance_macro"
+    assert sentiment["matched_scope"] == "finance_sentiment"

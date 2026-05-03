@@ -264,20 +264,151 @@ SEARCH_SCOPES: dict[str, SearchScope] = {
     "finance": SearchScope(
         id="finance",
         name="财经与资本市场",
-        description="适合财经快讯、上市公司、证券市场、宏观和产业金融。",
+        description="财经总入口：适合先路由股票、公告、财报、宏观、财经新闻和市场情绪。",
         source_type="财经/资本市场",
         trust_level=4,
         domains=(
+            "cninfo.com.cn",
+            "sse.com.cn",
+            "szse.cn",
+            "csrc.gov.cn",
+            "stats.gov.cn",
+            "pbc.gov.cn",
             "cls.cn",
-            "wallstreetcn.com",
             "eastmoney.com",
             "stcn.com",
             "cnstock.com",
             "yicai.com",
+            "xueqiu.com",
+            "sec.gov",
+        ),
+    ),
+    "finance_quote": SearchScope(
+        id="finance_quote",
+        name="行情、指数与板块",
+        description="适合股价、指数、涨跌幅、板块排名、ETF、基金净值等强时效数据入口。",
+        source_type="财经/行情数据",
+        trust_level=3,
+        domains=(
+            "quote.eastmoney.com",
+            "eastmoney.com",
+            "finance.sina.com.cn",
+            "xueqiu.com",
+            "10jqka.com.cn",
+            "csindex.com.cn",
+            "sse.com.cn",
+            "szse.cn",
+            "finance.yahoo.com",
+            "nasdaq.com",
+            "marketwatch.com",
+            "cn.investing.com",
+        ),
+    ),
+    "finance_company": SearchScope(
+        id="finance_company",
+        name="公司基本面与投资者关系",
+        description="适合上市公司财报、年报、投资者关系、主营业务、股本和公司一手资料。",
+        source_type="财经/公司一手",
+        trust_level=5,
+        domains=(
+            "cninfo.com.cn",
+            "sse.com.cn",
+            "szse.cn",
+            "hkexnews.hk",
+            "sec.gov",
+            "nasdaq.com",
+            "annualreports.com",
+        ),
+    ),
+    "finance_disclosure": SearchScope(
+        id="finance_disclosure",
+        name="公告、披露与监管",
+        description="适合上市公司公告、交易所披露、监管处罚、减持、质押、停复牌和风险事项。",
+        source_type="财经/公告披露",
+        trust_level=5,
+        domains=(
+            "cninfo.com.cn",
+            "sse.com.cn",
+            "szse.cn",
+            "bse.cn",
+            "hkexnews.hk",
+            "csrc.gov.cn",
+            "sec.gov",
+            "pbc.gov.cn",
+            "safe.gov.cn",
+        ),
+    ),
+    "finance_news": SearchScope(
+        id="finance_news",
+        name="财经新闻与市场快讯",
+        description="适合财经快讯、公司新闻、行业事件、市场报道和多家媒体交叉核验。",
+        source_type="财经/新闻报道",
+        trust_level=4,
+        domains=(
+            "cls.cn",
+            "stcn.com",
+            "cnstock.com",
+            "cs.com.cn",
+            "yicai.com",
             "caixin.com",
             "21jingji.com",
-            "jrj.com.cn",
+            "eastmoney.com",
+            "wallstreetcn.com",
+            "reuters.com",
+            "bloomberg.com",
+        ),
+    ),
+    "finance_macro": SearchScope(
+        id="finance_macro",
+        name="宏观金融与官方数据",
+        description="适合 CPI、GDP、社融、利率、汇率、外储、央行政策、统计和国际宏观数据。",
+        source_type="财经/宏观数据",
+        trust_level=5,
+        domains=(
+            "stats.gov.cn",
+            "pbc.gov.cn",
+            "safe.gov.cn",
+            "mof.gov.cn",
+            "ndrc.gov.cn",
+            "csrc.gov.cn",
+            "imf.org",
+            "worldbank.org",
+            "oecd.org",
+            "fred.stlouisfed.org",
+            "cmegroup.com",
+        ),
+    ),
+    "finance_sentiment": SearchScope(
+        id="finance_sentiment",
+        name="市场讨论与投资者情绪样本",
+        description="适合雪球、股吧、微博、知乎等公开讨论样本；只能作为情绪线索，不作事实主证据。",
+        source_type="财经/情绪样本",
+        trust_level=2,
+        domains=(
             "xueqiu.com",
+            "guba.eastmoney.com",
+            "eastmoney.com",
+            "weibo.com",
+            "zhihu.com",
+        ),
+    ),
+    "finance_research": SearchScope(
+        id="finance_research",
+        name="研报、行业报告与观点",
+        description="适合券商/行业报告、市场观点和产业金融分析；需和公告、数据源交叉验证。",
+        source_type="财经/研报观点",
+        trust_level=3,
+        domains=(
+            "eastmoney.com",
+            "data.eastmoney.com",
+            "pdf.dfcfw.com",
+            "stock.finance.sina.com.cn",
+            "cnstock.com",
+            "stcn.com",
+            "iresearch.com.cn",
+            "199it.com",
+            "qianzhan.com",
+            "leadleo.com",
         ),
     ),
     "social_web": SearchScope(
@@ -657,6 +788,44 @@ SEARCH_SCOPE_ALIASES = {
     "reviews": "market_review",
     "review": "market_review",
     "saas-review": "market_review",
+    "quote": "finance_quote",
+    "quotes": "finance_quote",
+    "stock": "finance_quote",
+    "stocks": "finance_quote",
+    "market": "finance_quote",
+    "index": "finance_quote",
+    "etf": "finance_quote",
+    "fund": "finance_quote",
+    "finance-quote": "finance_quote",
+    "finance_quote": "finance_quote",
+    "disclosure": "finance_disclosure",
+    "disclosures": "finance_disclosure",
+    "filing": "finance_disclosure",
+    "filings": "finance_disclosure",
+    "announcement": "finance_disclosure",
+    "announcements": "finance_disclosure",
+    "finance-disclosure": "finance_disclosure",
+    "finance_disclosure": "finance_disclosure",
+    "finance-company": "finance_company",
+    "finance_company": "finance_company",
+    "ir": "finance_company",
+    "investor-relations": "finance_company",
+    "macro": "finance_macro",
+    "macro-finance": "finance_macro",
+    "finance-macro": "finance_macro",
+    "finance_macro": "finance_macro",
+    "finance-news": "finance_news",
+    "finance_news": "finance_news",
+    "market-news": "finance_news",
+    "finance-sentiment": "finance_sentiment",
+    "finance_sentiment": "finance_sentiment",
+    "xueqiu": "finance_sentiment",
+    "guba": "finance_sentiment",
+    "stock-sentiment": "finance_sentiment",
+    "research-report": "finance_research",
+    "finance-research": "finance_research",
+    "finance_research": "finance_research",
+    "brokerage": "finance_research",
     "entertainment": "entertainment",
     "culture": "entertainment",
     "wenyu": "entertainment",
@@ -726,18 +895,46 @@ def classify_domain(domain: str, preferred_scope: str | None = None) -> dict:
     business source and an ecommerce vertical source.
     """
     normalized = (domain or "").lower().removeprefix("www.")
+    if not preferred_scope and (normalized == "sec.gov" or normalized.endswith(".sec.gov")):
+        scope = SEARCH_SCOPES["global_official"]
+        return {
+            "source_type": scope.source_type,
+            "matched_scope": scope.id,
+            "trust_level": scope.trust_level,
+        }
     scopes = list(SEARCH_SCOPES.values())
     if preferred_scope:
         preferred = resolve_scope(preferred_scope)
         scopes = [preferred] + [scope for scope in scopes if scope.id != preferred.id]
-    for scope in scopes:
+    else:
+        finance_general = SEARCH_SCOPES.get("finance")
+        scopes = [scope for scope in scopes if scope.id != "finance"]
+        if finance_general:
+            scopes.append(finance_general)
+    matches: list[tuple[int, int, SearchScope]] = []
+    scope_priority = {
+        "finance_disclosure": 0,
+        "finance_company": 1,
+        "finance_quote": 2,
+        "finance_macro": 3,
+        "finance_news": 4,
+        "finance_research": 5,
+        "social_web": 6,
+        "finance_sentiment": 7,
+        "finance": 99,
+    }
+    for index, scope in enumerate(scopes):
         for candidate in scope.domains:
             if normalized == candidate or normalized.endswith("." + candidate):
-                return {
-                    "source_type": scope.source_type,
-                    "matched_scope": scope.id,
-                    "trust_level": scope.trust_level,
-                }
+                priority = scope_priority.get(scope.id, index + 20)
+                matches.append((len(candidate), -priority, scope))
+    if matches:
+        _, _, scope = max(matches, key=lambda row: (row[0], row[1]))
+        return {
+            "source_type": scope.source_type,
+            "matched_scope": scope.id,
+            "trust_level": scope.trust_level,
+        }
     return {
         "source_type": "通用网页",
         "matched_scope": "",

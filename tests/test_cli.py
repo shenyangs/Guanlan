@@ -15,6 +15,7 @@ from guanlan.limits import (
     DEFAULT_READ_FALLBACK_LIMIT,
     DEFAULT_SEARCH_LIMIT,
 )
+from guanlan.update_check import UpdateInfo
 
 
 class TestCLI:
@@ -116,6 +117,7 @@ class TestCLI:
         assert "guanlan route" in captured.out
         assert "guanlan research" in captured.out
         assert "助理视角" in captured.out
+        assert "财经路由" in captured.out
         assert "查过资料不要丢" in captured.out
         assert "archive context" in captured.out
         assert "Agent 超时预算" in captured.out
@@ -131,8 +133,47 @@ class TestCLI:
         assert "discover" in ids
         assert "feeds" in ids
         assert "advisor" in ids
+        assert "finance" in ids
         assert "report" in ids
         assert any(item["mcp"] == "guanlan_capabilities" for item in data)
+
+
+    def test_workflow_command_keeps_simple_lookup_light(self, capsys):
+        with patch("sys.argv", ["guanlan", "workflow", "观澜 官网"]):
+            main()
+
+        captured = capsys.readouterr()
+        assert "观澜工作流分流" in captured.out
+        assert "分流层级: direct" in captured.out
+        assert "不要过度思考: 是" in captured.out
+
+    def test_route_json_includes_workflow_decision(self, capsys):
+        with patch("sys.argv", ["guanlan", "route", "人工智能 政策 最新", "--json"]):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "workflow_decision" in data
+        assert data["workflow_decision"]["recommended_limit"] >= 80
+
+    def test_investigate_command_uses_upper_workflow(self, capsys):
+        packet = {
+            "query": "某公司 风险 舆情 档案",
+            "results": [],
+            "selected_evidence": [],
+            "workflow_decision": {"tier": "investigate", "query": "某公司 风险 舆情 档案"},
+            "investigation": {"principle": "先取证", "next_views": []},
+            "guidance": [],
+        }
+        with patch("guanlan.investigation.build_investigation_packet", return_value=packet), patch(
+            "sys.argv", ["guanlan", "investigate", "某公司 风险 舆情 档案", "--json"]
+        ):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["workflow_decision"]["tier"] == "investigate"
+        assert data["investigation"]["principle"] == "先取证"
 
     def test_feedback_command_submits(self, capsys):
         with patch(
@@ -402,6 +443,23 @@ class TestCLI:
 
         capsys.readouterr()
         assert calls[0]["network_mode"] == "direct"
+
+    def test_search_prints_compact_update_notice_to_stderr_without_polluting_json(self, capsys, monkeypatch):
+        def fake_search_web(*_args, **_kwargs):
+            return []
+
+        monkeypatch.setattr("guanlan.webtools.search_web", fake_search_web)
+
+        with patch(
+            "guanlan.update_check.cached_update_info",
+            return_value=UpdateInfo(current="0.4.3", latest="0.4.4"),
+        ), patch("sys.argv", ["guanlan", "search", "人工智能", "--json"]):
+            main()
+
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "[]"
+        assert "版本提醒" in captured.err
+        assert "uv tool install --force --upgrade guanlan" in captured.err
 
     def test_hotnews_default_limit_is_expanded(self, capsys, monkeypatch):
         calls = []

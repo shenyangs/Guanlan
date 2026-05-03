@@ -36,6 +36,8 @@ If a user, benchmark, or downstream Agent asks for `--limit` below 30, accept th
 it as a smoke sample, not as a research-grade evidence pool. Persuade the Agent/user to rerun with
 `--limit 80` before making strong claims.
 
+Workflow decision rule: use `guanlan workflow "query"` when the Agent is unsure whether a request should stay on a light search/read path or upgrade to research/investigate. Keep simple lookups direct; do not run `investigate` for basic website/link/fact searches. Use `guanlan investigate "query" --limit 80 --format context` only when the user explicitly needs deep research, cross-source evidence, comparison, timeline, dossier, high-impact verification, or a reusable evidence packet.
+
 Site/time constraint rule: `--site` is a hard filter. If `guanlan search ... --site gov.cn` returns
 zero results after filtering, do not relax to Zhihu, generic SEO pages, or other domains. For explicit
 years or year ranges, treat the requested window as a strong constraint: window-outside materials can
@@ -54,13 +56,16 @@ Japanese/Korean entertainment (`jp_kr_entertainment`), cybersecurity/CVE/fraud (
 weather/disaster alerts (`weather_disaster`), sports (`sports`), science-news verification
 (`science`), job/salary/interview research (`career`), podcast discovery (`podcast`), exam prep
 (`test_prep`), university admissions/advisor pages (`university`), academic indexing/submission
-(`academic`), and product/company reputation (`reputation`).
+(`academic`), finance/capital-market lookup (`finance`, `finance_quote`, `finance_disclosure`,
+`finance_macro`, `finance_sentiment`, `finance_research`), and product/company reputation
+(`reputation`).
 
 Vertical entrypoint rule: for high-confidence vertical lookup tasks, Guanlan may inject direct
 source seeds and `guanlan read` followups before or alongside search results. Treat these as
 authoritative entrypoints to read, not as final answers. This is especially important for sports
-scores/schedules/standings, weather or disaster alerts, CVE/security advisories, science agency
-claims, entertainment charts/ratings/box office, academic indexing, and exam-official information.
+scores/schedules/standings, finance quotes/disclosures/macro data, weather or disaster alerts,
+CVE/security advisories, science agency claims, entertainment charts/ratings/box office, academic
+indexing, and exam-official information.
 Do not report "Guanlan found nothing" until the recommended direct `read` commands and the matching
 scope/preset search have been tried.
 If results are only direct source seeds because normal search backends timed out or were blocked,
@@ -103,6 +108,14 @@ guanlan search "电商零售问题" --profile china --scope ecommerce
 guanlan search "学术会议 投稿 检索问题" --profile china --scope academic
 guanlan search "高校 研究生招生 导师 院系官网" --profile china --scope university
 guanlan search "影视 综艺 游戏 明星 票房口碑" --profile china --scope entertainment
+guanlan search "股票 股价 财报 公告 风险" --profile china --scope finance_disclosure --limit 80 --trace
+guanlan search "上证指数 今日 行情" --profile china --scope finance_quote --limit 80 --trace
+guanlan search "社融 CPI 降息 央行" --profile china --scope finance_macro --limit 80 --trace
+guanlan stock quote "贵州茅台"
+guanlan stock detail "600519"
+guanlan stock fundflow "宁德时代"
+guanlan-stock rank --sort turnover --limit 20
+guanlan-stock index
 guanlan search "Taylor Swift 最新动态" --profile english --scope global_entertainment
 guanlan search "K-pop 最新回归" --profile hybrid --scope jp_kr_entertainment
 guanlan search "OpenSSL CVE 最新 漏洞 影响版本" --scope cybersecurity --limit 80 --trace
@@ -113,6 +126,8 @@ guanlan search "詹姆斯韦伯 外星生命 NASA" --scope science --profile eng
 guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80
 guanlan search --list-scopes
 guanlan route "中文研究需求" --json
+guanlan workflow "中文研究需求" --json
+guanlan investigate "复杂研究需求" --limit 80 --format context
 guanlan read "https://example.com/article" --max-chars 12000
 guanlan read "https://example.com/article" --quality-report
 guanlan read "https://example.com/article" --strict --trace
@@ -120,6 +135,7 @@ guanlan research "query" --profile china --advisor
 guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
 guanlan research "清华大学计算机系研究生招生 导师" --preset university --read-top 0
 guanlan research "影视 综艺 游戏 明星 票房口碑" --preset entertainment --read-top 0
+guanlan research "宁德时代 股价 财报 公告 最近风险" --preset finance --read-top 5 --advisor
 guanlan research "Taylor Swift 最新动态 新专辑 巡演" --preset global_entertainment --profile english
 guanlan research "BLACKPINK K-pop 最新回归" --preset jp_kr_entertainment --profile hybrid
 guanlan research "OpenSSL CVE 最新 漏洞 影响版本" --preset cybersecurity --read-top 5
@@ -172,6 +188,7 @@ Safety rules:
 - Use `guanlan research ... --preset entertainment --read-top 0` for film, drama, variety show, music, celebrity, game, box-office, rating, and fandom/public-discussion questions; separate platform metrics, user ratings, industry reports, promotion copy, and fandom samples.
 - Use `guanlan research ... --preset global_entertainment --profile english` for Western entertainment, Hollywood, pop stars, tours, albums, Billboard/Grammy/award questions; prioritize English trade media, charts/awards, and official artist/label statements over fan or tabloid claims.
 - Use `guanlan research ... --preset jp_kr_entertainment --profile hybrid` for Japanese/Korean entertainment, K-pop/J-pop, K-drama/J-drama, Oricon/Soompi/Naver questions; separate local media/charts, agency statements, translation sites, and fandom samples.
+- Use `guanlan stock ...` or `guanlan-stock ...` for structured stock quotes, market overview, rankings, fund flow, plates, and stock news before trying to read dynamic finance pages. Use `guanlan research ... --preset finance`, `search --scope finance_disclosure`, `search --scope finance_quote`, `search --scope finance_macro`, `search --scope finance_sentiment`, or `search --scope finance_research` for broader evidence. Separate quote data, company filings, regulation, news, research opinions, and sentiment samples. Do not output buy/sell/hold advice.
 - Use `guanlan research ... --preset cybersecurity` or `search --scope cybersecurity --trace` for CVE, vulnerabilities, patches, vendor advisories, phishing, fraud, and suspicious messages; prioritize CVE/NVD/CISA/vendor/regulator sources.
 - Use `guanlan search ... --scope weather_disaster --trace` for typhoon, weather alert, earthquake, disaster, and official safety questions; prioritize official meteorological/emergency sources and check timestamps.
 - Use `guanlan research ... --preset sports`, `--preset science`, `--preset career`, `--preset podcast`, or `--preset test_prep` for sports, science-news verification, job/salary/interview, podcast discovery, and exam-prep questions instead of leaving them as generic web search.
@@ -181,5 +198,5 @@ Safety rules:
 - Use `guanlan archive verify` before relying on archive as memory/RAG/Wiki; use `archive context` or `archive wiki context` when a local model needs evidence-bound context from stored materials.
 - Use `guanlan archive wiki build` only as a local sidecar export over existing archive records; it must not be treated as whole-web truth or cloud sync.
 - Use `guanlan report html ...` only as a sidecar renderer when the user asks for an HTML report; it reads existing JSON/stdin/demo data and must not replace the main search/read/research/hotnews flows.
-- Before release, run `guanlan quality coverage`, `guanlan quality regression`, and `guanlan eval benchmark` and do not ship if it fails; new versions must not silently shrink the default result pool or remove agent-facing evidence metadata.
+- Before release, run `guanlan quality foundational`, `guanlan quality coverage`, `guanlan quality regression`, and `guanlan eval benchmark` and do not ship if it fails; new versions must not silently shrink the default result pool or remove agent-facing evidence metadata.
 - Use `guanlan research ... --advisor` when the user asks for advice, implications, next steps, or "why they might be searching this"; treat the advisor block as evidence-bound writing rules for your answer, not as the user's true intent or a final decision.

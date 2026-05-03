@@ -104,10 +104,6 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "申根",
             "签证",
             "移民",
-            "美联储",
-            "fedwatch",
-            "cme fedwatch",
-            "降息",
             "出口管制",
             "cbam",
             "拥堵费",
@@ -809,12 +805,12 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
         "intent": "finance",
         "terms": (
             "财经",
+            "资本市场",
             "股价",
             "股票",
             "财报",
             "公告",
             "投资",
-            "融资",
             "上市",
             "基金",
             "债券",
@@ -830,10 +826,128 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "倒闭",
             "机构观点",
         ),
-        "scopes": ("finance", "business"),
-        "fallback": ("gov", "social_web"),
-        "roles": ("market_news", "filing_context", "risk_context"),
-        "warning": "财经材料时效和立场差异大，不能把市场观点写成投资建议。",
+        "scopes": ("finance_disclosure", "finance_company", "finance_news", "finance_quote"),
+        "fallback": ("finance_macro", "finance_research", "finance_sentiment", "business"),
+        "sites": ("cninfo.com.cn", "sse.com.cn", "szse.cn", "eastmoney.com", "cls.cn", "xueqiu.com"),
+        "roles": ("company_filing", "market_quote", "market_news", "macro_data", "sentiment_sample"),
+        "warning": "财经材料必须区分行情、公告披露、新闻、宏观数据、研报观点和投资者情绪；不能把市场观点写成投资建议。",
+    },
+    {
+        "intent": "finance_quote",
+        "terms": (
+            "股价",
+            "行情",
+            "涨跌",
+            "涨跌幅",
+            "盘口",
+            "大盘",
+            "指数",
+            "板块",
+            "etf",
+            "基金净值",
+            "实时",
+            "quote",
+            "stock price",
+            "market cap",
+        ),
+        "scopes": ("finance_quote", "finance_news"),
+        "fallback": ("finance_disclosure", "finance_sentiment"),
+        "sites": ("quote.eastmoney.com", "finance.sina.com.cn", "xueqiu.com", "finance.yahoo.com", "nasdaq.com"),
+        "roles": ("market_quote", "index_data", "market_news", "sentiment_sample"),
+        "warning": "行情页多为动态渲染且可能延迟；回答必须标注时间/来源，不能据此给买卖建议。",
+    },
+    {
+        "intent": "finance_disclosure",
+        "terms": (
+            "公告",
+            "披露",
+            "财报",
+            "年报",
+            "季报",
+            "半年报",
+            "减持",
+            "质押",
+            "停牌",
+            "复牌",
+            "监管函",
+            "问询函",
+            "处罚",
+            "风险提示",
+            "10-k",
+            "10-q",
+            "filing",
+        ),
+        "scopes": ("finance_disclosure", "finance_company", "finance_news"),
+        "fallback": ("finance_quote", "finance_macro", "finance_sentiment"),
+        "sites": ("cninfo.com.cn", "sse.com.cn", "szse.cn", "hkexnews.hk", "sec.gov", "csrc.gov.cn"),
+        "roles": ("company_filing", "exchange_announcement", "regulatory_notice", "risk_disclosure"),
+        "warning": "公告披露和监管来源优先于媒体转述；摘要不能替代原公告，注意公告日期和适用市场。",
+    },
+    {
+        "intent": "finance_macro",
+        "terms": (
+            "宏观",
+            "gdp",
+            "cpi",
+            "ppi",
+            "社融",
+            "m2",
+            "利率",
+            "降息",
+            "加息",
+            "汇率",
+            "外储",
+            "央行",
+            "美联储",
+            "统计局",
+            "fedwatch",
+            "非农",
+            "通胀",
+        ),
+        "scopes": ("finance_macro", "finance_news", "global_official"),
+        "fallback": ("finance_research", "business"),
+        "sites": ("stats.gov.cn", "pbc.gov.cn", "safe.gov.cn", "fred.stlouisfed.org", "cmegroup.com", "imf.org"),
+        "roles": ("macro_data", "central_bank_notice", "statistics_release", "market_expectation"),
+        "warning": "宏观数据必须核对发布机构、统计口径和日期；市场预期不等于政策决定。",
+    },
+    {
+        "intent": "finance_sentiment",
+        "terms": (
+            "雪球",
+            "股吧",
+            "散户",
+            "情绪",
+            "看多",
+            "看空",
+            "热议",
+            "舆情",
+            "韭菜",
+            "爆仓",
+        ),
+        "scopes": ("finance_sentiment", "finance_news"),
+        "fallback": ("finance_disclosure", "finance_quote"),
+        "sites": ("xueqiu.com", "guba.eastmoney.com", "eastmoney.com", "weibo.com"),
+        "roles": ("sentiment_sample", "public_discussion", "market_news"),
+        "warning": "投资者讨论只代表公开样本和情绪线索，不代表事实、总体比例或投资建议。",
+    },
+    {
+        "intent": "finance_research",
+        "terms": (
+            "研报",
+            "券商",
+            "机构观点",
+            "行业报告",
+            "估值",
+            "评级",
+            "目标价",
+            "分析师",
+            "一致预期",
+        ),
+        "scopes": ("finance_research", "finance_disclosure", "finance_news"),
+        "fallback": ("finance_macro", "business"),
+        "sites": ("data.eastmoney.com", "pdf.dfcfw.com", "stock.finance.sina.com.cn", "iresearch.com.cn", "199it.com"),
+        "roles": ("analyst_opinion", "industry_report", "company_filing", "market_news"),
+        "warning": "研报和评级属于观点层，必须和公告、财报、宏观/行业数据交叉验证。",
     },
     {
         "intent": "hot_trend",
@@ -852,6 +966,7 @@ _DOMAIN_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("education", ("高校", "大学", "学院", "研究生", "招生", "导师", "院系", "推免", "考研", "雅思", "托福", "机经")),
     ("health", ("医疗", "疾病", "药", "治疗", "医生", "症状", "医院", "孕期", "肺结节", "布洛芬")),
     ("legal", ("法律", "诉讼", "判决", "合同", "律师", "侵权", "工伤", "竞业", "版权")),
+    ("finance", ("财经", "股票", "股价", "行情", "财报", "公告", "基金", "债券", "宏观", "降息", "雪球", "股吧", "研报", "nvidia", "etf")),
     ("cybersecurity", ("cve", "漏洞", "补丁", "诈骗", "反诈", "钓鱼", "openssl")),
     ("sports", ("体育", "比赛", "伤病", "转会", "梅西", "mbappe", "messi", "nba")),
     ("weather", ("天气", "气象", "台风", "预警", "地震", "noaa", "jma")),
@@ -940,7 +1055,8 @@ def build_route_plan(
     domains = _detect_domains(text)
     freshness = _detect_freshness(text)
     high_risk = _contains_any(text, _HIGH_RISK_TERMS)
-    high_risk_intents = {"medical_health", "legal_judicial", "finance", "global_policy", "cybersecurity", "weather_disaster"}
+    finance_intents = {"finance", "finance_quote", "finance_company", "finance_disclosure", "finance_news", "finance_macro", "finance_sentiment", "finance_research"}
+    high_risk_intents = {"medical_health", "legal_judicial", *finance_intents, "global_policy", "cybersecurity", "weather_disaster"}
 
     preferred_scopes = _unique(_flatten(rule.get("scopes", ()) for rule in matched_rules))
     fallback_scopes = _unique(_flatten(rule.get("fallback", ()) for rule in matched_rules))
@@ -1019,7 +1135,7 @@ def build_route_plan(
             "purchase_advice",
             "reputation",
             "global_reputation",
-            "finance",
+            *finance_intents,
             "policy",
             "global_policy",
             "industry",
@@ -1054,7 +1170,7 @@ def build_route_plan(
     if (
         "hot_trend" in primary + secondary
         and not reading_discovery
-        and not {"global_entertainment", "jp_kr_entertainment", "cybersecurity", "weather_disaster", "science", "sports", "podcast"} & set(primary + secondary)
+        and not {"global_entertainment", "jp_kr_entertainment", "cybersecurity", "weather_disaster", "science", "sports", "podcast", *finance_intents} & set(primary + secondary)
         and "baidu-rss" not in recommended_feeds
     ):
         recommended_feeds.append("baidu-rss")
@@ -1071,7 +1187,7 @@ def build_route_plan(
         profile=profile,
         read_top=read_top,
     )
-    read_default = 5 if {"policy", "official_position", "tech", "industry", "global_entertainment", "jp_kr_entertainment", "cybersecurity", "weather_disaster", "science", "sports", "career", "podcast", "test_prep"} & set(primary + secondary) else 3
+    read_default = 5 if {"policy", "official_position", "tech", "industry", "global_entertainment", "jp_kr_entertainment", "cybersecurity", "weather_disaster", "science", "sports", "career", "podcast", "test_prep", *finance_intents} & set(primary + secondary) else 3
     if {"standards_compliance", "medical_health", "legal_judicial", "cybersecurity", "weather_disaster"} & set(primary + secondary):
         read_default = 5
     if "reputation" in primary + secondary and not high_risk:
@@ -1092,7 +1208,7 @@ def build_route_plan(
         query_variants=_query_variants(clean_query, primary + secondary, domains),
         backend_hint=(
             ["duckduckgo", "bing"]
-            if {"global_entertainment", "jp_kr_entertainment", "global_policy", "cybersecurity", "weather_disaster", "science", "sports"} & set(primary + secondary)
+            if {"global_entertainment", "jp_kr_entertainment", "global_policy", "cybersecurity", "weather_disaster", "science", "sports", "finance_quote", "finance_macro"} & set(primary + secondary)
             else (["baidu", "bing", "duckduckgo"] if profile == "china" else ["duckduckgo", "bing"])
         ),
         recommended_feeds=recommended_feeds,
@@ -1238,6 +1354,23 @@ def _preset_rule(preset: str) -> dict[str, Any] | None:
         "academic": "academic",
         "scholar": "academic",
         "finance": "finance",
+        "stock": "finance_quote",
+        "stocks": "finance_quote",
+        "quote": "finance_quote",
+        "market": "finance_quote",
+        "finance_quote": "finance_quote",
+        "finance_disclosure": "finance_disclosure",
+        "disclosure": "finance_disclosure",
+        "filing": "finance_disclosure",
+        "finance_company": "finance_disclosure",
+        "ir": "finance_disclosure",
+        "macro": "finance_macro",
+        "finance_macro": "finance_macro",
+        "finance_sentiment": "finance_sentiment",
+        "xueqiu": "finance_sentiment",
+        "guba": "finance_sentiment",
+        "finance_research": "finance_research",
+        "brokerage": "finance_research",
     }
     intent = mapping.get(preset)
     if not intent:
@@ -1272,6 +1405,7 @@ def _detect_freshness(text: str) -> str:
 
 def _query_variants(query: str, intents: list[str], domains: list[str]) -> list[str]:
     variants = [query]
+    finance_intents = {"finance", "finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"}
     if "policy" in intents:
         variants.append(f"{query} 政策 原文 通知")
     if "global_policy" in intents:
@@ -1339,8 +1473,18 @@ def _query_variants(query: str, intents: list[str], domains: list[str]) -> list[
     if "legal_judicial" in intents:
         variants.append(f"{query} 法律 条文 司法解释 裁判文书")
         variants.append(f"{query} statute court regulation official")
-    if "finance" in intents:
+    if finance_intents & set(intents):
         variants.append(f"{query} 公告 财报 风险")
+    if "finance_quote" in intents:
+        variants.append(f"{query} 行情 股价 涨跌幅 指数")
+    if "finance_disclosure" in intents:
+        variants.append(f"{query} 巨潮资讯 交易所 公告 财报")
+    if "finance_macro" in intents:
+        variants.append(f"{query} 央行 统计局 官方数据")
+    if "finance_sentiment" in intents:
+        variants.append(f"{query} 雪球 股吧 热议 情绪")
+    if "finance_research" in intents:
+        variants.append(f"{query} 研报 券商 评级 估值")
     if "auto" in domains:
         variants.append(f"{query} 汽车 车主 试驾")
     return _unique(variants)[:5]
@@ -1348,6 +1492,7 @@ def _query_variants(query: str, intents: list[str], domains: list[str]) -> list[
 
 def _avoid_as_primary(intents: list[str]) -> list[str]:
     avoid = []
+    finance_intents = {"finance", "finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"}
     if "policy" in intents or "official_position" in intents or "global_policy" in intents:
         avoid.extend(["社交/内容平台", "英文社区样本", "商业软文", "SEO 聚合页"])
     if "reputation" in intents or "global_reputation" in intents or "purchase_advice" in intents:
@@ -1358,8 +1503,8 @@ def _avoid_as_primary(intents: list[str]) -> list[str]:
         avoid.extend(["粉丝账号爆料", "狗仔/小报单源", "无来源搬运", "未证实恋情/巡演传闻", "AI 生成八卦站"])
     if "jp_kr_entertainment" in intents:
         avoid.extend(["机翻搬运", "粉圈控评", "论坛单帖", "标题党韩娱站", "未核验经纪公司传闻"])
-    if "finance" in intents:
-        avoid.extend(["社交荐股", "未核验市场传言"])
+    if finance_intents & set(intents):
+        avoid.extend(["社交荐股", "未核验市场传言", "无公告支撑的自媒体解读", "把研报目标价当确定结论", "无时间戳行情截图"])
     if "cybersecurity" in intents:
         avoid.extend(["未复现漏洞帖", "无 CVE 编号转载", "恐吓式安全营销", "单一论坛爆料"])
     if "weather_disaster" in intents:
@@ -1404,6 +1549,7 @@ def _recommended_commands(
     profile_part = f" --profile {profile}" if profile in {"china", "english", "hybrid"} else ""
     effective_read_top = 5 if read_top is None else max(read_top, 0)
     reading_discovery = _is_reading_discovery(query.lower())
+    finance_intents = {"finance", "finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"}
 
     search_limit = DEFAULT_SEARCH_LIMIT
     research_limit = DEFAULT_RESEARCH_LIMIT
@@ -1421,7 +1567,7 @@ def _recommended_commands(
         "hot_trend" in intents
         and not reading_discovery
         and profile != "english"
-        and not {"global_entertainment", "jp_kr_entertainment", "cybersecurity", "weather_disaster", "science", "sports", "podcast"} & set(intents)
+        and not {"global_entertainment", "jp_kr_entertainment", "cybersecurity", "weather_disaster", "science", "sports", "podcast", *finance_intents} & set(intents)
     ):
         commands.append(f"guanlan hotnews today --limit {hotnews_limit}")
     if "university_admissions" in intents:
@@ -1494,8 +1640,21 @@ def _recommended_commands(
         commands.append(f"guanlan research {quoted} --preset global_industry{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "industry" in intents:
         commands.append(f"guanlan research {quoted} --preset industry{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
-    elif "finance" in intents:
+    elif finance_intents & set(intents):
+        stock_commands = _structured_stock_commands(query, intents)
+        commands.extend(stock_commands[:2])
+        commands.extend(direct_reads[: 1 if stock_commands else 3])
         commands.append(f"guanlan research {quoted} --preset finance{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
+        if "finance_quote" in intents:
+            commands.append(f"guanlan search {quoted}{profile_part} --scope finance_quote --limit {search_limit} --trace")
+        if "finance_disclosure" in intents or "finance" in intents:
+            commands.append(f"guanlan search {quoted}{profile_part} --scope finance_disclosure --limit {search_limit} --trace")
+        if "finance_macro" in intents:
+            commands.append(f"guanlan search {quoted}{profile_part} --scope finance_macro --limit {search_limit} --trace")
+        if "finance_sentiment" in intents:
+            commands.append(f"guanlan search {quoted}{profile_part} --scope finance_sentiment --limit {search_limit} --trace")
+        if "finance_research" in intents:
+            commands.append(f"guanlan search {quoted}{profile_part} --scope finance_research --limit {search_limit} --trace")
 
     if not commands:
         scope = preferred_scopes[0] if preferred_scopes else ""
@@ -1526,6 +1685,33 @@ def _recommended_commands(
             commands.append(f"guanlan feeds wechat-rss --limit {feeds_limit}")
 
     return _unique(commands)[:6]
+
+
+def _structured_stock_commands(query: str, intents: list[str]) -> list[str]:
+    """Suggest structured stock data before dynamic finance web pages."""
+    finance_quote_like = bool({"finance", "finance_quote", "finance_sentiment"} & set(intents))
+    if not finance_quote_like:
+        return []
+    try:
+        from guanlan.stockdata import infer_stock_target, normalize_symbol
+    except Exception:
+        return []
+    target = infer_stock_target(query)
+    if not target:
+        return []
+    normalized = normalize_symbol(target)
+    raw = " ".join((query or "").split()).strip()
+    looks_symbol = bool(re.fullmatch(r"(?:sh|sz|bj)\d{6}|hk\d{5}|us[A-Z]{1,5}", normalized))
+    cleaned_target = target != raw
+    if not (looks_symbol or cleaned_target or "finance_quote" in intents):
+        return []
+    quoted_target = _shell_quote(target)
+    commands = [f"guanlan stock quote {quoted_target}"]
+    if "finance_quote" in intents or "finance" in intents:
+        commands.append(f"guanlan stock detail {quoted_target}")
+    if "finance_sentiment" in intents or re.search(r"资金流向|主力|净流入|fund\s*flow", query, flags=re.I):
+        commands.append(f"guanlan stock fundflow {quoted_target}")
+    return commands
 
 
 def _shell_quote(value: str) -> str:
@@ -1583,6 +1769,8 @@ def _route_explanations(intents: list[str], scopes: list[str], sites: list[str])
         output.append("播客发现需要节目/单集元数据、RSS 和听众样本分层看。")
     if "test_prep" in intents:
         output.append("考试备考问题需要官方考试政策、培训材料和考生经验分层核验。")
+    if {"finance", "finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"} & set(intents):
+        output.append("财经问题需要把行情、公告披露、监管/宏观数据、财经新闻、研报观点和投资者情绪分层看；只输出证据边界，不给投资建议。")
     return output
 
 
@@ -1627,6 +1815,13 @@ def _english_scope_equivalents(scopes: list[str]) -> list[str]:
         "ecommerce": ["industry_analysis", "market_review"],
         "tech_dev": ["developer", "community_sample"],
         "finance": ["global_official", "global_news", "company_primary"],
+        "finance_quote": ["global_news", "company_primary"],
+        "finance_disclosure": ["global_official", "company_primary"],
+        "finance_company": ["company_primary", "global_official"],
+        "finance_news": ["global_news", "industry_analysis"],
+        "finance_macro": ["global_official", "global_news"],
+        "finance_sentiment": ["community_sample", "market_review"],
+        "finance_research": ["industry_analysis", "global_news"],
         "social_web": ["community_sample", "market_review"],
         "entertainment": ["global_entertainment", "community_sample"],
         "university": ["global_official", "academic"],
