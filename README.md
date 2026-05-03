@@ -25,6 +25,14 @@
 </p>
 
 <p align="center">
+  语言：
+  <strong>中文</strong> ·
+  <a href="docs/README_en.md">English</a> ·
+  <a href="docs/README_ja.md">日本語</a> ·
+  <a href="docs/README_ko.md">한국어</a>
+</p>
+
+<p align="center">
   <img src="docs/assets/guanlan-overview.png" alt="观澜 Guanlan 面向 AI Agent 的中文互联网研究底座流程图">
 </p>
 
