@@ -24,6 +24,7 @@
 - 失败时降级，不要硬撞平台风控。
 - 默认候选池按研究任务放大：搜索/研究/归档检索默认 80 条，热榜默认 80 条，读取失败后的搜索兜底默认 20 条。
 - Agent 调用时应尽量多取结果再筛选：普通任务保持 80，复杂研究可设到 80-100；只有用户明确要求“小样本/快速看一下”时才降低 limit。
+- 当 `--limit` 小于 30 时，把它当 smoke sample：可以先返回线索，但要提醒后续 Agent/用户补跑 `--limit 80`，不要用 5-10 条结果直接写强结论。
 - Agent 平台外层 timeout 要宽松：不要用 10-30 秒去包住 `research`、`feeds` 或 `hotnews` 这种组合命令；超时只能说明网络/上游抖动，不代表没有证据。
 - 用户需要建议、影响判断、下一步行动，或询问“为什么会搜这个”时，优先使用 `research --advisor`，但把助理视角当作证据边界和写作规则，由你结合用户问题生成自然建议；不要机械复述模板，也不要当作用户真实意图。
 - 不确定该查哪些信源时，先用 `guanlan route "关键词"` 看需求路由；路由计划是软约束，优先源用于提高适配度，开放网页兜底用于防止信源池过窄。
@@ -39,6 +40,7 @@
 - `4-step`：在 `3-step` 基础上，热点/时效题补 `hotnews`，技术/AI 题补 `feeds`，证据面过窄时补 `dossier`、`compare` 或 `timeline`。
 
 只有完成当前档位要求的 Guanlan 工具后，仍缺关键证据，才切到通用 `web_search` / `web_fetch`。
+如果 trace 或 context 中出现 `external_fetch_strategy`，可以临时调用宿主平台的 WebFetch/WebRead 读取 Guanlan 推荐 URL。外显时要说清楚：这是 Guanlan 主动规划的“定点补证”策略，不是 Guanlan 搜索失败。
 
 对于体育比分/赛程、天气灾害、CVE/安全公告、科学机构声明、文娱榜单/票房、考试官方信息这类高确定性垂直题，先看 `guanlan route` 给出的 direct `guanlan read` 命令。这些是权威入口候选，应该先读取核验，再用 `research/search` 扩大信源面。
 
@@ -135,6 +137,9 @@
 | “确认装到的是最新版/没调到旧路径” | `guanlan doctor --install-check` |
 | “看渠道稳定性/授权边界/缓存概况” | `guanlan status`，重点看 `就绪` 和 `验证` 列 |
 | “解释为什么这条排第一” | `guanlan search "关键词" --trace` |
+| “小样本搜索但要稳一点” | `guanlan search "关键词" --limit 80 --trace`，若用户坚持小 limit，应说明样本风险 |
+| “严格只看某站” | `guanlan search "关键词" --site gov.cn --limit 80 --trace`，结果为空时不要放宽到域外 |
+| “按年份/年份范围梳理” | `guanlan timeline "关键词 2024-2025" --limit 80 --format context`，主线只用窗口内事件 |
 | “重复查同一题，减少请求” | `guanlan search "关键词" --cache-ttl 3600` |
 | “把搜索结果直接塞进 prompt” | `guanlan search "关键词" --format context` |
 | “给没有联网能力的本地模型准备输入” | `guanlan context "关键词" --profile china --style evidence` |

@@ -80,6 +80,47 @@ def test_timeline_report_extracts_dated_events(monkeypatch):
     assert "观澜时间线" in research_workflows.format_timeline_markdown(report)
 
 
+def test_timeline_report_keeps_explicit_year_window_as_main_events(monkeypatch):
+    def fake_packet(query, **_kwargs):
+        return {
+            **_packet(query),
+            "selected_evidence": [
+                {
+                    "title": "具身智能 2024年3月1日 产业进展",
+                    "url": "https://example.com/2024",
+                    "snippet": "具身智能公司发布新产品。",
+                    "source_type": "商业/产业媒体",
+                    "evidence_role": "fresh_news",
+                },
+                {
+                    "title": "具身智能 2022年1月1日 早期融资",
+                    "url": "https://example.com/2022",
+                    "snippet": "具身智能早期历史材料。",
+                    "source_type": "商业/产业媒体",
+                    "evidence_role": "industry_report",
+                },
+                {
+                    "title": "无关公司 2024年4月1日 动态",
+                    "url": "https://example.com/noise",
+                    "snippet": "无关主题。",
+                    "source_type": "通用网页",
+                    "evidence_role": "open_web_context",
+                },
+            ],
+            "results": [],
+            "readings": [],
+        }
+
+    monkeypatch.setattr(research_workflows, "build_research_packet", fake_packet)
+
+    report = research_workflows.build_timeline_report("具身智能 2024", max_events=5)
+
+    assert [item["date"] for item in report["events"]] == ["2024-03-01"]
+    assert report["background_events"][0]["date"] == "2022-01-01"
+    assert report["low_relevance_events"][0]["url"] == "https://example.com/noise"
+    assert report["timeline_quality"]["status"] == "ok"
+
+
 def test_dossier_report_groups_evidence_sections(monkeypatch):
     monkeypatch.setattr(research_workflows, "build_research_packet", lambda query, **_kwargs: _packet(query))
 
@@ -103,6 +144,39 @@ def test_cli_compare_outputs_json(capsys, monkeypatch):
     payload = json.loads(capsys.readouterr().out)
     assert payload["mode"] == "compare"
     assert payload["subjects"] == ["A", "B"]
+
+
+def test_compare_report_flags_single_source_dominance(monkeypatch):
+    def fake_packet(query, **_kwargs):
+        evidence = [
+            {
+                "title": f"{query} 用户讨论 {idx}",
+                "url": f"https://www.zhihu.com/question/{idx}",
+                "domain": "zhihu.com",
+                "snippet": "用户样本。",
+                "source_type": "社交/内容平台",
+                "evidence_role": "user_sample",
+                "score": 6.0,
+            }
+            for idx in range(5)
+        ]
+        return {
+            **_packet(query),
+            "selected_evidence": evidence,
+            "source_mix": {"社交/内容平台": 5},
+            "source_diagnostics": {"source_type_count": 1, "domain_count": 1, "warnings": []},
+            "results": [],
+            "readings": [],
+        }
+
+    monkeypatch.setattr(research_workflows, "build_research_packet", fake_packet)
+
+    report = research_workflows.build_compare_report(["产品A", "产品B"], focus="口碑 风险", limit=80)
+
+    assert report["source_diversity_guard"]["status"] == "warn"
+    assert report["subject_reports"][0]["source_diversity_guard"]["status"] == "warn"
+    assert any("company_primary" in item for item in report["suggested_next"])
+    assert "信源护栏" in research_workflows.format_compare_markdown(report)
 
 
 def test_cli_timeline_and_dossier_markdown(capsys, monkeypatch):

@@ -8,7 +8,7 @@ import re
 from typing import Any
 
 from guanlan.limits import DEFAULT_RESEARCH_LIMIT
-from guanlan.webtools import build_research_packet
+from guanlan.webtools import build_research_packet, detect_recency_intent
 
 Evidence = dict[str, Any]
 
@@ -91,6 +91,9 @@ def build_compare_report(
         )
     internal_reports = [_subject_report(subject, packet, select_top=select_top) for subject, packet in zip(clean_subjects, packets)]
     subject_reports = [_strip_internal_packet(report) for report in internal_reports]
+    diversity_guard = _compare_source_diversity_guard(internal_reports, focus=focus, preset=preset, profile=profile or "china")
+    suggested_next = _compare_next_steps(clean_subjects, focus=focus, preset=preset, profile=profile or "china")
+    suggested_next = _unique(suggested_next + list(diversity_guard.get("followup_commands") or []))
     return {
         "mode": "compare",
         "subjects": clean_subjects,
@@ -102,7 +105,8 @@ def build_compare_report(
         "subject_reports": subject_reports,
         "comparison_table": _comparison_table(internal_reports),
         "shared_caveats": _shared_caveats(internal_reports),
-        "suggested_next": _compare_next_steps(clean_subjects, focus=focus, preset=preset, profile=profile or "china"),
+        "source_diversity_guard": diversity_guard,
+        "suggested_next": suggested_next,
         "boundary": "compare 基于每个对象各自的公开证据包做对照，不代表穷尽事实；结论应回到来源链接继续核验。",
     }
 
@@ -136,7 +140,9 @@ def build_timeline_report(
         advisor=False,
         select_top=10,
     )
-    events, undated = _timeline_from_packet(packet, max_events=max(max_events, 1), order=order)
+    raw_events, undated = _timeline_from_packet(packet, max_events=max(max_events, 1) * 2, order=order)
+    timeline_filter = _timeline_window_filter(clean_query, raw_events, max_events=max(max_events, 1), order=order)
+    events = timeline_filter["events"]
     return {
         "mode": "timeline",
         "query": clean_query,
@@ -145,6 +151,9 @@ def build_timeline_report(
         "limit": max(limit, 1),
         "event_count": len(events),
         "events": events,
+        "background_events": timeline_filter["background_events"],
+        "low_relevance_events": timeline_filter["low_relevance_events"],
+        "timeline_quality": timeline_filter["timeline_quality"],
         "undated_evidence": undated[:8],
         "source_diagnostics": packet.get("source_diagnostics", {}),
         "route_plan": packet.get("route_plan", {}),
@@ -230,8 +239,11 @@ def format_compare_markdown(report: dict[str, Any]) -> str:
         lines.extend(["", f"### {subject_report.get('subject')}"])
         lines.append(f"- 结果数: {subject_report.get('result_count', 0)}")
         source_mix = subject_report.get("source_mix") or {}
+        diversity_guard = subject_report.get("source_diversity_guard") or {}
         if source_mix:
             lines.append("- 信源: " + "；".join(f"{key}: {value}" for key, value in list(source_mix.items())[:5]))
+        if isinstance(diversity_guard, dict) and diversity_guard.get("status") == "warn":
+            lines.append(f"- 信源护栏: {diversity_guard.get('message', '')}")
         for item in subject_report.get("top_evidence") or []:
             lines.append(f"- {item.get('evidence_role') or 'evidence'} | {item.get('title')} | {item.get('url')}")
     caveats = report.get("shared_caveats") or []
@@ -253,6 +265,14 @@ def format_timeline_markdown(report: dict[str, Any]) -> str:
             f"source_type={diagnostics.get('source_type_count', 0)} "
             f"domain={diagnostics.get('domain_count', 0)} "
             f"freshness={diagnostics.get('freshness_avg', 0)}"
+        )
+    timeline_quality = report.get("timeline_quality") or {}
+    if timeline_quality:
+        lines.append(
+            "- 时间窗质量: "
+            f"status={timeline_quality.get('status', '')} "
+            f"in_window={timeline_quality.get('in_window_count', 0)} "
+            f"background={timeline_quality.get('background_count', 0)}"
         )
     events = report.get("events") or []
     lines.extend(["", "## 时间线"])
@@ -336,6 +356,7 @@ def _subject_report(subject: str, packet: dict[str, Any], *, select_top: int) ->
         "source_diagnostics": packet.get("source_diagnostics", {}),
         "read_quality_summary": packet.get("read_quality_summary", {}),
         "role_counts": _role_counts(evidence),
+        "source_diversity_guard": _subject_source_diversity_guard(subject, evidence, packet),
         "top_evidence": _compact_evidence(evidence, limit=max(select_top, 1)),
         "packet": packet,
     }
@@ -408,6 +429,72 @@ def _compare_next_steps(subjects: list[str], *, focus: str, preset: str, profile
     ]
 
 
+def _subject_source_diversity_guard(subject: str, evidence: list[Evidence], packet: dict[str, Any]) -> dict[str, Any]:
+    domains = [str(item.get("domain") or _domain(str(item.get("url") or ""))) for item in evidence if item.get("url")]
+    source_types = [str(item.get("source_type") or "") for item in evidence if item.get("source_type")]
+    domain_counts = _counts(domains)
+    type_counts = _counts(source_types)
+    total = max(len(evidence), 1)
+    top_domain, top_domain_count = _top_count(domain_counts)
+    top_type, top_type_count = _top_count(type_counts)
+    warnings: list[str] = []
+    if top_domain_count >= 3 and top_domain_count / total >= 0.6:
+        warnings.append(f"{subject} 证据被 `{top_domain}` 高度支配，可能只有单站样本。")
+    if top_type_count >= 4 and top_type_count / total >= 0.75:
+        warnings.append(f"{subject} 证据主要来自 `{top_type}`，缺少对照来源。")
+    diagnostics = packet.get("source_diagnostics") or {}
+    for warning in diagnostics.get("warnings") or []:
+        text = str(warning)
+        if "域名集中" in text or "来源类型" in text:
+            warnings.append(text)
+    status = "warn" if warnings else "ok"
+    return {
+        "status": status,
+        "domain_count": len(domain_counts),
+        "source_type_count": len(type_counts),
+        "top_domain": top_domain,
+        "top_domain_ratio": round(top_domain_count / total, 3),
+        "top_source_type": top_type,
+        "top_source_type_ratio": round(top_type_count / total, 3),
+        "warnings": _unique(warnings),
+        "message": "；".join(_unique(warnings)[:2]) if warnings else "信源分布可用。",
+    }
+
+
+def _compare_source_diversity_guard(
+    subject_reports: list[dict[str, Any]],
+    *,
+    focus: str,
+    preset: str,
+    profile: str,
+) -> dict[str, Any]:
+    weak_subjects = [
+        str(report.get("subject") or "")
+        for report in subject_reports
+        if (report.get("source_diversity_guard") or {}).get("status") == "warn"
+    ]
+    if not weak_subjects:
+        return {"status": "ok", "weak_subjects": [], "followup_commands": []}
+    followups: list[str] = []
+    for subject in weak_subjects[:3]:
+        query = _subject_query(subject, focus)
+        followups.extend(
+            [
+                f"guanlan dossier {query!r} --profile {profile} --limit 80 --format context",
+                f"guanlan research {query!r} --preset company --profile {profile} --limit 80 --read-top 2",
+                f"guanlan search {query!r} --scope company_primary --profile {profile} --limit 80 --trace",
+            ]
+        )
+        if preset in {"tech", "general"}:
+            followups.append(f"guanlan search {query!r} --scope tech_dev --profile {profile} --limit 80 --trace")
+    return {
+        "status": "warn",
+        "weak_subjects": weak_subjects,
+        "message": "部分对象证据被单一域名或单一来源类型支配，需要补公司一手、垂直媒体或社区样本。",
+        "followup_commands": _unique(followups)[:8],
+    }
+
+
 def _timeline_from_packet(packet: dict[str, Any], *, max_events: int, order: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     evidence = _packet_evidence(packet)
     events: list[dict[str, Any]] = []
@@ -428,6 +515,63 @@ def _timeline_from_packet(packet: dict[str, Any], *, max_events: int, order: str
     reverse = order != "asc"
     events = sorted(events, key=lambda item: item.get("date", ""), reverse=reverse)[:max_events]
     return events, undated
+
+
+def _timeline_window_filter(query: str, events: list[dict[str, Any]], *, max_events: int, order: str) -> dict[str, Any]:
+    recency = detect_recency_intent(query)
+    if not recency.get("enabled"):
+        selected = events[:max_events]
+        return {
+            "events": selected,
+            "background_events": [],
+            "low_relevance_events": [],
+            "timeline_quality": {
+                "status": "ok" if selected else "warn",
+                "time_window_enabled": False,
+                "in_window_count": len(selected),
+                "background_count": 0,
+                "low_relevance_count": 0,
+                "message": "未检测到显式时间窗；按证据日期排序。",
+            },
+        }
+    start = _safe_iso_date(str(recency.get("start_date") or ""))
+    end = _safe_iso_date(str(recency.get("end_date") or ""))
+    query_terms = _timeline_query_terms(query)
+    in_window: list[dict[str, Any]] = []
+    background: list[dict[str, Any]] = []
+    low_relevance: list[dict[str, Any]] = []
+    for item in events:
+        event_date = _safe_iso_date(str(item.get("date") or ""))
+        if not _timeline_item_relevant(item, query_terms):
+            low_relevance.append(item)
+            continue
+        if start and end and event_date and start <= event_date <= end:
+            in_window.append(item)
+        else:
+            background.append(item)
+    reverse = order != "asc"
+    in_window = sorted(in_window, key=lambda item: item.get("date", ""), reverse=reverse)[:max_events]
+    status = "ok" if in_window else "warn"
+    return {
+        "events": in_window,
+        "background_events": sorted(background, key=lambda item: item.get("date", ""), reverse=reverse)[:8],
+        "low_relevance_events": low_relevance[:8],
+        "timeline_quality": {
+            "status": status,
+            "time_window_enabled": True,
+            "label": recency.get("label") or "",
+            "start_date": recency.get("start_date") or "",
+            "end_date": recency.get("end_date") or "",
+            "in_window_count": len(in_window),
+            "background_count": len(background),
+            "low_relevance_count": len(low_relevance),
+            "message": (
+                "主时间线已按显式时间窗收束；窗口外事件只作背景。"
+                if in_window
+                else "未抽到窗口内事件；不要把窗口外事件写成主线进展。"
+            ),
+        },
+    }
 
 
 def _packet_evidence(packet: dict[str, Any]) -> list[Evidence]:
@@ -560,6 +704,53 @@ def _extract_date(text: str) -> str:
         except ValueError:
             continue
     return ""
+
+
+def _timeline_query_terms(query: str) -> list[str]:
+    stop = {"最新", "近期", "最近", "时间线", "进展", "动态", "today", "latest", "news"}
+    terms = []
+    for term in re.findall(r"[\u4e00-\u9fffA-Za-z0-9_+-]{2,}", query):
+        if term in stop or re.fullmatch(r"20\d{2}", term):
+            continue
+        terms.append(term.lower())
+    return _unique(terms)[:12]
+
+
+def _timeline_item_relevant(item: dict[str, Any], terms: list[str]) -> bool:
+    if not terms:
+        return True
+    text = _collapse_ws(f"{item.get('title', '')} {item.get('snippet', '')} {item.get('url', '')}").lower()
+    return any(term in text for term in terms[:8])
+
+
+def _safe_iso_date(value: str) -> dt.date | None:
+    try:
+        return dt.date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _domain(url: str) -> str:
+    match = re.search(r"https?://([^/]+)", url or "", flags=re.I)
+    if not match:
+        return ""
+    host = match.group(1).lower().split("@")[-1].split(":")[0]
+    return host[4:] if host.startswith("www.") else host
+
+
+def _counts(items: list[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        if not item:
+            continue
+        counts[item] = counts.get(item, 0) + 1
+    return counts
+
+
+def _top_count(counts: dict[str, int]) -> tuple[str, int]:
+    if not counts:
+        return "", 0
+    return sorted(counts.items(), key=lambda row: (-row[1], row[0]))[0]
 
 
 def _collapse_ws(value: str) -> str:

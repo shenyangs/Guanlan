@@ -12,7 +12,6 @@ import re
 import urllib.parse
 from typing import Any
 
-
 _LIVE_SPORTS_TERMS = (
     "比分",
     "赛果",

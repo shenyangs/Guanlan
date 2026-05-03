@@ -8,6 +8,31 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.4.3 - 2026-05-03
+
+### Added
+
+- 搜索 trace/context 新增 `site_filter`、`time_constraint`、`agent_limit_advice`、`scope_distinction` 和 `external_fetch_strategy`，让 Agent 能区分硬约束、时间窗、小样本风险、路由稀释和外部定点补证策略。
+- `search_quality_summary` 在 `--limit < 30` 时显式提示“这是 smoke sample，不适合强结论”，建议 Agent 补跑默认 80 条候选池。
+- `compare` 新增 `source_diversity_guard`，当单个对象证据被单一域名或单一来源类型支配时，会提示补公司一手、垂直媒体、社区样本或 `dossier/research/search --scope`。
+- `timeline` 新增 `timeline_quality`、`background_events` 和 `low_relevance_events`：显式年份/年份范围内事件进入主线，窗口外事件只作背景。
+
+### Changed
+
+- `guanlan search ... --site` 改为真正硬过滤：只保留目标域名及其子域，空结果也不会放宽到知乎、SEO 页或其他域名。
+- 显式年份和年份范围的排序权重加强：窗口内结果有额外加分，窗口外日期结果显著降权，缺日期结果谨慎处理。
+- 垂直 scope 查询改写进一步分化：`tech_dev` 优先文档/release/GitHub issue，`ecommerce` 优先价格/售后/用户评价/垂类材料，`finance` 优先公告/财报/交易所/投资者关系/市场风险语境。
+- WebFetch 被纳入 Agent 外部补证口径：当搜索后端受限、站点硬过滤为空或只剩 direct source seeds 时，观澜会输出候选 URL 与外显话术，说明这是“观澜规划信源 + WebFetch 定点读取”的增强策略。
+- Agent 文档、Playbook、Skill 和质量测试计划同步新增小 limit、站点硬过滤、年份时间窗、WebFetch 补证、compare 信源护栏和 timeline 时间窗纪律。
+- `scripts/guanlan_channel_benchmark.py` 改为严格通道隔离评测：WebFetch 只分别验证 Guanlan/WebSearch 各自 Top1 正文抽取，不作为独立搜索胜负方。
+- 遥测 dashboard 补齐按平台统计的独立设备与独立 Agent 分布，便于观察不同运行环境的真实覆盖。
+- 官网展示版本号同步到 `0.4.3`。
+
+### Notes
+
+- 本版继续坚持“不要让下游 Agent 拿到的内容大面积变少”：默认候选池不缩水，硬过滤只在用户明确指定 `--site` 时执行。
+- `external_fetch_strategy` 不是失败提示，而是 Agent 搜索智商的一部分；只有在观澜工作流仍缺关键原文时，才调用宿主 WebFetch 补证。
+
 ## v0.4.2 - 2026-05-03
 
 ### Added

@@ -42,11 +42,15 @@ metadata:
 - 把 `AGENTS.md`、`docs/agent-playbook.md`、`docs/agent-usage.md` 和本文件当作 Guanlan 的长期记忆入口；做新 benchmark、自动化或 MCP 编排前，至少重读前两份。
 - 搜索、研究、热榜、回响和本地知识库检索时，默认使用 80 条候选池；复杂调研可提高到 80-100。
 - 只有用户明确要“少量样本”“快速试一下”“只看前几条”时，才主动降低 limit。
+- 如果命令或用户要求 `--limit` 小于 30，把它当作 smoke sample，不要直接下强结论；尽量说服 Agent/用户补跑 `--limit 80`。
+- `--site` 是硬过滤：`--site gov.cn` 不允许返回知乎、SEO 页或其他域名当作结果；为空时按 `external_fetch_strategy` 或站内入口补证。
+- 显式年份/年份范围是强时间窗，窗口外材料只作背景，不应进入主时间线或写成最新证据。
 - 强路由命中时直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮；只有意图混合、拿不准信源角色、或需要解释路由时，才先跑 `guanlan route "query" --json`。
 - 强路由包括：欧美娱乐 `global_entertainment`、日韩娱乐 `jp_kr_entertainment`、CVE/反诈 `cybersecurity`、天气灾害 `weather_disaster`、体育 `sports`、科学新闻 `science`、职场薪资面经 `career`、播客 `podcast`、考试备考 `test_prep`、高校招生导师 `university`、学术投稿检索 `academic`、产品/公司口碑 `reputation`。
 - 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究至少走 `route -> research -> scoped search`；热点题再补 `hotnews`；技术/AI 题再补 `feeds`；来源过窄时再补 `dossier/compare/timeline`。
 - 体育比分/赛程、天气灾害、CVE、安全公告、科学机构声明、文娱榜单/票房、考试官方信息等高确定性垂直题，优先执行 `route` 推荐的 direct `guanlan read` 命令，再用匹配的 `preset/scope` 扩大证据面；不要只看搜索引擎是否返回。
 - 在完成当前档位要求的 Guanlan 工具前，不要立刻切 `web_search/web_fetch`。`quality_summary=warn` 通常表示证据包还不完整，不等于 Guanlan 搜索失败。
+- 如果 Guanlan 输出 `external_fetch_strategy`，可以调用宿主 Agent 的 WebFetch/WebRead 读取候选 URL；外显时说明这是“Guanlan 规划信源 + WebFetch 定点补证”的搜索策略，不是 Guanlan 脆弱。
 - 做 benchmark 时不要误用：实时题必须带 `hotnews`，技术/AI 题必须带 `feeds` 或 `research --preset tech`，政策题不要只测单次泛搜。
 - 如果 Agent/MCP/自动化平台能设置工具 timeout：`search/read/status/doctor` 用 60-90 秒；`hotnews/feeds/pulse/read batch` 用 120 秒；`research/compare/timeline/dossier/archive ingest-research` 用 180-300 秒；安装/升级/发布 smoke 用 300-600 秒。
 - 超时只代表网络或上游源未完成，不代表没有证据；优先重试一次、加 `--cache-ttl 3600`，或把 `--read-top` 降到 0/1，不要为了速度把 80 条候选池砍成小样本。
@@ -110,6 +114,7 @@ guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80
 guanlan search "最近 query 热点" --profile china --trace
 guanlan search "中文问题" --profile china --limit 80 --trace  # 查看 Baidu/Bing/DDG 状态与 backend_recovery
 guanlan search "query" --site zhihu.com --limit 80
+guanlan search "query" --site gov.cn --limit 80 --trace  # 硬过滤，空结果不放宽到域外
 guanlan search "query" --trace
 guanlan search "query" --cache-ttl 3600
 guanlan search "query" --format context
@@ -131,6 +136,7 @@ guanlan context "query" --profile china --style evidence
 guanlan research "product 用户评价" --preset reputation --read-top 0 --advisor
 guanlan compare "A" "B" --focus "价格 口碑 风险" --limit 80 --format context
 guanlan timeline "某事件 最新进展" --limit 80 --format context
+guanlan timeline "某事件 2024-2025" --limit 80 --format context
 guanlan dossier "某对象" --focus "业务 口碑 风险" --limit 80 --format context
 guanlan pulse "query" --format context
 

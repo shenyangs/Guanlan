@@ -373,6 +373,26 @@ def query_feedback_groups(conn, column, since_ms, limit=10):
     return [{"key": r["key"] or "unknown", "count": r["count"]} for r in rows]
 
 
+def query_platform_unique(conn, field, since_ms, limit=10):
+    allowed = set(["install_id", "agent_id"])
+    if field not in allowed:
+        return []
+    rows = conn.execute(
+        """
+        SELECT platform AS key, COUNT(DISTINCT {field}) AS count
+        FROM events
+        WHERE received_ms >= ?
+          AND platform <> ''
+          AND {field} <> ''
+        GROUP BY platform
+        ORDER BY count DESC, key ASC
+        LIMIT ?
+        """.format(field=field),
+        (since_ms, limit),
+    ).fetchall()
+    return [{"key": r["key"] or "unknown", "count": r["count"]} for r in rows]
+
+
 def query_percentile(values, percentile):
     if not values:
         return 0
@@ -618,6 +638,8 @@ def summary():
             "agents": query_groups(conn, "agent_kind", week),
             "versions": query_groups(conn, "version", week),
             "platforms": query_groups(conn, "platform", week),
+            "platform_unique_devices": query_platform_unique(conn, "install_id", week),
+            "platform_unique_agents": query_platform_unique(conn, "agent_id", week),
             "feedback_commands": query_feedback_groups(conn, "command", week, 12),
             "feedback_queries": query_feedback_groups(conn, "query_text", week, 12),
             "feedback_reasons": query_feedback_groups(conn, "reason_text", week, 12),
@@ -820,13 +842,15 @@ def render_dashboard():
     <div class="cards">{cards}</div>
     <div class="grid">
       {surface}
-      {commands}
-      {agents}
-      {versions}
-      {platforms}
-      {feedback_commands}
-      {feedback_queries}
-      {feedback_reasons}
+        {commands}
+        {agents}
+        {versions}
+        {platforms}
+        {platform_devices}
+        {platform_agents}
+        {feedback_commands}
+        {feedback_queries}
+        {feedback_reasons}
       {depth}
       {quality}
     </div>
@@ -852,7 +876,9 @@ def render_dashboard():
         commands=render_group("命令分布 / Commands", data["commands"]),
         agents=render_group("Agent 类型 / Agent Types", data["agents"]),
         versions=render_group("版本分布 / Versions", data["versions"]),
-        platforms=render_group("平台分布 / Platforms", data["platforms"]),
+        platforms=render_group("平台调用分布 / Platform Calls", data["platforms"]),
+        platform_devices=render_group("平台独立设备 / Platform Unique Devices", data["platform_unique_devices"]),
+        platform_agents=render_group("平台独立 Agent / Platform Unique Agents", data["platform_unique_agents"]),
         feedback_commands=render_group("反馈命令 / Feedback Commands", data["feedback_commands"]),
         feedback_queries=render_group("高频问题词 / Top Problem Queries", data["feedback_queries"]),
         feedback_reasons=render_group("问题原因 / Pain Reasons", data["feedback_reasons"]),

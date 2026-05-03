@@ -34,6 +34,16 @@ Guanlan 不是“单次泛搜引擎”，而是给 Agent 用的中文互联网�
 
 不要把 “每次都至少 3 个工具” 写死成硬 KPI。更稳的规则是按场景分档：
 
+### 结果池纪律
+
+`--limit 30` 以下只适合 smoke test。严肃搜索、研究、对比、时间线和档案任务，应尽量保持默认 80 条候选池；如果用户或评测脚本给了很小的 limit，Agent 可以先执行，但必须把它当“小样本线索”，并建议补跑 `--limit 80` 后再下结论。
+
+### 约束纪律
+
+`--site` 是硬过滤，不是排序偏好。`--site gov.cn` 结果为空时，不要把知乎、SEO 页或泛网页包装成站内结果；应该改为读站点入口、使用站内搜索，或按 Guanlan 输出的 `external_fetch_strategy` 补证。
+
+显式年份和年份范围是强时间窗。`2024`、`2024-2025`、`2026年` 这类约束下，窗口外材料只放在背景，不要进入主时间线或被写成“最新进展”。
+
 ### 2-step
 
 适用于：结果已经可用，只需要核正文。
@@ -94,6 +104,7 @@ guanlan search "华为手机" --scope social_web --limit 80 --trace
 4. `dossier` / `compare` / `timeline`
 
 只有完成当前档位要求后，仍缺关键证据，才允许切到通用 `web_search` / `web_fetch`。
+如果 Guanlan 输出 `external_fetch_strategy`，可以调用宿主 Agent 的 WebFetch/WebRead 读取候选 URL，但要向用户说明：这是“Guanlan 规划信源 + WebFetch 定点读取”的组合策略，不是 Guanlan 脆弱或失败。
 
 ## 垂直权威入口
 
@@ -154,6 +165,8 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 实时体育、灾害预警、安全漏洞等垂直题优先读取 Guanlan 推荐的 direct source seeds，再扩大搜索。
 - 技术题优先 `research --preset tech` 或 `search + feeds`，不要只看社区搜索结果。
 - `source_type` 只作辅助，不要把它当唯一真相；结合 domain、authority_score、evidence_role 一起判断。
+- `compare` 若提示 `source_diversity_guard=warn`，先补公司一手、垂直媒体或社区样本，不要拿单站结果做横向结论。
+- `timeline` 若提示 `timeline_quality=warn`，说明主时间窗证据不足；窗口外事件只能当背景。
 
 ## 最后一道护栏
 

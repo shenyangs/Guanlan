@@ -309,6 +309,93 @@ def test_search_web_trace_includes_quality_profile(monkeypatch):
     assert results[0]["evidence_role"] == "official_primary"
 
 
+def test_search_web_site_filter_is_hard(monkeypatch):
+    monkeypatch.setattr(
+        webtools,
+        "_search_duckduckgo",
+        lambda query, limit=10: [
+            webtools.SearchResult(
+                title="知乎政策讨论",
+                url="https://www.zhihu.com/question/1",
+                snippet="网友讨论。",
+                source="duckduckgo",
+            ),
+            webtools.SearchResult(
+                title="国务院政策原文",
+                url="https://www.gov.cn/zhengce/ai.htm",
+                snippet="2026年政策原文。",
+                source="duckduckgo",
+            ),
+        ],
+    )
+
+    results = webtools.search_web("人工智能 政策", backend="duckduckgo", site="gov.cn", trace=True)
+
+    assert len(results) == 1
+    assert results[0]["domain"] == "gov.cn"
+    assert results[0]["trace"]["site_filter"]["mode"] == "hard"
+    assert results[0]["trace"]["site_filter"]["removed"] == 1
+    assert results[0]["trace"]["site_filter"]["relaxed"] is False
+
+
+def test_search_web_site_filter_empty_keeps_diagnostics_and_webfetch_strategy(monkeypatch):
+    monkeypatch.setattr(
+        webtools,
+        "_search_duckduckgo",
+        lambda query, limit=10: [
+            webtools.SearchResult(
+                title="知乎政策讨论",
+                url="https://www.zhihu.com/question/1",
+                snippet="网友讨论。",
+                source="duckduckgo",
+            )
+        ],
+    )
+
+    results = webtools.search_web("人工智能 政策", backend="duckduckgo", site="gov.cn", trace=True)
+
+    assert results == []
+    assert results.diagnostics["site_filter"]["kept"] == 0
+    assert results.diagnostics["site_filter"]["relaxed"] is False
+    assert results.diagnostics["external_fetch_strategy"]["enabled"] is True
+    assert "WebFetch" in results.diagnostics["external_fetch_strategy"]["agent_instruction"]
+
+
+def test_search_web_small_limit_warns_agent_without_overriding(monkeypatch):
+    monkeypatch.setattr(
+        webtools,
+        "_search_duckduckgo",
+        lambda query, limit=10: [
+            webtools.SearchResult(title=f"Result {idx}", url=f"https://example.com/{idx}", source="duckduckgo")
+            for idx in range(limit)
+        ],
+    )
+
+    results = webtools.search_web("人工智能 政策", backend="duckduckgo", limit=10, trace=True)
+
+    assert len(results) == 10
+    advice = results[0]["trace"]["agent_limit_advice"]
+    assert advice["enabled"] is True
+    assert advice["limit"] == 10
+    assert advice["recommended_limit"] == DEFAULT_SEARCH_LIMIT
+    assert any("limit 10" in warning for warning in results[0]["trace"]["quality_summary"]["warnings"])
+
+
+def test_search_web_network_gap_returns_external_fetch_strategy(monkeypatch):
+    def fail_search(query, limit=10):
+        raise RuntimeError("network_unreachable: offline")
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fail_search)
+
+    results = webtools.search_web("OpenSSL CVE 最新", backend="duckduckgo", scope="cybersecurity", trace=True)
+
+    assert results
+    assert results[0]["trace"]["external_fetch_strategy"]["enabled"] is True
+    assert "backend_unavailable_or_parser_miss" in results[0]["trace"]["external_fetch_strategy"]["reasons"]
+    assert "direct_seed_only" in results[0]["trace"]["external_fetch_strategy"]["reasons"]
+    assert "WebFetch" in results[0]["trace"]["external_fetch_strategy"]["agent_instruction"]
+
+
 def test_search_web_rejects_meaningless_query_before_backend(monkeypatch):
     def fail_search(query, limit=10):
         raise AssertionError("backend should not be called")
@@ -573,6 +660,28 @@ def test_query_strategy_builds_academic_variants():
     assert "database_official" in roles
     assert "publisher_guideline" in roles
     assert "institution_policy" in roles
+
+
+def test_query_strategy_distinguishes_vertical_scopes():
+    tech = webtools.build_query_strategy(
+        "向量数据库 benchmark",
+        route_plan=webtools.build_route_plan("向量数据库 benchmark", scope="tech_dev").to_dict(),
+        quality={"requested_scope": "tech_dev"},
+    )
+    ecommerce = webtools.build_query_strategy(
+        "咖啡机 用户评价 售后",
+        route_plan=webtools.build_route_plan("咖啡机 用户评价 售后", scope="ecommerce").to_dict(),
+        quality={"requested_scope": "ecommerce"},
+    )
+    finance = webtools.build_query_strategy(
+        "某公司 业绩 风险",
+        route_plan=webtools.build_route_plan("某公司 业绩 风险", scope="finance").to_dict(),
+        quality={"requested_scope": "finance"},
+    )
+
+    assert "technical_primary" in {item["role"] for item in tech["variants"]}
+    assert "review" in {item["role"] for item in ecommerce["variants"]}
+    assert "market_context" in {item["role"] for item in finance["variants"]}
 
 
 def test_query_strategy_builds_university_admissions_variants():
@@ -868,6 +977,35 @@ def test_rank_results_penalizes_stale_results_for_recent_query():
     assert results[0].score_parts["recency_boost"] > 0
     assert results[1].score_parts["stale_penalty"] < 0
     assert results[1].trace["recency"]["in_window"] is False
+
+
+def test_rank_results_strongly_prefers_explicit_year_window():
+    recency = webtools.detect_recency_intent("具身智能 2024 进展")
+    ranked = webtools.rank_results(
+        [
+            webtools.SearchResult(
+                title="具身智能 2022年旧闻",
+                url="https://example.com/2022/old",
+                snippet="历史报道。",
+                source="duckduckgo",
+                rank=1,
+            ),
+            webtools.SearchResult(
+                title="具身智能 2024年进展",
+                url="https://example.com/2024/new",
+                snippet="年度进展。",
+                source="bing",
+                rank=2,
+            ),
+        ],
+        query="具身智能 2024 进展",
+        recency=recency,
+    )
+
+    assert ranked[0].url == "https://example.com/2024/new"
+    assert ranked[0].score_parts["time_constraint_fit"] > 0
+    assert ranked[1].score_parts["time_constraint_penalty"] < 0
+    assert ranked[0].trace["recency"]["in_window"] is True
 
 
 def test_rank_results_promotes_quality_fit_for_policy_query():

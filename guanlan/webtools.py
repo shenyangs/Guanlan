@@ -1175,6 +1175,12 @@ def search_web(
         quality=quality,
     )
     query_strategy["query_shape"] = query_shape
+    limit_advice = _search_limit_advice(limit)
+    time_constraint = _search_time_constraint(recency)
+    if limit_advice["enabled"]:
+        query_strategy["agent_limit_advice"] = limit_advice
+    if time_constraint["enabled"]:
+        query_strategy["time_constraint"] = time_constraint
     if query_shape.get("rejected"):
         backend_diagnostics = [
             {
@@ -1583,6 +1589,24 @@ def search_web(
             finally:
                 backend_diagnostics.append(attempt)
 
+    site_filter: dict[str, Any] = {"enabled": False}
+    if site:
+        results, site_filter = _apply_site_hard_filter(results, site)
+        backend_diagnostics.append(
+            {
+                "backend": f"site_filter:{site_filter.get('site') or site}",
+                "status": "ok" if site_filter.get("kept", 0) else "no_results",
+                "result_count": site_filter.get("kept", 0),
+                "error": "",
+                "note": (
+                    f"`--site {site_filter.get('site') or site}` 已按硬过滤执行，只保留该域名及其子域。"
+                    if site_filter.get("kept", 0)
+                    else f"`--site {site_filter.get('site') or site}` 已按硬过滤执行，候选全部来自域外，未放宽返回。"
+                ),
+                "site_filter": site_filter,
+            }
+        )
+
     if not results and errors:
         fatal_errors = [
             error
@@ -1610,6 +1634,17 @@ def search_web(
         backend=backend,
         limit=limit,
     )
+    backend_summary = _backend_diagnostic_summary(backend_diagnostics)
+    scope_distinction = _scope_distinction_diagnostics(results, quality=quality, effective_scope=effective_scope)
+    external_fetch_strategy = _external_fetch_strategy(
+        original_query,
+        results=results,
+        diagnostics=backend_diagnostics,
+        backend_summary=backend_summary,
+        route_plan=route_plan.to_dict(),
+        site_filter=site_filter,
+        scope_distinction=scope_distinction,
+    )
     ranked = rank_results(
         results,
         query=original_query,
@@ -1620,7 +1655,16 @@ def search_web(
         quality=quality,
     )
     output_full = [r.to_dict() for r in ranked[:limit]]
-    quality_summary = search_quality_summary(output_full, quality=quality)
+    quality_summary = search_quality_summary(
+        output_full,
+        quality=quality,
+        limit=limit,
+        site_filter=site_filter,
+        time_constraint=time_constraint,
+        limit_advice=limit_advice,
+        external_fetch_strategy=external_fetch_strategy,
+        scope_distinction=scope_distinction,
+    )
     for item in output_full:
         item.setdefault("trace", {})
         item["trace"].update(
@@ -1643,6 +1687,11 @@ def search_web(
                 "query_shape": query_shape,
                 "query_quality": quality,
                 "quality_summary": quality_summary,
+                "site_filter": site_filter,
+                "time_constraint": time_constraint,
+                "agent_limit_advice": limit_advice,
+                "scope_distinction": scope_distinction,
+                "external_fetch_strategy": external_fetch_strategy,
                 "backend_diagnostics": backend_diagnostics,
                 "backend_summary": backend_summary,
                 "backend_recovery": backend_recovery,
@@ -1672,6 +1721,11 @@ def search_web(
         query_shape=query_shape,
         quality=quality,
         quality_summary=quality_summary,
+        site_filter=site_filter,
+        time_constraint=time_constraint,
+        limit_advice=limit_advice,
+        scope_distinction=scope_distinction,
+        external_fetch_strategy=external_fetch_strategy,
         backend_diagnostics=backend_diagnostics,
         backend_summary=backend_summary,
         backend_recovery=backend_recovery,
@@ -1702,6 +1756,11 @@ def _search_shared_diagnostics(
     backend_recovery: dict[str, Any],
     errors: list[str],
     network_profile: dict[str, Any] | None = None,
+    site_filter: dict[str, Any] | None = None,
+    time_constraint: dict[str, Any] | None = None,
+    limit_advice: dict[str, Any] | None = None,
+    scope_distinction: dict[str, Any] | None = None,
+    external_fetch_strategy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "query": original_query,
@@ -1723,12 +1782,217 @@ def _search_shared_diagnostics(
         "query_shape": query_shape,
         "query_quality": quality,
         "quality_summary": quality_summary,
+        "site_filter": site_filter or {"enabled": False},
+        "time_constraint": time_constraint or {"enabled": False},
+        "agent_limit_advice": limit_advice or {"enabled": False},
+        "scope_distinction": scope_distinction or {"enabled": False},
+        "external_fetch_strategy": external_fetch_strategy or {"enabled": False},
         "backend_diagnostics": backend_diagnostics,
         "backend_summary": backend_summary,
         "backend_recovery": backend_recovery,
         "network_profile": network_profile or build_network_profile(),
         "network_health": network_health_snapshot(),
         "errors": list(errors),
+    }
+
+
+def _search_limit_advice(limit: int) -> dict[str, Any]:
+    current = max(int(limit or 0), 0)
+    threshold = 30
+    if current >= threshold:
+        return {"enabled": False, "limit": current, "recommended_limit": DEFAULT_SEARCH_LIMIT}
+    return {
+        "enabled": True,
+        "limit": current,
+        "recommended_limit": DEFAULT_SEARCH_LIMIT,
+        "threshold": threshold,
+        "severity": "warn" if current < 20 else "note",
+        "message": (
+            f"当前 --limit {current} 适合 smoke test，不适合严肃研究；"
+            f"Agent 应尽量说服用户接受 --limit {DEFAULT_SEARCH_LIMIT}，再压缩输出给用户。"
+        ),
+        "agent_instruction": (
+            "不要因为用户给了很小的 limit 就直接下最终结论；先说明小样本风险，"
+            f"建议补跑 `guanlan search \"query\" --limit {DEFAULT_SEARCH_LIMIT} --trace`。"
+        ),
+    }
+
+
+def _search_time_constraint(recency: dict[str, Any]) -> dict[str, Any]:
+    if not recency.get("enabled"):
+        return {"enabled": False}
+    label = str(recency.get("label") or "recent")
+    strict = label in {"year", "year_range"}
+    return {
+        "enabled": True,
+        "label": label,
+        "strictness": "strong" if strict else "medium",
+        "start_date": str(recency.get("start_date") or ""),
+        "end_date": str(recency.get("end_date") or ""),
+        "matched_terms": list(recency.get("matched_terms") or []),
+        "instruction": (
+            "显式年份/年份范围是强约束：主结论优先使用窗口内证据，窗口外材料只作背景。"
+            if strict
+            else "近期/热点查询需要优先使用窗口内证据，旧材料只作背景。"
+        ),
+    }
+
+
+def _normalize_site_constraint(site: str | None) -> str:
+    value = (site or "").strip().lower()
+    value = re.sub(r"^https?://", "", value)
+    value = value.split("/", 1)[0].strip(".")
+    if value.startswith("www."):
+        value = value[4:]
+    return value
+
+
+def _site_matches_constraint(domain: str, site: str) -> bool:
+    domain = _normalize_site_constraint(domain)
+    site = _normalize_site_constraint(site)
+    if not domain or not site:
+        return False
+    return domain == site or domain.endswith("." + site)
+
+
+def _apply_site_hard_filter(results: list[SearchResult], site: str) -> tuple[list[SearchResult], dict[str, Any]]:
+    normalized = _normalize_site_constraint(site)
+    kept: list[SearchResult] = []
+    removed_domains: list[str] = []
+    for item in results:
+        domain = item.domain or _domain(item.url)
+        if _site_matches_constraint(domain, normalized):
+            kept.append(item)
+            continue
+        if domain:
+            removed_domains.append(domain)
+    return kept, {
+        "enabled": True,
+        "site": normalized,
+        "mode": "hard",
+        "kept": len(kept),
+        "removed": len(results) - len(kept),
+        "removed_domains": _unique_keep_order(removed_domains)[:8],
+        "relaxed": False,
+        "agent_instruction": (
+            f"`--site {normalized}` 不应被放宽；若结果为空，Agent 应改为读该站点入口、站内搜索页或请求外部 WebFetch 补证。"
+        ),
+    }
+
+
+def _scope_distinction_diagnostics(
+    results: list[SearchResult],
+    *,
+    quality: dict[str, Any],
+    effective_scope: str | None,
+) -> dict[str, Any]:
+    scope = str(effective_scope or quality.get("requested_scope") or "")
+    if not scope:
+        return {"enabled": False}
+    preferred_scopes = {str(item) for item in quality.get("preferred_scopes") or [] if str(item)}
+    preferred_types = {str(item) for item in quality.get("preferred_source_types") or [] if str(item)}
+    domains = _unique_keep_order([item.domain or _domain(item.url) for item in results if item.url])
+    source_types = _unique_keep_order([item.source_type for item in results if item.source_type])
+    preferred_hits = [
+        item
+        for item in results
+        if item.matched_scope in preferred_scopes or item.source_type in preferred_types or item.matched_scope == scope
+    ]
+    warnings: list[str] = []
+    if results and not preferred_hits:
+        warnings.append(f"`{scope}` scope 结果未明显命中偏好信源，可能被开放网页或相邻 scope 稀释。")
+    if len(domains) <= 1 and len(results) >= 3:
+        warnings.append("scope 结果域名过于集中，建议补一个相邻 scope 或目标站点。")
+    if len(source_types) <= 1 and len(results) >= 4:
+        warnings.append("scope 结果来源类型过于单一，建议补证据角色查询。")
+    return {
+        "enabled": True,
+        "scope": scope,
+        "status": "warn" if warnings else "ok",
+        "preferred_hit_count": len(preferred_hits),
+        "domain_count": len(domains),
+        "source_type_count": len(source_types),
+        "warnings": warnings,
+        "agent_instruction": (
+            "如果 scope_distinction=warn，不要把当前结果当成该垂直场景的完整答案；"
+            "先按 query_strategy 的角色 query 或相邻 scope 补搜。"
+        ),
+    }
+
+
+def _external_fetch_strategy(
+    query: str,
+    *,
+    results: list[SearchResult],
+    diagnostics: list[dict[str, Any]],
+    backend_summary: dict[str, Any],
+    route_plan: dict[str, Any],
+    site_filter: dict[str, Any] | None = None,
+    scope_distinction: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    site_filter = site_filter or {}
+    scope_distinction = scope_distinction or {}
+    reasons: list[str] = []
+    if not results:
+        reasons.append("no_usable_results")
+    if site_filter.get("enabled") and site_filter.get("kept", 0) == 0:
+        reasons.append("site_filter_empty")
+    search_ok = [
+        str(item.get("backend") or "")
+        for item in diagnostics
+        if item.get("status") == "ok"
+        and not str(item.get("backend") or "").startswith(("direct:", "site_filter:"))
+    ]
+    direct_seed_ok = any(
+        item.get("status") == "ok" and str(item.get("backend") or "").startswith("direct:")
+        for item in diagnostics
+    )
+    if not search_ok and direct_seed_ok:
+        reasons.append("direct_seed_only")
+    search_problem = any(
+        item.get("status") not in {"ok", "skipped"}
+        and not str(item.get("backend") or "").startswith(("direct:", "site_filter:"))
+        for item in diagnostics
+    )
+    if not search_ok and (search_problem or (
+        backend_summary.get("errors") or backend_summary.get("blocked") or backend_summary.get("parser_miss")
+    )):
+        reasons.append("backend_unavailable_or_parser_miss")
+    if scope_distinction.get("status") == "warn" and len(results) < 3:
+        reasons.append("scope_distinction_weak")
+    if not reasons:
+        return {"enabled": False}
+
+    candidate_urls: list[str] = []
+    for item in results[:6]:
+        if item.url:
+            candidate_urls.append(item.url)
+    for diag in diagnostics:
+        for key in ("url", "candidate_url"):
+            url = str(diag.get(key) or "")
+            if url:
+                candidate_urls.append(url)
+    for seed in route_plan.get("target_sites") or []:
+        site = _normalize_site_constraint(str(seed))
+        if site:
+            candidate_urls.append(f"https://{site}")
+    if site_filter.get("site"):
+        candidate_urls.append(f"https://{site_filter['site']}")
+    candidate_urls = _unique_keep_order(candidate_urls)[:8]
+    return {
+        "enabled": True,
+        "reasons": _unique_keep_order(reasons),
+        "candidate_urls": candidate_urls,
+        "agent_instruction": (
+            "这是 Guanlan 给 Agent 的外部补证策略：先说明“我用 Guanlan 规划信源和质量边界，"
+            "再用 WebFetch 读取指定页面补证”。不要把 WebFetch 写成 Guanlan 脆弱或失败，"
+            "而要写成观澜主动调度外部读取能力增强搜索结果。"
+        ),
+        "reporting_contract": [
+            "外显回答时说明 WebFetch 是本轮搜索策略的一部分。",
+            "保留 Guanlan 的 route/site/time/quality 约束，不要用 WebFetch 返回的单页覆盖整个证据包。",
+        ],
+        "webfetch_policy": "only_after_guanlan_workflow_gap",
     }
 
 
@@ -4344,10 +4608,16 @@ def _query_for_research_job(
             role_preferences = ["user_sample", "review", "fresh_news", "base"]
         elif target in {"global_news", "industry_analysis"}:
             role_preferences = ["industry_report", "company_context", "fresh_news", "base"]
-        elif target in {"social_web", "tech_dev"}:
-            role_preferences = ["user_sample", "developer_discussion", "review"]
-        elif target in {"business", "ecommerce", "finance"}:
-            role_preferences = ["industry_report", "fresh_news"]
+        elif target == "social_web":
+            role_preferences = ["user_sample", "review", "fresh_news"]
+        elif target == "tech_dev":
+            role_preferences = ["technical_primary", "developer_discussion", "base"]
+        elif target == "ecommerce":
+            role_preferences = ["review", "user_sample", "industry_report", "fresh_news", "base"]
+        elif target == "finance":
+            role_preferences = ["official_primary", "market_context", "industry_report", "fresh_news", "base"]
+        elif target == "business":
+            role_preferences = ["industry_report", "company_context", "fresh_news", "base"]
         elif target == "sports":
             role_preferences = ["official_stat", "sports_report", "fresh_news", "base"]
         elif target == "university":
@@ -5726,6 +5996,9 @@ def _search_context_diagnostics(results: list[dict[str, Any]]) -> list[str]:
     quality_summary = trace.get("quality_summary") or {}
     route_plan = trace.get("route_plan") or {}
     query_shape = trace.get("query_shape") or {}
+    site_filter = trace.get("site_filter") or quality_summary.get("site_filter") or {}
+    limit_advice = trace.get("agent_limit_advice") or quality_summary.get("agent_limit_advice") or {}
+    external_fetch = trace.get("external_fetch_strategy") or quality_summary.get("external_fetch_strategy") or {}
     lines: list[str] = []
     quality_interpretation = str(quality_summary.get("interpretation") or "")
     quality_status = str(quality_summary.get("quality_status") or "")
@@ -5742,6 +6015,15 @@ def _search_context_diagnostics(results: list[dict[str, Any]]) -> list[str]:
         lines.append(f"> Query 护栏: {query_shape.get('reason', '')}")
     for note in query_shape.get("notes") or []:
         lines.append(f"> Query 说明: {note}")
+    if isinstance(limit_advice, dict) and limit_advice.get("enabled"):
+        lines.append(f"> 结果池提醒: {limit_advice.get('message')}")
+    if isinstance(site_filter, dict) and site_filter.get("enabled"):
+        lines.append(
+            f"> 站点硬过滤: site={site_filter.get('site')} kept={site_filter.get('kept', 0)} "
+            f"removed={site_filter.get('removed', 0)} relaxed={site_filter.get('relaxed', False)}"
+        )
+    if isinstance(external_fetch, dict) and external_fetch.get("enabled"):
+        lines.append(f"> 外部补证策略: {external_fetch.get('agent_instruction')}")
     for reason in quality_summary.get("why_cautious") or []:
         lines.append(f"> 谨慎原因: {reason}")
     workflow_plan = quality_summary.get("agent_workflow_plan") or {}
@@ -5815,6 +6097,11 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
     backend_recovery = trace.get("backend_recovery") or {}
     scope_rewrite = trace.get("scope_rewrite") or ""
     query_shape = trace.get("query_shape") or {}
+    site_filter = trace.get("site_filter") or quality_summary.get("site_filter") or {}
+    time_constraint = trace.get("time_constraint") or quality_summary.get("time_constraint") or {}
+    limit_advice = trace.get("agent_limit_advice") or quality_summary.get("agent_limit_advice") or {}
+    scope_distinction = trace.get("scope_distinction") or quality_summary.get("scope_distinction") or {}
+    external_fetch = trace.get("external_fetch_strategy") or quality_summary.get("external_fetch_strategy") or {}
     if isinstance(query_shape, dict) and query_shape:
         lines.append(
             "- query_shape: "
@@ -5897,6 +6184,38 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
             lines.append(f"  followup: `{command}`")
     if scope_rewrite:
         lines.append(f"- scope_rewrite: {scope_rewrite}")
+    if isinstance(site_filter, dict) and site_filter.get("enabled"):
+        lines.append(
+            "- site_filter: "
+            f"site={site_filter.get('site')} mode={site_filter.get('mode')} "
+            f"kept={site_filter.get('kept', 0)} removed={site_filter.get('removed', 0)} "
+            f"relaxed={site_filter.get('relaxed', False)}"
+        )
+    if isinstance(time_constraint, dict) and time_constraint.get("enabled"):
+        lines.append(
+            "- time_constraint: "
+            f"label={time_constraint.get('label')} strictness={time_constraint.get('strictness')} "
+            f"start={time_constraint.get('start_date')} end={time_constraint.get('end_date')}"
+        )
+    if isinstance(limit_advice, dict) and limit_advice.get("enabled"):
+        lines.append(
+            "- agent_limit_advice: "
+            f"limit={limit_advice.get('limit')} recommended={limit_advice.get('recommended_limit')} "
+            f"threshold={limit_advice.get('threshold')}"
+        )
+    if isinstance(scope_distinction, dict) and scope_distinction.get("enabled"):
+        lines.append(
+            "- scope_distinction: "
+            f"scope={scope_distinction.get('scope')} status={scope_distinction.get('status')} "
+            f"preferred_hits={scope_distinction.get('preferred_hit_count', 0)} "
+            f"domains={scope_distinction.get('domain_count', 0)}"
+        )
+        for warning in scope_distinction.get("warnings") or []:
+            lines.append(f"  scope_warning: {warning}")
+    if isinstance(external_fetch, dict) and external_fetch.get("enabled"):
+        lines.append("- external_fetch_strategy: enabled reasons=" + ",".join(external_fetch.get("reasons") or []))
+        for url in external_fetch.get("candidate_urls") or []:
+            lines.append(f"  webfetch_candidate: {url}")
     if route_plan:
         lines.append(
             "- route_plan: "
@@ -6280,6 +6599,13 @@ def _quality_with_route_plan(
 def search_quality_summary(
     results: list[dict[str, Any]],
     quality: dict[str, Any] | None = None,
+    *,
+    limit: int | None = None,
+    site_filter: dict[str, Any] | None = None,
+    time_constraint: dict[str, Any] | None = None,
+    limit_advice: dict[str, Any] | None = None,
+    external_fetch_strategy: dict[str, Any] | None = None,
+    scope_distinction: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Summarize whether a result set matches the query quality profile."""
     quality = quality or {}
@@ -6307,6 +6633,25 @@ def search_quality_summary(
     if len(domains) <= 1 and len(results) >= 3:
         warnings.append("域名集中度较高，注意同源转载或单站偏差。")
         suggestions.append("补充 2-3 个不同域名结果，尤其是原文、权威报道和社区样本的交叉来源。")
+    limit_advice = limit_advice or _search_limit_advice(limit or len(results))
+    if limit_advice.get("enabled"):
+        warnings.append(str(limit_advice.get("message") or "当前结果池偏小，严肃研究建议扩大到默认结果池。"))
+        suggestions.append(f"补跑 `guanlan search \"问题\" --limit {limit_advice.get('recommended_limit', DEFAULT_SEARCH_LIMIT)} --trace`。")
+    site_filter = site_filter or {"enabled": False}
+    if site_filter.get("enabled") and site_filter.get("kept", 0) == 0:
+        warnings.append(f"`--site {site_filter.get('site', '')}` 硬过滤后没有站内结果；不要放宽成域外结果。")
+        suggestions.append("改用站点入口、站内搜索页或 WebFetch 读取候选原文补证。")
+    time_constraint = time_constraint or {"enabled": False}
+    if time_constraint.get("enabled") and time_constraint.get("strictness") == "strong":
+        suggestions.append("显式年份/年份范围是强约束；窗口外材料只能作为背景，不应写成主线证据。")
+    scope_distinction = scope_distinction or {"enabled": False}
+    if scope_distinction.get("status") == "warn":
+        for warning in scope_distinction.get("warnings") or []:
+            warnings.append(str(warning))
+        suggestions.append("按 query_strategy 的证据角色 query 或相邻 scope 再补一轮，避免垂直路由被开放网页稀释。")
+    external_fetch_strategy = external_fetch_strategy or {"enabled": False}
+    if external_fetch_strategy.get("enabled"):
+        suggestions.append("如 Guanlan 工作流后仍缺关键原文，可按 external_fetch_strategy 调用 WebFetch 补证。")
     role_counts: dict[str, int] = {}
     for item in results:
         role = str(item.get("evidence_role") or "")
@@ -6351,6 +6696,11 @@ def search_quality_summary(
         "missing_roles": missing_roles,
         "strong_primary_evidence": strong_primary_evidence,
         "warnings": warnings,
+        "site_filter": site_filter,
+        "time_constraint": time_constraint,
+        "agent_limit_advice": limit_advice,
+        "scope_distinction": scope_distinction,
+        "external_fetch_strategy": external_fetch_strategy,
         "interpretation": interpretation,
         "guanlan_next_steps": guanlan_next_steps,
         "agent_reporting_contract": reporting_contract,
@@ -6969,6 +7319,11 @@ def detect_recency_intent(query: str) -> dict[str, Any]:
         matched_terms.append("今年")
 
     if not window_days:
+        explicit_year = _explicit_year_recency(text, today)
+        if explicit_year:
+            return explicit_year
+
+    if not window_days:
         hot_terms = ("热点", "热搜", "快讯", "突发", "爆发", "热议", "刷屏")
         found_hot = [term for term in hot_terms if _recency_term_matches(text, term)]
         if found_hot:
@@ -7040,6 +7395,28 @@ def detect_recency_intent(query: str) -> dict[str, Any]:
     }
 
 
+def _explicit_year_recency(text: str, today: dt.date) -> dict[str, Any] | None:
+    years = sorted({int(match) for match in re.findall(r"(?<!\d)((?:19|20)\d{2})(?!\d)", text)})
+    bounded_years = [year for year in years if 1990 <= year <= today.year + 1]
+    if not bounded_years:
+        return None
+    start_year = min(bounded_years)
+    end_year = max(bounded_years)
+    start = dt.date(start_year, 1, 1)
+    end = dt.date(end_year, 12, 31)
+    if end > today:
+        end = today
+    window_days = max((end - start).days + 1, 1)
+    return {
+        "enabled": True,
+        "label": "year_range" if len(bounded_years) > 1 else "year",
+        "window_days": window_days,
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+        "matched_terms": [str(year) for year in bounded_years],
+    }
+
+
 def build_query_strategy(
     query: str,
     *,
@@ -7088,12 +7465,19 @@ def build_query_strategy(
     if "global_reputation" in intents:
         add("user_sample", f"{clean_query} reddit hacker news user review complaints", "英文口碑问题先找公开社区样本")
         add("review", f"{clean_query} G2 Trustpilot Capterra review", "补评价站点样本并标注偏差")
-    if {"industry", "ecommerce", "finance"} & set(intents):
+    if "ecommerce" in intents or str(quality.get("requested_scope") or "") == "ecommerce":
+        add("industry_report", f"{clean_query} 电商 零售 行业 数据 案例", "电商问题先看垂类媒体和行业材料")
+        add("review", f"{clean_query} 价格 售后 投诉 用户评价 值不值得买", "补购买决策、售后和用户样本")
+    elif "finance" in intents or str(quality.get("requested_scope") or "") == "finance":
+        add("official_primary", f"{clean_query} 财报 公告 投资者关系 交易所 披露", "财经问题先找公告、财报、交易所和投资者关系")
+        add("market_context", f"{clean_query} 研报 监管 风险 业绩 估值", "补市场语境和风险提示")
+    elif {"industry"} & set(intents):
         add("industry_report", f"{clean_query} 行业 趋势 公司 案例", "产业/商业问题补行业材料")
     if "global_industry" in intents:
         add("industry_report", f"{clean_query} market analysis competitive landscape analyst report", "英文产业问题补分析和市场结构材料")
         add("company_context", f"{clean_query} investor relations annual report official", "补公司一手资料和投资者关系材料")
     if "tech" in intents:
+        add("technical_primary", f"{clean_query} docs release notes changelog API SDK", "技术问题先找官方文档、发布说明和可复现材料")
         add("developer_discussion", f"{clean_query} github issue benchmark 开源", "技术问题补开发者与可复现线索")
     if "sports" in intents:
         add("official_stat", f"{clean_query} official scoreboard schedule standings", "体育实时问题优先找官方比分、赛程和榜单入口")
@@ -7370,16 +7754,22 @@ def _result_recency_metrics(item: SearchResult, recency: dict[str, Any] | None =
     start_date = str(recency.get("start_date") or "")
     result_date, date_source = _extract_result_date_with_source(item, today=today)
     age_days = (today - result_date).days if result_date else None
+    start = _safe_iso_date(start_date)
+    end = _safe_iso_date(str(recency.get("end_date") or today.isoformat())) or today
+    if result_date and start:
+        in_window = start <= result_date <= end
+    else:
+        in_window = bool(result_date and age_days is not None and 0 <= age_days <= max(window_days, 0))
     return {
         "enabled": enabled,
         "window_days": window_days,
         "start_date": start_date,
-        "end_date": today.isoformat(),
+        "end_date": end.isoformat(),
         "matched_terms": list(recency.get("matched_terms") or []),
         "result_date": result_date,
         "date_source": date_source,
         "age_days": age_days,
-        "in_window": bool(result_date and age_days is not None and age_days <= max(window_days, 0)),
+        "in_window": in_window,
         "has_freshness_words": _has_freshness_words(item),
     }
 
@@ -7415,6 +7805,12 @@ def _extract_result_date_with_source(item: SearchResult, today: dt.date | None =
             if parsed:
                 return parsed, "title_or_snippet"
 
+        year_match = re.search(r"(?<!\d)((?:19|20)\d{2})(?!\d)", text)
+        if year_match:
+            parsed = _safe_date(int(year_match.group(1)), 1, 1)
+            if parsed:
+                return parsed, "year_mention"
+
     url = str(item.url or "")
     url_patterns = (
         r"/((?:19|20)\d{2})/(\d{1,2})/(\d{1,2})(?:/|$)",
@@ -7427,6 +7823,11 @@ def _extract_result_date_with_source(item: SearchResult, today: dt.date | None =
         parsed = _safe_date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
         if parsed:
             return parsed, "url"
+    year_match = re.search(r"(?<!\d)((?:19|20)\d{2})(?!\d)", url)
+    if year_match:
+        parsed = _safe_date(int(year_match.group(1)), 1, 1)
+        if parsed:
+            return parsed, "url_year"
     return None, ""
 
 
@@ -7465,6 +7866,13 @@ def _safe_date(year: int, month: int, day: int) -> dt.date | None:
         return None
 
 
+def _safe_iso_date(value: str) -> dt.date | None:
+    try:
+        return dt.date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _has_freshness_words(item: SearchResult) -> bool:
     text = f"{item.title} {item.snippet}".lower()
     markers = (
@@ -7483,6 +7891,12 @@ def _has_freshness_words(item: SearchResult) -> bool:
         "today",
     )
     return any(marker in text for marker in markers)
+
+
+def _result_mentions_time_terms(item: SearchResult, recency: dict[str, Any]) -> bool:
+    text = _collapse_ws(f"{item.title} {item.snippet} {item.url}")
+    terms = [str(term) for term in recency.get("matched_terms") or [] if str(term)]
+    return any(re.search(rf"(?<!\d){re.escape(term)}(?!\d)", text) for term in terms)
 
 
 def _score_result_parts(
@@ -7506,6 +7920,8 @@ def _score_result_parts(
         "keyword_match": 0.0,
         "backend_priority": 0.0,
         "recency_boost": 0.0,
+        "time_constraint_fit": 0.0,
+        "time_constraint_penalty": 0.0,
         "ad_penalty": 0.0,
         "intent_mismatch_penalty": 0.0,
         "language_mismatch_penalty": 0.0,
@@ -7576,6 +7992,16 @@ def _score_result_parts(
         parts["semantic_noise_penalty"] = min(parts["semantic_noise_penalty"], -2.0)
     if recency and recency.get("enabled"):
         metrics = _result_recency_metrics(item, recency)
+        strict_time = str(recency.get("label") or "") in {"year", "year_range"}
+        if strict_time:
+            if metrics["result_date"] and metrics.get("in_window"):
+                parts["time_constraint_fit"] = 1.25
+            elif _result_mentions_time_terms(item, recency):
+                parts["time_constraint_fit"] = 0.65
+            elif metrics["result_date"]:
+                parts["time_constraint_penalty"] = -2.4
+            else:
+                parts["time_constraint_penalty"] = -0.35
         if metrics["result_date"] and metrics["age_days"] is not None:
             age_days = max(int(metrics["age_days"]), 0)
             window_days = max(int(metrics["window_days"] or 1), 1)

@@ -32,6 +32,19 @@ Agent operating rule: when using Guanlan for search, research, hotnews, pulse, o
 prefer the largest sensible result pool instead of a tiny sample. Use the default 80 results for
 normal work, raise to 80-100 for broad research when latency is acceptable, and only lower the
 limit when the user explicitly asks for a small sample or a quick smoke check.
+If a user, benchmark, or downstream Agent asks for `--limit` below 30, accept the command but treat
+it as a smoke sample, not as a research-grade evidence pool. Persuade the Agent/user to rerun with
+`--limit 80` before making strong claims.
+
+Site/time constraint rule: `--site` is a hard filter. If `guanlan search ... --site gov.cn` returns
+zero results after filtering, do not relax to Zhihu, generic SEO pages, or other domains. For explicit
+years or year ranges, treat the requested window as a strong constraint: window-outside materials can
+be background, not the main timeline or "latest" evidence.
+
+External fetch strategy rule: when Guanlan emits `external_fetch_strategy`, the Agent may call the
+host platform's WebFetch/WebRead tool to read Guanlan-selected candidate URLs. Report this as "Guanlan
+planned the source route, then I used WebFetch to read target pages for extra evidence"; do not frame
+it as Guanlan being fragile or failed.
 
 Agent routing shortcut rule: when a query clearly matches a dedicated route, go directly to that
 route's `--preset` or `--scope` instead of starting with generic web search. Use `guanlan route
@@ -50,6 +63,9 @@ scores/schedules/standings, weather or disaster alerts, CVE/security advisories,
 claims, entertainment charts/ratings/box office, academic indexing, and exam-official information.
 Do not report "Guanlan found nothing" until the recommended direct `read` commands and the matching
 scope/preset search have been tried.
+If results are only direct source seeds because normal search backends timed out or were blocked,
+read those seeds and follow `external_fetch_strategy`; direct seeds are authoritative entrypoints,
+not full answers.
 
 Agent workflow ladder rule: do not reduce Guanlan to one generic `search` call. Use a dynamic
 minimum workflow:

@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Run Guanlan vs WebSearch vs WebFetch benchmark cases.
+"""Run Guanlan vs WebSearch benchmark cases with strict channel isolation.
 
 This is a live, best-effort benchmark harness. It keeps raw command outputs
 alongside normalized records so weak networks, blocked engines, and extraction
 failures remain visible instead of disappearing behind a single score.
+
+Strict isolation rule for this harness:
+- Guanlan score only depends on Guanlan output.
+- WebSearch score only depends on open-websearch search output.
+- WebFetch is treated as extraction validation on each channel's own Top1 URL,
+  not as a standalone search winner, because fetch-web is URL-native not query-native.
 """
 
 from __future__ import annotations
@@ -372,7 +378,14 @@ def fetch_score(fetch_data: Any, query: str, top: dict[str, Any] | None) -> dict
     else:
         label = "低"
     score = min(10.0, (4.0 if status_ok else 1.0) + min(4.0, len(content) / 1200) + max(0.0, rel - 5.0) / 2)
-    return {"success": bool(status_ok and content), "content_chars": len(content), "consistency": label, "score": round(score, 1)}
+    return {
+        "success": bool(status_ok and content),
+        "content_chars": len(content),
+        "consistency": label,
+        "score": round(score, 1),
+        "url": str((top or {}).get("url") or ""),
+        "domain": str((top or {}).get("domain") or domain_of(str((top or {}).get("url") or ""))),
+    }
 
 
 def score_channel(case: dict[str, Any], rows: list[dict[str, Any]], channel: str) -> dict[str, Any]:
@@ -410,7 +423,7 @@ def command_for_case(case: dict[str, Any], limit: int) -> list[str]:
     return args
 
 
-def run_case(case: dict[str, Any], outdir: Path, limit: int, timeout: int, fetch_timeout: int) -> dict[str, Any]:
+def run_case(case: dict[str, Any], outdir: Path, limit: int, timeout: int, fetch_timeout: int, *, spawn_websearch: bool) -> dict[str, Any]:
     raw_dir = outdir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
     cid = case["id"]
@@ -441,38 +454,59 @@ def run_case(case: dict[str, Any], outdir: Path, limit: int, timeout: int, fetch
             guanlan_rows = retry_rows
 
     web_cmd = ["open-websearch", "search", case["query"], "--limit", str(limit), "--json"]
+    if spawn_websearch:
+        web_cmd.insert(-1, "--spawn")
     web_raw = run_cmd(web_cmd, timeout)
     (raw_dir / f"{cid}.websearch.stdout").write_text(web_raw["stdout"], encoding="utf-8")
     (raw_dir / f"{cid}.websearch.stderr").write_text(web_raw["stderr"], encoding="utf-8")
     web_json = parse_json_output(web_raw["stdout"])
     web_rows = normalize_websearch(web_json)
 
-    top = guanlan_rows[0] if guanlan_rows else None
-    fetch_raw: dict[str, Any] | None = None
-    fetch_json: Any = None
-    if top and top.get("url"):
-        fetch_cmd = ["open-websearch", "fetch-web", str(top["url"]), "--max-chars", "6000", "--readability", "--json"]
-        fetch_raw = run_cmd(fetch_cmd, fetch_timeout)
-        (raw_dir / f"{cid}.webfetch.stdout").write_text(fetch_raw["stdout"], encoding="utf-8")
-        (raw_dir / f"{cid}.webfetch.stderr").write_text(fetch_raw["stderr"], encoding="utf-8")
-        fetch_json = parse_json_output(fetch_raw["stdout"])
+    guanlan_top = guanlan_rows[0] if guanlan_rows else None
+    websearch_top = web_rows[0] if web_rows else None
+    guanlan_fetch_raw: dict[str, Any] | None = None
+    websearch_fetch_raw: dict[str, Any] | None = None
+    guanlan_fetch_json: Any = None
+    websearch_fetch_json: Any = None
+    if guanlan_top and guanlan_top.get("url"):
+        fetch_cmd = ["open-websearch", "fetch-web", str(guanlan_top["url"]), "--max-chars", "6000", "--readability", "--json"]
+        if spawn_websearch:
+            fetch_cmd.insert(-1, "--spawn")
+        guanlan_fetch_raw = run_cmd(fetch_cmd, fetch_timeout)
+        (raw_dir / f"{cid}.guanlan-top1.fetch.stdout").write_text(guanlan_fetch_raw["stdout"], encoding="utf-8")
+        (raw_dir / f"{cid}.guanlan-top1.fetch.stderr").write_text(guanlan_fetch_raw["stderr"], encoding="utf-8")
+        guanlan_fetch_json = parse_json_output(guanlan_fetch_raw["stdout"])
+    if websearch_top and websearch_top.get("url"):
+        fetch_cmd = ["open-websearch", "fetch-web", str(websearch_top["url"]), "--max-chars", "6000", "--readability", "--json"]
+        if spawn_websearch:
+            fetch_cmd.insert(-1, "--spawn")
+        websearch_fetch_raw = run_cmd(fetch_cmd, fetch_timeout)
+        (raw_dir / f"{cid}.websearch-top1.fetch.stdout").write_text(websearch_fetch_raw["stdout"], encoding="utf-8")
+        (raw_dir / f"{cid}.websearch-top1.fetch.stderr").write_text(websearch_fetch_raw["stderr"], encoding="utf-8")
+        websearch_fetch_json = parse_json_output(websearch_fetch_raw["stdout"])
 
     g_score = score_channel(case, guanlan_rows, "guanlan")
     w_score = score_channel(case, web_rows, "websearch")
-    f_score = fetch_score(fetch_json, case["query"], top)
+    g_fetch_score = fetch_score(guanlan_fetch_json, case["query"], guanlan_top)
+    w_fetch_score = fetch_score(websearch_fetch_json, case["query"], websearch_top)
     record = {
         "case": case,
+        "strict_isolation": True,
         "commands": {"guanlan": guanlan_cmd, "guanlan_retry": guanlan_retry_cmd, "websearch": web_cmd},
         "raw_status": {
             "guanlan": guanlan_raw,
             "guanlan_retry": guanlan_retry_raw,
             "websearch": web_raw,
-            "webfetch": fetch_raw,
+            "guanlan_fetch": guanlan_fetch_raw,
+            "websearch_fetch": websearch_fetch_raw,
         },
         "guanlan_top": guanlan_rows[:5],
         "websearch_top": web_rows[:5],
-        "webfetch": f_score,
-        "scores": {"guanlan": g_score, "websearch": w_score, "webfetch": f_score, "winner": winner(g_score, w_score)},
+        "fetch_validation": {
+            "guanlan_top1": g_fetch_score,
+            "websearch_top1": w_fetch_score,
+        },
+        "scores": {"guanlan": g_score, "websearch": w_score, "winner": winner(g_score, w_score)},
     }
     (raw_dir / f"{cid}.record.json").write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
     return record
@@ -563,13 +597,15 @@ def render_records_md(records: list[dict[str, Any]]) -> str:
         "",
         f"- 运行日期: {TODAY.isoformat()}",
         f"- 样本数: {len(records)}",
-        "- 对照定义: Guanlan=`guanlan search/hotnews --json`; WebSearch=`open-websearch search --json`; WebFetch=`open-websearch fetch-web` 读取 Guanlan Top1。",
+        "- 对照定义: Guanlan=`guanlan search/hotnews --json`; WebSearch=`open-websearch search --json --spawn`。",
+        "- 抓取验证: `open-websearch fetch-web --spawn` 分别读取 Guanlan Top1 与 WebSearch Top1，不把另一条通道的召回带进本组评分。",
     ]
     for r in records:
         case = r["case"]
         g = r["scores"]["guanlan"]
         w = r["scores"]["websearch"]
-        f = r["scores"]["webfetch"]
+        g_fetch = r.get("fetch_validation", {}).get("guanlan_top1", {})
+        w_fetch = r.get("fetch_validation", {}).get("websearch_top1", {})
         retry_used = bool(r.get("raw_status", {}).get("guanlan_retry"))
         top_g = r["guanlan_top"][0] if r["guanlan_top"] else {}
         top_w = r["websearch_top"][0] if r["websearch_top"] else {}
@@ -594,10 +630,9 @@ def render_records_md(records: list[dict[str, Any]]) -> str:
                 f"  - 覆盖: {w['coverage']}/10",
                 f"  - Top1: {top_w.get('title', '-') } ({top_w.get('domain') or domain_of(top_w.get('url', '')) or '-'})",
                 f"  - 对比结论: {r['scores']['winner']}",
-                "- WebFetch（Guanlan Top1 链接）:",
-                f"  - 抓取成功: {'是' if f['success'] else '否'}",
-                f"  - 正文字符数: {f['content_chars']}",
-                f"  - 正文与摘要一致性: {f['consistency']}",
+                "- WebFetch（各自 Top1 抓取验证）:",
+                f"  - Guanlan Top1 抓取成功: {'是' if g_fetch.get('success') else '否'}; 字符数: {g_fetch.get('content_chars', 0)}; 一致性: {g_fetch.get('consistency', '-')}",
+                f"  - WebSearch Top1 抓取成功: {'是' if w_fetch.get('success') else '否'}; 字符数: {w_fetch.get('content_chars', 0)}; 一致性: {w_fetch.get('consistency', '-')}",
                 f"- 总体结论: {case.get('challenge', '-')}",
             ]
         )
@@ -612,7 +647,8 @@ def render_report_md(records: list[dict[str, Any]], outdir: Path) -> str:
     g_avg = {k: average(records, "guanlan", k) for k in ("relevance", "freshness", "source_quality", "coverage", "structure")}
     w_avg = {k: average(records, "websearch", k) for k in ("relevance", "freshness", "source_quality", "coverage", "structure")}
     winners = Counter(r["scores"]["winner"] for r in records)
-    fetch_success = sum(1 for r in records if r["scores"]["webfetch"]["success"])
+    guanlan_fetch_success = sum(1 for r in records if r.get("fetch_validation", {}).get("guanlan_top1", {}).get("success"))
+    websearch_fetch_success = sum(1 for r in records if r.get("fetch_validation", {}).get("websearch_top1", {}).get("success"))
     guanlan_retry_count = sum(1 for r in records if r.get("raw_status", {}).get("guanlan_retry"))
     guanlan_retry_recovered = sum(
         1
@@ -629,8 +665,10 @@ def render_report_md(records: list[dict[str, Any]], outdir: Path) -> str:
         f"- 测试日期: {TODAY.isoformat()}",
         f"- 测试用例: {len(records)} 条",
         "- Guanlan 版本/路径请见 `environment.json`。",
+        "- 本报告为“严格通道隔离版”：Guanlan 只和 Guanlan 比，WebSearch 只和 WebSearch 比；WebFetch 仅做各自 Top1 正文抽取验证，不参与搜索胜负。",
         f"- 胜负统计: Guanlan优 {winners.get('Guanlan优', 0)} / 平 {winners.get('平', 0)} / WebSearch优 {winners.get('WebSearch优', 0)}。",
-        f"- WebFetch 成功: {fetch_success}/{len(records)}。",
+        f"- Guanlan Top1 WebFetch 成功: {guanlan_fetch_success}/{len(records)}。",
+        f"- WebSearch Top1 WebFetch 成功: {websearch_fetch_success}/{len(records)}。",
         f"- Guanlan 后端验证码复测: {guanlan_retry_count} 条触发，{guanlan_retry_recovered} 条通过 `--backend duckduckgo` 恢复。",
         "",
         "## 总体均分",
@@ -680,7 +718,7 @@ def render_report_md(records: list[dict[str, Any]], outdir: Path) -> str:
             "- 优先用 Guanlan: 中文政策、党央媒/部委原文、垂直 scope 需要信源分层、需要保留证据角色和后端诊断的研究任务。",
             "- Guanlan + WebSearch 并跑: 非中文、全球科技/娱乐、长尾历史、复杂比较、疑似 scope 过窄或 Guanlan 结果少于 5 条的任务。",
             "- 必须 fallback 到 WebFetch/专用工具: 1 小时内突发、股价/汇率/天气安全提示、需要正文核验或页面摘要可信度不明的任务。",
-            "- 对 agent 使用: 先跑 Guanlan 大候选池拿结构化证据，再用 WebSearch 补盲区，最后 WebFetch 抓取关键 Top URLs 做正文核验。",
+            "- 对 agent 使用: 这份严格版更适合看单通道上限和盲区，不适合直接替代 Guanlan 最佳工作流评测。",
             "",
             "## 产物",
             "",
@@ -700,6 +738,7 @@ def collect_environment(outdir: Path) -> None:
         "guanlan_version": ["guanlan", "version"],
         "open_websearch_path": ["bash", "-lc", "command -v open-websearch"],
         "open_websearch_status": ["open-websearch", "status", "--json"],
+        "open_websearch_help": ["open-websearch", "--help"],
     }.items():
         raw = run_cmd(args, 20)
         env[name] = {
@@ -720,6 +759,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--fetch-timeout", type=int, default=60)
     parser.add_argument("--case", action="append", help="Run only selected case id; can repeat")
     parser.add_argument("--skip-existing", action="store_true")
+    parser.add_argument("--spawn-websearch", action="store_true", default=True)
     args = parser.parse_args(argv)
 
     outdir = Path(args.outdir)
@@ -735,7 +775,7 @@ def main(argv: list[str]) -> int:
             records.append(json.loads(record_path.read_text(encoding="utf-8")))
             continue
         print(f"[{idx}/{len(cases)}] {case['id']} {case['query']}", flush=True)
-        records.append(run_case(case, outdir, args.limit, args.timeout, args.fetch_timeout))
+        records.append(run_case(case, outdir, args.limit, args.timeout, args.fetch_timeout, spawn_websearch=args.spawn_websearch))
 
     (outdir / "records.json").write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
     build_radar_svg(records, outdir / "radar.svg")

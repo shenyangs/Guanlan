@@ -12,6 +12,8 @@
 | 趋势归并 | 多源热点能把同一事件聚到一起，同时避免错聚类。 | `--trends` 能展示跨源来源数、代表标题和分布；聚类解释可读。 |
 | advisor 自然度 | `--advisor` 给 Agent 规则和边界，不机械复述模板。 | 输出能结合 query intent、证据类型、样本偏差和下一步；不声称知道用户真实动机。 |
 | 研究工作流 | `compare/timeline/dossier` 能把证据包整理成对比、时间线和档案，不吞掉来源和边界。 | JSON/Markdown/context 都保留来源链接、证据角色、边界提示和下一步命令。 |
+| 约束执行 | `--site`、显式年份和小结果池不会被误用。 | `--site` 硬过滤；年份窗口内证据优先；`limit<30` 有 Agent 提醒。 |
+| 外部补证 | 搜索后端受限时，Agent 能理解 WebFetch 是观澜规划的定点补证策略。 | 输出 `external_fetch_strategy`；说明候选 URL、原因和外显话术。 |
 | 路由评测 | 固定场景能命中合适的意图、scope、证据角色和候选池下限。 | `eval benchmark` 通过；覆盖政策、口碑、热点、技术、学术、地方、电商和本地模型。 |
 | 发版回归 | 每次更新不能让下游 Agent 拿到的材料变少、变窄或变脏。 | `quality regression` 通过；默认池、RSS 兜底、正文抽取和 advisor 动态性保持。 |
 
@@ -25,6 +27,9 @@
 - 电商零售：`即时零售 行业趋势 2026`
 - 技术问题：`Python Agent 框架 GitHub issue 对比`
 - 近期热点：`最近 中文互联网 AI 热点`
+- 站点硬过滤：`人工智能 政策 --site gov.cn`，不得返回知乎或域外结果。
+- 年份窗口：`具身智能 2024-2025 进展`，窗口外材料只作背景。
+- 小样本护栏：`--limit 10 --trace` 必须提示 Agent 这只是 smoke sample。
 
 ### 热点与趋势
 
@@ -54,6 +59,7 @@
 
 - `guanlan compare "产品A" "产品B" --focus "价格 口碑 风险" --limit 80 --format context`
 - `guanlan timeline "低空经济 广东 政策 最新进展" --limit 80 --format context`
+- `guanlan timeline "具身智能 2024-2025 产业进展" --limit 80 --format context`
 - `guanlan dossier "某公司" --focus "业务 口碑 风险" --limit 80 --format context`
 
 ## 评分方法
@@ -84,4 +90,6 @@
 - 至少读 5 篇中文页面并记录正文/噪声观察。
 - 至少跑 3 条 `research --advisor`，人工检查自然度。
 - 至少跑 1 条 `compare`、1 条 `timeline`、1 条 `dossier`，检查输出是否仍保留信源身份、证据角色和边界。
+- 至少跑 1 条 `--site` 硬过滤、1 条显式年份 timeline、1 条 `limit<30` trace，检查 Agent 护栏是否可见。
+- 至少模拟 1 次搜索后端异常或站点过滤空结果，检查 `external_fetch_strategy` 是否给出 WebFetch 定点补证话术。
 - 更新薄弱点清单，不把实验能力包装成稳定能力。
