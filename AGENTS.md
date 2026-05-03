@@ -63,6 +63,10 @@ guanlan hotnews weibo --limit 80
 guanlan hotnews bilibili --limit 80
 guanlan hotnews ithome --limit 80
 guanlan hotnews v2ex --limit 80
+guanlan hotnews tophub:weibo --limit 80
+guanlan hotnews tophub:catalog:news --limit 80
+guanlan hotnews uapis:catalog --limit 80
+guanlan hotnews vvhan:all --limit 80
 guanlan doctor --install-check
 guanlan doctor --trace
 guanlan archive ingest-research "query" --limit 80
@@ -92,6 +96,7 @@ Safety rules:
 - Use `guanlan compare`, `guanlan timeline`, or `guanlan dossier` when the user asks for comparison, event chronology, or an entity dossier; these are structured views over evidence packets, not final truth.
 - Use `guanlan research ... --preset academic --read-top 0` for EI/SCI/Scopus, academic conference, paper submission, indexing, and university-recognition questions; read selected official URLs afterward if needed.
 - Use `guanlan research ... --preset entertainment --read-top 0` for film, drama, variety show, music, celebrity, game, box-office, rating, and fandom/public-discussion questions; separate platform metrics, user ratings, industry reports, promotion copy, and fandom samples.
+- Use `guanlan hotnews tophub:*`, `guanlan hotnews uapis:*`, or `guanlan hotnews vvhan:*` only as optional external hotboard expansion. Keep the `external_backend` and cache/staleness metadata in mind; do not treat third-party aggregate lists as authoritative facts.
 - For technology/AI/developer routing, always include one RSS discovery pass. `guanlan research ... --preset tech` does this automatically; if you only run `route` or `search`, also run `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80` as a second pass.
 - Use `guanlan read ... --quality-report` when deciding whether a page body is clean enough for downstream reasoning; use `--strict` when noisy page chrome would be harmful; use `--extract metadata` or `--extract links` for source/date/link checks.
 - Use `guanlan archive verify` before relying on archive as memory/RAG/Wiki; use `archive context` or `archive wiki context` when a local model needs evidence-bound context from stored materials.

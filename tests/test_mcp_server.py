@@ -58,6 +58,8 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     route_tool = next(tool for tool in tools if tool["name"] == "guanlan_route")
     assert "evidence roles" in route_tool["description"]
     assert "prompt" in search_tool["inputSchema"]["properties"]["format"]["enum"]
+    assert "cache_ttl=3600" in search_tool["description"]
+    assert "do not shrink the evidence pool" in search_tool["description"]
     assert "prompt" in research_tool["inputSchema"]["properties"]["format"]["enum"]
     compare_tool = next(tool for tool in tools if tool["name"] == "guanlan_compare")
     timeline_tool = next(tool for tool in tools if tool["name"] == "guanlan_timeline")

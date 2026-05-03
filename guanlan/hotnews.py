@@ -14,7 +14,7 @@ import re
 import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
@@ -31,6 +31,46 @@ from guanlan.source_taxonomy import source_card_for_domain
 _UA = "Mozilla/5.0"
 _TIMEOUT = 12
 DEFAULT_NEWSNOW_BASE_URL = "https://newsnow.busiyi.world"
+VVHAN_HOTLIST_BASE_URL = "https://hot-api.vhan.eu.org/v2"
+UAPI_HOTBOARD_BASE_URL = "https://uapis.cn"
+TOPHUB_BASE_URL = "https://tophub.today"
+EXTERNAL_HOTNEWS_BACKENDS = {"newsnow", "vvhan", "uapis", "tophub"}
+EXTERNAL_HOTNEWS_RISK_TAGS = ("external_backend", "third_party_aggregation", "provider_volatility")
+HOTNEWS_CACHE_VERSION = 1
+HOTNEWS_CACHE_MAX_AGE_SECONDS = 900
+HOTNEWS_STALE_CACHE_SECONDS = 7 * 24 * 60 * 60
+UAPI_HOTBOARD_PLATFORMS: tuple[str, ...] = (
+    "36kr", "51cto", "52pojie", "acfun", "baidu", "bilibili", "coolapk", "csdn",
+    "douban-group", "douban-movie", "douyin", "earthquake", "genshin", "guokr",
+    "hellogithub", "history", "honkai", "hostloc", "hupu", "huxiu", "ifanr",
+    "ithome", "ithome-xijiayi", "jianshu", "juejin", "kuaishou", "lol",
+    "netease-music", "netease-news", "ngabbs", "nodeseek", "qq-music", "qq-news",
+    "sina", "sina-news", "sspai", "starrail", "thepaper", "tieba", "toutiao",
+    "v2ex", "weatheralarm", "weibo", "weread", "zhihu", "zhihu-daily",
+)
+TOPHUB_CATEGORY_IDS: tuple[str, ...] = (
+    "news", "tech", "ent", "community", "shopping", "finance", "developer", "brief", "ai",
+    "epaper", "design", "university", "organization", "blog", "wxmp",
+)
+TOPHUB_SOURCE_ALIASES: dict[str, str] = {
+    "weibo": "KqndgxeLl9",
+    "zhihu": "mproPpoq6O",
+}
+VVHAN_TYPE_ALIASES: dict[str, str] = {
+    "all": "all",
+    "weibo": "wbHot",
+    "wbhot": "wbHot",
+    "zhihu": "zhihuHot",
+    "baidu": "baiduRD",
+    "douyin": "douyinHot",
+    "toutiao": "toutiao",
+    "thepaper": "pengPai",
+    "qq-news": "qqNews",
+    "netease-news": "wyNews",
+    "36kr": "36Ke",
+    "ithome": "itNews",
+    "huxiu": "huXiu",
+}
 YOUTUBE_AI_CHANNELS: tuple[tuple[str, str], ...] = (
     ("Peter Yang", "UCnpBg7yqNauHtlNSpOl5-cg"),
     ("Lenny's Podcast", "UC6t1O76G0jYXOAoYCm153dA"),
@@ -72,7 +112,12 @@ NEWSNOW_RECOMMENDED_SOURCES: dict[str, dict[str, Any]] = list_optional_backend_s
 
 def list_sources() -> dict[str, dict[str, Any]]:
     """Return supported native hotnews source metadata."""
-    return list_hotnews_sources()
+    sources = dict(list_hotnews_sources())
+    try:
+        sources.update(list_external_hotnews_catalog())
+    except NameError:
+        pass
+    return sources
 
 
 def _now_iso() -> str:
@@ -104,6 +149,112 @@ def _read_text(url: str, timeout: int = _TIMEOUT, headers: dict[str, str] | None
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", errors="replace")
+
+
+def _guanlan_cache_dir() -> Path:
+    path = Path.home() / ".guanlan" / "cache"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _hotnews_cache_path() -> Path:
+    return _guanlan_cache_dir() / "hotnews-providers.json"
+
+
+def _load_hotnews_cache() -> dict[str, Any]:
+    path = _hotnews_cache_path()
+    if not path.exists():
+        return {"version": HOTNEWS_CACHE_VERSION, "entries": {}}
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return {"version": HOTNEWS_CACHE_VERSION, "entries": {}}
+        data.setdefault("entries", {})
+        return data
+    except (OSError, json.JSONDecodeError):
+        return {"version": HOTNEWS_CACHE_VERSION, "entries": {}}
+
+
+def _save_hotnews_cache(data: dict[str, Any]) -> None:
+    path = _hotnews_cache_path()
+    data["version"] = HOTNEWS_CACHE_VERSION
+    try:
+        tmp = path.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        tmp.replace(path)
+    except OSError:
+        return
+
+
+def _cache_age_seconds(entry: dict[str, Any]) -> float | None:
+    fetched_at = entry.get("fetched_at")
+    if not fetched_at:
+        return None
+    try:
+        return (datetime.now(timezone.utc) - datetime.fromisoformat(str(fetched_at))).total_seconds()
+    except ValueError:
+        return None
+
+
+def _cache_key(provider: str, source: str) -> str:
+    return f"{provider}:{source}".lower()
+
+
+def _fetch_external_with_cache(provider: str, source: str, fetcher, *, cache_ttl: int = HOTNEWS_CACHE_MAX_AGE_SECONDS) -> list[dict[str, Any]]:
+    key = _cache_key(provider, source)
+    cache = _load_hotnews_cache()
+    entries = cache.setdefault("entries", {})
+    cached = entries.get(key) if isinstance(entries, dict) else None
+    if isinstance(cached, dict):
+        age = _cache_age_seconds(cached)
+        if age is not None and age <= cache_ttl and isinstance(cached.get("items"), list):
+            return _mark_provider_items(cached["items"], provider, "cache", {"cache_age_seconds": int(age)})
+
+    try:
+        items = fetcher()
+        if not items:
+            raise RuntimeError("provider returned no parseable hotnews rows")
+        entries[key] = {"fetched_at": _now_iso(), "items": items}
+        _save_hotnews_cache(cache)
+        return _mark_provider_items(items, provider, "success")
+    except Exception as exc:
+        if isinstance(cached, dict) and isinstance(cached.get("items"), list):
+            age = _cache_age_seconds(cached)
+            if age is not None and age <= HOTNEWS_STALE_CACHE_SECONDS:
+                return _mark_provider_items(
+                    cached["items"],
+                    provider,
+                    "stale_cache",
+                    {"cache_age_seconds": int(age), "provider_error": str(exc)},
+                )
+        raise
+
+
+def _mark_provider_items(
+    items: list[dict[str, Any]],
+    provider: str,
+    status: str,
+    extra_metrics: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    marked: list[dict[str, Any]] = []
+    for raw in items:
+        item = dict(raw)
+        metrics = dict(item.get("metrics") or {})
+        metrics["provider"] = provider
+        metrics["provider_status"] = status
+        if extra_metrics:
+            metrics.update(extra_metrics)
+        item["metrics"] = metrics
+        risk_tags = list(item.get("risk_tags") or [])
+        risk_tags.extend(EXTERNAL_HOTNEWS_RISK_TAGS)
+        if status == "stale_cache":
+            risk_tags.append("stale_cache")
+            item.setdefault("source_confidence", "low")
+        item["risk_tags"] = _unique(risk_tags)
+        marked.append(enrich_hotnews_item(item))
+    return marked
 
 
 def _clean_text(value: Any) -> str:
@@ -701,6 +852,377 @@ def fetch_newsnow(
     return items[: max(limit, 1)]
 
 
+def list_external_hotnews_catalog(provider: str | None = None) -> dict[str, dict[str, Any]]:
+    """Return catalog rows for external aggregate providers without live crawling them."""
+    provider_key = (provider or "").strip().lower()
+    catalog: dict[str, dict[str, Any]] = {}
+    if provider_key in ("", "vvhan"):
+        for alias, provider_source in sorted(VVHAN_TYPE_ALIASES.items()):
+            if alias == provider_source.lower():
+                continue
+            catalog[f"vvhan:{alias}"] = {
+                "surface": "hotnews",
+                "backend": "optional",
+                "optional_backend": "vvhan",
+                "provider_source_id": provider_source,
+                "status": "optional",
+                "evidence_role": "fresh_trend_signal",
+                "risk_tags": list(EXTERNAL_HOTNEWS_RISK_TAGS),
+                "command": f"guanlan hotnews vvhan:{alias} --limit 80",
+            }
+    if provider_key in ("", "uapis"):
+        for platform in UAPI_HOTBOARD_PLATFORMS:
+            catalog[f"uapis:{platform}"] = {
+                "surface": "hotnews",
+                "backend": "optional",
+                "optional_backend": "uapis",
+                "provider_source_id": platform,
+                "status": "optional",
+                "evidence_role": "fresh_trend_signal",
+                "source_url": f"{UAPI_HOTBOARD_BASE_URL}/hotboard/{platform}",
+                "risk_tags": list(EXTERNAL_HOTNEWS_RISK_TAGS),
+                "command": f"guanlan hotnews uapis:{platform} --limit 80",
+                "caveat": "UAPI 是外部聚合 API/页面，观澜会校验新鲜度并在失败时使用本地缓存兜底。",
+            }
+    if provider_key in ("", "tophub"):
+        for alias, node_id in sorted(TOPHUB_SOURCE_ALIASES.items()):
+            catalog[f"tophub:{alias}"] = {
+                "surface": "hotnews",
+                "backend": "optional",
+                "optional_backend": "tophub",
+                "provider_source_id": node_id,
+                "status": "optional",
+                "evidence_role": "fresh_trend_signal",
+                "source_url": f"{TOPHUB_BASE_URL}/n/{node_id}",
+                "risk_tags": list(EXTERNAL_HOTNEWS_RISK_TAGS),
+                "command": f"guanlan hotnews tophub:{alias} --limit 80",
+            }
+        for category in TOPHUB_CATEGORY_IDS:
+            catalog[f"tophub:catalog:{category}"] = {
+                "surface": "hotnews",
+                "backend": "optional",
+                "optional_backend": "tophub",
+                "provider_source_id": category,
+                "status": "catalog",
+                "evidence_role": "source_catalog_entry",
+                "source_url": f"{TOPHUB_BASE_URL}/c/{category}",
+                "risk_tags": list(EXTERNAL_HOTNEWS_RISK_TAGS),
+                "command": f"guanlan hotnews tophub:catalog:{category} --limit 80",
+            }
+    return catalog
+
+
+def fetch_vvhan(source: str = "all", limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
+    """Fetch VVHan/HotList-Web aggregate API and normalize rows with freshness metadata."""
+    source_key = (source or "all").strip()
+    provider_source = VVHAN_TYPE_ALIASES.get(source_key.lower(), source_key)
+
+    def _fetch() -> list[dict[str, Any]]:
+        payload = _read_json(f"{VVHAN_HOTLIST_BASE_URL}?type=all")
+        groups = payload.get("data") if isinstance(payload, dict) else []
+        if not isinstance(groups, list):
+            groups = []
+        selected: list[dict[str, Any]] = []
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            rows = group.get("data")
+            if not isinstance(rows, list):
+                continue
+            group_name = _clean_text(group.get("name") or group.get("subtitle") or "")
+            group_time = _clean_text(group.get("update_time"))
+            if provider_source.lower() != "all":
+                matches_group = provider_source.lower() in {
+                    _clean_text(group.get("type")).lower(),
+                    group_name.lower(),
+                    _clean_text(group.get("name")).lower(),
+                }
+                matches_rows = any(
+                    isinstance(row, dict) and _clean_text(row.get("type")).lower() == provider_source.lower()
+                    for row in rows
+                )
+                if not matches_group and not matches_rows:
+                    continue
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                enriched = dict(row)
+                enriched.setdefault("source_group", group_name)
+                enriched.setdefault("update_time", group_time)
+                selected.append(enriched)
+                if len(selected) >= limit:
+                    break
+            if len(selected) >= limit:
+                break
+        items = _normalize_external_rows(
+            selected,
+            source_id=f"vvhan:{source_key.lower()}",
+            platform=f"vvhan:{provider_source}",
+            provider="vvhan",
+            url_fallback_base="https://www.vvhan.com",
+        )
+        return _flag_stale_vvhan_items(items)
+
+    return _fetch_external_with_cache("vvhan", source_key, _fetch)[: max(limit, 1)]
+
+
+def fetch_uapis(source: str = "weibo", limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
+    """Fetch UAPI hotboard API/page with cache fallback.
+
+    UAPI currently exposes a rich documented hotboard API, but the exact route is
+    served through a Next app and can change. We try documented likely routes
+    first, then parse server-rendered rows if present, and report a clear
+    provider error instead of returning a misleading empty list.
+    """
+    source_key = (source or "weibo").strip().lower()
+    if source_key in {"catalog", "list"}:
+        return _catalog_as_items(list_external_hotnews_catalog("uapis"), "uapis")[: max(limit, 1)]
+
+    def _fetch() -> list[dict[str, Any]]:
+        candidate_urls = [
+            f"{UAPI_HOTBOARD_BASE_URL}/api/v1/misc/hotboard?type={urllib.parse.quote(source_key)}",
+            f"{UAPI_HOTBOARD_BASE_URL}/api/misc/hotboard?type={urllib.parse.quote(source_key)}",
+            f"{UAPI_HOTBOARD_BASE_URL}/api/hotboard?type={urllib.parse.quote(source_key)}",
+            f"{UAPI_HOTBOARD_BASE_URL}/api/get-misc-hotboard?type={urllib.parse.quote(source_key)}",
+        ]
+        for url in candidate_urls:
+            try:
+                payload = _read_json(url)
+            except Exception:
+                continue
+            rows = _extract_rows(payload)
+            items = _normalize_external_rows(
+                [row for row in rows if isinstance(row, dict)],
+                f"uapis:{source_key}",
+                f"uapis:{source_key}",
+                "uapis",
+            )
+            if items:
+                for item in items:
+                    metrics = dict(item.get("metrics") or {})
+                    metrics.setdefault("provider_updated_at", _pick(payload, "update_time", "updated_at") if isinstance(payload, dict) else "")
+                    item["metrics"] = {key: value for key, value in metrics.items() if value not in ("", None)}
+                return items
+
+        page_url = f"{UAPI_HOTBOARD_BASE_URL}/hotboard/{urllib.parse.quote(source_key)}"
+        text = _read_text(page_url)
+        rows = _parse_generic_hotboard_html(text)
+        if rows:
+            return _normalize_external_rows(rows, f"uapis:{source_key}", f"uapis:{source_key}", "uapis", source_page=page_url)
+        raise RuntimeError(
+            "UAPI hotboard endpoint was reachable but no parseable rows were found; "
+            f"try `guanlan hotnews uapis:catalog` or another provider for {source_key}."
+        )
+
+    return _fetch_external_with_cache("uapis", source_key, _fetch)[: max(limit, 1)]
+
+
+def fetch_tophub(source: str = "weibo", limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
+    """Fetch TopHub node or category HTML and normalize visible rows."""
+    source_key = (source or "weibo").strip()
+    if source_key in {"catalog", "list"}:
+        source_key = "catalog:news"
+    if source_key.startswith("catalog:"):
+        category = source_key.split(":", 1)[1] or "news"
+
+        def _fetch_catalog() -> list[dict[str, Any]]:
+            text = _read_text(f"{TOPHUB_BASE_URL}/c/{urllib.parse.quote(category)}")
+            catalog = _parse_tophub_catalog(text, category=category)
+            if not catalog:
+                raise RuntimeError(f"TopHub category {category!r} returned no parseable source catalog rows")
+            return _catalog_entries_as_items(catalog, provider="tophub", source_id=f"tophub:catalog:{category}")
+
+        return _fetch_external_with_cache("tophub", source_key, _fetch_catalog)[: max(limit, 1)]
+
+    node_id = TOPHUB_SOURCE_ALIASES.get(source_key.lower(), source_key)
+    node_id = node_id.removeprefix("/n/").strip()
+
+    def _fetch_node() -> list[dict[str, Any]]:
+        text = _read_text(f"{TOPHUB_BASE_URL}/n/{urllib.parse.quote(node_id)}")
+        rows = _parse_tophub_rows(text)
+        if not rows:
+            raise RuntimeError(f"TopHub node {node_id!r} returned no parseable rows")
+        return _normalize_external_rows(rows, f"tophub:{source_key.lower()}", f"tophub:{node_id}", "tophub")
+
+    return _fetch_external_with_cache("tophub", source_key, _fetch_node)[: max(limit, 1)]
+
+
+def _normalize_external_rows(
+    rows: list[dict[str, Any]],
+    source_id: str,
+    platform: str,
+    provider: str,
+    url_fallback_base: str = "",
+    source_page: str = "",
+) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for idx, raw in enumerate(rows, start=1):
+        title = _pick(raw, "title", "name", "word", "query", "keyword", "text")
+        if not title:
+            continue
+        url = _pick(raw, "url", "link", "href", "mobile_url", "mobil_url")
+        if url and str(url).startswith("/"):
+            base = source_page or url_fallback_base
+            url = urllib.parse.urljoin(base, str(url))
+        metrics = {
+            "heat": _pick(raw, "hot", "heat", "hot_value", "hotValue", "hotScore", "hot_score", "index", "views", "metric"),
+            "provider_source": _pick(raw, "type", "source_group", "node_id", "category"),
+            "provider_updated_at": _pick(raw, "update_time", "updated_at", "time"),
+        }
+        item = _item(
+            source_id=source_id,
+            platform=platform,
+            title=title,
+            url=url,
+            mobile_url=_pick(raw, "mobile_url", "mobileUrl", "mobil_url"),
+            summary=_pick(raw, "summary", "desc", "description", "excerpt", "content"),
+            metrics={key: value for key, value in metrics.items() if value not in ("", None)},
+            rank=int(_pick(raw, "rank", "index", "position") or idx),
+            published_at=_pick(raw, "published_at", "created_at", "date", "time", "update_time"),
+            confidence="medium",
+        ).to_dict()
+        item["risk_tags"] = _unique(list(item.get("risk_tags") or []) + list(EXTERNAL_HOTNEWS_RISK_TAGS))
+        normalized.append(enrich_hotnews_item(item))
+    return normalized
+
+
+def _flag_stale_vvhan_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    stale_cutoff = datetime.now() - timedelta(days=2)
+    flagged: list[dict[str, Any]] = []
+    for item in items:
+        row = dict(item)
+        updated = (row.get("metrics") or {}).get("provider_updated_at") or row.get("published_at")
+        is_stale = False
+        if updated:
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+                try:
+                    is_stale = datetime.strptime(str(updated)[:19], fmt) < stale_cutoff
+                    break
+                except ValueError:
+                    continue
+        if is_stale:
+            row["source_confidence"] = "low"
+            row["risk_tags"] = _unique(list(row.get("risk_tags") or []) + ["stale_external_snapshot"])
+            metrics = dict(row.get("metrics") or {})
+            metrics["provider_status"] = "stale_snapshot"
+            row["metrics"] = metrics
+        flagged.append(row)
+    return flagged
+
+
+def _parse_tophub_rows(text: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    pattern = re.compile(
+        r'<a\s+href="([^"]+)"[^>]*>\s*<div class="cc-cd-cb-ll">\s*'
+        r'<span class="s[^"]*">\s*(\d+)\s*</span>\s*'
+        r'<span class="t">\s*(.*?)\s*</span>\s*'
+        r'(?:<span class="e">\s*(.*?)\s*</span>)?',
+        re.S,
+    )
+    for match in pattern.finditer(text):
+        rows.append(
+            {
+                "url": html.unescape(match.group(1)),
+                "rank": match.group(2),
+                "title": _strip_html(match.group(3)),
+                "heat": _strip_html(match.group(4) or ""),
+            }
+        )
+    if rows:
+        return rows
+    table_pattern = re.compile(
+        r'<td align="center">\s*(\d+)\.?\s*</td>\s*'
+        r'<td><a href="([^"]+)"[^>]*>(.*?)</a></td>',
+        re.S,
+    )
+    for match in table_pattern.finditer(text):
+        rows.append(
+            {
+                "rank": match.group(1),
+                "url": html.unescape(match.group(2)),
+                "title": _strip_html(match.group(3)),
+            }
+        )
+    return rows
+
+
+def _parse_generic_hotboard_html(text: str) -> list[dict[str, Any]]:
+    rows = _parse_tophub_rows(text)
+    if rows:
+        return rows
+    return []
+
+
+def _parse_tophub_catalog(text: str, category: str = "") -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    pattern = re.compile(
+        r'<a href="/n/([^"]+)">\s*<div class="cc-cd-lb">.*?</div>\s*</a>.*?'
+        r'<span class="cc-cd-sb-st">\s*(.*?)\s*</span>',
+        re.S,
+    )
+    for match in pattern.finditer(text):
+        block = match.group(0)
+        label_match = re.search(r'onerror="[^"]*">\s*([^<]+?)\s*</div>', block, re.S)
+        name = _strip_html(label_match.group(1) if label_match else "")
+        board = _strip_html(match.group(2))
+        node_id = match.group(1)
+        if name or board:
+            entries.append(
+                {
+                    "title": f"{name} · {board}".strip(" ·"),
+                    "url": f"{TOPHUB_BASE_URL}/n/{node_id}",
+                    "node_id": node_id,
+                    "category": category,
+                    "rank": len(entries) + 1,
+                }
+            )
+    if entries:
+        return entries
+    for match in re.finditer(r'<a href="/n/([^"]+)"[^>]*>(.*?)</a>', text, re.S):
+        title = _strip_html(match.group(2))
+        if title:
+            entries.append(
+                {
+                    "title": title,
+                    "url": f"{TOPHUB_BASE_URL}/n/{match.group(1)}",
+                    "node_id": match.group(1),
+                    "category": category,
+                    "rank": len(entries) + 1,
+                }
+            )
+    return entries
+
+
+def _catalog_as_items(catalog: dict[str, dict[str, Any]], provider: str) -> list[dict[str, Any]]:
+    return _catalog_entries_as_items(
+        [
+            {
+                "title": key,
+                "url": value.get("source_url") or "",
+                "node_id": value.get("provider_source_id") or key,
+                "category": value.get("category") or "catalog",
+                "rank": idx,
+            }
+            for idx, (key, value) in enumerate(sorted(catalog.items()), start=1)
+        ],
+        provider=provider,
+        source_id=f"{provider}:catalog",
+    )
+
+
+def _catalog_entries_as_items(entries: list[dict[str, Any]], provider: str, source_id: str) -> list[dict[str, Any]]:
+    items = _normalize_external_rows(
+        entries,
+        source_id=source_id,
+        platform=f"{provider}:catalog",
+        provider=provider,
+    )
+    for item in items:
+        item["category"] = "source_catalog"
+        item["evidence_role"] = "source_catalog_entry"
+    return items
+
+
 def fetch_hotnews(
     source: str = "today",
     limit: int = DEFAULT_HOTNEWS_LIMIT,
@@ -708,7 +1230,8 @@ def fetch_hotnews(
     newsnow_base_url: str | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch hotnews and return unified dictionaries."""
-    source = source.lower().strip()
+    raw_source = (source or "today").strip()
+    source = raw_source.lower()
     source = resolve_source_id(source)
     backend = (backend or "auto").lower().strip()
     fetchers = {
@@ -726,16 +1249,34 @@ def fetch_hotnews(
         "zhihu": fetch_zhihu,
         "v2ex": fetch_v2ex,
     }
+    raw_external = raw_source.split(":", 1)[1] if ":" in raw_source else ""
+    if source.startswith("vvhan:"):
+        return fetch_vvhan(raw_external or source.split(":", 1)[1], limit=limit)
+    if source.startswith("uapis:"):
+        return fetch_uapis(raw_external or source.split(":", 1)[1], limit=limit)
+    if source.startswith("tophub:"):
+        return fetch_tophub(raw_external or source.split(":", 1)[1], limit=limit)
     if source.startswith("newsnow:"):
         return fetch_newsnow(source.split(":", 1)[1], limit=limit, base_url=newsnow_base_url)
+    if backend == "vvhan":
+        return fetch_vvhan(source, limit=limit)
+    if backend == "uapis":
+        return fetch_uapis(source, limit=limit)
+    if backend == "tophub":
+        return fetch_tophub(source, limit=limit)
     if backend == "newsnow":
         return fetch_newsnow(source, limit=limit, base_url=newsnow_base_url)
     if backend not in {"auto", "native"}:
-        raise ValueError("backend must be one of: auto, native, newsnow")
+        raise ValueError("backend must be one of: auto, native, newsnow, vvhan, uapis, tophub")
     if source not in fetchers:
         if backend == "auto":
             return fetch_newsnow(source, limit=limit, base_url=newsnow_base_url)
-        available = ", ".join(sorted(fetchers) + [f"newsnow:{name}" for name in sorted(NEWSNOW_RECOMMENDED_SOURCES)])
+        external = list_external_hotnews_catalog()
+        available = ", ".join(
+            sorted(fetchers)
+            + [f"newsnow:{name}" for name in sorted(NEWSNOW_RECOMMENDED_SOURCES)]
+            + sorted(external)[:20]
+        )
         raise ValueError(f"Unknown hotnews source: {source}. Available: {available}")
     items = [
         item.to_dict() if hasattr(item, "to_dict") else dict(item)
@@ -769,7 +1310,7 @@ def normalize_hotnews_payload(
         if not title:
             continue
         metrics = {
-            "heat": _pick(raw, "hot", "heat", "hotScore", "hot_score", "index", "views"),
+            "heat": _pick(raw, "hot", "heat", "hot_value", "hotValue", "hotScore", "hot_score", "index", "views"),
             "comments": _pick(raw, "comments", "comment_count", "reply_count"),
         }
         item = _item(

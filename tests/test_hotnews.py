@@ -2,6 +2,7 @@
 """Tests for native hotnews sources and formatters."""
 
 import json
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -571,6 +572,135 @@ def test_fetch_hotnews_auto_uses_newsnow_for_unknown_source(monkeypatch):
 
     assert items[0]["source_id"] == "newsnow:juejin"
     assert items[0]["title"] == "IT之家消息"
+
+
+def test_fetch_vvhan_marks_stale_external_snapshot(monkeypatch):
+    monkeypatch.setattr(hotnews, "_load_hotnews_cache", lambda: {"entries": {}})
+    monkeypatch.setattr(hotnews, "_save_hotnews_cache", lambda _data: None)
+    monkeypatch.setattr(
+        hotnews,
+        "_read_json",
+        lambda _url: {
+            "data": [
+                {
+                    "name": "微博",
+                    "update_time": "2025-04-08 11:29:57",
+                    "data": [
+                        {
+                            "type": "wbHot",
+                            "title": "微博热点",
+                            "url": "https://s.weibo.com/weibo?q=test",
+                            "hot": "99万",
+                            "index": "1",
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+
+    items = hotnews.fetch_hotnews("vvhan:weibo", limit=5)
+
+    assert items[0]["source_id"] == "vvhan:weibo"
+    assert items[0]["title"] == "微博热点"
+    assert items[0]["metrics"]["provider"] == "vvhan"
+    assert "external_backend" in items[0]["risk_tags"]
+    assert "stale_external_snapshot" in items[0]["risk_tags"]
+
+
+def test_fetch_tophub_parses_node_html(monkeypatch):
+    monkeypatch.setattr(hotnews, "_load_hotnews_cache", lambda: {"entries": {}})
+    monkeypatch.setattr(hotnews, "_save_hotnews_cache", lambda _data: None)
+    html = """
+    <a href="https://s.weibo.com/weibo?q=a" target="_blank" rel="nofollow" itemid="1">
+      <div class="cc-cd-cb-ll">
+        <span class="s h">1</span>
+        <span class="t">父母互相拍照6岁儿子失足坠崖</span>
+        <span class="e">96万</span>
+      </div>
+    </a>
+    """
+    monkeypatch.setattr(hotnews, "_read_text", lambda _url: html)
+
+    items = hotnews.fetch_hotnews("tophub:weibo", limit=5)
+
+    assert items[0]["source_id"] == "tophub:weibo"
+    assert items[0]["title"] == "父母互相拍照6岁儿子失足坠崖"
+    assert items[0]["metrics"]["heat"] == "96万"
+    assert items[0]["metrics"]["provider_status"] == "success"
+
+
+def test_fetch_uapis_uses_documented_v1_hotboard_api(monkeypatch):
+    requested = []
+    monkeypatch.setattr(hotnews, "_load_hotnews_cache", lambda: {"entries": {}})
+    monkeypatch.setattr(hotnews, "_save_hotnews_cache", lambda _data: None)
+
+    def fake_read_json(url):
+        requested.append(url)
+        return {
+            "type": "weibo",
+            "update_time": "2026-05-03 09:53:25",
+            "list": [
+                {
+                    "index": 1,
+                    "title": "国乒男团1比3韩国",
+                    "url": "https://s.weibo.com/weibo?q=test",
+                    "hot_value": "2054191",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(hotnews, "_read_json", fake_read_json)
+
+    items = hotnews.fetch_hotnews("uapis:weibo", limit=5)
+
+    assert requested[0].endswith("/api/v1/misc/hotboard?type=weibo")
+    assert items[0]["source_id"] == "uapis:weibo"
+    assert items[0]["title"] == "国乒男团1比3韩国"
+    assert items[0]["metrics"]["heat"] == "2054191"
+    assert items[0]["metrics"]["provider"] == "uapis"
+
+
+def test_fetch_external_provider_uses_stale_cache_on_error(monkeypatch):
+    cached = {
+        "entries": {
+            "tophub:weibo": {
+                "fetched_at": (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(),
+                "items": [
+                    {
+                        "source_id": "tophub:weibo",
+                        "platform": "tophub:KqndgxeLl9",
+                        "category": "hotnews",
+                        "title": "缓存热点",
+                        "rank": 1,
+                    }
+                ],
+            }
+        }
+    }
+    monkeypatch.setattr(hotnews, "_load_hotnews_cache", lambda: cached)
+    monkeypatch.setattr(hotnews, "_save_hotnews_cache", lambda _data: None)
+    monkeypatch.setattr(hotnews, "_read_text", lambda _url: (_ for _ in ()).throw(RuntimeError("503")))
+
+    items = hotnews.fetch_hotnews("tophub:weibo", limit=5)
+
+    assert items[0]["title"] == "缓存热点"
+    assert items[0]["metrics"]["provider_status"] in {"cache", "stale_cache"}
+    assert "external_backend" in items[0]["risk_tags"]
+
+
+def test_hotnews_cli_lists_external_provider_sources(capsys):
+    from guanlan.cli import main
+
+    with patch("sys.argv", ["guanlan", "hotnews", "list"]):
+        main()
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+
+    assert "vvhan:weibo" in data
+    assert "uapis:weibo" in data
+    assert "tophub:weibo" in data
+    assert "tophub:catalog:news" in data
 
 
 def test_format_hotnews_markdown_is_agent_readable():

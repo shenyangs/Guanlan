@@ -187,11 +187,11 @@ def main():
     # ── hotnews ──
     p_hotnews = sub.add_parser("hotnews", help="Fetch Chinese hotnews from native sources")
     p_hotnews.add_argument("source", nargs="?", default="today",
-                           help="Source id: today, snapshot, baidu, weibo, bilibili-hot-search, bilibili, ithome, sspai, xinzhiyuan, youtube-ai-rss, zeli-hn, buzzing, zhihu, v2ex, newsnow:<id>, or list")
+                           help="Source id: today, snapshot, baidu, weibo, bilibili-hot-search, bilibili, ithome, sspai, xinzhiyuan, youtube-ai-rss, zeli-hn, buzzing, zhihu, v2ex, newsnow:<id>, vvhan:<id>, uapis:<id>, tophub:<id>, or list")
     p_hotnews.add_argument("snapshot_source", nargs="?",
                            help="Source id when using `guanlan hotnews snapshot <source>`")
-    p_hotnews.add_argument("--backend", choices=["auto", "native", "newsnow"], default="auto",
-                           help="Hotnews backend; auto uses native first, unknown sources as NewsNow")
+    p_hotnews.add_argument("--backend", choices=["auto", "native", "newsnow", "vvhan", "uapis", "tophub"], default="auto",
+                           help="Hotnews backend; auto uses native first, unknown sources as NewsNow. External providers are optional and cache-backed")
     p_hotnews.add_argument("--newsnow-base-url", default="",
                            help="Override NewsNow BASE_URL, e.g. https://newsnow.example.com")
     p_hotnews.add_argument("--limit", type=int, default=DEFAULT_HOTNEWS_LIMIT,
@@ -3462,20 +3462,15 @@ def _cmd_setup():
             print("     mcporter config add exa https://mcp.exa.ai/mcp")
         print()
 
-    # Step 2: GitHub token
-    print("【可选】GitHub Token — 提高 API 限额")
-    print("  无 token: 60 次/小时 | 有 token: 5000 次/小时")
-    print("  获取: https://github.com/settings/tokens (无需任何权限)")
+    # Step 2: GitHub API is optional and must be configured explicitly.
+    print("【信息】GitHub API — 基础搜索不需要 Token")
+    print("  只有大量使用 GitHub REST API 时才可能需要提额。")
     current = config.get("github_token")
     if current:
         print("  当前状态: ✅ 已配置")
     else:
-        key = input("  GITHUB_TOKEN (回车跳过): ").strip()
-        if key:
-            config.set("github_token", key)
-            print("  ✅ GitHub API 已提升至 5000 次/小时！")
-        else:
-            print("  跳过。公开 API 也能用")
+        print("  当前状态: 未配置（正常，公开搜索/阅读不依赖它）")
+        print("  如确实需要：guanlan configure github-token <token>")
     print()
 
     # Step 3: Reddit — rdt-cli
@@ -3483,19 +3478,14 @@ def _cmd_setup():
     print("  安装：pipx install rdt-cli")
     print()
 
-    # Step 4: Groq (Whisper)
-    print("【可选】Groq API — 视频无字幕时的语音转文字")
-    print("  免费额度，注册: https://console.groq.com")
+    # Step 4: Groq is optional and must be configured explicitly.
+    print("【信息】Groq API — 仅用于视频无字幕时的语音转文字")
     current = config.get("groq_api_key")
     if current:
         print("  当前状态: ✅ 已配置")
     else:
-        key = input("  GROQ_API_KEY (回车跳过): ").strip()
-        if key:
-            config.set("groq_api_key", key)
-            print("  ✅ 语音转文字已开启！")
-        else:
-            print("  跳过")
+        print("  当前状态: 未配置（正常，网页搜索/热榜/RSS 不依赖它）")
+        print("  如确实需要：guanlan configure groq-key <key>")
     print()
 
     # Summary

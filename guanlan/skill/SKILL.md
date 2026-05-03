@@ -142,6 +142,10 @@ guanlan hotnews today --limit 80 --trends
 guanlan hotnews weibo --limit 80
 guanlan hotnews bilibili --limit 80
 guanlan hotnews ithome --limit 80
+guanlan hotnews tophub:weibo --limit 80
+guanlan hotnews tophub:catalog:news --limit 80
+guanlan hotnews uapis:catalog --limit 80
+guanlan hotnews vvhan:all --limit 80
 guanlan hotnews zhihu --json  # experimental，失败时改用 site:zhihu.com 搜索
 guanlan hotnews list
 

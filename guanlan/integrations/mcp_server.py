@@ -68,7 +68,9 @@ def _tool_definitions() -> list[dict]:
             "name": "guanlan_search",
             "description": (
                 "Search public web sources with Guanlan's China-aware ranking layer. "
-                "For agent research, prefer a broad limit such as 80-100 and filter after retrieval."
+                "For agent research, prefer a broad limit such as 80-100 and filter after retrieval. "
+                "If an MCP client aborts the call, retry once with cache_ttl=3600 or a single backend; "
+                "do not shrink the evidence pool first."
             ),
             "inputSchema": {
                 "type": "object",
@@ -268,7 +270,7 @@ def _tool_definitions() -> list[dict]:
             "name": "guanlan_hotnews",
             "description": (
                 "Fetch Chinese hotnews/trend lists from public endpoints. "
-                "Prefer 50+ items when the agent needs a real sense of the day's flow."
+                "Prefer 80+ items when the agent needs a real sense of the day's flow."
             ),
             "inputSchema": {
                 "type": "object",
@@ -280,7 +282,7 @@ def _tool_definitions() -> list[dict]:
                         "minimum": 1,
                         "maximum": MAX_HOTNEWS_LIMIT,
                     },
-                    "backend": {"type": "string", "enum": ["auto", "native", "newsnow"], "default": "auto"},
+                    "backend": {"type": "string", "enum": ["auto", "native", "newsnow", "vvhan", "uapis", "tophub"], "default": "auto"},
                     "newsnow_base_url": {"type": "string"},
                     "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
                     "trends": {"type": "boolean", "default": False},

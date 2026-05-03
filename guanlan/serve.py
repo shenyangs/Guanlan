@@ -14,6 +14,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from guanlan.limits import (
+    DEFAULT_ARCHIVE_SEARCH_LIMIT,
+    DEFAULT_HOTNEWS_LIMIT,
+    DEFAULT_RESEARCH_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+)
+
 
 def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = None) -> tuple[int, dict[str, Any]]:
     """Dispatch a read-only Guanlan HTTP request for tests and the server."""
@@ -46,7 +53,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 site=payload.get("site"),
                 sites=payload.get("sites") if isinstance(payload.get("sites"), list) else None,
                 profile=payload.get("profile") or "china",
-                limit=_int(payload.get("limit"), 50),
+                limit=_int(payload.get("limit"), DEFAULT_RESEARCH_LIMIT),
                 read_top=_optional_int(payload.get("read_top")),
             )
             return 200, plan.to_dict()
@@ -55,7 +62,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
 
             results = search_web(
                 str(payload.get("query", "")),
-                limit=_int(payload.get("limit"), 50),
+                limit=_int(payload.get("limit"), DEFAULT_SEARCH_LIMIT),
                 site=payload.get("site") or None,
                 scope=payload.get("scope") or None,
                 backend=str(payload.get("backend") or "auto"),
@@ -90,7 +97,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 focus=str(payload.get("focus") or ""),
                 preset=str(payload.get("preset") or "general"),
                 profile=payload.get("profile") or "china",
-                limit=_int(payload.get("limit"), 50),
+                limit=_int(payload.get("limit"), DEFAULT_RESEARCH_LIMIT),
                 read_top=_int(payload.get("read_top"), 0),
                 search_backend=str(payload.get("search_backend") or "auto"),
                 read_backend=str(payload.get("read_backend") or "auto"),
@@ -169,7 +176,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
 
             items = fetch_hotnews(
                 str(query_args.get("source") or "today"),
-                limit=_int(query_args.get("limit"), 50),
+                limit=_int(query_args.get("limit"), DEFAULT_HOTNEWS_LIMIT),
                 backend=str(query_args.get("backend") or "auto"),
             )
             compact = _bool(query_args.get("compact"))
@@ -213,7 +220,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
 
             records = search_documents(
                 str(payload.get("query", "")),
-                limit=_int(payload.get("limit"), 50),
+                limit=_int(payload.get("limit"), DEFAULT_ARCHIVE_SEARCH_LIMIT),
                 db_path=payload.get("db_path") or None,
             )
             return 200, {"results": records}

@@ -8,6 +8,22 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.3.11 - 2026-05-03
+
+### Added
+
+- `hotnews` 新增外部热榜聚合旁支：`tophub:*`、`uapis:*`、`vvhan:*`，可按需补充 TopHub、UAPI、HotList/VVHan 的更大热榜目录和单平台热榜。
+- 外部热榜源新增本地缓存与 `stale_cache` 兜底；条目统一标记 `external_backend`、`third_party_aggregation`、`provider_volatility`，避免把第三方聚合误当权威事实。
+- 新增 `docs/hotnews-provider-integration.md`，说明外部热榜源的接入原则、风险边界和 Agent 使用建议。
+
+### Changed
+
+- `guanlan hotnews list`、README、AGENTS、Skill、capabilities 和 MCP schema 同步补充 TopHub/UAPI/VVHan 用法。
+- `guanlan setup` 不再交互式索要 GitHub/Groq 可选 token，改为明确提示基础搜索不依赖这些凭据，降低误触授权和钥匙串焦虑。
+- HTTP 只读服务的 `/search`、`/hotnews`、`/archive/search`、`/compare` 默认 limit 与统一候选池常量对齐，继续保持 Agent 默认 80 条结果池。
+- 搜索后端使用更短的单后端超时，并在候选池已满时跳过后续后端，减少外层 Agent/MCP 调用超时，同时不缩小默认结果池。
+- 官网展示版本号同步到 `0.3.11`。
+
 ## v0.3.10 - 2026-05-03
 
 ### Added

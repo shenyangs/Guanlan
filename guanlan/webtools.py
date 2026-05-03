@@ -36,6 +36,7 @@ from guanlan.source_taxonomy import source_card_for_domain
 
 _UA = "Mozilla/5.0 (compatible; Guanlan/1.4)"
 _TIMEOUT = 20
+_SEARCH_TIMEOUT = 8
 _CACHE_VERSION = 2
 _MIN_USEFUL_READ_CHARS = 180
 _RECENCY_DEFAULT_WINDOW_DAYS = 30
@@ -722,6 +723,16 @@ def search_web(
             "error": "",
             "note": "",
         }
+        if len(_dedupe_results(results)) >= max(limit, 1):
+            attempt.update(
+                {
+                    "status": "skipped",
+                    "result_count": 0,
+                    "note": "已有足够候选，跳过后续后端以避免外层 Agent/MCP 调用超时。",
+                }
+            )
+            backend_diagnostics.append(attempt)
+            continue
         try:
             batch: list[SearchResult]
             if name == "duckduckgo":
@@ -1052,7 +1063,7 @@ def _search_duckduckgo(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[Se
             "Accept": "text/html,application/xhtml+xml",
         },
     )
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+    with urllib.request.urlopen(req, timeout=_SEARCH_TIMEOUT) as resp:
         page = resp.read().decode("utf-8", errors="replace")
     _raise_for_search_block(page, "duckduckgo")
 
@@ -1070,7 +1081,7 @@ def _search_bing(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchRe
             "Accept": "text/html,application/xhtml+xml",
         },
     )
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+    with urllib.request.urlopen(req, timeout=_SEARCH_TIMEOUT) as resp:
         page = resp.read().decode("utf-8", errors="replace")
     _raise_for_search_block(page, "bing")
 
@@ -1108,7 +1119,7 @@ def _search_baidu(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[SearchR
             "Accept": "text/html,application/xhtml+xml",
         },
     )
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+    with urllib.request.urlopen(req, timeout=_SEARCH_TIMEOUT) as resp:
         page = resp.read().decode("utf-8", errors="replace")
     _raise_for_search_block(page, "baidu")
 
@@ -1174,7 +1185,7 @@ def _build_wechat_sogou_api():
             "install with `pip install 'guanlan[wechat]'` or "
             "`uv pip install 'guanlan[wechat]'`"
         ) from e
-    return wechatsogou.WechatSogouAPI(captcha_break_time=1, timeout=min(_TIMEOUT, 10))
+    return wechatsogou.WechatSogouAPI(captcha_break_time=1, timeout=_SEARCH_TIMEOUT)
 
 
 def _wechat_sogou_result(row: Any, rank: int) -> SearchResult | None:
@@ -1214,7 +1225,7 @@ def _search_plugin_backend(backend: str, query: str, limit: int = DEFAULT_SEARCH
         capture_output=True,
         encoding="utf-8",
         errors="replace",
-        timeout=_TIMEOUT,
+        timeout=_SEARCH_TIMEOUT,
         check=False,
     )
     if proc.returncode != 0:

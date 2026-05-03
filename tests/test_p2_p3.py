@@ -7,6 +7,12 @@ from unittest.mock import patch
 
 from guanlan import evaluation, plugins, serve
 from guanlan.config import Config
+from guanlan.limits import (
+    DEFAULT_ARCHIVE_SEARCH_LIMIT,
+    DEFAULT_HOTNEWS_LIMIT,
+    DEFAULT_RESEARCH_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+)
 
 
 def test_serve_dispatch_health_and_route():
@@ -33,6 +39,41 @@ def test_serve_dispatch_search_uses_webtools(monkeypatch):
 
     assert status == 200
     assert body["results"][0]["title"] == "A"
+
+
+def test_serve_dispatch_defaults_use_expanded_agent_limits(monkeypatch):
+    calls = {}
+
+    def fake_search_web(*_args, **kwargs):
+        calls["search"] = kwargs["limit"]
+        return []
+
+    def fake_fetch_hotnews(*_args, **kwargs):
+        calls["hotnews"] = kwargs["limit"]
+        return []
+
+    def fake_search_documents(*_args, **kwargs):
+        calls["archive"] = kwargs["limit"]
+        return []
+
+    def fake_compare_report(*_args, **kwargs):
+        calls["compare"] = kwargs["limit"]
+        return {"ok": True}
+
+    monkeypatch.setattr("guanlan.webtools.search_web", fake_search_web)
+    monkeypatch.setattr("guanlan.hotnews.fetch_hotnews", fake_fetch_hotnews)
+    monkeypatch.setattr("guanlan.archive.search_documents", fake_search_documents)
+    monkeypatch.setattr("guanlan.research_workflows.build_compare_report", fake_compare_report)
+
+    serve.dispatch_request("POST", "/search", {"query": "A"})
+    serve.dispatch_request("GET", "/hotnews")
+    serve.dispatch_request("POST", "/archive/search", {"query": "A"})
+    serve.dispatch_request("POST", "/compare", {"subjects": ["A", "B"]})
+
+    assert calls["search"] == DEFAULT_SEARCH_LIMIT
+    assert calls["hotnews"] == DEFAULT_HOTNEWS_LIMIT
+    assert calls["archive"] == DEFAULT_ARCHIVE_SEARCH_LIMIT
+    assert calls["compare"] == DEFAULT_RESEARCH_LIMIT
 
 
 def test_serve_dispatch_feeds_uses_curated(monkeypatch):

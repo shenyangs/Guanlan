@@ -280,6 +280,23 @@ class TestCLI:
         assert "Anonymous telemetry disabled" in captured.out
         assert Config().get("telemetry_enabled") is False
 
+    def test_setup_does_not_prompt_for_optional_tokens(self, capsys, tmp_path, monkeypatch):
+        from guanlan.config import Config
+
+        monkeypatch.setattr(Config, "CONFIG_FILE", tmp_path / "config.yaml")
+        monkeypatch.setattr(Config, "CONFIG_DIR", tmp_path)
+        monkeypatch.setattr("shutil.which", lambda _cmd: None)
+
+        with patch("sys.argv", ["guanlan", "setup"]):
+            main()
+
+        captured = capsys.readouterr()
+        assert "基础搜索不需要 Token" in captured.out
+        assert "GITHUB_TOKEN" not in captured.out
+        assert "GROQ_API_KEY" not in captured.out
+        assert Config().get("github_token") is None
+        assert Config().get("groq_api_key") is None
+
     def test_parse_twitter_cookie_input_separate_values(self):
         auth_token, ct0 = cli._parse_twitter_cookie_input("token123 ct0abc")
         assert auth_token == "token123"

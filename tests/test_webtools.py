@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from guanlan import webtools
-from guanlan.limits import DEFAULT_READ_FALLBACK_LIMIT, DEFAULT_RESEARCH_LIMIT
+from guanlan.limits import DEFAULT_READ_FALLBACK_LIMIT, DEFAULT_RESEARCH_LIMIT, DEFAULT_SEARCH_LIMIT
 
 
 class _FakeResponse:
@@ -36,12 +36,15 @@ def test_search_web_parses_duckduckgo_html(monkeypatch):
     </html>
     """
 
-    monkeypatch.setattr(
-        "urllib.request.urlopen",
-        lambda req, timeout=None: _FakeResponse(html),
-    )
+    seen_timeouts = []
 
-    results = webtools.search_web("agent search", limit=5)
+    def fake_urlopen(req, timeout=None):
+        seen_timeouts.append(timeout)
+        return _FakeResponse(html)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    results = webtools.search_web("agent search", backend="duckduckgo", limit=5)
 
     assert len(results) == 2
     assert results[0]["title"] == "Example A"
@@ -51,6 +54,7 @@ def test_search_web_parses_duckduckgo_html(monkeypatch):
     assert results[0]["domain"] == "example.com"
     assert results[0]["source_type"] == "通用网页"
     assert results[0]["score"] > 0
+    assert seen_timeouts == [webtools._SEARCH_TIMEOUT]
 
 
 def test_search_web_trace_keeps_score_parts(monkeypatch):
@@ -547,6 +551,34 @@ def test_search_web_trace_records_backend_fallback(monkeypatch):
     assert "backend_warning" in rendered
     assert "疑似触发验证/反爬" in rendered
     assert "解析器待修而非没有资料" in rendered
+
+
+def test_search_web_skips_later_backends_when_pool_is_full(monkeypatch):
+    def full_baidu(query, limit=10):
+        return [
+            webtools.SearchResult(
+                title=f"Result {idx}",
+                url=f"https://example.cn/{idx}",
+                snippet="enough candidates",
+                source="baidu",
+                rank=idx,
+            )
+            for idx in range(1, limit + 1)
+        ]
+
+    def should_skip(query, limit=10):
+        raise AssertionError("later backend should be skipped after the pool is full")
+
+    monkeypatch.setattr(webtools, "_search_baidu", full_baidu)
+    monkeypatch.setattr(webtools, "_search_bing", should_skip)
+    monkeypatch.setattr(webtools, "_search_duckduckgo", should_skip)
+
+    results = webtools.search_web("中文检索", profile="china", limit=DEFAULT_SEARCH_LIMIT, trace=True)
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+
+    assert len(results) == DEFAULT_SEARCH_LIMIT
+    assert [item["status"] for item in diagnostics] == ["ok", "skipped", "skipped"]
+    assert "避免外层 Agent/MCP 调用超时" in diagnostics[1]["note"]
 
 
 def test_search_recovery_plan_productizes_baidu_block(monkeypatch):

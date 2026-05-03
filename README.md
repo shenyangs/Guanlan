@@ -223,7 +223,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.3.10`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.3.11`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -710,6 +710,10 @@ guanlan hotnews bilibili --limit 80
 guanlan hotnews ithome --limit 80
 guanlan hotnews v2ex --limit 80
 guanlan hotnews newsnow:36kr-quick --limit 80
+guanlan hotnews tophub:weibo --limit 80
+guanlan hotnews tophub:catalog:news --limit 80
+guanlan hotnews uapis:catalog --limit 80
+guanlan hotnews vvhan:all --limit 80
 ```
 
 `today` 是默认推荐入口，会把百度热搜、微博热搜、B站热门视频、IT之家 RSS 和 V2EX 热门混合成一个多源快照；其中单个公开端点失败时不会拖垮其它来源。
@@ -731,6 +735,8 @@ guanlan hotnews today --limit 80 --trends --brief
 guanlan configure newsnow-base-url https://your-newsnow.example
 guanlan hotnews newsnow:ithome --limit 80
 ```
+
+`tophub:*`、`uapis:*`、`vvhan:*` 是外部热榜聚合旁支，用来补 TopHub、UAPI、HotList/VVHan 的更大信源池。观澜会把这些条目标记为 `external_backend` / `third_party_aggregation`，并做本地缓存兜底；如果上游返回旧快照或无法解析，不会把它误报成“没有热点”。
 
 `zhihu` 热榜是实验源，部分环境会返回 401/403。需要知乎视角时，优先把它当作可选尝试；失败后用站内搜索兜底：
 

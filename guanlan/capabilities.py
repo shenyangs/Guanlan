@@ -159,7 +159,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="hotnews",
         name="热榜观察",
-        description="抓取中文热榜、社区热帖和可选 NewsNow 源，支持跨源趋势归并和简报。",
+        description="抓取中文热榜、社区热帖和可选 NewsNow/VVHan/UAPI/TopHub 源，支持跨源趋势归并和简报。",
         when_to_use="用户问今天热点、某个平台在讨论什么、中文互联网当日水势。",
         cli=[
             "guanlan hotnews today --limit 80",
@@ -167,11 +167,14 @@ CAPABILITIES: tuple[Capability, ...] = (
             "guanlan hotnews bilibili --limit 80",
             "guanlan hotnews ithome --limit 80",
             "guanlan hotnews v2ex --limit 80",
+            "guanlan hotnews tophub:weibo --limit 80",
+            "guanlan hotnews uapis:catalog --limit 80",
+            "guanlan hotnews vvhan:all --limit 80",
             "guanlan hotnews today --trends --brief",
             "guanlan hotnews list",
         ],
         mcp="guanlan_hotnews",
-        boundary="热榜代表平台公开榜单，不代表全网民意；知乎等源可能 best-effort 或 experimental。",
+        boundary="热榜代表平台公开榜单，不代表全网民意；外部聚合源会标注 external_backend，并可能返回缓存或过期快照。",
         examples=["今天中文互联网有什么热点？", "技术社区今天在聊什么？"],
     ),
     Capability(

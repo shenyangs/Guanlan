@@ -26,6 +26,12 @@ guanlan hotnews newsnow:ithome --limit 80
 guanlan hotnews newsnow:bilibili-hot-search --limit 80
 guanlan configure newsnow-base-url https://your-newsnow.example
 
+# 外部热榜聚合源（旁支增强，会标记 external_backend 并使用本地缓存兜底）
+guanlan hotnews tophub:weibo --limit 80
+guanlan hotnews tophub:catalog:news --limit 80
+guanlan hotnews uapis:catalog --limit 80
+guanlan hotnews vvhan:all --limit 80
+
 # 知乎热榜（experimental，失败时用搜索 fallback）
 guanlan hotnews zhihu --limit 80 --json
 guanlan search "热点关键词" --site zhihu.com --profile china --limit 80
