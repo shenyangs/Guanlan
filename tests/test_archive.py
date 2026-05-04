@@ -384,6 +384,7 @@ def test_archive_cli_verify_and_context(tmp_path, capsys):
 def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkeypatch):
     db = tmp_path / "archive.db"
     captured_kwargs = {}
+    progress_events = []
 
     def fake_packet(*args, **kwargs):
         captured_kwargs.update(kwargs)
@@ -408,7 +409,7 @@ def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkey
 
     monkeypatch.setattr("guanlan.webtools.build_research_packet", fake_packet)
 
-    result = archive.ingest_search("人工智能 政策", db_path=db)
+    result = archive.ingest_search("人工智能 政策", db_path=db, progress_callback=progress_events.append)
     records = archive.search_documents("全文", db_path=db)
 
     assert result["archived_count"] == 1
@@ -417,6 +418,11 @@ def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkey
     assert captured_kwargs["read_top"] == 0
     assert captured_kwargs["cache_ttl"] == 3600
     assert result["audit_summary"]["kept"] == 1
+    assert result["timeout_budget_hint_seconds"] == 120
+    assert result["phase_log"][0]["phase"] == "research_start"
+    assert result["phase_log"][-1]["phase"] == "archive_done"
+    assert progress_events[-1]["phase"] == "archive_done"
+    assert result["next_steps"]
     assert records[0]["title"] == "政策原文"
     assert records[0]["metadata"]["source_type"] == "政府/部委"
     assert records[0]["metadata"]["route_plan"]["primary_intents"] == ["policy"]
@@ -461,6 +467,9 @@ def test_archive_ingest_optional_reads_are_bounded_outside_research(tmp_path, mo
     assert captured_read_kwargs["backend"] == "direct"
     assert captured_read_kwargs["fallback_search"] is False
     assert captured_read_kwargs["concurrency"] == 3
+    assert result["timeout_budget_hint_seconds"] == 240
+    assert any(item["phase"] == "read_start" for item in result["phase_log"])
+    assert any(item["phase"] == "read_done" for item in result["phase_log"])
     assert result["read_attempted_count"] == 1
     assert result["read_success_count"] == 1
     assert result["archived_count"] == 1
@@ -554,3 +563,5 @@ def test_archive_cli_ingest_research_alias(tmp_path, capsys, monkeypatch):
     captured = capsys.readouterr()
 
     assert "已归档: 1" in captured.out
+    assert "外层 timeout 建议" in captured.out
+    assert "[archive] 搜索/研究候选中" in captured.err

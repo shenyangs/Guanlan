@@ -15,7 +15,7 @@ import sqlite3
 import time
 import urllib.parse
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from guanlan.limits import (
     DEFAULT_ARCHIVE_LIST_LIMIT,
@@ -255,10 +255,36 @@ def ingest_search(
     read_backend: str = "direct",
     read_concurrency: int = 3,
     cache_ttl: int = 3600,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Run Guanlan research and persist representative evidence into the archive."""
     started_at = time.time()
     from guanlan.webtools import build_research_packet, read_batch
+
+    phase_log: list[dict[str, Any]] = []
+
+    def emit_progress(phase: str, label: str, detail: str = "", **extra: Any) -> None:
+        event = {
+            "phase": phase,
+            "label": label,
+            "detail": detail,
+            "elapsed_sec": round(time.time() - started_at, 3),
+        }
+        for key, value in extra.items():
+            if value is not None:
+                event[key] = value
+        phase_log.append(event)
+        if progress_callback:
+            try:
+                progress_callback(event)
+            except Exception:
+                pass
+
+    emit_progress(
+        "research_start",
+        "搜索/研究候选中",
+        f"query={query!r} limit={max(limit, 1)} preset={preset} profile={profile or 'auto'}",
+    )
 
     packet = build_research_packet(
         query,
@@ -272,10 +298,23 @@ def ingest_search(
         cache_ttl=max(cache_ttl, 0),
     )
     selected_items = list(packet.get("selected_evidence") or packet.get("results", [])[:select_top])
+    emit_progress(
+        "research_done",
+        "候选已就绪",
+        f"packet_results={packet.get('result_count', 0)} selected={len(selected_items)}",
+        packet_result_count=packet.get("result_count", 0),
+        selected_count=len(selected_items),
+    )
     read_attempted = max(read_top, 0)
     selected_urls = [str(item.get("url", "")).strip() for item in selected_items if str(item.get("url", "")).strip()]
     readings = list(packet.get("readings", []))
     if read_attempted > 0 and selected_urls:
+        emit_progress(
+            "read_start",
+            "代表页面读取中",
+            f"read_top={read_attempted} backend={read_backend} concurrency={max(read_concurrency, 1)}",
+            read_attempted_count=min(read_attempted, len(selected_urls)),
+        )
         batch = read_batch(
             selected_urls[:read_attempted],
             max_chars=6000,
@@ -295,6 +334,13 @@ def ingest_search(
             }
             for item in batch
         )
+        emit_progress(
+            "read_done",
+            "代表页面读取完成",
+            f"success={sum(1 for item in batch if item.get('status') == 'ok')}/{len(batch)}",
+            read_success_count=sum(1 for item in batch if item.get("status") == "ok"),
+            read_attempted_count=len(batch),
+        )
     readings_by_url = {
         str(item.get("url", "")): item
         for item in readings
@@ -302,6 +348,13 @@ def ingest_search(
     }
     records: list[dict[str, Any]] = []
     seen_urls: set[str] = set()
+    emit_progress(
+        "archive_start",
+        "审计/入库中",
+        f"selected={len(selected_items)} dry_run={'yes' if dry_run else 'no'}",
+        selected_count=len(selected_items),
+        dry_run=dry_run,
+    )
     for item in selected_items:
         url = str(item.get("url", "")).strip()
         if not url:
@@ -365,6 +418,30 @@ def ingest_search(
             records.append(record)
         except Exception as exc:
             records.append({"url": url, "status": "error", "error": str(exc)})
+    archived_count = sum(1 for item in records if item.get("status") in {"created", "updated", "unchanged"})
+    skipped_count = sum(1 for item in records if item.get("status") == "skipped")
+    read_success_count = len(readings_by_url)
+    timeout_budget_hint_seconds = 240 if read_attempted > 0 else 120
+    timeout_boundary = (
+        "默认 search-first ingest 建议给外层 120 秒；如果开启 --read-top，或网络较弱/上游较慢，"
+        "建议放宽到 180-300 秒。"
+    )
+    next_steps = _archive_ingest_next_steps(
+        query,
+        dry_run=dry_run,
+        archived_count=archived_count,
+        skipped_count=skipped_count,
+        read_attempted=read_attempted,
+        read_success_count=read_success_count,
+    )
+    emit_progress(
+        "archive_done",
+        "入库完成",
+        f"archived={archived_count} skipped={skipped_count} elapsed={round(time.time() - started_at, 3)}s",
+        archived_count=archived_count,
+        skipped_count=skipped_count,
+        read_success_count=read_success_count,
+    )
     return {
         "query": query,
         "dry_run": dry_run,
@@ -377,12 +454,45 @@ def ingest_search(
         "packet_result_count": packet.get("result_count", 0),
         "selected_count": len(selected_items),
         "read_attempted_count": min(read_attempted, len(selected_urls)),
-        "read_success_count": len(readings_by_url),
-        "skipped_count": sum(1 for item in records if item.get("status") == "skipped"),
-        "archived_count": sum(1 for item in records if item.get("status") in {"created", "updated", "unchanged"}),
+        "read_success_count": read_success_count,
+        "skipped_count": skipped_count,
+        "archived_count": archived_count,
         "audit_summary": _summarize_ingest_audits(records),
+        "phase_log": phase_log,
+        "timeout_budget_hint_seconds": timeout_budget_hint_seconds,
+        "timeout_boundary": timeout_boundary,
+        "next_steps": next_steps,
         "records": records,
     }
+
+
+def _archive_ingest_next_steps(
+    query: str,
+    *,
+    dry_run: bool,
+    archived_count: int,
+    skipped_count: int,
+    read_attempted: int,
+    read_success_count: int,
+) -> list[str]:
+    """Suggest the next best action after an ingest-search run."""
+    query = str(query or "").strip()
+    if dry_run:
+        return [
+            f"预览没问题后可运行 `guanlan archive ingest-research {query!r} --limit 80` 正式写入。",
+            "如果外层 Agent/MCP 容易超时，默认给 120 秒；开启 `--read-top` 时建议放宽到 180-300 秒。",
+        ]
+    steps: list[str] = []
+    if archived_count == 0:
+        steps.append("这次没有成功写入；先改用 `guanlan archive ingest-research ... --dry-run` 看候选和审计结果。")
+    if skipped_count > 0:
+        steps.append("若觉得跳过太多，可先复查 query/preset，或单独 `guanlan read URL --quality-report` 验证代表页面。")
+    if read_attempted > 0 and read_success_count == 0:
+        steps.append("代表页面读取全部失败；先 `guanlan diagnose page \"URL\"`，再决定是否改用 scoped search / structured source。")
+    if not steps:
+        steps.append("可继续用 `guanlan archive search` / `archive context` / `archive wiki build` 复用刚写入的资料。")
+    steps.append("如果运行在外层 Agent/MCP 平台，请把这个命令的 timeout 预算显式设为 120-300 秒。")
+    return steps
 
 
 def audit_ingest_candidate(

@@ -8,6 +8,15 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.5.8b - 2026-05-04
+
+### Changed
+
+- `archive ingest-search` / `archive ingest-research` 新增阶段进度事件和 stderr 进度提示，让 Agent 能看到“搜索候选、读取代表页面、审计入库、完成”等阶段，不再把长链路误判为卡死。
+- 入库结果新增 `phase_log`、`timeout_budget_hint_seconds`、`timeout_boundary` 和 `next_steps`，明确建议外层 Agent/MCP timeout：默认 search-first 入库给 120 秒，开启 `--read-top` 或弱网络时放宽到 180-300 秒。
+- Archive 入库摘要显示 timeout 建议、阶段轨迹和下一步动作，方便用户判断是继续等待、重试、dry-run 预览，还是改用 `diagnose page`。
+- 本版是 `0.5.8` 的特例小补丁，版本号使用 `0.5.8b`；下一次常规发布继续递增到 `0.5.9`。
+
 ## v0.5.8 - 2026-05-04
 
 ### Added

@@ -318,6 +318,12 @@ def handle_archive_command(args):
             sys.exit(2)
 
         if command in {"ingest-search", "ingest-research"}:
+            def _archive_ingest_progress(event: dict) -> None:
+                label = str(event.get("label") or event.get("phase") or "archive")
+                detail = str(event.get("detail") or "").strip()
+                suffix = f" | {detail}" if detail else ""
+                print(f"[archive] {label}{suffix}", file=sys.stderr, flush=True)
+
             result = ingest_search(
                 args.query,
                 limit=max(args.limit, 1),
@@ -330,6 +336,7 @@ def handle_archive_command(args):
                 read_backend=args.read_backend,
                 read_concurrency=max(args.read_concurrency, 1),
                 cache_ttl=max(args.cache_ttl, 0),
+                progress_callback=_archive_ingest_progress,
             )
             if args.json:
                 print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -390,7 +397,10 @@ def _format_archive_ingest_summary(result: dict) -> str:
         f"- 精选数: {result.get('selected_count', 0)}",
         f"- 跳过低相关: {result.get('skipped_count', 0)}",
         f"- 已归档: {result.get('archived_count', 0)}",
+        f"- 外层 timeout 建议: >= {result.get('timeout_budget_hint_seconds', 120)}s",
     ]
+    if result.get("timeout_boundary"):
+        lines.append(f"- Timeout 边界: {result.get('timeout_boundary')}")
     audit = result.get("audit_summary") or {}
     if audit:
         lines.extend(
@@ -402,6 +412,17 @@ def _format_archive_ingest_summary(result: dict) -> str:
         reasons = audit.get("reasons") or {}
         if reasons:
             lines.append("- 跳过原因: " + ", ".join(f"{key}={value}" for key, value in sorted(reasons.items())))
+    phase_log = result.get("phase_log") or []
+    if phase_log:
+        compact = " -> ".join(
+            f"{item.get('phase', '?')}({item.get('elapsed_sec', 0)}s)"
+            for item in phase_log
+        )
+        lines.append(f"- 阶段轨迹: {compact}")
+    next_steps = result.get("next_steps") or []
+    if next_steps:
+        lines.extend(["", "## 下一步"])
+        lines.extend(f"- {step}" for step in next_steps)
     lines.append("")
     for item in result.get("records", []):
         reason = f" ({item.get('reason')})" if item.get("reason") else ""
