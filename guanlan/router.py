@@ -605,6 +605,15 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
     {
         "intent": "company_primary",
         "terms": (
+            "付费",
+            "订阅",
+            "定价",
+            "价格",
+            "套餐",
+            "会员",
+            "商业化",
+            "发布",
+            "上线",
             "pricing",
             "release notes",
             "release note",
@@ -695,7 +704,6 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "面经",
             "offer",
             "hc",
-            "字节",
             "算法工程师",
             "产品经理",
             "interview loop",

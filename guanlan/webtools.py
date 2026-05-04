@@ -311,6 +311,15 @@ _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
     "company": {
         "name": "公司/产品一手资料",
         "terms": (
+            "付费",
+            "订阅",
+            "定价",
+            "价格",
+            "套餐",
+            "会员",
+            "商业化",
+            "发布",
+            "上线",
             "pricing",
             "release notes",
             "release note",
@@ -347,7 +356,7 @@ _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
     },
     "career": {
         "name": "招聘/薪资/面经",
-        "terms": ("招聘", "求职", "岗位", "薪资", "面试", "简历", "校招", "社招", "面经", "offer", "hc", "字节", "算法工程师", "产品经理", "interview loop", "salary", "levels", "glassdoor"),
+        "terms": ("招聘", "求职", "岗位", "薪资", "面试", "简历", "校招", "社招", "面经", "offer", "hc", "算法工程师", "产品经理", "interview loop", "salary", "levels", "glassdoor"),
         "preferred_scopes": ("career", "social_web", "business"),
         "preferred_source_types": ("招聘/职场/薪资", "社交/内容平台", "商业/产业媒体"),
         "caution_source_types": ("通用网页",),
@@ -4087,14 +4096,16 @@ def _read_search_context(
     parsed = urllib.parse.urlparse(url)
     domain = parsed.netloc.lower().removeprefix("www.")
     query = _query_from_url(url)
-    results = search_web(
+    raw_results = search_web(
         query,
         limit=max(limit, 1),
         site=domain or None,
         profile=profile,
     )
+    results = _filter_read_fallback_results(raw_results, url)
     if not results and domain:
-        results = search_web(f"{domain} {query}", limit=max(limit, 1), profile=profile)
+        raw_results = search_web(f"{domain} {query}", limit=max(limit, 1), profile=profile)
+        results = _filter_read_fallback_results(raw_results, url)
 
     lines = [
         "# 观澜阅读兜底",
@@ -4106,8 +4117,51 @@ def _read_search_context(
     if errors:
         lines.extend(["", "读取问题:"])
         lines.extend(f"- {err}" for err in errors)
+    if _url_path_is_weak_identity(url) and not results:
+        lines.extend(
+            [
+                "",
+                "兜底状态: unusable",
+                "原因: URL 只有数字路径或弱身份信息，公开搜索未能确认同一页面；为避免把无关结果包装成原文上下文，本次不输出搜索兜底结果。",
+                "给 Agent: 不要引用本页搜索兜底作为证据。请改用 `guanlan diagnose page \"URL\"`、站内结构化入口，或按 external_fetch_strategy 使用宿主 WebFetch 定点读取该 URL。",
+            ]
+        )
+        return "\n".join(lines)
     lines.extend(["", format_search_markdown(results, title=f"观澜搜索兜底 / {query}")])
     return "\n".join(lines)
+
+
+def _filter_read_fallback_results(results: list[dict[str, Any]], url: str) -> list[dict[str, Any]]:
+    """Keep fallback search context only when it can identify the target page.
+
+    Numeric news URLs such as ithome.com/0/946/250.htm are especially risky:
+    searching the path numbers often returns unrelated pages. For those weak
+    identities we require same-domain URL/path evidence before exposing context.
+    """
+    if not _url_path_is_weak_identity(url):
+        return list(results)
+    parsed = urllib.parse.urlparse(url)
+    domain = parsed.netloc.lower().removeprefix("www.")
+    identity = _url_identity_parts(url)
+    target_path = identity.get("path", "")
+    compact = identity.get("compact", "")
+    tail = identity.get("tail", "")
+    kept: list[dict[str, Any]] = []
+    for item in results:
+        item_url = str(item.get("url") or "")
+        item_domain = _domain(item_url)
+        if domain and item_domain != domain:
+            continue
+        normalized_url = urllib.parse.unquote(item_url).lower()
+        if target_path and target_path.lower() in normalized_url:
+            kept.append(item)
+            continue
+        if compact and compact in re.sub(r"\D+", "", normalized_url):
+            kept.append(item)
+            continue
+        if tail and re.search(rf"(?:/|-|_){re.escape(tail)}(?:\\.|/|$)", normalized_url):
+            kept.append(item)
+    return kept
 
 
 def _snapshot_path(url: str) -> Path:
@@ -9114,9 +9168,36 @@ def _query_from_url(url: str) -> str:
     stem = re.sub(r"\.[a-zA-Z0-9]{1,8}$", " ", path)
     stem = re.sub(r"[/_\-+]+", " ", stem)
     stem = re.sub(r"\s+", " ", stem).strip()
+    if _url_path_is_weak_identity(url):
+        identity = _url_identity_parts(url)
+        parts = [domain, identity.get("path", ""), identity.get("compact", ""), identity.get("tail", "")]
+        return " ".join(_unique_keep_order([part for part in parts if part]))[:120]
     if stem:
         return stem[:120]
     return domain or url
+
+
+def _url_identity_parts(url: str) -> dict[str, str]:
+    parsed = urllib.parse.urlparse(url)
+    path = urllib.parse.unquote(parsed.path or "").strip("/")
+    stem = re.sub(r"\.[a-zA-Z0-9]{1,8}$", "", path)
+    tokens = [token for token in re.split(r"[/_\-+]+", stem) if token]
+    numeric_tokens = [token for token in tokens if token.isdigit()]
+    return {
+        "path": path,
+        "stem": stem,
+        "compact": "".join(numeric_tokens),
+        "tail": numeric_tokens[-1] if numeric_tokens else "",
+    }
+
+
+def _url_path_is_weak_identity(url: str) -> bool:
+    identity = _url_identity_parts(url)
+    stem = identity.get("stem", "")
+    if not stem:
+        return False
+    tokens = [token for token in re.split(r"[/_\-+]+", stem) if token]
+    return bool(tokens) and all(token.isdigit() for token in tokens)
 
 
 def _read_with_jina(url: str) -> str:

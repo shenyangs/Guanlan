@@ -195,6 +195,14 @@ def test_route_plan_detects_career_ecommerce_podcast_test_prep():
     assert "test_prep" in exam.preferred_scopes
 
 
+def test_route_plan_does_not_treat_bytedance_product_pricing_as_career():
+    plan = build_route_plan("豆包 付费 订阅 字节跳动", profile="china")
+
+    assert "career" not in plan.primary_intents
+    assert "company_primary" in plan.primary_intents + plan.secondary_intents
+    assert "company_primary" in plan.preferred_scopes
+
+
 def test_route_plan_detects_english_company_primary_need():
     plan = build_route_plan("OpenAI API pricing release notes", profile="english")
 

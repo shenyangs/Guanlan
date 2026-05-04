@@ -1467,6 +1467,57 @@ def test_search_web_continues_after_low_relevance_bing_batch(monkeypatch):
     assert "rejected_sample:bing => Microsoft Support 1 (support.microsoft.com)" in rendered
 
 
+def test_search_quality_gate_keeps_official_cjk_compound_results():
+    batch = [
+        webtools.SearchResult(
+            title="关于开展横琴粤澳深度合作区2025年下半年跨境电商产业扶持申报工作的通知",
+            url="https://www.hengqin.gov.cn/macao_zh_hans/zwgk/tzgg/gg/content/post_3871318.html",
+            snippet="促进跨境电商产业高质量发展扶持办法 申报指南",
+            source="baidu",
+            rank=1,
+        ),
+        webtools.SearchResult(
+            title="珠海政务-2025跨境电商年会（珠海—横琴）开幕",
+            url="https://www.zhuhai.gov.cn/sjb/xw/yw/content/post_3838670.html",
+            snippet="珠海跨境电商进出口规模年均增长超100%",
+            source="duckduckgo",
+            rank=2,
+        ),
+    ]
+
+    gate = webtools._assess_backend_batch_quality(
+        "珠海横琴 跨境电商政策 2025",
+        batch,
+        {"intent": "scope:gov", "requested_scope": "gov"},
+    )
+
+    assert gate["usable"] is True
+    assert gate["group_coverage"] >= 0.66
+    assert "cross_border_ecommerce" in gate["matched_groups"]
+
+
+def test_search_quality_gate_still_rejects_cjk_drift():
+    batch = [
+        webtools.SearchResult(
+            title="珠海这座城市怎么样？ - 知乎",
+            url=f"https://www.zhihu.com/question/{idx}",
+            snippet="珠海生活、旅游、城市体验讨论",
+            source="bing",
+            rank=idx,
+        )
+        for idx in range(1, 5)
+    ]
+
+    gate = webtools._assess_backend_batch_quality(
+        "珠海横琴 跨境电商政策 2025",
+        batch,
+        {"intent": "scope:gov", "requested_scope": "gov"},
+    )
+
+    assert gate["usable"] is False
+    assert "cjk_compound_terms_missing" in gate["reason"]
+
+
 def test_search_quality_profile_treats_robotics_funding_as_industry():
     quality = webtools.detect_search_quality_profile(
         "具身智能 企业 融资 2024 2025 智元 宇树 傅利叶",
@@ -2358,6 +2409,45 @@ def test_read_url_uses_search_context_when_reading_is_blocked(monkeypatch):
     assert "替代来源" in text
     assert "jina: weak or blocked content" in text
     assert "direct: weak or blocked content" in text
+
+
+def test_read_url_does_not_emit_unverified_numeric_path_fallback(monkeypatch):
+    monkeypatch.setattr(webtools, "_read_with_jina", lambda url: "请先登录后查看")
+    monkeypatch.setattr(webtools, "_read_direct", lambda url: "访问受限，请完成安全验证")
+    monkeypatch.setattr(
+        webtools,
+        "search_web",
+        lambda query, limit=5, site=None, profile=None: [
+            {
+                "rank": 1,
+                "source": "duckduckgo",
+                "source_type": "通用网页",
+                "title": "IT之家首页",
+                "url": "https://www.ithome.com/",
+                "snippet": "首页内容",
+                "score": 1.2,
+            },
+            {
+                "rank": 2,
+                "source": "duckduckgo",
+                "source_type": "通用网页",
+                "title": "台湾 iThome 250",
+                "url": "https://www.ithome.com.tw/news/250",
+                "snippet": "不同站点内容",
+                "score": 1.0,
+            },
+        ],
+    )
+
+    text = webtools.read_url(
+        "https://www.ithome.com/0/946/250.htm",
+        fallback_search=True,
+        fallback_limit=3,
+    )
+
+    assert "兜底状态: unusable" in text
+    assert "不要引用本页搜索兜底作为证据" in text
+    assert "台湾 iThome" not in text
 
 
 def test_read_batch_keeps_per_url_status(monkeypatch):

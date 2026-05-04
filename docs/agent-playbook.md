@@ -128,6 +128,8 @@ Recipe 输出的是计划、证据层和边界，不是最终答案。执行时�
 只有完成当前档位要求后，仍缺关键证据，才允许切到通用 `web_search` / `web_fetch`。
 如果 Guanlan 输出 `external_fetch_strategy`，可以调用宿主 Agent 的 WebFetch/WebRead 读取候选 URL，但要向用户说明：这是“Guanlan 规划信源 + WebFetch 定点读取”的组合策略，不是 Guanlan 脆弱或失败。
 
+如果 trace 出现 `quality_gate.reason=partial_salvage`，表示观澜从低覆盖批次里救回了强官方/垂直信源线索；这不是失败，应该先读取代表原文并说明证据角色仍有缺口。如果 `read` 输出 `兜底状态: unusable`，表示搜索兜底无法确认同一页面，不要引用兜底内容，改走 `diagnose page`、结构化入口、scope 搜索或 WebFetch 定点补证。
+
 ## 垂直权威入口
 
 有些问题不该只赌搜索引擎发现。例如体育比分、财经行情/公告披露/宏观数据、天气灾害、CVE 漏洞、科学机构声明、文娱榜单/票房、考试官方信息，用户真正需要的是“先去哪个权威入口核验”。Guanlan 会在这些高确定性场景里自动加入少量 direct source seeds，并在 `route` 里给出 `guanlan read` 命令。

@@ -55,6 +55,7 @@ metadata:
 - 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究至少走 `route -> research -> scoped search`；热点题再补 `hotnews`；技术/AI 题再补 `feeds`；来源过窄时再补 `dossier/compare/timeline`。
 - 体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE、安全公告、科学机构声明、文娱榜单/票房、考试官方信息等高确定性垂直题，优先执行 `route` 推荐的 direct `guanlan read` 命令，再用匹配的 `preset/scope` 扩大证据面；不要只看搜索引擎是否返回。
 - 在完成当前档位要求的 Guanlan 工具前，不要立刻切 `web_search/web_fetch`。`quality_summary=warn` 通常表示证据包还不完整，不等于 Guanlan 搜索失败。
+- `quality_gate.reason=partial_salvage` 表示观澜保留了强官方/垂直信源线索但仍有覆盖缺口；先读代表原文，不要写成失败。`read` 出现 `兜底状态: unusable` 时，不要引用搜索兜底，改用页面诊断、结构化入口、scope 搜索或 WebFetch 定点补证。
 - 如果 Guanlan 输出 `external_fetch_strategy`，可以调用宿主 Agent 的 WebFetch/WebRead 读取候选 URL；外显时说明这是“Guanlan 规划信源 + WebFetch 定点补证”的搜索策略，不是 Guanlan 脆弱。
 - 做 benchmark 时不要误用：实时题必须带 `hotnews`，技术/AI 题必须带 `feeds` 或 `research --preset tech`，政策题不要只测单次泛搜。
 - 如果 Agent/MCP/自动化平台能设置工具 timeout：`search/read/status/doctor` 用 60-90 秒；`hotnews/feeds/pulse/read batch` 用 120 秒；`research/compare/timeline/dossier/archive ingest-research` 用 180-300 秒；安装/升级/发布 smoke 用 300-600 秒。

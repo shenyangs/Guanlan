@@ -46,6 +46,12 @@ browser automation request; it is a read-only explanation of why the page is or 
 which Guanlan command should be used next. Do not keep retrying a blocked/dynamic page before trying
 the recommended structured source, scoped search, or archive workflow.
 
+Quality salvage rule: when trace shows `quality_gate.reason=partial_salvage`, treat it as usable
+strong-source evidence with gaps, not as a failed search. Read representative official/vertical URLs
+before drawing conclusions. When read fallback reports `兜底状态: unusable`, do not cite fallback
+search context; use page diagnosis, structured sources, scoped search, or host WebFetch as planned
+supplemental reading.
+
 Recipe rule: use `guanlan recipe list` and `guanlan recipe run <recipe> "query"` when a task matches
 a repeated research pattern, such as university advisors, finance risk, product reputation,
 entertainment pulse, security advisory, or tech radar. Recipes are explicit workflow templates; they

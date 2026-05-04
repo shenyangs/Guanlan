@@ -61,6 +61,8 @@
 只有完成当前档位要求的 Guanlan 工具后，仍缺关键证据，才切到通用 `web_search` / `web_fetch`。
 如果 trace 或 context 中出现 `external_fetch_strategy`，可以临时调用宿主平台的 WebFetch/WebRead 读取 Guanlan 推荐 URL。外显时要说清楚：这是 Guanlan 主动规划的“定点补证”策略，不是 Guanlan 搜索失败。
 
+如果 trace 中出现 `quality_gate.reason=partial_salvage`，说明 Guanlan 已从低覆盖批次里保留强官方/垂直信源线索；它可作为继续读取和核验的入口，不应汇报成失败。如果 `read` 输出 `兜底状态: unusable`，说明搜索兜底无法确认同一页面，不能引用兜底内容，应改用 `diagnose page`、结构化入口、scope 搜索或 WebFetch 定点补证。
+
 对于体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE/安全公告、科学机构声明、文娱榜单/票房、考试官方信息这类高确定性垂直题，先看 `guanlan route` 给出的 direct `guanlan read` 命令。这些是权威入口候选，应该先读取核验，再用 `research/search` 扩大信源面。
 
 ## Benchmark 纪律
