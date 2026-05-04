@@ -75,6 +75,9 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 candidate_urls=[str(item) for item in payload.get("candidate_urls", [])]
                 if isinstance(payload.get("candidate_urls"), list)
                 else None,
+                max_pages=max(_int(payload.get("max_pages"), 3), 1),
+                max_chars_per_page=max(_int(payload.get("max_chars_per_page"), 3000), 1),
+                task_goal=str(payload.get("task_goal") or ""),
                 force=bool(payload.get("force", True)),
             )
             if payload.get("platform"):

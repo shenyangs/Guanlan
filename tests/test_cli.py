@@ -208,6 +208,8 @@ class TestCLI:
         assert data["recommended"] is True
         assert data["browser_assist_task"]["task_type"] == "open_and_read_visible_page"
         assert data["browser_assist_task"]["status"] == "requires_user_approval"
+        assert data["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
+        assert data["browser_assist_task"]["host_browser_contract"]["manual_copy_is_fallback_only"] is True
         assert "read_cookies" in data["forbidden_actions"]
 
     def test_recipe_run_command_returns_plan(self, capsys):

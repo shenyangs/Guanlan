@@ -17,6 +17,7 @@ def handle_archive_command(args):
 
     from guanlan.archive import (
         add_browser_visible_note,
+        add_browser_visible_payloads,
         add_url,
         add_urls,
         archive_quality_summary,
@@ -87,12 +88,27 @@ def handle_archive_command(args):
             return
 
         if command == "add-browser-note":
+            if getattr(args, "from_json", ""):
+                from guanlan.browser_assist import load_browser_visible_payloads
+
+                payloads = load_browser_visible_payloads(args.from_json)
+                records = add_browser_visible_payloads(payloads, db_path=db_path)
+                output_format = "json" if args.json else args.format
+                if output_format == "json":
+                    print(json.dumps(records, ensure_ascii=False, indent=2))
+                else:
+                    print(_format_archive_browser_note_batch_summary(records))
+                return
+
             content = str(getattr(args, "text", "") or "")
             if getattr(args, "text_file", ""):
                 with open(args.text_file, "r", encoding="utf-8") as f:
                     content = f.read()
+            if not getattr(args, "url", ""):
+                print("Error: --url is required unless --from-json is used", file=sys.stderr)
+                sys.exit(2)
             if not content.strip():
-                print("Error: --text or --text-file is required for add-browser-note", file=sys.stderr)
+                print("Error: --text or --text-file is required unless --from-json is used", file=sys.stderr)
                 sys.exit(2)
             record = add_browser_visible_note(
                 args.url,
@@ -380,6 +396,32 @@ def _format_archive_browser_note_summary(record: dict) -> str:
         "- 证据边界: browser_assisted / visible_page_only / user_authorized",
         f"- 说明: {record.get('boundary', '')}",
     ]
+    return "\n".join(lines)
+
+
+def _format_archive_browser_note_batch_summary(records: list[dict]) -> str:
+    ok = sum(1 for item in records if item.get("status") in {"created", "updated", "unchanged"})
+    errors = sum(1 for item in records if item.get("status") == "error")
+    lines = [
+        "# 观澜浏览器辅助补证批量入库",
+        "",
+        f"- 总数: {len(records)}",
+        f"- 已入库: {ok}",
+        f"- 错误: {errors}",
+        "- 主路径: 宿主 Agent 使用用户授权的浏览器可见页提取 JSON 后入库；手动复制只是无浏览器工具时的兜底。",
+        "- 证据边界: browser_assisted / visible_page_only / user_authorized / session_dependent",
+        "",
+    ]
+    for item in records:
+        lines.append(f"- [{item.get('status', 'unknown')}] {item.get('title') or item.get('url') or '-'}")
+        if item.get("url"):
+            lines.append(f"  {item['url']}")
+        if item.get("browser_visible_quality"):
+            quality = item.get("browser_visible_quality") or {}
+            warnings = ",".join(quality.get("warnings") or []) or "none"
+            lines.append(f"  quality={quality.get('status', '')} chars={quality.get('chars', 0)} warnings={warnings}")
+        if item.get("error"):
+            lines.append(f"  错误: {item['error']}")
     return "\n".join(lines)
 
 

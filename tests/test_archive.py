@@ -175,13 +175,77 @@ def test_archive_cli_add_browser_note_outputs_json(tmp_path, capsys):
     assert "浏览器辅助补证边界" in inspected.out
 
 
+def test_archive_cli_add_browser_note_from_json_ingests_host_browser_payload(tmp_path, capsys):
+    from guanlan.cli import main
+
+    db = tmp_path / "archive.db"
+    payload = tmp_path / "browser-notes.jsonl"
+    payload.write_text(
+        json.dumps(
+            {
+                "url": "https://www.xiaohongshu.com/explore/abc",
+                "title": "小红书可见笔记",
+                "visible_text": "这是宿主 Agent 在用户授权后从浏览器可见页读取到的正文。" * 4,
+                "platform": "xiaohongshu",
+                "author": "可见作者",
+                "captured_at": "2026-05-04T10:00:00+08:00",
+                "user_authorized": True,
+                "visible_page_only": True,
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with patch(
+        "sys.argv",
+        [
+            "guanlan",
+            "archive",
+            "add-browser-note",
+            "--from-json",
+            str(payload),
+            "--db",
+            str(db),
+            "--json",
+        ],
+    ):
+        main()
+
+    captured = capsys.readouterr()
+    records = json.loads(captured.out)
+    assert records[0]["browser_assisted"] is True
+    assert records[0]["browser_visible_quality"]["status"] == "pass"
+    record = archive.search_documents("浏览器可见页", db_path=db)[0]
+    assert record["metadata"]["source_mode"] == "browser_visible"
+    assert record["metadata"]["browser_visible_quality"]["usable"] is True
+
+
+def test_archive_browser_note_rejects_sensitive_payload_keys(tmp_path):
+    records = archive.add_browser_visible_payloads(
+        [
+            {
+                "url": "https://www.xiaohongshu.com/explore/abc",
+                "title": "不应入库",
+                "visible_text": "正文",
+                "cookies": "secret",
+            }
+        ],
+        db_path=tmp_path / "archive.db",
+    )
+
+    assert records[0]["status"] == "error"
+    assert "forbidden keys" in records[0]["error"]
+
+
 def test_archive_format_context(tmp_path):
     db = tmp_path / "archive.db"
     archive.add_document("https://example.com/a", "# 标题\n正文包含跨境电商。", db_path=db)
 
     context = archive.format_archive_context(archive.search_documents("跨境电商", db_path=db))
 
-    assert "来源 | 标题 | 摘要 | 时间" in context
+    assert "来源 | 主题 | 内容层级 | 标题 | 摘要 | 时间" in context
     assert "[标题](https://example.com/a)" in context
 
 
@@ -358,9 +422,34 @@ def test_archive_export_profiles_for_common_rag_loaders(tmp_path):
 
     assert llama["text"].startswith("# 标题")
     assert llama["metadata"]["tool"] == "guanlan"
+    assert llama["metadata"]["topic_label"] == "AI Agent"
+    assert llama["metadata"]["content_mode"] in {"snippet", "partial_body", "full_body"}
     assert langchain["page_content"].startswith("# 标题")
     assert openwebui["content"].startswith("# 标题")
     assert "metadata" in openwebui
+
+
+def test_archive_export_prioritizes_deeper_higher_quality_records(tmp_path):
+    db = tmp_path / "archive.db"
+    archive.add_document(
+        "https://shallow.example/a",
+        "# 浅摘要\nURL: https://shallow.example/a\n一句话摘要。",
+        metadata={"topic_key": "topic-1", "topic_label": "横琴跨境电商", "content_mode": "snippet", "read_quality": {"score": 40}},
+        db_path=db,
+    )
+    archive.add_document(
+        "https://deep.example/b",
+        "# 深正文\n" + "横琴跨境电商政策与监管规则。" * 120,
+        metadata={"topic_key": "topic-1", "topic_label": "横琴跨境电商", "content_mode": "full_body", "read_quality": {"score": 88}},
+        db_path=db,
+    )
+
+    records = archive.export_documents(db_path=db, topic="横琴跨境电商")
+
+    assert len(records) == 2
+    assert records[0]["domain"] == "deep.example"
+    assert records[0]["topic_label"] == "横琴跨境电商"
+    assert records[0]["content_mode"] == "full_body"
 
 
 def test_archive_cli_verify_and_context(tmp_path, capsys):
@@ -425,6 +514,8 @@ def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkey
     assert result["next_steps"]
     assert records[0]["title"] == "政策原文"
     assert records[0]["metadata"]["source_type"] == "政府/部委"
+    assert records[0]["metadata"]["topic_label"] == "政策"
+    assert records[0]["metadata"]["content_mode"] in {"partial_body", "full_body"}
     assert records[0]["metadata"]["route_plan"]["primary_intents"] == ["policy"]
     assert records[0]["metadata"]["read_quality"]["chars"] > 0
     assert records[0]["metadata"]["source_card"]["domain"] == "gov.cn"

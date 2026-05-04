@@ -29,7 +29,7 @@
 - 用户需要建议、影响判断、下一步行动，或询问“为什么会搜这个”时，优先使用 `research --advisor`，但把助理视角当作证据边界和写作规则，由你结合用户问题生成自然建议；不要机械复述模板，也不要当作用户真实意图。
 - 不确定该查哪些信源时，先用 `guanlan route "关键词"` 看需求路由；路由计划是软约束，优先源用于提高适配度，开放网页兜底用于防止信源池过窄。
 - 页面读不出来时，先用 `guanlan diagnose page "URL"` 判断是可读正文、动态页壳、访问门槛、搜索兜底还是弱正文；不要把搜索兜底当原文，也不要反复重试登录/WAF 页面。
-- 如果 `diagnose page` 输出 `browser_assist.recommended=true`，先请求用户授权，再只读取目标页面的浏览器可见内容作为补证；不要读取 Cookie、Token、钥匙串、私信、订单、后台或无关个人资料，也不要执行任何写操作。授权后的可见页笔记可用 `guanlan archive add-browser-note --url "URL" --text-file notes.md` 入库，并保留 `browser_assisted` / `visible_page_only` 边界。
+- 如果 `diagnose page` 输出 `browser_assist.recommended=true`，先请求用户授权，再使用宿主浏览器打开目标 URL 并只读取目标页面的浏览器可见内容作为补证；如需登录、验证或切换账号，让用户自己在浏览器里完成；不要读取 Cookie、Token、钥匙串、私信、订单、后台或无关个人资料，也不要执行任何写操作。授权后的可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库；`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
 - 高频垂直任务用 `guanlan recipe list` / `guanlan recipe run <recipe> "问题"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`。
 
 ## 信源矩阵与公开基准
@@ -117,7 +117,7 @@
 | “查资金流向/榜单/大盘概览” | `guanlan stock fundflow "600519"`、`guanlan-stock rank --sort turnover --limit 20`、`guanlan-stock index` |
 | “页面读出来像脚本/登录墙/兜底” | `guanlan diagnose page "URL"` |
 | “需要生成浏览器可见页补证任务” | `guanlan browser-assist plan "URL" --json` |
-| “用户授权后把浏览器可见页补证入库” | `guanlan archive add-browser-note --url "URL" --text-file notes.md` |
+| “用户授权后把浏览器可见页补证入库” | `guanlan archive add-browser-note --from-json browser-notes.jsonl` |
 | “按固定流程查高校/财经/口碑/安全/技术” | `guanlan recipe list`，再 `guanlan recipe run finance-risk "问题"` |
 | “查公告/财报/监管/问询函” | `guanlan search "贵州茅台 公告 财报" --scope finance_disclosure --limit 80 --trace` |
 | “查宏观金融/央行/统计局数据” | `guanlan search "社融 CPI 降息 央行" --scope finance_macro --limit 80 --trace` |
@@ -192,7 +192,7 @@
 | “看来源是否偏斜” | `guanlan search "关键词" --source-chart` |
 | “看研究路由是否偏斜” | `guanlan research "关键词" --route-chart` |
 | “把链接存入本地知识库” | `guanlan archive add "URL"` |
-| “把用户授权的浏览器可见页补证入库” | `guanlan archive add-browser-note --url "URL" --text-file notes.md` |
+| “把用户授权的浏览器可见页补证入库” | `guanlan archive add-browser-note --from-json browser-notes.jsonl` |
 | “联网查一轮并把代表证据入库” | `guanlan archive ingest-research "关键词" --limit 80` |
 | “联网查一轮、再深读少量原文入库” | `guanlan archive ingest-research "关键词" --limit 80 --read-top 3` |
 | “搜索本地知识库” | `guanlan archive search "关键词" --format context` |

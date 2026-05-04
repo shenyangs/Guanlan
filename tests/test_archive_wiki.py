@@ -37,7 +37,13 @@ def test_archive_wiki_context_is_prompt_ready(tmp_path):
     archive.add_document(
         "https://example.com/kv",
         "# KV Cache\n\nKIVI 和 KVQuant 都是 KV Cache 量化相关方法。",
-        metadata={"topic_key": "KV Cache", "read_quality": {"score": 82}},
+        metadata={"topic_key": "KV Cache", "read_quality": {"score": 82}, "content_mode": "full_body"},
+        db_path=db,
+    )
+    archive.add_document(
+        "https://example.com/snippet",
+        "# 浅摘要\nKV Cache 量化相关链接。",
+        metadata={"topic_key": "topic-1", "topic_label": "KV Cache 量化", "read_quality": {"score": 35}, "content_mode": "snippet"},
         db_path=db,
     )
 
@@ -46,6 +52,9 @@ def test_archive_wiki_context_is_prompt_ready(tmp_path):
     assert payload["records"]
     assert "Answering Rule" in payload["context"]
     assert "KIVI" in payload["context"]
+    assert payload["records"][0]["content_mode"] == "full_body"
+    assert payload["records"][0]["wiki_topic"] in {"KV Cache", "KV Cache 量化"}
+    assert "Content mode" in payload["context"]
 
 
 def test_archive_pack_can_write_loader_jsonl(tmp_path):
@@ -69,6 +78,8 @@ def test_archive_pack_can_write_loader_jsonl(tmp_path):
     row = json.loads(output.read_text(encoding="utf-8"))
     assert row["page_content"].startswith("# Agent 资料")
     assert row["metadata"]["tool"] == "guanlan"
+    assert row["metadata"]["topic_label"] == "AI Agent"
+    assert row["metadata"]["content_mode"] in {"partial_body", "full_body"}
 
 
 def test_archive_wiki_cli_builds_summary(tmp_path, capsys):

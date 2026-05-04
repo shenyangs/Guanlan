@@ -214,6 +214,9 @@ def _tool_definitions() -> list[dict]:
                     "signals": {"type": "array", "items": {"type": "string"}},
                     "candidate_urls": {"type": "array", "items": {"type": "string"}},
                     "platform": {"type": "string"},
+                    "max_pages": {"type": "integer", "default": 3, "minimum": 1, "maximum": 20},
+                    "max_chars_per_page": {"type": "integer", "default": 3000, "minimum": 1, "maximum": 20000},
+                    "task_goal": {"type": "string"},
                     "force": {"type": "boolean", "default": True},
                     "format": {"type": "string", "enum": ["markdown", "json"], "default": "json"},
                 },
@@ -703,6 +706,9 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             candidate_urls=[str(item) for item in args.get("candidate_urls", [])]
             if isinstance(args.get("candidate_urls"), list)
             else None,
+            max_pages=max(int(args.get("max_pages") or 3), 1),
+            max_chars_per_page=max(int(args.get("max_chars_per_page") or 3000), 1),
+            task_goal=str(args.get("task_goal") or ""),
             force=bool(args.get("force", True)),
         )
         if args.get("platform"):

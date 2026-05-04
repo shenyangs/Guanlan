@@ -14,6 +14,7 @@ import re
 import sqlite3
 import time
 import urllib.parse
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -25,6 +26,29 @@ from guanlan.limits import (
 
 ARCHIVE_SCHEMA_VERSION = 1
 ARCHIVE_MIN_USEFUL_CHARS = 40
+ARCHIVE_CONTENT_MODE_RANK = {
+    "full_body": 3,
+    "partial_body": 2,
+    "snippet": 1,
+    "unknown": 0,
+}
+ARCHIVE_TOPIC_KEY_LABELS = {
+    "policy": "政策",
+    "general": "通用资料",
+    "agent": "AI Agent",
+    "academic": "学术",
+    "finance": "财经",
+    "career": "求职职业",
+    "entertainment": "文娱",
+    "sports": "体育",
+    "science": "科学",
+    "podcast": "播客",
+    "test_prep": "考试备考",
+    "reputation": "口碑观察",
+    "university": "高校招生",
+    "cybersecurity": "网络安全",
+    "weather_disaster": "天气灾害",
+}
 
 
 def archive_db_path() -> Path:
@@ -203,6 +227,9 @@ def add_browser_visible_note(
     platform: str = "",
     author: str = "",
     published_at: str = "",
+    captured_at: float | None = None,
+    visible_context: str = "",
+    skipped_reason: str = "",
     db_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Persist user-authorized visible browser content with explicit boundaries."""
@@ -211,16 +238,37 @@ def add_browser_visible_note(
     text = str(content or "").strip()
     if not normalized_url:
         raise ValueError("url is required")
-    if not text:
+    if not text and not skipped_reason:
         raise ValueError("content is required")
-    from guanlan.browser_assist import browser_visible_metadata
+    from guanlan.browser_assist import browser_visible_metadata, browser_visible_quality_report
 
+    quality_report = browser_visible_quality_report(
+        {
+            "url": normalized_url,
+            "title": title,
+            "visible_text": text,
+            "platform": platform,
+            "author": author,
+            "published_at": published_at,
+            "captured_at": captured_at,
+            "visible_context": visible_context,
+            "skipped_reason": skipped_reason,
+        }
+    )
     metadata = browser_visible_metadata(
         url=normalized_url,
         platform=platform,
         author=author,
         published_at=published_at,
+        captured_at=captured_at,
+        quality_report=quality_report,
     )
+    if visible_context:
+        metadata["visible_context"] = visible_context
+    if skipped_reason:
+        metadata["skipped_reason"] = skipped_reason
+    if not text and skipped_reason:
+        text = f"浏览器可见页未入正文：{skipped_reason}"
     if title and not text.lstrip().startswith("#"):
         text = f"# {title.strip()}\n\n{text}"
     record = add_document(
@@ -236,10 +284,80 @@ def add_browser_visible_note(
             "browser_assisted": True,
             "visible_page_only": True,
             "platform": metadata.get("platform", ""),
+            "browser_visible_quality": quality_report,
             "boundary": "用户授权的浏览器可见页补证；不可伪装成所有人可复现的普通公开网页证据。",
         }
     )
     return record
+
+
+def add_browser_visible_payload(
+    payload: dict[str, Any],
+    *,
+    db_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Persist one normalized host-browser visible-page payload."""
+
+    from guanlan.browser_assist import normalize_browser_visible_payload
+
+    row = normalize_browser_visible_payload(payload)
+    if not row.get("user_authorized", True) or not row.get("visible_page_only", True):
+        raise ValueError("browser visible payload must be user_authorized and visible_page_only")
+    return add_browser_visible_note(
+        row["url"],
+        row["visible_text"],
+        title=row.get("title", ""),
+        platform=row.get("platform", ""),
+        author=row.get("author", ""),
+        published_at=row.get("published_at", ""),
+        captured_at=_coerce_timestamp(row.get("captured_at")),
+        visible_context=row.get("visible_context", ""),
+        skipped_reason=row.get("skipped_reason", ""),
+        db_path=db_path,
+    )
+
+
+def add_browser_visible_payloads(
+    payloads: list[dict[str, Any]],
+    *,
+    db_path: str | Path | None = None,
+) -> list[dict[str, Any]]:
+    """Persist multiple browser-visible payloads while keeping per-row errors."""
+
+    records: list[dict[str, Any]] = []
+    for payload in payloads:
+        try:
+            records.append(add_browser_visible_payload(payload, db_path=db_path))
+        except Exception as exc:
+            records.append(
+                {
+                    "status": "error",
+                    "url": str(payload.get("url") or "") if isinstance(payload, dict) else "",
+                    "error": str(exc),
+                    "source_mode": "browser_visible",
+                    "browser_assisted": True,
+                    "visible_page_only": True,
+                }
+            )
+    return records
+
+
+def _coerce_timestamp(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
 
 
 def ingest_search(
@@ -298,6 +416,7 @@ def ingest_search(
         cache_ttl=max(cache_ttl, 0),
     )
     selected_items = list(packet.get("selected_evidence") or packet.get("results", [])[:select_top])
+    topic_labels = _build_topic_labels(query, selected_items)
     emit_progress(
         "research_done",
         "候选已就绪",
@@ -379,6 +498,9 @@ def ingest_search(
             )
             continue
         seen_urls.add(_normalize_url(url))
+        read_quality = reading.get("read_quality", {}) if isinstance(reading, dict) else {}
+        quality_report = reading.get("quality_report", {}) if isinstance(reading, dict) else {}
+        topic_key = str(item.get("topic_key") or "").strip()
         metadata = {
             "ingest_query": query,
             "ingest_type": "research",
@@ -386,15 +508,23 @@ def ingest_search(
             "source_type": item.get("source_type", ""),
             "source": item.get("source", ""),
             "evidence_role": item.get("evidence_role", ""),
-            "topic_key": item.get("topic_key", ""),
+            "topic_key": topic_key,
+            "topic_label": topic_labels.get(topic_key or url, ""),
             "topic_role": item.get("topic_role", ""),
             "rank": item.get("rank", 0),
             "score": item.get("score", 0),
             "route_plan": packet.get("route_plan", {}),
             "query_strategy": packet.get("query_strategy", {}),
             "source_card": (item.get("trace") or {}).get("source_card", {}),
-            "read_quality": reading.get("read_quality", {}) if isinstance(reading, dict) else {},
-            "quality_report": reading.get("quality_report", {}) if isinstance(reading, dict) else {},
+            "read_quality": read_quality,
+            "quality_report": quality_report,
+            "content_mode": _infer_content_mode(
+                content,
+                quality=read_quality,
+                quality_report=quality_report,
+                explicit_hint="partial_body" if reading else "snippet",
+            ),
+            "content_chars": len(_collapse_ws(content)),
             "ingest_audit": audit,
         }
         if dry_run:
@@ -576,6 +706,130 @@ def _enrich_archive_metadata(metadata: dict[str, Any], *, domain: str, content: 
     except Exception:
         metadata.setdefault("read_quality", {})
         metadata.setdefault("quality_report", {})
+    metadata["content_chars"] = len(_collapse_ws(content))
+    metadata["content_mode"] = _infer_content_mode(
+        content,
+        quality=metadata.get("read_quality") if isinstance(metadata.get("read_quality"), dict) else {},
+        quality_report=metadata.get("quality_report") if isinstance(metadata.get("quality_report"), dict) else {},
+        explicit_hint=str(metadata.get("content_mode") or ""),
+    )
+    if not str(metadata.get("topic_label") or "").strip():
+        metadata["topic_label"] = _derive_topic_label(
+            str(metadata.get("ingest_query") or ""),
+            title=_title_from_markdown(content),
+            snippet=_excerpt(content, max_chars=220),
+            topic_key=str(metadata.get("topic_key") or ""),
+        )
+
+
+def _build_topic_labels(query: str, items: list[dict[str, Any]]) -> dict[str, str]:
+    """Infer human-readable topic labels for grouped ingest candidates."""
+    labels: dict[str, str] = {}
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for idx, item in enumerate(items):
+        raw_key = str(item.get("topic_key") or "").strip()
+        group_key = raw_key or f"item-{idx}"
+        grouped.setdefault(group_key, []).append(item)
+    for group_key, bucket in grouped.items():
+        if not _is_generic_topic_key(group_key):
+            labels[group_key] = _humanize_topic_key(group_key)
+            continue
+        texts = " ".join(
+            _collapse_ws(
+                f"{item.get('title') or ''} {item.get('snippet') or ''} {item.get('source_type') or ''}"
+            )
+            for item in bucket
+        )
+        representative = bucket[0] if bucket else {}
+        labels[group_key] = _derive_topic_label(
+            query,
+            title=str(representative.get("title") or ""),
+            snippet=texts,
+            topic_key=group_key,
+        )
+    return labels
+
+
+def _is_generic_topic_key(value: str) -> bool:
+    key = str(value or "").strip().lower()
+    return (not key) or bool(re.fullmatch(r"topic[-_ ]?\d+", key))
+
+
+def _humanize_topic_key(value: str) -> str:
+    key = str(value or "").strip()
+    if not key:
+        return ""
+    mapped = ARCHIVE_TOPIC_KEY_LABELS.get(key.lower())
+    if mapped:
+        return mapped
+    return re.sub(r"[-_]+", " ", key).strip()
+
+
+def _derive_topic_label(query: str, *, title: str = "", snippet: str = "", topic_key: str = "") -> str:
+    """Choose a readable topic label instead of generic topic-N placeholders."""
+    topic_key = str(topic_key or "").strip()
+    if topic_key and not _is_generic_topic_key(topic_key):
+        return _humanize_topic_key(topic_key)
+    title_candidate = _best_topic_segment(title)
+    meaningful_terms = _meaningful_query_terms(query)
+    combined_lower = _collapse_ws(f"{title} {snippet}").lower()
+    matched_terms = [term for term in meaningful_terms if term.lower() in combined_lower][:4]
+    if matched_terms:
+        joined = " ".join(matched_terms)
+        if _contains_cjk(joined):
+            return joined[:24].strip()
+    if title_candidate:
+        return title_candidate
+    compact_query = " ".join(meaningful_terms[:4]).strip() or _collapse_ws(query)[:24]
+    return compact_query[:24].strip() or "通用资料"
+
+
+def _best_topic_segment(title: str) -> str:
+    text = _collapse_ws(str(title or ""))
+    if not text:
+        return ""
+    segments = re.split(r"[|｜\-—·•:：/]", text)
+    candidates = [segment.strip(" []【】()（）") for segment in segments if segment.strip()]
+    generic = {"首页", "正文", "全文", "详情", "通用网页", "官方网站"}
+    for candidate in candidates:
+        if candidate in generic or len(candidate) < 2:
+            continue
+        return candidate[:24]
+    return text[:24]
+
+
+def _infer_content_mode(
+    content: str,
+    *,
+    quality: dict[str, Any] | None = None,
+    quality_report: dict[str, Any] | None = None,
+    explicit_hint: str = "",
+) -> str:
+    """Classify archive content depth for downstream context/wiki/RAG ranking."""
+    hint = str(explicit_hint or "").strip().lower()
+    if hint in ARCHIVE_CONTENT_MODE_RANK:
+        return hint
+    text = _collapse_ws(content)
+    chars = len(text)
+    quality = quality if isinstance(quality, dict) else {}
+    quality_report = quality_report if isinstance(quality_report, dict) else {}
+    usable = bool(quality_report.get("usable")) if quality_report else False
+    fallback = bool(quality_report.get("fallback")) if quality_report else False
+    score = _quality_score(quality) or 0
+    has_markdown_heading = content.lstrip().startswith("#")
+    if fallback:
+        if score >= 70 and chars >= 12:
+            return "partial_body"
+        return "snippet"
+    if chars <= 260:
+        if has_markdown_heading or score >= 70 or chars >= ARCHIVE_MIN_USEFUL_CHARS:
+            return "partial_body"
+        return "snippet"
+    if usable and (chars >= 1200 or score >= 80):
+        return "full_body"
+    if usable or chars >= 420:
+        return "partial_body"
+    return "snippet"
 
 
 def search_documents(
@@ -974,7 +1228,7 @@ def export_documents(
     with _connect(db_path) as conn:
         rows = conn.execute("SELECT * FROM documents ORDER BY updated_at DESC, id DESC").fetchall()
     records = [_row_to_record(row, include_content=True, rag=True) for row in rows]
-    return [
+    filtered = [
         record for record in records
         if _export_filter(
             record,
@@ -984,6 +1238,7 @@ def export_documents(
             min_quality=min_quality,
         )
     ]
+    return sorted(filtered, key=_archive_record_priority, reverse=True)
 
 
 def export_record_for_profile(record: dict[str, Any], profile: str = "jsonl") -> dict[str, Any]:
@@ -1129,19 +1384,22 @@ def format_archive_context(records: list[dict[str, Any]], title: str = "观澜�
         "",
         "Agent 提示：这是本地 archive 记忆层，只反映已归档资料；给本地模型/RAG/Wiki 用时，先说明这个边界。",
         "",
-        "来源 | 标题 | 摘要 | 时间",
-        "--- | --- | --- | ---",
+        "来源 | 主题 | 内容层级 | 标题 | 摘要 | 时间",
+        "--- | --- | --- | --- | --- | ---",
     ]
     if not records:
-        lines.append("无结果 | - | 可先运行 `guanlan archive list` 确认本地库，或用 `guanlan archive ingest-research` 联网研究并入库。 | -")
+        lines.append("无结果 | - | - | - | 可先运行 `guanlan archive list` 确认本地库，或用 `guanlan archive ingest-research` 联网研究并入库。 | -")
         return "\n".join(lines)
     for item in records:
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
         domain = _pipe_safe(str(item.get("domain", "unknown")))
+        topic_label = _pipe_safe(str(item.get("topic_label") or metadata.get("topic_label") or metadata.get("topic_key") or "-"))
+        content_mode = _pipe_safe(str(item.get("content_mode") or metadata.get("content_mode") or "unknown"))
         title_text = _pipe_safe(_collapse_ws(str(item.get("title", ""))))
         excerpt = _pipe_safe(_collapse_ws(str(item.get("excerpt", "")))[:160])
         updated = _format_time(float(item.get("updated_at", 0) or 0))
         url = str(item.get("url", ""))
-        lines.append(f"{domain} | [{title_text}]({url}) | {excerpt} | {updated}")
+        lines.append(f"{domain} | {topic_label} | {content_mode} | [{title_text}]({url}) | {excerpt} | {updated}")
     return "\n".join(lines)
 
 
@@ -1511,6 +1769,10 @@ def _row_to_record(
         "updated_at": data.get("updated_at", 0),
         "metadata": metadata,
     }
+    record["topic_label"] = str(metadata.get("topic_label") or _derive_topic_label("", title=str(record.get("title", "")), topic_key=str(metadata.get("topic_key") or "")))
+    record["content_mode"] = str(metadata.get("content_mode") or _infer_content_mode(content, quality=metadata.get("read_quality"), quality_report=metadata.get("quality_report")))
+    record["content_chars"] = int(metadata.get("content_chars") or len(_collapse_ws(content)))
+    record["quality_score"] = _quality_score(metadata.get("read_quality") if isinstance(metadata.get("read_quality"), dict) else {})
     if "match_score" in data:
         record["match_score"] = data.get("match_score", 0)
     if "rank" in data:
@@ -1527,6 +1789,7 @@ def _row_to_record(
             "domain": record.get("domain", ""),
             "source_type": metadata.get("source_type", ""),
             "topic": metadata.get("topic_key", ""),
+            "topic_label": record.get("topic_label", ""),
             "updated_at": record.get("updated_at", 0),
         }
     if trace and query:
@@ -1557,7 +1820,9 @@ def _export_filter(
     if source_type and source_type.lower() not in str(metadata.get("source_type", "")).lower():
         return False
     if topic and topic.lower() not in str(metadata.get("topic_key", "")).lower():
-        return False
+        topic_label = str(metadata.get("topic_label", "")).lower()
+        if topic.lower() not in topic_label:
+            return False
     if min_quality is not None:
         quality = metadata.get("read_quality") if isinstance(metadata.get("read_quality"), dict) else {}
         score = _quality_score(quality)
@@ -1581,6 +1846,7 @@ def _quality_score(quality: dict[str, Any]) -> float | None:
 
 def _rag_metadata(record: dict[str, Any]) -> dict[str, Any]:
     metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    quality = metadata.get("read_quality") if isinstance(metadata.get("read_quality"), dict) else {}
     return {
         "id": f"guanlan-{record.get('id')}",
         "source": record.get("url", ""),
@@ -1588,11 +1854,34 @@ def _rag_metadata(record: dict[str, Any]) -> dict[str, Any]:
         "domain": record.get("domain", ""),
         "source_type": metadata.get("source_type", ""),
         "topic": metadata.get("topic_key", ""),
+        "topic_label": metadata.get("topic_label", "") or record.get("topic_label", ""),
         "evidence_role": metadata.get("evidence_role", ""),
+        "content_mode": metadata.get("content_mode", "") or record.get("content_mode", ""),
+        "content_chars": metadata.get("content_chars", 0) or record.get("content_chars", 0),
+        "read_quality_score": _quality_score(quality),
         "updated_at": record.get("updated_at", 0),
         "content_hash": record.get("content_hash", ""),
         "tool": "guanlan",
     }
+
+
+def _archive_record_priority(record: dict[str, Any]) -> tuple[float, ...]:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    quality = metadata.get("read_quality") if isinstance(metadata.get("read_quality"), dict) else {}
+    audit = metadata.get("ingest_audit") if isinstance(metadata.get("ingest_audit"), dict) else {}
+    quality_score = _quality_score(quality) or 0.0
+    content_mode = str(metadata.get("content_mode") or record.get("content_mode") or "unknown")
+    content_rank = ARCHIVE_CONTENT_MODE_RANK.get(content_mode, 0)
+    content_chars = int(metadata.get("content_chars") or record.get("content_chars") or 0)
+    keep_bonus = 1 if audit.get("decision") == "keep" else 0
+    return (
+        keep_bonus,
+        content_rank,
+        quality_score,
+        min(content_chars, 12000),
+        float(record.get("updated_at", 0) or 0),
+        float(record.get("id", 0) or 0),
+    )
 
 
 def _verification_probe_terms(title: str, content: str) -> list[str]:

@@ -103,9 +103,11 @@ def build_archive_wiki_context(
         if min_quality and enriched["quality_score"] is not None and enriched["quality_score"] < min_quality:
             enriched["wiki_status"] = "candidate"
         content = str(full.get("content") or "")
-        enriched["content_excerpt"] = _compact(content, max_chars)
+        excerpt_limit = _context_excerpt_limit(enriched, max_chars=max_chars)
+        enriched["content_excerpt"] = _compact(content, excerpt_limit)
         enriched["search_trace"] = hit.get("search_trace", {})
         records.append(enriched)
+    records = sorted(records, key=_wiki_record_priority, reverse=True)
     context = format_archive_wiki_context({"query": query, "records": records})
     return {
         "query": query,
@@ -125,25 +127,29 @@ def format_archive_wiki_context(payload: dict[str, Any]) -> str:
         "Use this as a local evidence pack. It only reflects documents already stored in the Guanlan archive.",
         "Do not treat missing results as proof that the wider web has no evidence.",
         "",
-        "来源 | 状态 | 标题 | 摘要",
-        "--- | --- | --- | ---",
+        "来源 | 状态 | 主题 | 内容层级 | 标题 | 摘要",
+        "--- | --- | --- | --- | --- | ---",
     ]
     if not records:
-        lines.append("无结果 | - | - | 本地 archive 未命中；可先运行 `guanlan archive list` 或联网补搜。")
+        lines.append("无结果 | - | - | - | - | 本地 archive 未命中；可先运行 `guanlan archive list` 或联网补搜。")
         return "\n".join(lines)
     for record in records:
         title = _pipe_safe(str(record.get("title", "")))
         url = str(record.get("url", ""))
         domain = _pipe_safe(str(record.get("domain", "")))
         status = _pipe_safe(str(record.get("wiki_status", "")))
+        topic = _pipe_safe(str(record.get("wiki_topic", "")))
+        content_mode = _pipe_safe(str(record.get("content_mode", "")))
         excerpt = _pipe_safe(str(record.get("excerpt") or record.get("content_excerpt") or ""))[:220]
-        lines.append(f"{domain} | {status} | [{title}]({url}) | {excerpt}")
+        lines.append(f"{domain} | {status} | {topic} | {content_mode} | [{title}]({url}) | {excerpt}")
     lines.extend(["", "## Evidence Notes"])
     for idx, record in enumerate(records, start=1):
         lines.append(f"### [{idx}] {record.get('title', '')}")
         lines.append(f"- URL: {record.get('url', '')}")
         lines.append(f"- Domain: {record.get('domain', '')}")
         lines.append(f"- Wiki status: {record.get('wiki_status', '')}")
+        lines.append(f"- Topic: {record.get('wiki_topic', '')}")
+        lines.append(f"- Content mode: {record.get('content_mode', '')}")
         if record.get("quality_score") is not None:
             lines.append(f"- Read quality: {record.get('quality_score')}")
         matched = ((record.get("search_trace") or {}).get("matched_terms") or [])
@@ -267,6 +273,12 @@ def _enrich_wiki_record(record: dict[str, Any], *, min_quality: int) -> dict[str
     enriched["wiki_status"] = status
     enriched["wiki_reasons"] = reasons
     enriched["wiki_topic"] = _topic_label(enriched)
+    enriched["content_mode"] = str(
+        metadata.get("content_mode")
+        or enriched.get("content_mode")
+        or "unknown"
+    )
+    enriched["content_chars"] = int(metadata.get("content_chars") or enriched.get("content_chars") or len(_compact(content, 2000)))
     enriched["updated_label"] = _format_time(float(enriched.get("updated_at", 0) or 0))
     return enriched
 
@@ -281,11 +293,35 @@ def _group_by_topic(records: list[dict[str, Any]]) -> dict[str, list[dict[str, A
 
 def _topic_label(record: dict[str, Any]) -> str:
     metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
-    for key in ("topic_key", "source_type", "evidence_role"):
+    for key in ("topic_label", "topic_key", "source_type", "evidence_role"):
         value = str(metadata.get(key) or "").strip()
         if value:
             return value
     return str(record.get("domain") or "general")
+
+
+def _wiki_record_priority(record: dict[str, Any]) -> tuple[float, ...]:
+    status = 1 if str(record.get("wiki_status") or "") == "core" else 0
+    content_mode = str(record.get("content_mode") or "unknown")
+    content_rank = {"full_body": 3, "partial_body": 2, "snippet": 1}.get(content_mode, 0)
+    return (
+        status,
+        content_rank,
+        float(record.get("quality_score") or 0),
+        min(int(record.get("content_chars") or 0), 12000),
+        float((record.get("search_trace") or {}).get("match_score") or 0),
+        float(record.get("updated_at", 0) or 0),
+        float(record.get("id", 0) or 0),
+    )
+
+
+def _context_excerpt_limit(record: dict[str, Any], *, max_chars: int) -> int:
+    content_mode = str(record.get("content_mode") or "unknown")
+    if content_mode == "full_body":
+        return max(max_chars, 1600)
+    if content_mode == "partial_body":
+        return max(max_chars, 1000)
+    return max_chars
 
 
 def _render_wiki_markdown(

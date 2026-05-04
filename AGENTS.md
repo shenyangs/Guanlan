@@ -46,13 +46,13 @@ browser automation request; it is a read-only explanation of why the page is or 
 which Guanlan command should be used next. Do not keep retrying a blocked/dynamic page before trying
 the recommended structured source, scoped search, or archive workflow.
 If diagnosis emits `browser_assist.recommended=true`, ask the user for explicit permission before
-using the host Agent browser to read only the target page's visible content. Report it as
+using the host Agent browser to open the target URL and read only the target page's visible content. If login, verification, or account switching is needed, let the user complete it in the browser first. Report it as
 "Guanlan planned the route, then I used user-authorized browser-visible evidence as supplementary
 evidence." Do not read Cookie, Token, password, keychain, private messages, orders, admin pages, or
 unrelated personal data, and do not post, like, comment, follow, message, purchase, or submit forms.
 If the user authorizes visible-page evidence, it may be archived with
-`guanlan archive add-browser-note --url "URL" --text-file notes.md`; keep the
-`browser_assisted` / `visible_page_only` boundary.
+`guanlan archive add-browser-note --from-json browser-notes.jsonl`; keep the
+`browser_assisted` / `visible_page_only` boundary. `--url ... --text-file` is only a manual fallback when the host Agent has no browser extraction capability.
 
 Quality salvage rule: when trace shows `quality_gate.reason=partial_salvage`, treat it as usable
 strong-source evidence with gaps, not as a failed search. Read representative official/vertical URLs
@@ -199,7 +199,7 @@ guanlan hotnews uapis:catalog --limit 80
 guanlan hotnews vvhan:all --limit 80
 guanlan doctor --install-check
 guanlan doctor --trace
-guanlan archive add-browser-note --url "URL" --text-file notes.md
+guanlan archive add-browser-note --from-json browser-notes.jsonl
 guanlan archive ingest-research "query" --limit 80
 guanlan archive ingest-research "query" --limit 80 --read-top 3
 guanlan archive verify

@@ -4369,6 +4369,7 @@ def build_research_packet(
     source_diagnostics = build_source_diagnostics(results, route_plan=route_plan.to_dict())
     freshness_guard = build_freshness_guard(results, route_plan=route_plan.to_dict(), recency=recency)
     source_mix_guard = build_source_mix_guard(results, route_plan=route_plan.to_dict())
+    browser_assist_suggestion = _browser_assist_suggestion_from_results(results)
     packet = {
         "query": query,
         "preset": preset_config["id"],
@@ -4390,6 +4391,7 @@ def build_research_packet(
         "source_diagnostics": source_diagnostics,
         "freshness_guard": freshness_guard,
         "source_mix_guard": source_mix_guard,
+        "browser_assist_suggestion": browser_assist_suggestion,
         "topic_count": len({item.get("topic_key") for item in results if item.get("topic_key")}),
         "search_errors": search_errors,
         "result_groups": result_groups,
@@ -6572,6 +6574,7 @@ def _search_context_diagnostics(results: list[dict[str, Any]]) -> list[str]:
     site_filter = trace.get("site_filter") or quality_summary.get("site_filter") or {}
     limit_advice = trace.get("agent_limit_advice") or quality_summary.get("agent_limit_advice") or {}
     external_fetch = trace.get("external_fetch_strategy") or quality_summary.get("external_fetch_strategy") or {}
+    browser_assist = trace.get("browser_assist_suggestion") or quality_summary.get("browser_assist_suggestion") or {}
     lines: list[str] = []
     quality_interpretation = str(quality_summary.get("interpretation") or "")
     quality_status = str(quality_summary.get("quality_status") or "")
@@ -6597,6 +6600,11 @@ def _search_context_diagnostics(results: list[dict[str, Any]]) -> list[str]:
         )
     if isinstance(external_fetch, dict) and external_fetch.get("enabled"):
         lines.append(f"> 外部补证策略: {external_fetch.get('agent_instruction')}")
+    if isinstance(browser_assist, dict) and browser_assist.get("enabled"):
+        platforms = ",".join(browser_assist.get("platforms") or []) or "platform"
+        lines.append(f"> 浏览器补证建议: 命中 {platforms} 等平台页；如公开读取不足，先询问用户授权，再用宿主浏览器读取目标页可见内容。")
+        if browser_assist.get("archive_next_step"):
+            lines.append(f"> 浏览器补证入库: `{browser_assist.get('archive_next_step')}`")
     for reason in quality_summary.get("why_cautious") or []:
         lines.append(f"> 谨慎原因: {reason}")
     workflow_plan = quality_summary.get("agent_workflow_plan") or {}
@@ -7329,6 +7337,9 @@ def search_quality_summary(
     followup_actions = _quality_followup_actions(quality, warnings, missing_roles, quality_status)
     workflow_plan = _quality_workflow_plan(quality, warnings, missing_roles, quality_status, followup_actions)
     execution_policy = _quality_execution_policy(quality_status, followup_actions, workflow_plan)
+    browser_assist_suggestion = _browser_assist_suggestion_from_results(results)
+    if browser_assist_suggestion.get("enabled"):
+        suggestions.append("命中动态/登录态平台页；如公开读取不足，可请求用户授权后用宿主浏览器可见页补证。")
 
     return {
         "status": status,
@@ -7348,6 +7359,7 @@ def search_quality_summary(
         "agent_limit_advice": limit_advice,
         "scope_distinction": scope_distinction,
         "external_fetch_strategy": external_fetch_strategy,
+        "browser_assist_suggestion": browser_assist_suggestion,
         "interpretation": interpretation,
         "guanlan_next_steps": guanlan_next_steps,
         "agent_reporting_contract": reporting_contract,
@@ -7359,6 +7371,21 @@ def search_quality_summary(
         "agent_execution_policy": execution_policy,
         "suggestions": _unique_keep_order([item for item in suggestions if item]),
     }
+
+
+def _browser_assist_suggestion_from_results(results: list[Any]) -> dict[str, Any]:
+    try:
+        from guanlan.browser_assist import suggest_browser_assist_from_results
+    except Exception:
+        return {"enabled": False}
+
+    rows: list[dict[str, Any]] = []
+    for item in results:
+        if isinstance(item, dict):
+            rows.append(item)
+        elif hasattr(item, "to_dict"):
+            rows.append(item.to_dict())
+    return suggest_browser_assist_from_results(rows, max_urls=5)
 
 
 def _quality_status(

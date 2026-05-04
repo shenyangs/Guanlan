@@ -49,6 +49,7 @@ def test_serve_dispatch_browser_assist_plan_is_read_only():
     assert body["recommended"] is True
     assert body["browser_assist_task"]["task_type"] == "open_and_read_visible_page"
     assert body["browser_assist_task"]["read_only"] is True
+    assert body["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
     assert "cookies" in body["browser_assist_task"]["must_not_access"]
 
 

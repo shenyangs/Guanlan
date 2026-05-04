@@ -90,7 +90,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         when_to_use="diagnose page 显示动态壳、登录墙、访问门槛、搜索兜底或弱正文，但该平台内容仍有样本价值时。",
         cli=[
             "guanlan browser-assist plan \"URL\" --json",
-            "guanlan archive add-browser-note --url \"URL\" --text-file notes.md",
+            "guanlan archive add-browser-note --from-json browser-notes.jsonl",
         ],
         mcp="guanlan_browser_assist_plan",
         boundary="只生成计划或归档用户授权的可见页笔记；不读取 Cookie、Token、钥匙串、私信、订单、后台，不执行写操作。",

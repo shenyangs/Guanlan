@@ -266,6 +266,9 @@ def main():
     p_browser_assist_plan.add_argument("--page-type", default="access_gate", help="Diagnosis page type hint")
     p_browser_assist_plan.add_argument("--signal", action="append", default=[], help="Diagnosis signal hint; can be repeated")
     p_browser_assist_plan.add_argument("--platform", default="", help="Optional platform label override")
+    p_browser_assist_plan.add_argument("--max-pages", type=int, default=3, help="Maximum browser-visible target pages in the host-agent task")
+    p_browser_assist_plan.add_argument("--max-chars-per-page", type=int, default=3000, help="Maximum visible characters per page for the host-agent task")
+    p_browser_assist_plan.add_argument("--task-goal", default="", help="Optional host-agent task goal")
     p_browser_assist_plan.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_browser_assist_plan.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
 
@@ -639,9 +642,10 @@ def main():
         "add-browser-note",
         help="Archive user-authorized visible browser evidence with explicit boundaries",
     )
-    p_archive_browser_note.add_argument("--url", required=True, help="Target page URL shown in the browser")
+    p_archive_browser_note.add_argument("--url", default="", help="Target page URL shown in the browser; optional with --from-json")
     p_archive_browser_note.add_argument("--text", default="", help="Visible page text to archive")
     p_archive_browser_note.add_argument("--text-file", default="", help="File containing visible page text")
+    p_archive_browser_note.add_argument("--from-json", default="", help="JSON/JSONL file or '-' from host-browser visible-page extraction")
     p_archive_browser_note.add_argument("--title", default="", help="Visible page title")
     p_archive_browser_note.add_argument("--platform", default="", help="Optional platform label")
     p_archive_browser_note.add_argument("--author", default="", help="Visible author/account when relevant")
@@ -1601,6 +1605,9 @@ def _cmd_browser_assist(args):
         page_type=args.page_type,
         signals=list(args.signal or []),
         force=True,
+        max_pages=max(args.max_pages, 1),
+        max_chars_per_page=max(args.max_chars_per_page, 1),
+        task_goal=args.task_goal,
     )
     if args.platform:
         plan["platform"] = args.platform

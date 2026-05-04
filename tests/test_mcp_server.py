@@ -294,6 +294,7 @@ def test_mcp_browser_assist_plan_returns_task():
     assert payload["recommended"] is True
     assert payload["browser_assist_task"]["read_only"] is True
     assert payload["browser_assist_task"]["status"] == "requires_user_approval"
+    assert payload["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
     assert "read_cookies" in payload["browser_assist_task"]["forbidden_actions"]
 
 

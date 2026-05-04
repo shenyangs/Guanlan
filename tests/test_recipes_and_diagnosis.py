@@ -76,4 +76,6 @@ def test_browser_assist_plan_is_read_only_and_user_authorized():
     assert "read_visible_text" in plan["allowed_actions"]
     assert "post" in plan["forbidden_actions"]
     assert plan["browser_assist_task"]["output_contract"]["visible_page_only"] is True
+    assert plan["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
+    assert plan["browser_assist_task"]["host_browser_contract"]["manual_copy_is_fallback_only"] is True
     assert "Cookie" in plan["user_prompt"]
