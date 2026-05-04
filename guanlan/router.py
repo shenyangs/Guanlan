@@ -495,12 +495,22 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "手游",
             "动漫",
             "二次元",
+            "漫画",
+            "番剧",
+            "轻小说",
+            "学园",
+            "治愈",
+            "魔女",
+            "manga",
+            "anime",
+            "bangumi",
+            "pixiv",
         ),
         "scopes": ("entertainment", "social_web", "business"),
         "fallback": ("finance", "tech_dev", "global_entertainment", "jp_kr_entertainment"),
-        "sites": ("douban.com", "maoyan.com", "bilibili.com", "weibo.com", "taptap.cn"),
+        "sites": ("douban.com", "maoyan.com", "bilibili.com", "weibo.com", "taptap.cn", "bangumi.tv", "pixiv.net", "mangapedia.com", "manba.co.jp"),
         "roles": ("platform_metric", "user_review", "industry_report", "fan_discussion", "official_release"),
-        "warning": "文娱问题应区分平台热度、用户评分、产业报道、宣发通稿和粉圈讨论；单平台热搜不能代表总体口碑。",
+        "warning": "文娱问题应区分平台热度、用户评分、产业报道、宣发通稿和粉圈讨论；漫画/番剧/轻小说题材优先看条目站、创作者社区和公开口碑，单平台热搜不能代表总体口碑。",
     },
     {
         "intent": "reputation",
@@ -732,7 +742,6 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "导师介绍",
             "导师情况",
             "院系",
-            "学院",
             "计算机系",
             "研究生院",
             "教务处",
@@ -963,7 +972,7 @@ _DOMAIN_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("ai", ("ai", "人工智能", "大模型", "agent", "智能体", "llm", "算力", *_ROBOTICS_AI_TERMS)),
     ("consumer", ("手机", "电脑", "家电", "相机", "耳机", "消费", "购买", "值不值得买")),
     ("career", ("招聘", "求职", "岗位", "薪资", "面试", "简历", "校招", "面经", "salary", "interview")),
-    ("education", ("高校", "大学", "学院", "研究生", "招生", "导师", "院系", "推免", "考研", "雅思", "托福", "机经")),
+    ("education", ("高校", "大学", "研究生", "招生", "导师", "院系", "推免", "考研", "雅思", "托福", "机经")),
     ("health", ("医疗", "疾病", "药", "治疗", "医生", "症状", "医院", "孕期", "肺结节", "布洛芬")),
     ("legal", ("法律", "诉讼", "判决", "合同", "律师", "侵权", "工伤", "竞业", "版权")),
     ("finance", ("财经", "股票", "股价", "行情", "财报", "公告", "基金", "债券", "宏观", "降息", "雪球", "股吧", "研报", "nvidia", "etf")),
@@ -975,7 +984,7 @@ _DOMAIN_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("policy", ("regulation", "policy", "compliance", "law", "standard")),
     ("company", ("pricing", "release notes", "docs", "official blog", "investor relations")),
     ("reviews", ("review", "reviews", "reddit", "g2", "trustpilot", "capterra")),
-    ("entertainment", ("文娱", "娱乐", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏")),
+    ("entertainment", ("文娱", "娱乐", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏", "动漫", "漫画", "番剧", "轻小说", "二次元", "bangumi", "pixiv")),
     ("western_entertainment", ("欧美娱乐", "西方娱乐", "好莱坞", "hollywood", "billboard", "grammy", "taylor swift", "hbo", "deadline", "variety", "奥斯卡")),
     ("jp_kr_entertainment", ("日韩娱乐", "韩娱", "日娱", "韩媒", "日媒", "韩网", "k-pop", "kpop", "j-pop", "jpop", "oricon", "soompi")),
 )
@@ -1429,6 +1438,9 @@ def _query_variants(query: str, intents: list[str], domains: list[str]) -> list[
         variants.append(f"{query} 豆瓣 评分 评价")
         variants.append(f"{query} 猫眼 灯塔 票房 热度")
         variants.append(f"{query} 微博 B站 讨论")
+        if _contains_any(query.lower(), ["动漫", "漫画", "番剧", "轻小说", "二次元", "学园", "魔女", "治愈", "日常", "manga", "anime"]):
+            variants.append(f"{query} Bangumi Pixiv 漫画 推荐")
+            variants.append(f"{query} mangapedia manba 豆瓣 条目")
     if "company_primary" in intents:
         variants.append(f"{query} official docs pricing release notes")
     if "tech" in intents:

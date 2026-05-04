@@ -108,6 +108,23 @@ def test_search_quality_profile_detects_entertainment_intent():
     assert "单平台热度" in quality["guidance"]
 
 
+def test_search_quality_profile_routes_magic_school_manga_to_entertainment():
+    quality = webtools.detect_search_quality_profile("魔法学院日常漫画 治愈系 魔女", profile="china")
+
+    assert quality["intent"] == "entertainment"
+    assert "entertainment" in quality["preferred_scopes"]
+    assert "漫画" in quality["matched_terms"]
+    assert any("acg_disambiguation" in reason for reason in quality["reasons"])
+
+
+def test_search_quality_profile_keeps_real_school_queries_in_university_lane():
+    quality = webtools.detect_search_quality_profile("南京师范大学中北学院 计算机 导师 招生", profile="china")
+
+    assert quality["intent"] == "university_admissions"
+    assert "university" in quality["preferred_scopes"]
+    assert any(term in {"导师", "招生"} for term in quality["matched_terms"])
+
+
 def test_search_quality_profile_detects_global_entertainment_intent():
     quality = webtools.detect_search_quality_profile("Taylor Swift latest album tour", profile="english")
 
@@ -156,6 +173,19 @@ def test_direct_source_seeds_cover_vertical_lookups_without_treating_dev_tasks_a
     assert any("CVE-2026-12345" in item["url"] for item in security_seeds)
     assert is_live_sports_lookup("NBA季后赛2026年首轮战绩比分", intents=["sports"])
     assert not is_live_sports_lookup("NBA API 开源项目 教程", intents=["tech", "sports"])
+
+
+def test_direct_source_seeds_cover_acg_entrypoints():
+    seeds = direct_source_seeds(
+        "魔法学院日常漫画 治愈系 魔女",
+        intents=["entertainment"],
+        scopes=["entertainment"],
+    )
+
+    urls = {item["url"] for item in seeds}
+    assert any("bgm.tv/subject_search" in url for url in urls)
+    assert any("pixiv.net/tags/" in url for url in urls)
+    assert any("mangapedia.com" in url for url in urls)
 
 
 def test_direct_source_seeds_cover_finance_layers():

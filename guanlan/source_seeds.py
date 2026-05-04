@@ -237,7 +237,7 @@ def direct_source_seeds(
         seeds.extend(_global_entertainment_seeds(query))
     if _matches_vertical(intent_set, scope_set, "jp_kr_entertainment") or _contains_any(text, ("k-pop", "kpop", "j-pop", "jpop", "oricon", "soompi", "blackpink", "bts")):
         seeds.extend(_jp_kr_entertainment_seeds(query))
-    if _matches_vertical(intent_set, scope_set, "entertainment") and _contains_any(text, ("票房", "豆瓣", "评分", "电影", "综艺", "剧集", "游戏")):
+    if _matches_vertical(intent_set, scope_set, "entertainment") and _contains_any(text, ("票房", "豆瓣", "评分", "电影", "综艺", "剧集", "游戏", "动漫", "漫画", "番剧", "轻小说", "二次元", "manga", "anime")):
         seeds.extend(_china_entertainment_seeds(query))
     if _matches_vertical(intent_set, scope_set, "academic") and _contains_any(text, ("ei", "sci", "scopus", "compendex", "投稿", "收录", "会议", "期刊", "论文")):
         seeds.extend(_academic_seeds(query))
@@ -487,11 +487,21 @@ def _jp_kr_entertainment_seeds(query: str) -> list[dict[str, Any]]:
 
 def _china_entertainment_seeds(query: str) -> list[dict[str, Any]]:
     encoded = urllib.parse.quote(query)
-    return [
+    seeds = [
         _seed("ent:douban_movie_search", "豆瓣电影搜索", f"https://search.douban.com/movie/subject_search?search_text={encoded}", "豆瓣电影搜索入口，适合核验评分、条目和用户评论样本。", scope="entertainment", source_type="文娱/内容平台", role="rating_sample", trust=3, read_ready=False),
         _seed("ent:maoyan_boxoffice", "猫眼专业版票房", "https://piaofang.maoyan.com/dashboard", "猫眼专业版票房入口，适合核验票房和市场热度口径。", scope="entertainment", source_type="文娱/内容平台", role="box_office_metric", trust=4),
         _seed("ent:taptap", "TapTap", "https://www.taptap.cn/", "TapTap 游戏条目和玩家样本入口，适合游戏口碑核验。", scope="entertainment", source_type="文娱/内容平台", role="user_sample", trust=3, read_ready=False),
     ]
+    if _contains_any(_norm(query), ("动漫", "漫画", "番剧", "轻小说", "二次元", "魔女", "学园", "治愈", "日常", "manga", "anime")):
+        seeds.extend(
+            [
+                _seed("ent:bangumi_subject", "Bangumi 条目搜索", f"https://bgm.tv/subject_search/{encoded}?cat=1", "Bangumi 条目搜索入口，适合发现漫画/动画条目、标签和公开口碑线索。", scope="entertainment", source_type="文娱/内容平台", role="catalog_entry", trust=4, read_ready=False),
+                _seed("ent:pixiv_tag", "Pixiv 标签入口", f"https://www.pixiv.net/tags/{encoded}/artworks", "Pixiv 标签入口，适合发现漫画/插画/角色标签和创作者样本。", scope="entertainment", source_type="文娱/内容平台", role="creator_sample", trust=3, read_ready=False),
+                _seed("ent:mangapedia", "MangaPedia", "https://mangapedia.com/", "MangaPedia 公开百科入口，适合核验漫画作品简介和推荐线索。", scope="entertainment", source_type="文娱/内容平台", role="catalog_entry", trust=4, read_ready=False),
+                _seed("ent:manba", "マンバ", "https://manba.co.jp/", "マンバ漫画推荐入口，适合发现漫画题材清单和公开推荐样本。", scope="entertainment", source_type="文娱/内容平台", role="recommendation_sample", trust=3, read_ready=False),
+            ]
+        )
+    return seeds
 
 
 def _academic_seeds(query: str) -> list[dict[str, Any]]:

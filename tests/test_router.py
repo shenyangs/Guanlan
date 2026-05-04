@@ -67,6 +67,16 @@ def test_route_plan_detects_entertainment_need():
     assert plan.advisor_recommended is True
 
 
+def test_route_plan_routes_magic_school_manga_to_entertainment_not_university():
+    plan = build_route_plan("魔法学院日常漫画 治愈系 魔女", profile="china")
+
+    assert "entertainment" in plan.primary_intents + plan.secondary_intents
+    assert "university_admissions" not in plan.primary_intents
+    assert "bangumi.tv" in plan.target_sites
+    assert "pixiv.net" in plan.target_sites
+    assert any("--preset entertainment" in command for command in plan.recommended_commands)
+
+
 def test_route_plan_detects_global_entertainment_need():
     plan = build_route_plan("Taylor Swift 最新公开动态 新专辑 巡演", profile="china")
 

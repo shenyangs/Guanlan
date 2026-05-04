@@ -554,8 +554,19 @@ h1 {
 }
 
 @media (max-width: 640px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  body::before {
+    background:
+      linear-gradient(180deg, rgba(5, 5, 5, 0.08), rgba(5, 5, 5, 0.94) 72%),
+      radial-gradient(circle at 50% 4rem, rgba(244, 242, 236, 0.12), transparent 18rem);
+  }
+
   .site-header {
     padding: 0.75rem 1rem;
+    background: rgba(5, 5, 5, 0.82);
   }
 
   .brand span:last-child {
@@ -570,33 +581,148 @@ h1 {
   }
 
   .hero {
-    padding: 4.2rem 1rem 3rem;
+    gap: 1.5rem;
+    min-height: calc(100svh - 3.9rem);
+    padding: 4.8rem 1rem 2.4rem;
+  }
+
+  .hero::after {
+    left: 1rem;
+    right: 1rem;
+    bottom: 1rem;
   }
 
   h1 {
-    font-size: clamp(3.4rem, 18vw, 5.2rem);
+    max-width: 9ch;
+    margin-bottom: 0.95rem;
+    font-size: clamp(3.05rem, 16vw, 4.55rem);
+    line-height: 0.95;
+  }
+
+  .hero-description {
+    max-width: 20rem;
+    font-size: 1.08rem;
+    line-height: 1.72;
+  }
+
+  .hero-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+    max-width: 20rem;
+    margin-top: 1.45rem;
+  }
+
+  .primary-action,
+  .secondary-action,
+  .copy-button {
+    width: 100%;
+    min-height: 3.1rem;
+  }
+
+  .hero-signal {
+    width: 100%;
+    max-width: none;
+    margin-top: 0.4rem;
+    padding: 0.9rem;
+    background: rgba(5, 5, 5, 0.68);
+  }
+
+  .signal-title {
+    font-size: 0.92rem;
+  }
+
+  .signal-title.is-strong {
+    font-size: 1.08rem;
+  }
+
+  .signal-divider {
+    margin: 0.8rem 0;
   }
 
   .section-block,
   .install-block {
-    padding: 4rem 1rem;
+    padding: 3.7rem 1rem;
   }
 
   .section-heading h2,
   .layer-statement h2 {
-    font-size: clamp(2.1rem, 12vw, 3.7rem);
+    font-size: clamp(2rem, 10.6vw, 3.25rem);
+    line-height: 1.04;
+  }
+
+  .shift-copy {
+    gap: 1rem;
+    font-size: 1rem;
+    line-height: 1.78;
+  }
+
+  .compare-grid {
+    gap: 0.8rem;
+  }
+
+  .compare-panel {
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.052);
+  }
+
+  .compare-panel h3 {
+    max-width: 12ch;
+    margin: 0.85rem 0 1.1rem;
+    font-size: clamp(2rem, 11vw, 3rem);
+  }
+
+  .compare-panel li {
+    gap: 0.45rem;
+    font-size: 0.95rem;
+  }
+
+  .layer-list {
+    margin-top: 0.4rem;
   }
 
   .layer-list article {
     grid-template-columns: 2.5rem minmax(0, 1fr);
-    gap: 0.6rem 1rem;
+    gap: 0.45rem 0.8rem;
+    padding: 1.18rem 0;
   }
 
   .layer-list p {
     grid-column: 2;
+    line-height: 1.7;
+  }
+
+  .install-steps {
+    gap: 0.8rem;
+  }
+
+  .install-steps article {
+    min-height: auto;
+    padding: 1rem;
+  }
+
+  .install-steps pre {
+    min-height: auto;
+    padding: 0.85rem;
+  }
+
+  .install-steps code {
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .site-footer {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.7rem;
     padding: 1.2rem 1rem 1.6rem;
+  }
+
+  .site-footer span {
+    margin-right: 0;
+  }
+
+  .site-footer a {
+    width: fit-content;
   }
 }

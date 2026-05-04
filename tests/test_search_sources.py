@@ -24,6 +24,8 @@ def test_search_scopes_include_requested_china_sources():
     assert scopes["university"]["trust_level"] == 5
     assert "douban.com" in scopes["entertainment"]["domains"]
     assert "maoyan.com" in scopes["entertainment"]["domains"]
+    assert "bangumi.tv" in scopes["entertainment"]["domains"]
+    assert "pixiv.net" in scopes["entertainment"]["domains"]
     assert scopes["entertainment"]["source_type"] == "文娱/内容平台"
     assert "billboard.com" in scopes["global_entertainment"]["domains"]
     assert "variety.com" in scopes["global_entertainment"]["domains"]
@@ -64,6 +66,9 @@ def test_resolve_scope_aliases():
     assert resolve_scope("reddit").id == "community_sample"
     assert resolve_scope("movie").id == "entertainment"
     assert resolve_scope("douban").id == "entertainment"
+    assert resolve_scope("acg").id == "entertainment"
+    assert resolve_scope("manga").id == "entertainment"
+    assert resolve_scope("anime").id == "entertainment"
     assert resolve_scope("hollywood").id == "global_entertainment"
     assert resolve_scope("billboard").id == "global_entertainment"
     assert resolve_scope("kpop").id == "jp_kr_entertainment"

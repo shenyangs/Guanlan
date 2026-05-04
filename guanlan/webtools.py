@@ -438,7 +438,6 @@ _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
             "导师介绍",
             "导师情况",
             "院系",
-            "学院",
             "计算机系",
             "研究生院",
             "教务处",
@@ -493,11 +492,21 @@ _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
             "手游",
             "动漫",
             "二次元",
+            "漫画",
+            "番剧",
+            "轻小说",
+            "学园",
+            "治愈",
+            "魔女",
+            "manga",
+            "anime",
+            "bangumi",
+            "pixiv",
         ),
         "preferred_scopes": ("entertainment", "social_web", "business"),
         "preferred_source_types": ("文娱/内容平台", "社交/内容平台", "商业/产业媒体"),
         "caution_source_types": ("通用网页", "评价/消费样本"),
-        "guidance": "文娱问题应分清平台数据、用户评分、专业/产业报道和粉圈讨论；不要把单平台热度当作总体口碑。",
+        "guidance": "文娱问题应分清平台数据、用户评分、专业/产业报道和粉圈讨论；漫画/番剧/轻小说题材优先看条目站、创作者社区和公开口碑，不要把单平台热度当作总体口碑。",
     },
     "global_entertainment": {
         "name": "欧美娱乐/音乐产业",
@@ -720,13 +729,14 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "profile": "china",
         "scope": "entertainment",
         "scopes": ["entertainment", "social_web", "business"],
-        "sites": ["douban.com", "maoyan.com", "bilibili.com", "weibo.com", "taptap.cn"],
+        "sites": ["douban.com", "maoyan.com", "bilibili.com", "weibo.com", "taptap.cn", "bangumi.tv", "pixiv.net", "mangapedia.com", "manba.co.jp"],
         "limit": DEFAULT_RESEARCH_LIMIT,
         "read_top": 2,
         "max_read_chars": 2600,
         "guidance": [
             "把平台数据、用户评分/评论、产业报道、宣发通稿和粉圈讨论分开看。",
             "票房、播放、榜单和热搜只能说明平台口径下的热度，不直接等于大众口碑。",
+            "漫画/番剧/轻小说题材优先补条目站、创作者社区和公开推荐入口，不要只看影视站点。",
         ],
     },
     "global_entertainment": {
@@ -5775,7 +5785,7 @@ def _advisor_primary_angle(preset: str, query: str) -> str:
     text = query.lower()
     if preset in {"policy", "official", "local"} or _contains_any(text, ["政策", "监管", "通知", "官方"]):
         return "官方口径与影响判断"
-    if preset in {"entertainment", "global_entertainment", "jp_kr_entertainment"} or _contains_any(text, ["文娱", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏", "hollywood", "billboard", "k-pop", "kpop", "j-pop", "jpop"]):
+    if preset in {"entertainment", "global_entertainment", "jp_kr_entertainment"} or _contains_any(text, ["文娱", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏", "动漫", "漫画", "番剧", "轻小说", "二次元", "hollywood", "billboard", "k-pop", "kpop", "j-pop", "jpop"]):
         return "热度、口碑与消费判断"
     if preset in {"reputation", "ecommerce"} or _contains_any(text, ["评价", "口碑", "购买", "值不值得", "产品"]):
         return "口碑线索与行动建议"
@@ -5800,7 +5810,7 @@ def _advisor_synthesis_rules(
     ]
     if preset in {"policy", "official", "local"} or _contains_any(query, ["政策", "监管", "通知", "官方"]):
         rules.append("涉及政策或官方口径时，优先引用原文和发文主体，再解释影响")
-    if preset in {"entertainment", "global_entertainment", "jp_kr_entertainment"} or _contains_any(query, ["文娱", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏", "hollywood", "billboard", "k-pop", "kpop", "j-pop", "jpop"]):
+    if preset in {"entertainment", "global_entertainment", "jp_kr_entertainment"} or _contains_any(query, ["文娱", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏", "动漫", "漫画", "番剧", "轻小说", "二次元", "hollywood", "billboard", "k-pop", "kpop", "j-pop", "jpop"]):
         rules.append("涉及文娱时，分清平台数据/榜单、用户评分、行业报道、宣发通稿和粉丝讨论")
     if preset in {"reputation", "ecommerce"} or _contains_any(query, ["口碑", "评价", "购买", "产品"]):
         rules.append("涉及口碑时，提炼高频场景和用户原话，不把样本热度写成总体比例")
@@ -5826,7 +5836,7 @@ def _advisor_intents(
 
     if preset in {"policy", "official", "local"} or _contains_any(haystack, ["政策", "监管", "通知", "法规", "官方", "gov", "party_central"]):
         intents.extend(["寻找可引用的官方依据或政策口径", "判断某项政策、监管或公共议题对业务/研究的影响"])
-    if preset in {"entertainment", "global_entertainment", "jp_kr_entertainment"} or _contains_any(haystack, ["文娱", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏", "entertainment", "hollywood", "billboard", "k-pop", "kpop", "j-pop", "jpop"]):
+    if preset in {"entertainment", "global_entertainment", "jp_kr_entertainment"} or _contains_any(haystack, ["文娱", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏", "动漫", "漫画", "番剧", "轻小说", "二次元", "entertainment", "hollywood", "billboard", "k-pop", "kpop", "j-pop", "jpop"]):
         intents.extend(["判断作品、艺人或游戏的热度、口碑和争议点", "为观影/消费、内容选题或舆情观察寻找公开样本"])
     if preset in {"reputation", "ecommerce"} or _contains_any(haystack, ["评价", "口碑", "吐槽", "小红书", "知乎", "微博", "购买", "产品"]):
         intents.extend(["判断产品、品牌或服务的真实口碑线索", "为购买、选型、运营或竞品分析寻找用户语言"])
@@ -5911,7 +5921,7 @@ def _advisor_scenario_advice(
     if preset in {"reputation", "ecommerce"} or _contains_any(text, ["评价", "口碑", "购买", "产品"]):
         advice.append("如果你是为了购买或采用：先看负面反馈是否集中在同一版本、渠道或使用场景")
         advice.append("如果你是为了竞品/运营：提取用户原话和高频痛点，但不要用热门样本估算总体比例")
-    if preset in {"entertainment", "global_entertainment", "jp_kr_entertainment"} or _contains_any(text, ["文娱", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏", "hollywood", "billboard", "k-pop", "kpop", "j-pop", "jpop"]):
+    if preset in {"entertainment", "global_entertainment", "jp_kr_entertainment"} or _contains_any(text, ["文娱", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏", "动漫", "漫画", "番剧", "轻小说", "二次元", "hollywood", "billboard", "k-pop", "kpop", "j-pop", "jpop"]):
         advice.append("如果你是为了观影/游玩/追综艺：把评分、评论、票房/播放热度和争议点分开看")
         advice.append("如果你是为了选题或舆情：关注平台间差异，不要把粉圈高声量写成大众共识")
     if preset in {"industry", "finance"}:
@@ -6922,6 +6932,44 @@ _UNIVERSITY_TASK_TERMS = (
     "graduate admissions",
 )
 
+_ACG_QUERY_TERMS = (
+    "漫画",
+    "番剧",
+    "轻小说",
+    "动漫",
+    "动画",
+    "二次元",
+    "魔女",
+    "学园",
+    "治愈",
+    "日常",
+    "连载",
+    "单行本",
+    "manga",
+    "anime",
+    "comic",
+    "light novel",
+    "bangumi",
+    "pixiv",
+    "mangapedia",
+    "manba",
+)
+
+_UNIVERSITY_STRONG_SIGNAL_TERMS = (
+    "招生",
+    "导师",
+    "院系",
+    "研究生",
+    "研究生院",
+    "推免",
+    "复试",
+    "考研",
+    "faculty",
+    "advisor",
+    "supervisor",
+    "graduate admissions",
+)
+
 
 def _is_university_admissions_query(query: str) -> bool:
     text = _collapse_ws(query).lower()
@@ -6930,6 +6978,21 @@ def _is_university_admissions_query(query: str) -> bool:
     return any(term in text for term in _UNIVERSITY_ENTITY_TERMS) and any(
         term in text for term in ("招生", "导师", "院系", "研究生", "faculty", "advisor", "supervisor")
     )
+
+
+def _is_acg_entertainment_query(query: str) -> bool:
+    text = _collapse_ws(query).lower()
+    return _contains_any(text, list(_ACG_QUERY_TERMS))
+
+
+def _has_strong_university_signal(query: str) -> bool:
+    text = _collapse_ws(query).lower()
+    return _contains_any(text, list(_UNIVERSITY_STRONG_SIGNAL_TERMS))
+
+
+def _should_prefer_entertainment_over_university(query: str) -> bool:
+    text = _collapse_ws(query).lower()
+    return _is_acg_entertainment_query(text) and not _has_strong_university_signal(text)
 
 
 def _effective_search_scope(query: str, scope: str | None) -> str | None:
@@ -7047,9 +7110,14 @@ def detect_search_quality_profile(
         data = _QUALITY_INTENT_PROFILES[candidate]
         terms = [term for term in data["terms"] if _quality_term_matches(text, str(term))]
         if terms:
+            if candidate == "university_admissions" and _should_prefer_entertainment_over_university(text):
+                reasons.append(f"skip:{candidate}:acg_disambiguation")
+                continue
             intent = candidate
             matched_terms = terms
             reasons.append(f"matched_terms:{','.join(terms[:4])}")
+            if candidate == "entertainment" and _is_acg_entertainment_query(text):
+                reasons.append("acg_disambiguation:entertainment")
             break
 
     data = _QUALITY_INTENT_PROFILES.get(intent, {})
