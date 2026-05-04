@@ -198,6 +198,28 @@ def _tool_definitions() -> list[dict]:
             },
         },
         {
+            "name": "guanlan_browser_assist_plan",
+            "description": (
+                "Build a read-only host-browser visible-page evidence task after Guanlan finds that public "
+                "reading is weak, blocked, dynamic, or search-fallback-only. The tool only returns a plan; "
+                "the Agent must ask the user before reading browser-visible content and must not read "
+                "cookies, tokens, keychain data, private messages, orders, admin pages, or perform writes."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                    "url": {"type": "string"},
+                    "page_type": {"type": "string", "default": "access_gate"},
+                    "signals": {"type": "array", "items": {"type": "string"}},
+                    "candidate_urls": {"type": "array", "items": {"type": "string"}},
+                    "platform": {"type": "string"},
+                    "force": {"type": "boolean", "default": True},
+                    "format": {"type": "string", "enum": ["markdown", "json"], "default": "json"},
+                },
+            },
+        },
+        {
             "name": "guanlan_recipe",
             "description": (
                 "List or render reusable Guanlan research recipes, such as university advisor lookup, "
@@ -670,6 +692,26 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         if str(args.get("format") or "markdown") == "json":
             return payload
         return format_page_diagnosis_markdown(payload)
+
+    if name == "guanlan_browser_assist_plan":
+        from guanlan.browser_assist import build_browser_assist_plan, format_browser_assist_markdown
+
+        payload = build_browser_assist_plan(
+            str(args.get("url", "")).strip(),
+            page_type=str(args.get("page_type") or "access_gate"),
+            signals=[str(item) for item in args.get("signals", [])] if isinstance(args.get("signals"), list) else [],
+            candidate_urls=[str(item) for item in args.get("candidate_urls", [])]
+            if isinstance(args.get("candidate_urls"), list)
+            else None,
+            force=bool(args.get("force", True)),
+        )
+        if args.get("platform"):
+            payload["platform"] = str(args.get("platform"))
+            if isinstance(payload.get("browser_assist_task"), dict):
+                payload["browser_assist_task"]["platform"] = str(args.get("platform"))
+        if str(args.get("format") or "json") == "json":
+            return payload
+        return format_browser_assist_markdown(payload)
 
     if name == "guanlan_recipe":
         from guanlan.recipes import (

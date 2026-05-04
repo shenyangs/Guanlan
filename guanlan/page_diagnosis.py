@@ -32,6 +32,7 @@ class PageDiagnosis:
     recommended_commands: list[str] = field(default_factory=list)
     boundaries: list[str] = field(default_factory=list)
     authorization_policy: list[str] = field(default_factory=list)
+    browser_assist: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -137,6 +138,11 @@ def format_page_diagnosis_markdown(payload: PageDiagnosis | dict[str, Any]) -> s
     if auth:
         lines.extend(["", "## 授权策略"])
         lines.extend(f"- {item}" for item in auth)
+    browser_assist = data.get("browser_assist") if isinstance(data.get("browser_assist"), dict) else {}
+    if browser_assist and browser_assist.get("recommended"):
+        from guanlan.browser_assist import format_browser_assist_markdown
+
+        lines.extend(["", format_browser_assist_markdown(browser_assist)])
     return "\n".join(lines).rstrip()
 
 
@@ -157,6 +163,8 @@ def _diagnose_packet(packet: dict[str, Any], *, errors: list[str]) -> PageDiagno
     usable = bool(quality_report.get("usable")) and page_type == "readable_article"
     commands = _recommended_commands(url, page_type, signals)
     boundaries = _boundaries(page_type)
+    from guanlan.browser_assist import build_browser_assist_plan
+
     return PageDiagnosis(
         url=url,
         page_type=page_type,
@@ -171,6 +179,7 @@ def _diagnose_packet(packet: dict[str, Any], *, errors: list[str]) -> PageDiagno
         recommended_commands=commands,
         boundaries=boundaries,
         authorization_policy=_authorization_policy(page_type),
+        browser_assist=build_browser_assist_plan(url, page_type=page_type, signals=signals),
     )
 
 

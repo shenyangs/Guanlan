@@ -16,6 +16,7 @@ def handle_archive_command(args):
     """Manage the local Markdown archive."""
 
     from guanlan.archive import (
+        add_browser_visible_note,
         add_url,
         add_urls,
         archive_quality_summary,
@@ -45,7 +46,7 @@ def handle_archive_command(args):
 
     command = getattr(args, "archive_command", None)
     if not command:
-        print("Error: archive command is required: add, search, context, pack, wiki, embed, ingest-search, ingest-research, list, inspect, remove, reindex, verify, stats, export", file=sys.stderr)
+        print("Error: archive command is required: add, add-browser-note, search, context, pack, wiki, embed, ingest-search, ingest-research, list, inspect, remove, reindex, verify, stats, export", file=sys.stderr)
         sys.exit(2)
     db_path = args.db or None
 
@@ -83,6 +84,30 @@ def handle_archive_command(args):
                 print(json.dumps(records, ensure_ascii=False, indent=2))
             else:
                 print(_format_archive_add_summary(records))
+            return
+
+        if command == "add-browser-note":
+            content = str(getattr(args, "text", "") or "")
+            if getattr(args, "text_file", ""):
+                with open(args.text_file, "r", encoding="utf-8") as f:
+                    content = f.read()
+            if not content.strip():
+                print("Error: --text or --text-file is required for add-browser-note", file=sys.stderr)
+                sys.exit(2)
+            record = add_browser_visible_note(
+                args.url,
+                content,
+                title=args.title,
+                platform=args.platform,
+                author=args.author,
+                published_at=args.published_at,
+                db_path=db_path,
+            )
+            output_format = "json" if args.json else args.format
+            if output_format == "json":
+                print(json.dumps(record, ensure_ascii=False, indent=2))
+            else:
+                print(_format_archive_browser_note_summary(record))
             return
 
         if command == "search":
@@ -336,6 +361,21 @@ def _format_archive_add_summary(records: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _format_archive_browser_note_summary(record: dict) -> str:
+    lines = [
+        "# 观澜浏览器辅助补证入库",
+        "",
+        f"- 状态: {record.get('status', 'unknown')}",
+        f"- 标题: {record.get('title') or record.get('url')}",
+        f"- URL: {record.get('url', '')}",
+        f"- 平台: {record.get('platform') or '-'}",
+        f"- 字符数: {record.get('chars', 0)}",
+        "- 证据边界: browser_assisted / visible_page_only / user_authorized",
+        f"- 说明: {record.get('boundary', '')}",
+    ]
+    return "\n".join(lines)
+
+
 def _format_archive_ingest_summary(result: dict) -> str:
     lines = [
         "# 观澜本地知识库联网研究入库",
@@ -400,6 +440,7 @@ def _format_archive_search_trace(records: list[dict], diagnostics: dict | None =
 
 def _format_archive_inspect(record: dict) -> str:
     diagnostics = record.get("diagnostics") or {}
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
     lines = [
         "# 观澜归档详情",
         "",
@@ -413,6 +454,19 @@ def _format_archive_inspect(record: dict) -> str:
         "## 摘要",
         str(record.get("excerpt", "")),
     ]
+    if metadata.get("browser_assisted"):
+        lines.extend(
+            [
+                "",
+                "## 浏览器辅助补证边界",
+                "- 类型: browser_assisted / visible_page_only / user_authorized",
+                f"- 平台: {metadata.get('platform') or '-'}",
+                f"- 可复现性: {metadata.get('reproducibility') or 'session_dependent'}",
+            ]
+        )
+        evidence_chain = metadata.get("evidence_chain") if isinstance(metadata.get("evidence_chain"), dict) else {}
+        if evidence_chain:
+            lines.append(f"- 证据链: {evidence_chain.get('planned_by', '')} -> {evidence_chain.get('collected_by', '')}")
     content = str(record.get("content", ""))
     if content:
         lines.extend(["", "## 正文预览", content[:2000]])

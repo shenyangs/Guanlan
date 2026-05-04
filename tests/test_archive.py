@@ -115,6 +115,66 @@ def test_archive_add_url_uses_reader(tmp_path, monkeypatch):
     assert record["title"] == "标题"
 
 
+def test_archive_add_browser_visible_note_preserves_boundary(tmp_path):
+    db = tmp_path / "archive.db"
+
+    record = archive.add_browser_visible_note(
+        "https://www.xiaohongshu.com/explore/abc",
+        "这是一段用户授权读取的浏览器可见笔记内容，包含产品口碑样本。",
+        title="小红书口碑样本",
+        author="可见作者",
+        db_path=db,
+    )
+    results = archive.search_documents("产品口碑", db_path=db)
+    metadata = results[0]["metadata"]
+
+    assert record["browser_assisted"] is True
+    assert record["visible_page_only"] is True
+    assert metadata["source_mode"] == "browser_visible"
+    assert metadata["browser_assisted"] is True
+    assert metadata["visible_page_only"] is True
+    assert metadata["user_authorized"] is True
+    assert metadata["platform"] == "xiaohongshu"
+    assert metadata["safety_boundary"]["credential_access"] == "forbidden"
+
+
+def test_archive_cli_add_browser_note_outputs_json(tmp_path, capsys):
+    from guanlan.cli import main
+
+    db = tmp_path / "archive.db"
+    with patch(
+        "sys.argv",
+        [
+            "guanlan",
+            "archive",
+            "add-browser-note",
+            "--url",
+            "https://zhihu.com/question/1",
+            "--text",
+            "用户授权读取的可见回答内容",
+            "--title",
+            "知乎回答",
+            "--db",
+            str(db),
+            "--json",
+        ],
+    ):
+        main()
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert payload["browser_assisted"] is True
+    assert payload["source_mode"] == "browser_visible"
+    record = archive.search_documents("可见回答", db_path=db)[0]
+    assert record["metadata"]["platform"] == "zhihu"
+    assert record["metadata"]["evidence_chain"]["planned_by"] == "guanlan_browser_assist"
+
+    with patch("sys.argv", ["guanlan", "archive", "inspect", str(record["id"]), "--db", str(db)]):
+        main()
+    inspected = capsys.readouterr()
+    assert "浏览器辅助补证边界" in inspected.out
+
+
 def test_archive_format_context(tmp_path):
     db = tmp_path / "archive.db"
     archive.add_document("https://example.com/a", "# 标题\n正文包含跨境电商。", db_path=db)

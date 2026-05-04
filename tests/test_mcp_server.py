@@ -37,6 +37,7 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "guanlan_route" in names
     assert "guanlan_workflow" in names
     assert "guanlan_page_diagnose" in names
+    assert "guanlan_browser_assist_plan" in names
     assert "guanlan_recipe" in names
     assert "guanlan_read" in names
     assert "guanlan_research" in names
@@ -66,11 +67,14 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     route_tool = next(tool for tool in tools if tool["name"] == "guanlan_route")
     workflow_tool = next(tool for tool in tools if tool["name"] == "guanlan_workflow")
     diagnose_tool = next(tool for tool in tools if tool["name"] == "guanlan_page_diagnose")
+    browser_assist_tool = next(tool for tool in tools if tool["name"] == "guanlan_browser_assist_plan")
     recipe_tool = next(tool for tool in tools if tool["name"] == "guanlan_recipe")
     investigate_tool = next(tool for tool in tools if tool["name"] == "guanlan_investigate")
     assert "evidence roles" in route_tool["description"]
     assert "avoid overthinking basic" in workflow_tool["description"]
     assert "dynamic shell" in diagnose_tool["description"]
+    assert "host-browser visible-page evidence task" in browser_assist_tool["description"]
+    assert "format" in browser_assist_tool["inputSchema"]["properties"]
     assert "stable multi-step workflow" in recipe_tool["description"]
     assert "workflow_decision" in investigate_tool["description"]
     assert "prompt" in search_tool["inputSchema"]["properties"]["format"]["enum"]
@@ -275,6 +279,22 @@ def test_mcp_page_diagnose_uses_diagnosis_module(monkeypatch):
     payload = mcp_server._run_tool("guanlan_page_diagnose", {"url": "https://example.com", "format": "json"})
 
     assert payload["page_type"] == "dynamic_shell"
+
+
+def test_mcp_browser_assist_plan_returns_task():
+    payload = mcp_server._run_tool(
+        "guanlan_browser_assist_plan",
+        {
+            "url": "https://www.xiaohongshu.com/explore/demo",
+            "signals": ["access_gate"],
+            "format": "json",
+        },
+    )
+
+    assert payload["recommended"] is True
+    assert payload["browser_assist_task"]["read_only"] is True
+    assert payload["browser_assist_task"]["status"] == "requires_user_approval"
+    assert "read_cookies" in payload["browser_assist_task"]["forbidden_actions"]
 
 
 def test_mcp_recipe_renders_plan():

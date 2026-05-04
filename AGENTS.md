@@ -45,6 +45,14 @@ dynamic shell, login/WAF/access gate, or search-fallback-only context. A page di
 browser automation request; it is a read-only explanation of why the page is or is not evidence and
 which Guanlan command should be used next. Do not keep retrying a blocked/dynamic page before trying
 the recommended structured source, scoped search, or archive workflow.
+If diagnosis emits `browser_assist.recommended=true`, ask the user for explicit permission before
+using the host Agent browser to read only the target page's visible content. Report it as
+"Guanlan planned the route, then I used user-authorized browser-visible evidence as supplementary
+evidence." Do not read Cookie, Token, password, keychain, private messages, orders, admin pages, or
+unrelated personal data, and do not post, like, comment, follow, message, purchase, or submit forms.
+If the user authorizes visible-page evidence, it may be archived with
+`guanlan archive add-browser-note --url "URL" --text-file notes.md`; keep the
+`browser_assisted` / `visible_page_only` boundary.
 
 Quality salvage rule: when trace shows `quality_gate.reason=partial_salvage`, treat it as usable
 strong-source evidence with gaps, not as a failed search. Read representative official/vertical URLs
@@ -148,6 +156,7 @@ guanlan search --list-scopes
 guanlan route "中文研究需求" --json
 guanlan workflow "中文研究需求" --json
 guanlan diagnose page "https://example.com/article"
+guanlan browser-assist plan "https://example.com/article" --json
 guanlan recipe list
 guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"
 guanlan recipe run university-advisor "南京师范大学中北学院 计算机 导师 招生"
@@ -190,6 +199,7 @@ guanlan hotnews uapis:catalog --limit 80
 guanlan hotnews vvhan:all --limit 80
 guanlan doctor --install-check
 guanlan doctor --trace
+guanlan archive add-browser-note --url "URL" --text-file notes.md
 guanlan archive ingest-research "query" --limit 80
 guanlan archive ingest-research "query" --limit 80 --read-top 3
 guanlan archive verify
@@ -217,6 +227,7 @@ Safety rules:
 - Use `guanlan capabilities` when the user asks what Guanlan can do, which Guanlan command/tool to use, or why the tool is relevant.
 - Use `guanlan route "query"` when deciding which source pools, sites, evidence roles, and caveats fit a request; route plans are soft guidance, not hard filters.
 - Use `guanlan diagnose page "URL"` before repeatedly retrying a weak `read`; if it reports dynamic shell, access gate, or search-fallback-only context, use the recommended structured/scoped/archive path instead of treating the page as evidence.
+- If `diagnose page` recommends browser-assisted evidence, ask first and only read the target browser-visible page content; never read cookies, private areas, or perform write actions. Archive authorized visible notes with `archive add-browser-note` and preserve the evidence boundary.
 - Use `guanlan recipe run <recipe> "query"` when the user task matches a reusable vertical workflow; recipes are plans and boundaries, not final conclusions.
 - Use `guanlan search ... --trace` or `guanlan research ...` when you need query_strategy, source diagnostics, and evidence-role query rewrites; do not rely on one broad query for serious research.
 - Use `guanlan compare`, `guanlan timeline`, or `guanlan dossier` when the user asks for comparison, event chronology, or an entity dossier; these are structured views over evidence packets, not final truth.

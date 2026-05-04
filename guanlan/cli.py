@@ -255,6 +255,20 @@ def main():
     p_diagnose_page.add_argument("--strict", action="store_true", help="Use stricter read-quality gate")
     p_diagnose_page.add_argument("--json", action="store_true", help="Print diagnosis JSON")
 
+    # ── browser-assist ──
+    p_browser_assist = sub.add_parser(
+        "browser-assist",
+        help="Plan user-authorized visible-browser evidence handoff without reading browser state",
+    )
+    browser_assist_sub = p_browser_assist.add_subparsers(dest="browser_assist_command", help="Browser assist commands")
+    p_browser_assist_plan = browser_assist_sub.add_parser("plan", help="Build a host-browser visible evidence task")
+    p_browser_assist_plan.add_argument("url", help="Target page URL")
+    p_browser_assist_plan.add_argument("--page-type", default="access_gate", help="Diagnosis page type hint")
+    p_browser_assist_plan.add_argument("--signal", action="append", default=[], help="Diagnosis signal hint; can be repeated")
+    p_browser_assist_plan.add_argument("--platform", default="", help="Optional platform label override")
+    p_browser_assist_plan.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
+    p_browser_assist_plan.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+
     # ── search ──
     p_search = sub.add_parser("search", help="Search the web for agent-ready results")
     p_search.add_argument("query", nargs="?", default="", help="Search query")
@@ -621,6 +635,21 @@ def main():
                                help="Explicit batch archive read concurrency; default 1 keeps serial behavior")
     p_archive_add.add_argument("--db", default="", help="Optional archive database path")
 
+    p_archive_browser_note = archive_sub.add_parser(
+        "add-browser-note",
+        help="Archive user-authorized visible browser evidence with explicit boundaries",
+    )
+    p_archive_browser_note.add_argument("--url", required=True, help="Target page URL shown in the browser")
+    p_archive_browser_note.add_argument("--text", default="", help="Visible page text to archive")
+    p_archive_browser_note.add_argument("--text-file", default="", help="File containing visible page text")
+    p_archive_browser_note.add_argument("--title", default="", help="Visible page title")
+    p_archive_browser_note.add_argument("--platform", default="", help="Optional platform label")
+    p_archive_browser_note.add_argument("--author", default="", help="Visible author/account when relevant")
+    p_archive_browser_note.add_argument("--published-at", default="", help="Visible publication time when relevant")
+    p_archive_browser_note.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
+    p_archive_browser_note.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_archive_browser_note.add_argument("--db", default="", help="Optional archive database path")
+
     p_archive_search = archive_sub.add_parser("search", help="Search the local archive")
     p_archive_search.add_argument("query", help="Archive search query")
     p_archive_search.add_argument("--limit", type=int, default=DEFAULT_ARCHIVE_SEARCH_LIMIT, help="Maximum number of results")
@@ -914,6 +943,7 @@ def _telemetry_command_name(args) -> str:
         "report": "report_command",
         "stock": "stock_command",
         "diagnose": "diagnose_command",
+        "browser-assist": "browser_assist_command",
         "recipe": "recipe_command",
     }
     attr = subcommand_attrs.get(command)
@@ -960,6 +990,8 @@ def _dispatch_command(args):
         _cmd_workflow(args)
     elif args.command == "diagnose":
         _cmd_diagnose(args)
+    elif args.command == "browser-assist":
+        _cmd_browser_assist(args)
     elif args.command == "search":
         _cmd_search(args)
     elif args.command == "feedback":
@@ -1551,6 +1583,31 @@ def _cmd_diagnose(args):
         strict=bool(args.strict),
     )
     print(format_page_diagnosis_json(payload) if args.json else format_page_diagnosis_markdown(payload))
+
+
+def _cmd_browser_assist(args):
+    """Build user-authorized visible browser evidence plans."""
+
+    if not getattr(args, "browser_assist_command", None):
+        print("Error: browser-assist command is required (try: guanlan browser-assist plan URL)", file=sys.stderr)
+        sys.exit(2)
+    if args.browser_assist_command != "plan":
+        print(f"Error: unknown browser-assist command: {args.browser_assist_command}", file=sys.stderr)
+        sys.exit(2)
+    from guanlan.browser_assist import build_browser_assist_plan, format_browser_assist_markdown
+
+    plan = build_browser_assist_plan(
+        args.url,
+        page_type=args.page_type,
+        signals=list(args.signal or []),
+        force=True,
+    )
+    if args.platform:
+        plan["platform"] = args.platform
+        if isinstance(plan.get("browser_assist_task"), dict):
+            plan["browser_assist_task"]["platform"] = args.platform
+    output_format = "json" if args.json else args.format
+    print(json.dumps(plan, ensure_ascii=False, indent=2) if output_format == "json" else format_browser_assist_markdown(plan))
 
 
 def _cmd_search(args):

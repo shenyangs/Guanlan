@@ -41,8 +41,13 @@ def test_page_diagnosis_marks_dynamic_shell_without_network():
     assert payload["page_type"] == "dynamic_shell"
     assert payload["usable_as_evidence"] is False
     assert "script_or_app_shell" in payload["signals"]
+    assert payload["browser_assist"]["recommended"] is True
+    assert "read_cookies" in payload["browser_assist"]["forbidden_actions"]
+    assert payload["browser_assist"]["browser_assist_task"]["status"] == "requires_user_approval"
     assert any("guanlan stock detail" in command for command in payload["recommended_commands"])
-    assert "页面诊断" in format_page_diagnosis_markdown(payload)
+    rendered = format_page_diagnosis_markdown(payload)
+    assert "页面诊断" in rendered
+    assert "浏览器辅助补证" in rendered
 
 
 def test_page_diagnosis_marks_readable_article_without_network():
@@ -54,4 +59,21 @@ def test_page_diagnosis_marks_readable_article_without_network():
 
     assert payload["page_type"] == "readable_article"
     assert payload["usable_as_evidence"] is True
+    assert payload["browser_assist"]["recommended"] is False
     assert any("archive add" in command for command in payload["recommended_commands"])
+
+
+def test_browser_assist_plan_is_read_only_and_user_authorized():
+    payload = diagnose_page(
+        "https://www.xiaohongshu.com/explore/example",
+        fetch=False,
+        content="请先登录后查看完整内容",
+    )
+
+    plan = payload["browser_assist"]
+    assert plan["recommended"] is True
+    assert plan["evidence_role"] == "user_visible_sample"
+    assert "read_visible_text" in plan["allowed_actions"]
+    assert "post" in plan["forbidden_actions"]
+    assert plan["browser_assist_task"]["output_contract"]["visible_page_only"] is True
+    assert "Cookie" in plan["user_prompt"]

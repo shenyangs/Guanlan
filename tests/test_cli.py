@@ -190,6 +190,26 @@ class TestCLI:
         data = json.loads(captured.out)
         assert data["page_type"] == "readable_article"
 
+    def test_browser_assist_plan_command_returns_task_json(self, capsys):
+        with patch(
+            "sys.argv",
+            [
+                "guanlan",
+                "browser-assist",
+                "plan",
+                "https://www.xiaohongshu.com/explore/demo",
+                "--json",
+            ],
+        ):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["recommended"] is True
+        assert data["browser_assist_task"]["task_type"] == "open_and_read_visible_page"
+        assert data["browser_assist_task"]["status"] == "requires_user_approval"
+        assert "read_cookies" in data["forbidden_actions"]
+
     def test_recipe_run_command_returns_plan(self, capsys):
         with patch(
             "sys.argv",

@@ -17,7 +17,6 @@ from guanlan.archive import (
     export_documents,
     format_archive_export_jsonl,
     inspect_document,
-    search_documents,
 )
 
 DEFAULT_WIKI_LIMIT = 200
@@ -94,6 +93,8 @@ def build_archive_wiki_context(
     """Build an evidence-bound local wiki context for an Agent or local model."""
     if not query.strip():
         raise ValueError("query is required")
+    from guanlan.archive import search_documents
+
     hits = search_documents(query, limit=max(limit, 1), trace=True, db_path=db_path)
     records = []
     for hit in hits:
@@ -239,6 +240,8 @@ def _select_records(
     db_path: str | Path | None,
 ) -> list[dict[str, Any]]:
     if topic.strip():
+        from guanlan.archive import search_documents
+
         hits = search_documents(topic, limit=max(limit, 1), db_path=db_path)
         ids = {int(hit["id"]) for hit in hits}
         return [record for record in export_documents(db_path=db_path) if int(record.get("id", -1)) in ids]

@@ -8,6 +8,25 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.5.8 - 2026-05-04
+
+### Added
+
+- 新增浏览器辅助补证契约：`diagnose page` 在动态页壳、登录墙、访问门槛、搜索兜底或弱正文场景下输出 `browser_assist`，告诉 Agent 何时该请求用户授权读取浏览器可见页。
+- 新增 `guanlan browser-assist plan "URL"`，可生成宿主浏览器可执行的只读任务描述，包含允许动作、禁止动作、用户授权话术、输出契约和可复现边界。
+- 新增 `guanlan archive add-browser-note --url "URL" --text-file notes.md`，用于把用户明确授权后的浏览器可见页笔记沉淀进本地 archive。
+- MCP 新增 `guanlan_browser_assist_plan`，HTTP 只读服务新增 `/browser-assist/plan`，方便 Agent 平台在不接管浏览器状态的情况下获取补证计划。
+
+### Changed
+
+- Agent 文档、Skill 和 Playbook 增加浏览器辅助补证规则：公开搜索和普通读取优先，浏览器只做用户授权后的补证，不读取 Cookie、Token、钥匙串、私信、订单、后台或无关个人资料，不执行点赞、评论、关注、发帖、私信、下单、提交表单等写操作。
+- `archive inspect` 对浏览器辅助补证材料显示专门边界，保留 `browser_assisted`、`visible_page_only`、`user_authorized`、`session_dependent` 和证据链元数据。
+- 官网和安装验证文案同步到 `0.5.8`。
+
+### Fixed
+
+- 修复 `archive_wiki` 在模块导入时绑定 `search_documents` 的陈旧引用风险，降低测试替换、长生命周期 Agent 进程或多进程运行时的污染概率。
+
 ## v0.5.7 - 2026-05-04
 
 ### Added

@@ -31,8 +31,25 @@ def test_serve_dispatch_health_and_route():
     status, tools = serve.dispatch_request("GET", "/tools")
     assert status == 200
     tool_names = {tool["name"] for tool in tools["tools"]}
-    assert {"guanlan_search", "guanlan_research", "guanlan_archive_search"} <= tool_names
+    assert {"guanlan_search", "guanlan_research", "guanlan_archive_search", "guanlan_browser_assist_plan"} <= tool_names
     assert "只读工具面" in tools["boundary"]
+
+
+def test_serve_dispatch_browser_assist_plan_is_read_only():
+    status, body = serve.dispatch_request(
+        "POST",
+        "/browser-assist/plan",
+        {
+            "url": "https://www.xiaohongshu.com/explore/demo",
+            "signals": ["access_gate"],
+        },
+    )
+
+    assert status == 200
+    assert body["recommended"] is True
+    assert body["browser_assist_task"]["task_type"] == "open_and_read_visible_page"
+    assert body["browser_assist_task"]["read_only"] is True
+    assert "cookies" in body["browser_assist_task"]["must_not_access"]
 
 
 def test_serve_dispatch_search_uses_webtools(monkeypatch):

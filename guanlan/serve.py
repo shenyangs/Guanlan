@@ -65,6 +65,23 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 read_top=_optional_int(payload.get("read_top")),
             )
             return 200, plan.to_dict()
+        if method == "POST" and route == "/browser-assist/plan":
+            from guanlan.browser_assist import build_browser_assist_plan
+
+            plan = build_browser_assist_plan(
+                str(payload.get("url", "")).strip(),
+                page_type=str(payload.get("page_type") or "access_gate"),
+                signals=[str(item) for item in payload.get("signals", [])] if isinstance(payload.get("signals"), list) else [],
+                candidate_urls=[str(item) for item in payload.get("candidate_urls", [])]
+                if isinstance(payload.get("candidate_urls"), list)
+                else None,
+                force=bool(payload.get("force", True)),
+            )
+            if payload.get("platform"):
+                plan["platform"] = str(payload.get("platform"))
+                if isinstance(plan.get("browser_assist_task"), dict):
+                    plan["browser_assist_task"]["platform"] = str(payload.get("platform"))
+            return 200, plan
         if method == "POST" and route == "/search":
             from guanlan.webtools import search_web
 
@@ -243,7 +260,7 @@ def run_server(host: str = "127.0.0.1", port: int = 8765, token: str = "") -> No
     server = ThreadingHTTPServer((host, int(port)), _GuanlanHandler)
     server.guanlan_token = token or os.environ.get("GUANLAN_SERVE_TOKEN", "")
     print(f"观澜只读服务启动: http://{host}:{port}")
-    print("Endpoints: /health, /tools, /sources, /route, /search, /research, /compare, /timeline, /dossier, /read, /hotnews, /feeds, /archive/search")
+    print("Endpoints: /health, /tools, /sources, /route, /browser-assist/plan, /search, /research, /compare, /timeline, /dossier, /read, /hotnews, /feeds, /archive/search")
     if server.guanlan_token:
         print("Access: token required via Authorization: Bearer <token> or X-Guanlan-Token")
     server.serve_forever()

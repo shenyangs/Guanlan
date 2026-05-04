@@ -195,6 +195,53 @@ def add_document(
     }
 
 
+def add_browser_visible_note(
+    url: str,
+    content: str,
+    *,
+    title: str = "",
+    platform: str = "",
+    author: str = "",
+    published_at: str = "",
+    db_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Persist user-authorized visible browser content with explicit boundaries."""
+
+    normalized_url = _normalize_url(url)
+    text = str(content or "").strip()
+    if not normalized_url:
+        raise ValueError("url is required")
+    if not text:
+        raise ValueError("content is required")
+    from guanlan.browser_assist import browser_visible_metadata
+
+    metadata = browser_visible_metadata(
+        url=normalized_url,
+        platform=platform,
+        author=author,
+        published_at=published_at,
+    )
+    if title and not text.lstrip().startswith("#"):
+        text = f"# {title.strip()}\n\n{text}"
+    record = add_document(
+        normalized_url,
+        text,
+        title=title,
+        metadata=metadata,
+        db_path=db_path,
+    )
+    record.update(
+        {
+            "source_mode": "browser_visible",
+            "browser_assisted": True,
+            "visible_page_only": True,
+            "platform": metadata.get("platform", ""),
+            "boundary": "用户授权的浏览器可见页补证；不可伪装成所有人可复现的普通公开网页证据。",
+        }
+    )
+    return record
+
+
 def ingest_search(
     query: str,
     *,

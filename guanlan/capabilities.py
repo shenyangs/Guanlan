@@ -84,6 +84,19 @@ CAPABILITIES: tuple[Capability, ...] = (
         examples=["为什么这个页面读不到正文？", "雪球页面是不是 WAF 了？"],
     ),
     Capability(
+        id="browser_assist",
+        name="浏览器辅助补证",
+        description="当公开读取不足时，生成用户授权的宿主浏览器可见页补证任务，并把补证材料按边界入库。",
+        when_to_use="diagnose page 显示动态壳、登录墙、访问门槛、搜索兜底或弱正文，但该平台内容仍有样本价值时。",
+        cli=[
+            "guanlan browser-assist plan \"URL\" --json",
+            "guanlan archive add-browser-note --url \"URL\" --text-file notes.md",
+        ],
+        mcp="guanlan_browser_assist_plan",
+        boundary="只生成计划或归档用户授权的可见页笔记；不读取 Cookie、Token、钥匙串、私信、订单、后台，不执行写操作。",
+        examples=["小红书页面公开读取不足，能不能让浏览器补一眼？", "把授权后的可见页笔记存入 archive。"],
+    ),
+    Capability(
         id="recipes",
         name="研究 Recipe",
         description="把高校导师、财经风险、产品口碑、文娱热度、安全公告、技术趋势等常见任务固化为可复用工作流模板。",
