@@ -48,8 +48,8 @@ the recommended structured source, scoped search, or archive workflow.
 If diagnosis emits `browser_assist.recommended=true`, ask the user for explicit permission before
 using the host Agent browser to open the target URL and read only the target page's visible content. If login, verification, or account switching is needed, let the user complete it in the browser first. Report it as
 "Guanlan planned the route, then I used user-authorized browser-visible evidence as supplementary
-evidence." Do not read Cookie, Token, password, keychain, private messages, orders, admin pages, or
-unrelated personal data, and do not post, like, comment, follow, message, purchase, or submit forms.
+evidence." For the visible-page task, do not read Cookie, Token, password, keychain, private messages, orders, admin pages, or
+unrelated personal data; Cookie access is allowed only after a separate explicit user authorization for the target platform, and do not post, like, comment, follow, message, purchase, or submit forms.
 If the user authorizes visible-page evidence, it may be archived with
 `guanlan archive add-browser-note --from-json browser-notes.jsonl`; keep the
 `browser_assisted` / `visible_page_only` boundary. `--url ... --text-file` is only a manual fallback when the host Agent has no browser extraction capability.

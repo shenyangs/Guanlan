@@ -50,7 +50,8 @@ def test_serve_dispatch_browser_assist_plan_is_read_only():
     assert body["browser_assist_task"]["task_type"] == "open_and_read_visible_page"
     assert body["browser_assist_task"]["read_only"] is True
     assert body["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
-    assert "cookies" in body["browser_assist_task"]["must_not_access"]
+    assert "cookies_without_separate_explicit_authorization" in body["browser_assist_task"]["must_not_access"]
+    assert body["browser_assist_task"]["conditional_access"]["cookies"] == "allowed_only_after_separate_explicit_user_authorization"
 
 
 def test_serve_dispatch_search_uses_webtools(monkeypatch):

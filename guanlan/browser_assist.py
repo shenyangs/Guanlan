@@ -24,6 +24,8 @@ FORBIDDEN_BROWSER_ASSIST_ACTIONS = [
     "read_cookies",
     "read_tokens",
     "read_keychain",
+    "read_browser_profile",
+    "read_browser_storage",
     "read_private_messages",
     "read_orders",
     "read_admin_pages",
@@ -34,6 +36,17 @@ FORBIDDEN_BROWSER_ASSIST_ACTIONS = [
     "message",
     "purchase",
     "submit_forms",
+]
+
+FORBIDDEN_BROWSER_ASSIST_IMPLEMENTATIONS = [
+    "install_playwright_or_browser_runtime",
+    "launch_new_playwright_chromium_for_user_session",
+    "use_playwright_persistent_context_with_user_profile",
+    "read_browser_user_data_dir",
+    "read_or_export_cookies_without_separate_cookie_authorization",
+    "use_browser_cookie3_or_cookie_extractor",
+    "copy_local_storage_or_session_storage",
+    "read_browser_database_or_keychain",
 ]
 
 PLATFORM_HINTS: dict[str, str] = {
@@ -98,8 +111,10 @@ def build_browser_assist_plan(
     urls = _unique([*(candidate_urls or []), normalized_url])
     user_prompt = (
         "公开搜索和普通网页读取目前不足。你当前浏览器可能已经登录或通过验证，能看到目标页面内容。"
-        "是否允许我使用宿主浏览器打开目标链接，并只读取浏览器中可见的目标页面内容用于补充证据？"
-        "我不会读取 Cookie、密码、钥匙串、私信、订单、后台信息，也不会点赞、评论、关注、发帖或发送消息。"
+        "是否允许我使用当前 Agent 平台已经提供的浏览器/Computer Use/WebView 打开目标链接，并只读取浏览器中可见的目标页面内容用于补充证据？"
+        "如果页面需要登录或验证，请你自己在可见浏览器里完成。"
+        "本次可见页补证不会读取 Cookie、浏览器数据库、密码、钥匙串、私信、订单、后台信息，也不会点赞、评论、关注、发帖或发送消息。"
+        "如果后续确实需要 Cookie，我会单独说明平台、用途和风险，再征求一次明确授权。"
     )
     task = build_browser_assist_task(
         urls,
@@ -118,11 +133,21 @@ def build_browser_assist_plan(
         "candidate_urls": urls,
         "allowed_actions": ALLOWED_BROWSER_ASSIST_ACTIONS,
         "forbidden_actions": FORBIDDEN_BROWSER_ASSIST_ACTIONS,
+        "forbidden_implementations": FORBIDDEN_BROWSER_ASSIST_IMPLEMENTATIONS,
         "browser_assist_task": task,
         "user_prompt": user_prompt,
+        "agent_execution_rule": (
+            "Use only the host Agent's already-available browser/computer-use/webview tool. "
+            "For this visible-page evidence task, do not install Playwright, do not launch a separate browser profile, "
+            "and do not read browser cookies/profile/storage. If Cookie access is truly needed, stop and request a separate, "
+            "explicit Cookie authorization for the target platform. If no host browser tool exists, stop and use the manual fallback."
+        ),
+        "cookie_access_policy": _cookie_access_policy(platform),
         "boundaries": [
             "浏览器辅助补证必须由用户明确授权。",
-            "只读取目标页面可见内容，不读取 Cookie、Token、钥匙串或浏览器数据库。",
+            "只使用宿主 Agent 已有的浏览器/Computer Use/WebView 工具，不安装 Playwright，不启动独立浏览器 profile。",
+            "默认只读取目标页面可见内容，不读取 Cookie、Token、浏览器 profile、浏览器数据库、localStorage、sessionStorage、钥匙串。",
+            "如确实需要 Cookie，必须暂停当前任务，单独征求用户对具体平台和用途的明确授权。",
             "不执行点赞、评论、关注、发帖、私信、下单、提交表单等写操作。",
             "补证内容可能依赖用户当前浏览器状态，应标注 browser_assisted 和 visible_page_only。",
         ],
@@ -162,10 +187,12 @@ def build_browser_assist_task(
         "max_chars_per_page": max_chars_per_page,
         "collection_steps": [
             "先向用户复述授权话术，获得明确允许后再继续。",
-            "使用宿主 Agent 的浏览器能力打开任务 urls；如果用户需要登录、验证或切换账号，请让用户在浏览器里完成。",
+            "确认当前 Agent 平台已经提供浏览器/Computer Use/WebView 工具；如果没有，不要安装 Playwright 或自建浏览器，直接走手动兜底。",
+            "使用宿主 Agent 已有浏览器能力打开任务 urls；如果用户需要登录、验证或切换账号，请让用户在可见浏览器里完成。",
             "只读取任务目标页的浏览器可见内容；如需滚动，只为读取目标页可见正文或公开评论摘要。",
             "每页提取标题、URL、可见正文、作者/账号、发布时间、采集时间和可见上下文说明。",
-            "如果页面要求登录但浏览器已可见，只读取当前页面可见内容；不要读取 Cookie、Token、钥匙串、浏览器数据库或无关个人资料。",
+            "如果页面要求登录但浏览器已可见，只读取当前页面可见内容；不要在本任务里读取 Cookie、Token、浏览器 profile、localStorage、sessionStorage、钥匙串、浏览器数据库或无关个人资料。",
+            "如果仅靠可见浏览器仍无法访问，停止并向用户说明：下一步需要单独 Cookie 授权；用户未明确同意前不要尝试提取 Cookie。",
             "遇到私信、订单、后台、账号设置、支付、发布框或表单，立即跳过并在输出中标记 skipped_reason。",
         ],
         "extract_fields": [
@@ -195,11 +222,20 @@ def build_browser_assist_task(
             'guanlan archive add-browser-note --url "URL" --text-file notes.md  # fallback only',
         ],
         "host_browser_contract": {
+            "requires_host_browser_tool": True,
             "uses_existing_browser_session": True,
             "user_may_login_or_verify_in_browser": True,
             "agent_may_read_visible_dom_text": True,
-            "agent_must_not_extract_credentials_or_storage": True,
+            "agent_must_not_install_or_launch_own_browser": True,
+            "agent_must_not_use_local_browser_profile": True,
+            "agent_must_not_extract_credentials_or_storage_without_separate_authorization": True,
+            "cookie_access_requires_separate_explicit_authorization": True,
             "manual_copy_is_fallback_only": True,
+        },
+        "if_no_host_browser_tool": {
+            "action": "stop_and_ask_user_for_manual_visible_text",
+            "reason": "浏览器辅助补证依赖宿主 Agent 的浏览器能力；没有该能力时，不应通过读取本机 profile/Cookie 来模拟登录态。",
+            "fallback_command": 'guanlan archive add-browser-note --url "URL" --text-file notes.md',
         },
         "quality_checks": [
             "visible_text 不应为空，建议至少 80 个中文字符或等价信息量。",
@@ -209,16 +245,29 @@ def build_browser_assist_task(
         ],
         "allowed_actions": ALLOWED_BROWSER_ASSIST_ACTIONS,
         "forbidden_actions": FORBIDDEN_BROWSER_ASSIST_ACTIONS,
+        "forbidden_implementations": FORBIDDEN_BROWSER_ASSIST_IMPLEMENTATIONS,
         "must_not_access": [
-            "cookies",
+            "cookies_without_separate_explicit_authorization",
             "tokens",
             "keychain",
             "passwords",
+            "browser_profile",
+            "browser_user_data_dir",
+            "local_storage",
+            "session_storage",
+            "browser_databases",
             "private_messages",
             "orders",
             "admin_pages",
             "unrelated_personal_data",
         ],
+        "conditional_access": {
+            "cookies": "allowed_only_after_separate_explicit_user_authorization",
+            "tokens": "forbidden",
+            "keychain": "forbidden",
+            "passwords": "forbidden",
+            "browser_profile": "forbidden_unless_using_official_user_approved_auth_flow",
+        },
         "output_contract": {
             "source_mode": "browser_visible",
             "browser_assisted": True,
@@ -244,6 +293,8 @@ def format_browser_assist_markdown(plan: dict[str, Any]) -> str:
         f"  {plan.get('user_prompt', '')}",
         "- 允许动作: " + ", ".join(plan.get("allowed_actions") or []),
         "- 禁止动作: " + ", ".join(plan.get("forbidden_actions") or []),
+        "- 禁止实现: " + ", ".join(plan.get("forbidden_implementations") or []),
+        f"- Agent 执行规则: {plan.get('agent_execution_rule', '')}",
         f"- 补证入库: `{plan.get('archive_next_step', '')}`",
         f"- 手动兜底: `{plan.get('manual_fallback_next_step', '')}`",
     ]
@@ -251,6 +302,12 @@ def format_browser_assist_markdown(plan: dict[str, Any]) -> str:
     if boundaries:
         lines.append("- 边界:")
         lines.extend(f"  - {item}" for item in boundaries)
+    cookie_policy = plan.get("cookie_access_policy") or {}
+    if cookie_policy:
+        lines.append("- Cookie 授权边界:")
+        lines.append(f"  - 默认: {cookie_policy.get('default', '')}")
+        lines.append(f"  - 可升级: {cookie_policy.get('can_escalate', '')}")
+        lines.append(f"  - 授权话术: {cookie_policy.get('authorization_prompt', '')}")
     task = plan.get("browser_assist_task") or {}
     steps = task.get("collection_steps") or []
     if steps:
@@ -426,6 +483,27 @@ def platform_hint(url: str) -> str:
         if host == suffix or host.endswith("." + suffix):
             return label
     return ""
+
+
+def _cookie_access_policy(platform: str = "") -> dict[str, Any]:
+    platform_label = platform or "target_platform"
+    return {
+        "default": "forbidden_for_visible_page_task",
+        "can_escalate": "yes_but_only_after_separate_explicit_user_authorization",
+        "required_before_cookie_access": [
+            "说明需要哪个平台的 Cookie",
+            "说明为什么仅靠公开读取和浏览器可见页仍不足",
+            "说明 Cookie 只用于当前目标平台的只读检索/读取",
+            "说明不会读取密码、Token、钥匙串、私信、订单、后台或无关个人资料",
+            "获得用户明确同意，例如：我同意读取小红书 Cookie 用于这次只读检索",
+        ],
+        "authorization_prompt": (
+            f"公开读取和浏览器可见页仍不足。是否允许我读取 {platform_label} 的 Cookie，"
+            "仅用于本次只读检索/读取目标页面？我不会读取密码、Token、钥匙串、私信、订单、后台或无关个人资料，"
+            "也不会执行点赞、评论、关注、发帖、私信、下单或提交表单。"
+        ),
+        "preferred_flow": "use Guanlan's explicit auth/config command or a user-approved host credential connector; do not ad-hoc scrape browser profiles.",
+    }
 
 
 def _sensitive_keys_in_payload(payload: dict[str, Any]) -> set[str]:

@@ -29,7 +29,7 @@
 - 用户需要建议、影响判断、下一步行动，或询问“为什么会搜这个”时，优先使用 `research --advisor`，但把助理视角当作证据边界和写作规则，由你结合用户问题生成自然建议；不要机械复述模板，也不要当作用户真实意图。
 - 不确定该查哪些信源时，先用 `guanlan route "关键词"` 看需求路由；路由计划是软约束，优先源用于提高适配度，开放网页兜底用于防止信源池过窄。
 - 页面读不出来时，先用 `guanlan diagnose page "URL"` 判断是可读正文、动态页壳、访问门槛、搜索兜底还是弱正文；不要把搜索兜底当原文，也不要反复重试登录/WAF 页面。
-- 如果 `diagnose page` 输出 `browser_assist.recommended=true`，先请求用户授权，再使用宿主浏览器打开目标 URL 并只读取目标页面的浏览器可见内容作为补证；如需登录、验证或切换账号，让用户自己在浏览器里完成；不要读取 Cookie、Token、钥匙串、私信、订单、后台或无关个人资料，也不要执行任何写操作。授权后的可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库；`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
+- 如果 `diagnose page` 输出 `browser_assist.recommended=true`，先请求用户授权，再使用宿主浏览器打开目标 URL 并只读取目标页面的浏览器可见内容作为补证；如需登录、验证或切换账号，让用户自己在浏览器里完成；本次可见页补证不要读取 Cookie、Token、钥匙串、私信、订单、后台或无关个人资料；如果仍需 Cookie，必须另行说明平台、用途和风险并获得用户明确同意，也不要执行任何写操作。授权后的可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库；`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
 - 高频垂直任务用 `guanlan recipe list` / `guanlan recipe run <recipe> "问题"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`。
 
 ## 信源矩阵与公开基准

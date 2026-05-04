@@ -78,4 +78,6 @@ def test_browser_assist_plan_is_read_only_and_user_authorized():
     assert plan["browser_assist_task"]["output_contract"]["visible_page_only"] is True
     assert plan["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
     assert plan["browser_assist_task"]["host_browser_contract"]["manual_copy_is_fallback_only"] is True
+    assert plan["browser_assist_task"]["host_browser_contract"]["cookie_access_requires_separate_explicit_authorization"] is True
+    assert plan["cookie_access_policy"]["can_escalate"] == "yes_but_only_after_separate_explicit_user_authorization"
     assert "Cookie" in plan["user_prompt"]
