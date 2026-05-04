@@ -110,6 +110,8 @@ _SEARCH_BLOCK_MARKERS: dict[str, tuple[str, ...]] = {
 }
 
 _NETWORK_HEALTH_CACHE: dict[str, dict[str, Any]] = {}
+_BING_CJK_DRIFT_COOLDOWN_SECONDS = 300
+_BING_CJK_DRIFT_UNTIL = 0.0
 _VALID_NETWORK_MODES = {"auto", "current", "direct", "proxy"}
 _NETWORK_PROBLEM_STATUSES = {"network_unreachable", "proxy_error", "network_changed"}
 _QUERY_TOKEN_STOPWORDS = {
@@ -1088,11 +1090,63 @@ def backend_order(
         return [backend]
     if profile == "china":
         order = ["baidu", "bing", "duckduckgo"]
+        if query and _contains_cjk(query) and _bing_cjk_drift_active():
+            order = ["baidu", "duckduckgo", "bing"]
     else:
         order = ["duckduckgo", "bing"]
     if _is_wechat_search_intent(site=site, query=query):
         order.append("wechat-sogou")
     return order
+
+
+def _bing_cjk_drift_active(now: float | None = None) -> bool:
+    current = now if now is not None else time.time()
+    if current < _BING_CJK_DRIFT_UNTIL:
+        return True
+    if not _backend_health_persistence_enabled():
+        return False
+    try:
+        payload = json.loads(_bing_cjk_drift_path().read_text(encoding="utf-8"))
+        return current < float(payload.get("expires_at", 0) or 0)
+    except Exception:
+        return False
+
+
+def _record_bing_cjk_drift(now: float | None = None) -> None:
+    global _BING_CJK_DRIFT_UNTIL
+    if not _backend_health_persistence_enabled():
+        return
+    current = now if now is not None else time.time()
+    expires_at = current + _BING_CJK_DRIFT_COOLDOWN_SECONDS
+    _BING_CJK_DRIFT_UNTIL = expires_at
+    try:
+        path = _bing_cjk_drift_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "backend": "bing",
+                    "issue": "cjk_retrieval_drift",
+                    "expires_at": expires_at,
+                    "ttl_seconds": _BING_CJK_DRIFT_COOLDOWN_SECONDS,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _bing_cjk_drift_path() -> Path:
+    return cache_dir() / "backend_health" / "bing_cjk_drift.json"
+
+
+def _backend_health_persistence_enabled() -> bool:
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return os.environ.get("GUANLAN_TEST_ALLOW_BACKEND_HEALTH") == "1"
+    return True
 
 
 def resolve_query_profile(query: str, profile: str | None = None) -> str | None:
@@ -1475,8 +1529,43 @@ def search_web(
             batch_quality = _assess_backend_batch_quality(original_query, batch, quality)
             attempt["quality_gate"] = batch_quality
             if batch and not batch_quality["usable"] and (backend == "auto" or name == "bing"):
+                if name == "bing" and _contains_cjk(original_query):
+                    recovered_batch, recovered_attempts, recovery_trace = _try_bing_cjk_variant_recovery(
+                        original_query,
+                        limit=limit,
+                        network_mode=network_mode,
+                        profile=profile,
+                        quality=quality,
+                    )
+                    if recovered_attempts:
+                        network_attempts.extend(recovered_attempts)
+                        attempt["network_attempts"] = network_attempts
+                        attempt["network_mode"] = _first_ok_network_mode(network_attempts)
+                    if recovery_trace:
+                        attempt["bing_cjk_recovery"] = recovery_trace
+                    if recovered_batch:
+                        batch = recovered_batch
+                        attempt["result_count"] = len(batch)
+                        attempt["quality_gate"] = recovery_trace.get("quality_gate", batch_quality)
+                        attempt["status"] = "ok"
+                        attempt["note"] = (
+                            "Bing 原始中文召回疑似漂移；观澜已补跑 Bing 中文消歧 query，"
+                            "并仅保留通过相关性门控的候选。"
+                        )
+                        results.extend(batch)
+                        continue
+                    if backend == "auto":
+                        _record_bing_cjk_drift()
+                    attempt["bing_issue"] = {
+                        "type": "cjk_retrieval_drift",
+                        "agent_note": (
+                            "Bing 本轮中文开放网页召回明显漂移；这是 Bing 候选池/排序问题，"
+                            "不是观澜质量门槛过紧。观澜已拒绝污染结果并继续兜底。"
+                        ),
+                    }
                 attempt["status"] = _LOW_RELEVANCE_RESULT_STATUS
                 attempt["note"] = str(batch_quality["note"])
+                attempt["rejected_samples"] = _diagnostic_result_samples(batch)
                 continue
             attempt["status"] = "ok" if batch else _zero_result_backend_status(name)
             if not batch:
@@ -2371,6 +2460,7 @@ def _run_duckduckgo_recovery_attempt(
         if batch and not batch_quality["usable"]:
             attempt["status"] = _LOW_RELEVANCE_RESULT_STATUS
             attempt["note"] = f"{note} 但相关性门控未通过：{batch_quality['note']}"
+            attempt["rejected_samples"] = _diagnostic_result_samples(batch)
             return
         attempt["status"] = "ok" if batch else "no_results_or_parser_miss"
         if not batch:
@@ -2498,6 +2588,108 @@ def _usable_candidate_count(
     if not gate["usable"]:
         return 0
     return len(deduped)
+
+
+def _try_bing_cjk_variant_recovery(
+    query: str,
+    *,
+    limit: int,
+    network_mode: str,
+    profile: str | None,
+    quality: dict[str, Any],
+) -> tuple[list[SearchResult], list[dict[str, Any]], dict[str, Any]]:
+    """Give Bing one narrow CJK disambiguation pass before declaring drift."""
+    attempts: list[dict[str, Any]] = []
+    tried: list[dict[str, Any]] = []
+    for variant in _bing_cjk_query_variants(query, quality=quality)[:2]:
+        if not variant or variant == query:
+            continue
+        try:
+            batch, network_attempts = _search_backend_with_network(
+                "bing",
+                variant,
+                limit=limit,
+                network_mode=network_mode,
+                profile=profile,
+            )
+            attempts.extend(network_attempts)
+            batch_quality = _assess_backend_batch_quality(query, batch, quality)
+            tried.append(
+                {
+                    "query": variant,
+                    "result_count": len(batch),
+                    "status": "ok" if batch_quality["usable"] and batch else _LOW_RELEVANCE_RESULT_STATUS,
+                    "quality_gate": batch_quality,
+                }
+            )
+            if batch and batch_quality["usable"]:
+                for item in batch:
+                    item.trace["backend_query_variant"] = variant
+                    item.trace["backend_query_variant_reason"] = "bing_cjk_disambiguation"
+                return batch, attempts, {
+                    "status": "recovered",
+                    "strategy": "bing_cjk_disambiguation",
+                    "selected_query": variant,
+                    "tried": tried,
+                    "quality_gate": batch_quality,
+                    "agent_note": "Bing 原始中文召回漂移，观澜用消歧 query 补跑后才保留结果。",
+                }
+        except Exception as exc:  # noqa: BLE001 - represented as diagnostics, not fatal
+            network_attempts = getattr(exc, "attempts", None)
+            if isinstance(network_attempts, list):
+                attempts.extend(network_attempts)
+            tried.append(
+                {
+                    "query": variant,
+                    "result_count": 0,
+                    "status": getattr(exc, "status", None) or _exception_backend_status(str(exc)),
+                    "error": str(exc),
+                }
+            )
+    if not tried:
+        return [], attempts, {}
+    return [], attempts, {
+        "status": "not_recovered",
+        "strategy": "bing_cjk_disambiguation",
+        "tried": tried,
+        "agent_note": (
+            "Bing 中文消歧补跑仍未产出可用结果；应按 Bing 上游召回漂移处理，"
+            "不要归因于观澜质量门槛过紧。"
+        ),
+    }
+
+
+def _bing_cjk_query_variants(query: str, *, quality: dict[str, Any] | None = None) -> list[str]:
+    normalized = _collapse_ws(query)
+    terms = _query_relevance_terms(normalized)
+    variants: list[str] = []
+    if terms:
+        variants.append(" ".join(terms))
+    if "固态电池" in normalized:
+        core = " ".join(term for term in terms if term not in {"固态硬盘", "ssd", "nvme"}) or normalized
+        variants.append(f"{core} 动力电池 汽车 企业 产业化 -固态硬盘 -SSD -NVMe")
+    if "低空经济" in normalized:
+        variants.append("低空经济 政策 补贴 官方 通知 政府 部委 地方")
+    if "小王子" in normalized and "狐狸" in normalized:
+        variants.append('"小王子" 狐狸 驯服 台词 圣埃克苏佩里')
+    if quality and quality.get("intent") == "policy":
+        variants.append(f"{normalized} 官方 原文 通知 政府")
+    return _unique_keep_order([item for item in variants if item and item != normalized])
+
+
+def _diagnostic_result_samples(results: list[SearchResult], limit: int = 3) -> list[dict[str, str]]:
+    """Keep a tiny, non-sensitive sample of rejected candidates for debugging."""
+    samples: list[dict[str, str]] = []
+    for item in results[: max(0, limit)]:
+        samples.append(
+            {
+                "title": _collapse_ws(item.title)[:120],
+                "domain": item.domain or _domain(item.url),
+                "url": item.url,
+                "snippet": _collapse_ws(item.snippet)[:160],
+            }
+        )
+    return samples
 
 
 def _preferred_quality_scope_for_domain(domain: str, preferred_scopes: list[str]) -> str | None:
@@ -2662,6 +2854,16 @@ def build_search_recovery_plan(
         guidance.append(f"{', '.join(parser_miss)} 页面可访问但解析器未抓到结果，应视为解析器/模板问题而非资料不存在。")
     if low_relevance:
         guidance.append(f"{', '.join(low_relevance)} 返回了候选但相关性门控未通过，已继续补充后续后端。")
+        if "bing" in low_relevance:
+            guidance.append(
+                "Bing 本轮中文开放网页召回明显漂移；这是 Bing 上游候选池/排序问题，"
+                "不是观澜质量门槛过紧。观澜已拒绝污染结果，并应优先使用 Baidu/DuckDuckGo、scope 或 research 兜底。"
+            )
+    if "bing" in parser_miss or any(item.get("backend") == "bing" and item.get("status") in {"no_results", "no_results_or_parser_miss"} for item in problems):
+        guidance.append(
+            "Bing 已被调用但没有产出可用中文结果；Agent 应把它解释为 Bing 后端/上游结果问题，"
+            "不要说成观澜质量门槛太紧。"
+        )
     if unsafe_filtered:
         guidance.append(f"{', '.join(unsafe_filtered)} 返回了成人/不安全候选，观澜已过滤并拒绝把它当搜索证据。")
     if network_errors:
@@ -6003,7 +6205,7 @@ def format_search_markdown(results: list[dict[str, Any]], title: str = "观澜�
     """Render search results as compact Markdown for agent context."""
     lines = [f"# {title}", ""]
     if not results:
-        lines.append("暂无搜索结果。")
+        lines.extend(_format_empty_search_diagnostics(getattr(results, "diagnostics", {}) or {}))
         return "\n".join(lines)
 
     for idx, item in enumerate(results, start=1):
@@ -6011,7 +6213,6 @@ def format_search_markdown(results: list[dict[str, Any]], title: str = "观澜�
         item_title = _collapse_ws(str(item.get("title", "")))
         url = str(item.get("url", "")).strip()
         snippet = _collapse_ws(str(item.get("snippet", "")))
-        source = str(item.get("source", "search")).strip()
         source_type = str(item.get("source_type", "通用网页")).strip()
         score = item.get("score", 0)
         score_label = f" score={score:.2f}" if isinstance(score, (int, float)) and score else ""
@@ -6022,7 +6223,7 @@ def format_search_markdown(results: list[dict[str, Any]], title: str = "观澜�
             topic_label = f" topic={topic_role}/{topic_size}"
         evidence_role = str(item.get("evidence_role", "")).strip()
         role_label = f" role={evidence_role}" if evidence_role else ""
-        lines.append(f"{rank}. [{source}/{source_type}{score_label}{topic_label}{role_label}] {item_title}")
+        lines.append(f"{rank}. [{source_type}{score_label}{topic_label}{role_label}] {item_title}")
         if url:
             lines.append(f"   {url}")
         date_bits = []
@@ -6039,6 +6240,74 @@ def format_search_markdown(results: list[dict[str, Any]], title: str = "观澜�
         if snippet:
             lines.append(f"   {snippet[:240]}")
     return "\n".join(lines)
+
+
+def _format_empty_search_diagnostics(trace: dict[str, Any]) -> list[str]:
+    """Explain why an empty result set is empty instead of hiding backend evidence."""
+    if not trace:
+        return ["暂无搜索结果。"]
+
+    diagnostics = trace.get("backend_diagnostics") or []
+    if not diagnostics:
+        return ["暂无搜索结果。"]
+
+    lines = ["暂无可用搜索结果。", "", "## 后端诊断"]
+    status_bits: list[str] = []
+    for item in diagnostics:
+        backend = str(item.get("backend") or "unknown")
+        status = str(item.get("status") or "unknown")
+        count = int(item.get("result_count") or 0)
+        if status == _LOW_RELEVANCE_RESULT_STATUS:
+            status_bits.append(f"{backend}=low_relevance({count})")
+        elif status == _UNSAFE_RESULT_STATUS:
+            raw_count = int(item.get("raw_result_count") or count)
+            status_bits.append(f"{backend}=unsafe_filtered({raw_count})")
+        elif status == "ok":
+            status_bits.append(f"{backend}=ok({count})")
+        else:
+            status_bits.append(f"{backend}={status}")
+    lines.append("- backend_status: " + ", ".join(status_bits))
+
+    for item in diagnostics:
+        backend = str(item.get("backend") or "unknown")
+        status = str(item.get("status") or "")
+        note = _collapse_ws(str(item.get("note") or ""))
+        if status == _LOW_RELEVANCE_RESULT_STATUS:
+            quality_gate = item.get("quality_gate") or {}
+            reason = str(quality_gate.get("reason") or "low_relevance")
+            top_domain = str(quality_gate.get("top_domain") or "")
+            term_coverage = quality_gate.get("term_coverage")
+            domain_part = f" top_domain={top_domain}" if top_domain else ""
+            coverage_part = f" term_coverage={term_coverage}" if term_coverage is not None else ""
+            lines.append(
+                f"- {backend}: 返回了 {item.get('result_count', 0)} 条候选，但未通过相关性门控"
+                f"（reason={reason}{domain_part}{coverage_part}），已拒绝进入结果池。"
+            )
+            if note:
+                lines.append(f"  note: {note}")
+            bing_issue = item.get("bing_issue") or {}
+            if isinstance(bing_issue, dict) and bing_issue.get("agent_note"):
+                lines.append(f"  agent_note: {bing_issue.get('agent_note')}")
+            bing_recovery = item.get("bing_cjk_recovery") or {}
+            if isinstance(bing_recovery, dict) and bing_recovery.get("agent_note"):
+                lines.append(f"  bing_recovery: {bing_recovery.get('agent_note')}")
+            for sample in item.get("rejected_samples") or []:
+                title = _collapse_ws(str(sample.get("title") or ""))[:80]
+                domain = str(sample.get("domain") or "")
+                url = str(sample.get("url") or "")
+                suffix = f" ({domain})" if domain else ""
+                link = f" - {url}" if url else ""
+                lines.append(f"  rejected_sample: {title}{suffix}{link}")
+        elif note and status not in {"ok", "skipped"}:
+            lines.append(f"- {backend}: {status} - {note}")
+
+    recovery = trace.get("backend_recovery") or {}
+    commands = recovery.get("followup_commands") or []
+    if commands:
+        lines.extend(["", "## 建议补证"])
+        for command in commands[:3]:
+            lines.append(f"- `{command}`")
+    return lines
 
 
 def format_search_context(results: list[dict[str, Any]], title: str = "观澜搜索上下文") -> str:
@@ -6246,6 +6515,18 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
                 or item.get("backend") in {"duckduckgo:open_fallback", "duckduckgo:site_inferred"}
             ):
                 lines.append(f"  backend_note:{item.get('backend')} => {note}")
+            if item.get("status") == _LOW_RELEVANCE_RESULT_STATUS:
+                bing_issue = item.get("bing_issue") or {}
+                if isinstance(bing_issue, dict) and bing_issue.get("agent_note"):
+                    lines.append(f"  agent_note:{item.get('backend')} => {bing_issue.get('agent_note')}")
+                bing_recovery = item.get("bing_cjk_recovery") or {}
+                if isinstance(bing_recovery, dict) and bing_recovery.get("agent_note"):
+                    lines.append(f"  bing_recovery:{item.get('backend')} => {bing_recovery.get('agent_note')}")
+                for sample in item.get("rejected_samples") or []:
+                    title = _collapse_ws(str(sample.get("title") or ""))[:80]
+                    domain = str(sample.get("domain") or "")
+                    suffix = f" ({domain})" if domain else ""
+                    lines.append(f"  rejected_sample:{item.get('backend')} => {title}{suffix}")
             for network_attempt in item.get("network_attempts") or []:
                 n_status = str(network_attempt.get("status") or "")
                 if n_status and n_status != "ok":

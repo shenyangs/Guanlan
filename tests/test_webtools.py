@@ -1165,6 +1165,34 @@ def test_search_web_uses_china_backend_order():
     assert webtools.backend_order("auto", "china") == ["baidu", "bing", "duckduckgo"]
 
 
+def test_bing_cjk_drift_cooldown_lowers_auto_priority(monkeypatch):
+    monkeypatch.setattr(webtools, "_BING_CJK_DRIFT_UNTIL", 9999999999.0)
+
+    assert webtools.backend_order("auto", "china", query="固态电池量产时间表") == [
+        "baidu",
+        "duckduckgo",
+        "bing",
+    ]
+    assert webtools.backend_order("auto", "china") == ["baidu", "bing", "duckduckgo"]
+
+
+def test_bing_cjk_drift_cooldown_persists_for_cli_processes(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_TEST_ALLOW_BACKEND_HEALTH", "1")
+    monkeypatch.setattr(webtools, "cache_dir", lambda: tmp_path)
+    monkeypatch.setattr(webtools, "_BING_CJK_DRIFT_UNTIL", 0.0)
+
+    assert webtools._bing_cjk_drift_active() is False
+    webtools._record_bing_cjk_drift()
+
+    monkeypatch.setattr(webtools, "_BING_CJK_DRIFT_UNTIL", 0.0)
+    assert webtools._bing_cjk_drift_active() is True
+    assert webtools.backend_order("auto", "china", query="低空经济政策补贴") == [
+        "baidu",
+        "duckduckgo",
+        "bing",
+    ]
+
+
 def test_search_web_resolves_cjk_ai_query_to_china_profile(monkeypatch):
     requested = []
 
@@ -1403,8 +1431,10 @@ def test_search_web_continues_after_low_relevance_bing_batch(monkeypatch):
     assert [item["status"] for item in diagnostics] == ["blocked", "low_relevance", "ok"]
     assert diagnostics[1]["quality_gate"]["reason"]
     assert "support.microsoft.com" in diagnostics[1]["quality_gate"]["top_domain"]
+    assert diagnostics[1]["rejected_samples"][0]["domain"] == "support.microsoft.com"
     assert "backend_status: baidu=blocked, bing=low_relevance(10), duckduckgo=ok(1)" in rendered
     assert "相关性门控未通过" in rendered
+    assert "rejected_sample:bing => Microsoft Support 1 (support.microsoft.com)" in rendered
 
 
 def test_search_quality_profile_treats_robotics_funding_as_industry():
@@ -1766,6 +1796,8 @@ def test_bing_backend_uses_locale_and_safe_search(monkeypatch):
 
 
 def test_explicit_bing_low_relevance_batch_is_not_returned(monkeypatch):
+    monkeypatch.setattr(webtools, "_BING_CJK_DRIFT_UNTIL", 0.0)
+
     def noisy_bing(query, limit=10):
         return [
             webtools.SearchResult(
@@ -1796,6 +1828,50 @@ def test_explicit_bing_low_relevance_batch_is_not_returned(monkeypatch):
     assert results == []
     assert diagnostics[0]["status"] == "low_relevance"
     assert "query_terms_missing" in diagnostics[0]["quality_gate"]["reason"]
+    assert diagnostics[0]["rejected_samples"][0]["title"] == "什么是固本培元？"
+
+    rendered = webtools.format_search_markdown(results, title="观澜搜索 / 固态电池量产时间表")
+    assert "暂无可用搜索结果" in rendered
+    assert "bing=low_relevance(3)" in rendered
+    assert "不是观澜质量门槛过紧" in rendered
+    assert "rejected_sample: 什么是固本培元？" in rendered
+    assert "guanlan search \"固态电池量产时间表\" --profile china --limit 80" in rendered
+
+
+def test_bing_cjk_low_relevance_tries_disambiguation_variant(monkeypatch):
+    calls = []
+
+    def fake_backend(name, query, *, limit, network_mode="auto", profile=None):
+        calls.append(query)
+        if len(calls) == 1:
+            return [
+                webtools.SearchResult(
+                    title="2026 固态硬盘选购指南",
+                    url="https://www.zhihu.com/ssd",
+                    snippet="SSD NVMe 固态硬盘 推荐",
+                    source="bing",
+                )
+            ], [{"backend": name, "network_mode": network_mode, "status": "ok"}]
+        return [
+            webtools.SearchResult(
+                title="固态电池量产时间表：动力电池产业化进展",
+                url="https://example.com/solid-battery",
+                snippet="固态电池 量产 时间表 动力电池 汽车 企业 产业化",
+                source="bing",
+            )
+        ], [{"backend": name, "network_mode": network_mode, "status": "ok"}]
+
+    monkeypatch.setattr(webtools, "_search_backend_with_network", fake_backend)
+
+    results = webtools.search_web("固态电池量产时间表", backend="bing", limit=5, trace=True)
+
+    assert len(results) == 1
+    assert results[0]["source"] == "bing"
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+    assert diagnostics[0]["status"] == "ok"
+    assert diagnostics[0]["bing_cjk_recovery"]["status"] == "recovered"
+    assert calls[0] == "固态电池量产时间表"
+    assert calls[1] != "固态电池量产时间表"
 
 
 def test_explicit_bing_unsafe_batch_is_filtered(monkeypatch):
@@ -2196,7 +2272,8 @@ def test_format_search_markdown():
     )
 
     assert "# 观澜搜索" in md
-    assert "1. [duckduckgo/通用网页" in md
+    assert "1. [通用网页" in md
+    assert "duckduckgo/通用网页" not in md
     assert "Result" in md
     assert "https://example.com" in md
 
