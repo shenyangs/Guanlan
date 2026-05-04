@@ -83,8 +83,8 @@
 | 场景 | 建议外层 timeout |
 | --- | --- |
 | `guanlan status`、`doctor`、`search`、单 URL `read` | 60-90 秒 |
-| `hotnews`、`feeds`、`pulse`、`read batch` | 120 秒 |
-| `research`、`compare`、`timeline`、`dossier`、`archive ingest-research` | 180-300 秒 |
+| `hotnews`、`feeds`、`pulse`、`read batch`、默认 `archive ingest-research` | 120 秒 |
+| `research`、`compare`、`timeline`、`dossier`、`archive ingest-research --read-top N` | 180-300 秒 |
 | 安装、升级、发布 smoke、Homebrew/PyPI 校验 | 300-600 秒 |
 
 如果发生超时：
@@ -157,6 +157,8 @@
 | “只核验标题/发布时间/链接” | `guanlan read "URL" --backend direct --extract metadata` 或 `--extract links` |
 | “只读原文，不要兜底搜索” | `guanlan read "URL" --no-fallback-search` |
 | “今天有什么热点” | `guanlan hotnews today --limit 80` |
+| “需要找某类平台热榜入口” | `guanlan hotnews hotboard:catalog:finance --limit 30` |
+| “需要确认某个榜单今天有哪些快照” | `guanlan hotnews hotboard:snapshots:weibo --limit 20` |
 | “技术社区在讨论什么” | `guanlan hotnews v2ex --limit 80` |
 | “今天有什么值得读的技术/AI 文章” | `guanlan feeds curated --limit 80` |
 | “今天微信/公众号有什么热文” | `guanlan feeds wechat-rss --limit 80` |
@@ -188,6 +190,7 @@
 | “看研究路由是否偏斜” | `guanlan research "关键词" --route-chart` |
 | “把链接存入本地知识库” | `guanlan archive add "URL"` |
 | “联网查一轮并把代表证据入库” | `guanlan archive ingest-research "关键词" --limit 80` |
+| “联网查一轮、再深读少量原文入库” | `guanlan archive ingest-research "关键词" --limit 80 --read-top 3` |
 | “搜索本地知识库” | `guanlan archive search "关键词" --format context` |
 | “解释本地库为什么命中/没命中” | `guanlan archive search "关键词" --trace` |
 | “确认一条归档是否真的有正文” | `guanlan archive inspect 1` |

@@ -1,0 +1,798 @@
+{
+  "meta": {
+    "provider": "hotboard_catalog",
+    "fetched_at": "2026-05-04T11:07:08Z",
+    "source": "commercial_api_catalog",
+    "pages_fetched": 109,
+    "stop_page": 110,
+    "raw_count": 10858,
+    "unique_count": 10843,
+    "cid_counts": {
+      "1": 767,
+      "10": 4608,
+      "12": 553,
+      "13": 40,
+      "2": 609,
+      "3": 1185,
+      "4": 422,
+      "5": 141,
+      "6": 396,
+      "7": 407,
+      "8": 440,
+      "9": 1275
+    },
+    "notes": "Generated from a commercial hotboard catalog API with a user-provided key. No API key is stored."
+  },
+  "pages": [
+    {
+      "page": 1,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 2,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 3,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 4,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 5,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 6,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 7,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 8,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 9,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 10,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 11,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 12,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 13,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 14,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 15,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 16,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 17,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 18,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 19,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 20,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 21,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 22,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 23,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 24,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 25,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 26,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 27,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 28,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 29,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 30,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 31,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 32,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 33,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 34,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 35,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 36,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 37,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 38,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 39,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 40,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 41,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 42,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 43,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 44,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 45,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 46,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 47,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 48,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 49,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 50,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 51,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 52,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 53,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 54,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 55,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 56,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 57,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 58,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 59,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 60,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 61,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 62,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 63,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 64,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 65,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 66,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 67,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 68,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 69,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 70,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 71,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 72,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 73,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 74,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 75,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 76,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 77,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 78,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 79,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 80,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 81,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 82,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 83,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 84,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 85,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 86,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 87,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 88,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 89,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 90,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 91,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 92,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 93,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 94,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 95,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 96,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 97,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 98,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 99,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 100,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 101,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 102,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 103,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 104,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 105,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 106,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 107,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 108,
+      "count": 100,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 109,
+      "count": 58,
+      "status": 200,
+      "error": false,
+      "msg": null
+    },
+    {
+      "page": 110,
+      "count": 0,
+      "status": 200,
+      "error": false,
+      "msg": null
+    }
+  ]
+}

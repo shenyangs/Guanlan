@@ -630,6 +630,72 @@ def test_fetch_tophub_parses_node_html(monkeypatch):
     assert items[0]["metrics"]["provider_status"] == "success"
 
 
+def test_fetch_hotboard_catalog_uses_packaged_nodes_without_key(monkeypatch):
+    monkeypatch.delenv("GUANLAN_HOTBOARD_API_KEY", raising=False)
+    monkeypatch.delenv("HOTBOARD_API_KEY", raising=False)
+
+    items = hotnews.fetch_hotnews("hotboard:catalog:finance", limit=3)
+
+    assert len(items) == 3
+    assert items[0]["source_id"] == "hotboard:catalog:finance"
+    assert items[0]["category"] == "source_catalog"
+    assert items[0]["metrics"]["provider_status"] == "local_catalog"
+    assert items[0]["metrics"]["cost_u"] == 0
+    assert "api_key_not_required" in items[0]["risk_tags"]
+
+
+def test_fetch_hotboard_detail_uses_metered_api_when_explicit(monkeypatch):
+    from guanlan import hotboard_catalog as hotboard
+
+    monkeypatch.setattr(hotnews, "_load_hotnews_cache", lambda: {"entries": {}})
+    monkeypatch.setattr(hotnews, "_save_hotnews_cache", lambda _data: None)
+    monkeypatch.setattr(hotboard, "api_key", lambda: "configured")
+    monkeypatch.setattr(
+        hotboard,
+        "fetch_node_detail",
+        lambda _node_id: {
+            "data": {
+                "items": [
+                    {
+                        "rank": 1,
+                        "title": "微博热点",
+                        "url": "https://s.weibo.com/weibo?q=test",
+                        "extra": "99万",
+                    }
+                ]
+            }
+        },
+    )
+
+    items = hotnews.fetch_hotnews("hotboard:weibo", limit=5)
+
+    assert items[0]["source_id"] == "hotboard:weibo"
+    assert items[0]["title"] == "微博热点"
+    assert items[0]["metrics"]["heat"] == "99万"
+    assert items[0]["metrics"]["paid_api"] is True
+    assert items[0]["metrics"]["cost_u"] == 1
+    assert "cost_metered" in items[0]["risk_tags"]
+
+
+def test_fetch_hotboard_snapshots_lists_free_snapshot_ids(monkeypatch):
+    from guanlan import hotboard_catalog as hotboard
+
+    monkeypatch.setattr(hotnews, "_load_hotnews_cache", lambda: {"entries": {}})
+    monkeypatch.setattr(hotnews, "_save_hotnews_cache", lambda _data: None)
+    monkeypatch.setattr(
+        hotboard,
+        "fetch_node_snapshots",
+        lambda _node_id: {"data": [{"ssid": 123, "timestamp": 1777824005}]},
+    )
+
+    items = hotnews.fetch_hotnews("hotboard:snapshots:weibo", limit=5)
+
+    assert items[0]["source_id"] == "hotboard:snapshots:KqndgxeLl9"
+    assert "快照" in items[0]["title"]
+    assert items[0]["metrics"]["snapshot_only"] is True
+    assert items[0]["metrics"]["cost_u"] == 0
+
+
 def test_fetch_uapis_uses_documented_v1_hotboard_api(monkeypatch):
     requested = []
     monkeypatch.setattr(hotnews, "_load_hotnews_cache", lambda: {"entries": {}})
@@ -701,6 +767,8 @@ def test_hotnews_cli_lists_external_provider_sources(capsys):
     assert "uapis:weibo" in data
     assert "tophub:weibo" in data
     assert "tophub:catalog:news" in data
+    assert "hotboard:catalog" in data
+    assert "hotboard:weibo" in data
 
 
 def test_format_hotnews_markdown_is_agent_readable():

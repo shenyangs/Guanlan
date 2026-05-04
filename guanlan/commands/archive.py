@@ -302,6 +302,9 @@ def handle_archive_command(args):
                 profile=args.profile or None,
                 dry_run=args.dry_run,
                 db_path=db_path,
+                read_backend=args.read_backend,
+                read_concurrency=max(args.read_concurrency, 1),
+                cache_ttl=max(args.cache_ttl, 0),
             )
             if args.json:
                 print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -340,6 +343,9 @@ def _format_archive_ingest_summary(result: dict) -> str:
         f"- Query: {result.get('query', '')}",
         "- 行为: 联网 research 后归档精选代表证据；如需搜索已有本地库，请使用 `guanlan archive search`。",
         f"- Dry run: {'是' if result.get('dry_run') else '否'}",
+        f"- 模式: {result.get('ingest_mode', 'search-first')}",
+        f"- 耗时: {result.get('elapsed_sec', 0)}s",
+        f"- 可选深读: read_top={result.get('read_top', 0)} backend={result.get('read_backend', '')} success={result.get('read_success_count', 0)}/{result.get('read_attempted_count', 0)}",
         f"- 搜索结果数: {result.get('packet_result_count', 0)}",
         f"- 精选数: {result.get('selected_count', 0)}",
         f"- 跳过低相关: {result.get('skipped_count', 0)}",
@@ -411,4 +417,3 @@ def _format_archive_inspect(record: dict) -> str:
     if content:
         lines.extend(["", "## 正文预览", content[:2000]])
     return "\n".join(lines)
-

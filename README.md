@@ -109,7 +109,7 @@ guanlan doctor --install-check
 guanlan status
 ```
 
-看到 `观澜 / Guanlan v0.5.6`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.7`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
 
 ## 给 Agent 复制的安装指令
 
@@ -148,6 +148,9 @@ guanlan status
 | Agent 怎么正确调用观澜 | [Agent 使用指南](docs/agent-usage.md) |
 | 安装、升级和路径排查 | [安装指南](docs/install.md) / [更新指南](docs/update.md) / [故障排查](docs/troubleshooting.md) |
 | 本地模型联网 | [Local LLM 指南](docs/local-llm.md) |
+| 精选信源包 | [Source Packs](docs/source-packs.md) |
+| 精选信源完整清单 | [Source Pack Inventory](docs/source-pack-inventory-2026-05-04.md) |
+| 热点目录接入 | [热点目录接入](docs/hotboard-api.md) |
 | 输出字段稳定契约 | [Contract](docs/contract.md) |
 | 中文互联网设计依据 | [China-Aware Web Rationale](docs/chinese-web-design.md) |
 | 发版和质量闸门 | [Release Automation](docs/release-automation.md) / [Quality Test Plan](docs/quality-test-plan.md) |

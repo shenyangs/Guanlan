@@ -8,7 +8,9 @@ public-information sources before widening the search.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
+
+from guanlan.source_packs import domains_for_scope
 
 
 @dataclass(frozen=True)
@@ -719,6 +721,32 @@ SEARCH_SCOPES: dict[str, SearchScope] = {
         ),
     ),
 }
+
+
+def _apply_source_pack_domains() -> None:
+    """Merge carefully curated source-pack domains into existing scopes."""
+    for scope_id, scope in list(SEARCH_SCOPES.items()):
+        domains = domains_for_scope(scope_id)
+        if not domains:
+            continue
+        SEARCH_SCOPES[scope_id] = replace(
+            scope,
+            domains=_unique_domain_tuple((*scope.domains, *domains)),
+        )
+
+
+def _unique_domain_tuple(values: tuple[str, ...]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        domain = str(value or "").strip().lower().removeprefix("www.")
+        if domain and domain not in seen:
+            seen.add(domain)
+            output.append(domain)
+    return tuple(output)
+
+
+_apply_source_pack_domains()
 
 
 SEARCH_SCOPE_ALIASES = {

@@ -1127,6 +1127,8 @@ def build_route_plan(
         target_sites = _unique(list(sites) + target_sites)
     if not (site or sites) and "university_admissions" in primary + secondary:
         target_sites = _unique(_university_target_sites(clean_query) + target_sites)
+    if not (site or sites or scope or preset):
+        target_sites = _unique(target_sites + _source_pack_target_sites(primary + secondary))
     if cross_region_entertainment and not (site or sites):
         domestic_entertainment_sites = {"douban.com", "maoyan.com", "bilibili.com", "weibo.com", "taptap.cn"}
         target_sites = [site_id for site_id in target_sites if site_id not in domestic_entertainment_sites]
@@ -1590,6 +1592,7 @@ def _recommended_commands(
         and not {"global_entertainment", "jp_kr_entertainment", "cybersecurity", "weather_disaster", "science", "sports", "podcast", *finance_intents} & set(intents)
     ):
         commands.append(f"guanlan hotnews today --limit {hotnews_limit}")
+
     if "university_admissions" in intents:
         commands.append(f"guanlan research {quoted} --preset university{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
         commands.append(f"guanlan search {quoted}{profile_part} --scope university --limit {search_limit}")
@@ -1704,7 +1707,70 @@ def _recommended_commands(
         elif feed == "wechat-rss":
             commands.append(f"guanlan feeds wechat-rss --limit {feeds_limit}")
 
-    return _unique(commands)[:6]
+    if _needs_hotboard_route(intents):
+        commands.extend(_hotboard_route_commands(query, intents=intents, domains=domains))
+
+    return _unique(commands)[:10]
+
+
+def _hotboard_route_commands(query: str, *, intents: list[str], domains: list[str]) -> list[str]:
+    """Suggest local hotboard catalog expansion without making detail API the default."""
+    try:
+        from guanlan.hotboard_catalog import ROUTE_CATEGORY_BY_INTENT, recommend_nodes_for_route
+    except Exception:
+        return []
+
+    categories = _unique([ROUTE_CATEGORY_BY_INTENT[intent] for intent in intents if intent in ROUTE_CATEGORY_BY_INTENT])
+    if not categories and "hot_trend" not in intents:
+        return []
+    commands: list[str] = []
+    for category in categories[:1]:
+        commands.append(f"guanlan hotnews hotboard:catalog:{category} --limit 30")
+    curated_nodes = _source_pack_hotboard_nodes(intents, limit=2)
+    fallback_nodes = recommend_nodes_for_route(query, intents=intents, domains=domains, limit=2)
+    for node in [*curated_nodes, *fallback_nodes][:2]:
+        node_id = str(node.get("node_id") or node.get("hashid") or "")
+        if node_id:
+            commands.append(f"guanlan hotnews hotboard:snapshots:{node_id} --limit 20")
+    return commands[:3]
+
+
+def _source_pack_target_sites(intents: list[str]) -> list[str]:
+    try:
+        from guanlan.source_packs import recommended_sites_for_intents
+
+        return recommended_sites_for_intents(intents, limit=6)
+    except Exception:
+        return []
+
+
+def _source_pack_hotboard_nodes(intents: list[str], *, limit: int = 2) -> list[dict[str, str]]:
+    try:
+        from guanlan.source_packs import hotboard_nodes_for_intents
+
+        return hotboard_nodes_for_intents(intents, limit=limit)
+    except Exception:
+        return []
+
+
+def _needs_hotboard_route(intents: list[str]) -> bool:
+    return bool(
+        {
+            "hot_trend",
+            "entertainment",
+            "reputation",
+            "purchase_advice",
+            "industry",
+            "ecommerce",
+            "finance",
+            "finance_quote",
+            "finance_disclosure",
+            "finance_macro",
+            "finance_sentiment",
+            "finance_research",
+        }
+        & set(intents)
+    )
 
 
 def _structured_stock_commands(query: str, intents: list[str]) -> list[str]:

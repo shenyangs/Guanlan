@@ -323,10 +323,11 @@ def test_archive_cli_verify_and_context(tmp_path, capsys):
 
 def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkeypatch):
     db = tmp_path / "archive.db"
+    captured_kwargs = {}
 
-    monkeypatch.setattr(
-        "guanlan.webtools.build_research_packet",
-        lambda *args, **kwargs: {
+    def fake_packet(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return {
             "result_count": 1,
             "preset": "general",
             "route_plan": {"primary_intents": ["policy"]},
@@ -343,19 +344,67 @@ def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkey
                 }
             ],
             "readings": [{"url": "https://gov.cn/a", "status": "ok", "content": "# 政策原文\n全文"}],
-        },
-    )
+        }
+
+    monkeypatch.setattr("guanlan.webtools.build_research_packet", fake_packet)
 
     result = archive.ingest_search("人工智能 政策", db_path=db)
     records = archive.search_documents("全文", db_path=db)
 
     assert result["archived_count"] == 1
+    assert result["ingest_mode"] == "search-first"
+    assert result["read_top"] == 0
+    assert captured_kwargs["read_top"] == 0
+    assert captured_kwargs["cache_ttl"] == 3600
     assert result["audit_summary"]["kept"] == 1
     assert records[0]["title"] == "政策原文"
     assert records[0]["metadata"]["source_type"] == "政府/部委"
     assert records[0]["metadata"]["route_plan"]["primary_intents"] == ["policy"]
     assert records[0]["metadata"]["read_quality"]["chars"] > 0
     assert records[0]["metadata"]["source_card"]["domain"] == "gov.cn"
+
+
+def test_archive_ingest_optional_reads_are_bounded_outside_research(tmp_path, monkeypatch):
+    db = tmp_path / "archive.db"
+    captured_packet_kwargs = {}
+    captured_read_kwargs = {}
+
+    def fake_packet(*args, **kwargs):
+        captured_packet_kwargs.update(kwargs)
+        return {
+            "result_count": 1,
+            "preset": "general",
+            "route_plan": {"primary_intents": ["policy"]},
+            "selected_evidence": [
+                {
+                    "title": "横琴跨境电商政策",
+                    "url": "https://gov.cn/hengqin",
+                    "snippet": "横琴 跨境 电商 政策",
+                    "source_type": "政府/部委",
+                    "rank": 1,
+                }
+            ],
+            "readings": [],
+        }
+
+    def fake_read_batch(urls, **kwargs):
+        captured_read_kwargs.update(kwargs)
+        return [{"url": urls[0], "status": "ok", "content": "# 横琴跨境电商政策\n全文内容"}]
+
+    monkeypatch.setattr("guanlan.webtools.build_research_packet", fake_packet)
+    monkeypatch.setattr("guanlan.webtools.read_batch", fake_read_batch)
+
+    result = archive.ingest_search("珠海横琴 跨境电商政策", read_top=1, db_path=db)
+    records = archive.search_documents("全文内容", db_path=db)
+
+    assert captured_packet_kwargs["read_top"] == 0
+    assert captured_read_kwargs["backend"] == "direct"
+    assert captured_read_kwargs["fallback_search"] is False
+    assert captured_read_kwargs["concurrency"] == 3
+    assert result["read_attempted_count"] == 1
+    assert result["read_success_count"] == 1
+    assert result["archived_count"] == 1
+    assert records[0]["title"] == "横琴跨境电商政策"
 
 
 def test_archive_ingest_dry_run_and_low_value_filter(tmp_path, monkeypatch):

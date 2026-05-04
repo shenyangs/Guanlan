@@ -109,8 +109,9 @@ Agent timeout budget rule: Guanlan may touch multiple public web/RSS/hotnews sou
 and weak networks can make some upstreams slow before Guanlan falls back or marks stale cache. If an
 agent platform, MCP client, or automation runner lets you set a tool timeout, use these outer budgets:
 60-90 seconds for `status`, `doctor`, `search`, and single-URL `read`; 120 seconds for `hotnews`,
-`feeds`, `pulse`, and batch reads; 180-300 seconds for `research`, `compare`, `timeline`, `dossier`,
-and `archive ingest-research`; 300-600 seconds for install/update/release smoke workflows. On timeout,
+`feeds`, `pulse`, batch reads, and default search-first `archive ingest-research`; 180-300 seconds
+for `research`, `compare`, `timeline`, `dossier`, and `archive ingest-research --read-top N`;
+300-600 seconds for install/update/release smoke workflows. On timeout,
 retry once with `--cache-ttl 3600` where supported or reduce `--read-top`, but do not shrink the
 result pool below the normal 80 just to make the command finish faster. A timeout is network evidence,
 not evidence that the topic has no results.
@@ -183,11 +184,14 @@ guanlan hotnews ithome --limit 80
 guanlan hotnews v2ex --limit 80
 guanlan hotnews tophub:weibo --limit 80
 guanlan hotnews tophub:catalog:news --limit 80
+guanlan hotnews hotboard:catalog:finance --limit 30
+guanlan hotnews hotboard:snapshots:weibo --limit 20
 guanlan hotnews uapis:catalog --limit 80
 guanlan hotnews vvhan:all --limit 80
 guanlan doctor --install-check
 guanlan doctor --trace
 guanlan archive ingest-research "query" --limit 80
+guanlan archive ingest-research "query" --limit 80 --read-top 3
 guanlan archive verify
 guanlan archive embed --backend local
 guanlan archive search "query" --semantic --limit 20
@@ -225,7 +229,8 @@ Safety rules:
 - Use `guanlan research ... --preset cybersecurity` or `search --scope cybersecurity --trace` for CVE, vulnerabilities, patches, vendor advisories, phishing, fraud, and suspicious messages; prioritize CVE/NVD/CISA/vendor/regulator sources.
 - Use `guanlan search ... --scope weather_disaster --trace` for typhoon, weather alert, earthquake, disaster, and official safety questions; prioritize official meteorological/emergency sources and check timestamps.
 - Use `guanlan research ... --preset sports`, `--preset science`, `--preset career`, `--preset podcast`, or `--preset test_prep` for sports, science-news verification, job/salary/interview, podcast discovery, and exam-prep questions instead of leaving them as generic web search.
-- Use `guanlan hotnews tophub:*`, `guanlan hotnews uapis:*`, or `guanlan hotnews vvhan:*` only as optional external hotboard expansion. Keep the `external_backend` and cache/staleness metadata in mind; do not treat third-party aggregate lists as authoritative facts.
+- Use `guanlan hotnews hotboard:catalog:*` as the local full hotboard directory when a task needs platform-level hotboard routing; this uses the packaged hotboard catalog and does not require a key. Use `guanlan hotnews hotboard:snapshots:<node>` for free snapshot IDs when a key and active balance are configured. Use `guanlan hotnews hotboard:<node>` only as explicit opt-in detail fetching; it is cache-backed and metered, so keep `paid_api` / `cost_u` metadata visible to downstream agents.
+- Use `guanlan hotnews tophub:*`, `guanlan hotnews uapis:*`, `guanlan hotnews vvhan:*`, or `guanlan hotnews hotboard:*` only as optional external hotboard expansion. Keep the `external_backend`, cache/staleness, and cost metadata in mind; do not treat third-party aggregate lists as authoritative facts.
 - For technology/AI/developer routing, always include one RSS discovery pass. `guanlan research ... --preset tech` does this automatically; if you only run `route` or `search`, also run `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80` as a second pass.
 - Use `guanlan read ... --quality-report` when deciding whether a page body is clean enough for downstream reasoning; use `--strict` when noisy page chrome would be harmful; use `--extract metadata` or `--extract links` for source/date/link checks.
 - Use `guanlan archive verify` before relying on archive as memory/RAG/Wiki; use `archive context` or `archive wiki context` when a local model needs evidence-bound context from stored materials.

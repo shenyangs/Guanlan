@@ -3570,6 +3570,7 @@ def test_build_research_packet_site_request_skips_preset_scopes(monkeypatch):
             "scope": None,
             "backend": "auto",
             "profile": "china",
+            "cache_ttl": 0,
         }
     ]
     assert packet["scope"] == "social_web"

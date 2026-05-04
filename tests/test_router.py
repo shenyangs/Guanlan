@@ -177,6 +177,14 @@ def test_route_plan_detects_macro_and_sentiment_finance_needs():
     assert "finance_sentiment" in sentiment.preferred_scopes
     assert "sentiment_sample" in sentiment.evidence_roles
     assert any("--scope finance_sentiment" in command for command in sentiment.recommended_commands)
+    assert any("hotboard:catalog:finance" in command for command in sentiment.recommended_commands)
+
+
+def test_route_plan_injects_hotboard_catalog_for_hot_queries():
+    plan = build_route_plan("今天 财经市场 热点", profile="china")
+
+    assert any("hotboard:catalog" in command for command in plan.recommended_commands)
+    assert any("hotboard:snapshots:" in command for command in plan.recommended_commands)
 
 
 def test_route_plan_detects_career_ecommerce_podcast_test_prep():

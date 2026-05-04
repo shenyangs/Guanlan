@@ -189,10 +189,10 @@ def main():
     # ── hotnews ──
     p_hotnews = sub.add_parser("hotnews", help="Fetch Chinese hotnews from native sources")
     p_hotnews.add_argument("source", nargs="?", default="today",
-                           help="Source id: today, snapshot, baidu, weibo, bilibili-hot-search, bilibili, ithome, sspai, xinzhiyuan, youtube-ai-rss, zeli-hn, buzzing, zhihu, v2ex, newsnow:<id>, vvhan:<id>, uapis:<id>, tophub:<id>, or list")
+                           help="Source id: today, snapshot, baidu, weibo, bilibili-hot-search, bilibili, ithome, sspai, xinzhiyuan, youtube-ai-rss, zeli-hn, buzzing, zhihu, v2ex, newsnow:<id>, vvhan:<id>, uapis:<id>, tophub:<id>, hotboard:<id>, or list")
     p_hotnews.add_argument("snapshot_source", nargs="?",
                            help="Source id when using `guanlan hotnews snapshot <source>`")
-    p_hotnews.add_argument("--backend", choices=["auto", "native", "newsnow", "vvhan", "uapis", "tophub"], default="auto",
+    p_hotnews.add_argument("--backend", default="auto",
                            help="Hotnews backend; auto uses native first, unknown sources as NewsNow. External providers are optional and cache-backed")
     p_hotnews.add_argument("--newsnow-base-url", default="",
                            help="Override NewsNow BASE_URL, e.g. https://newsnow.example.com")
@@ -737,10 +737,23 @@ def main():
     )
     p_archive_ingest.add_argument("query", help="Research query to ingest")
     p_archive_ingest.add_argument("--limit", type=int, default=DEFAULT_RESEARCH_LIMIT, help="Broad search pool size")
-    p_archive_ingest.add_argument("--read-top", type=int, default=3, help="Representative URLs to read")
+    p_archive_ingest.add_argument(
+        "--read-top",
+        type=int,
+        default=0,
+        help="Representative URLs to read before archiving; default 0 keeps ingest-search fast and stable",
+    )
     p_archive_ingest.add_argument("--select-top", type=int, default=8, help="Representative evidence items to archive")
     p_archive_ingest.add_argument("--preset", default="general", help="Research preset")
     p_archive_ingest.add_argument("--profile", choices=VALID_PROFILES, default="china", help="Region profile")
+    p_archive_ingest.add_argument(
+        "--read-backend",
+        choices=["auto", "jina", "direct"],
+        default="direct",
+        help="Read backend for optional --read-top enrichment; direct is faster and avoids Jina stalls",
+    )
+    p_archive_ingest.add_argument("--read-concurrency", type=int, default=3, help="Concurrent optional reads for --read-top")
+    p_archive_ingest.add_argument("--cache-ttl", type=int, default=3600, help="Search/read cache TTL for retry-friendly ingest")
     p_archive_ingest.add_argument("--dry-run", action="store_true",
                                   help="Preview what would be archived without writing to the local database")
     p_archive_ingest.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")

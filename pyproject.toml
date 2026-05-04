@@ -1,6 +1,6 @@
 [project]
 name = "guanlan"
-version = "0.5.6"
+version = "0.5.7"
 description = "Guanlan: a China-aware source and platform router for AI agents."
 readme = "README.md"
 license = {text = "MIT"}
@@ -66,10 +66,14 @@ packages = ["guanlan"]
 [tool.hatch.build.targets.wheel.force-include]
 "NOTICE" = "NOTICE"
 "docs/SOURCE_ATTRIBUTION.md" = "docs/SOURCE_ATTRIBUTION.md"
+"guanlan/data/hotboard_nodes.json" = "guanlan/data/hotboard_nodes.json"
 
 [tool.hatch.build.targets.sdist.force-include]
 "NOTICE" = "NOTICE"
 "docs/SOURCE_ATTRIBUTION.md" = "docs/SOURCE_ATTRIBUTION.md"
+"guanlan/data/hotboard_nodes.json" = "guanlan/data/hotboard_nodes.json"
+"docs/data/hotboard_nodes.csv" = "docs/data/hotboard_nodes.csv"
+"docs/data/hotboard_nodes_summary.json" = "docs/data/hotboard_nodes_summary.json"
 
 [tool.ruff]
 target-version = "py310"

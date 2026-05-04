@@ -11,6 +11,7 @@ import html
 import json
 import os
 import re
+import ssl
 import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass, field
@@ -34,7 +35,7 @@ DEFAULT_NEWSNOW_BASE_URL = "https://newsnow.busiyi.world"
 VVHAN_HOTLIST_BASE_URL = "https://hot-api.vhan.eu.org/v2"
 UAPI_HOTBOARD_BASE_URL = "https://uapis.cn"
 TOPHUB_BASE_URL = "https://tophub.today"
-EXTERNAL_HOTNEWS_BACKENDS = {"newsnow", "vvhan", "uapis", "tophub"}
+EXTERNAL_HOTNEWS_BACKENDS = {"newsnow", "vvhan", "uapis", "tophub", "hotboard"}
 EXTERNAL_HOTNEWS_RISK_TAGS = ("external_backend", "third_party_aggregation", "provider_volatility")
 HOTNEWS_CACHE_VERSION = 1
 HOTNEWS_CACHE_MAX_AGE_SECONDS = 900
@@ -133,8 +134,12 @@ def _read_json(url: str, timeout: int = _TIMEOUT, headers: dict[str, str] | None
             **(headers or {}),
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read().decode("utf-8", errors="replace")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except TypeError:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
     return json.loads(raw)
 
 
@@ -147,8 +152,21 @@ def _read_text(url: str, timeout: int = _TIMEOUT, headers: dict[str, str] | None
             **(headers or {}),
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", errors="replace")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except TypeError:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+
+
+def _ssl_context() -> ssl.SSLContext:
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
 
 
 def _guanlan_cache_dir() -> Path:
@@ -909,7 +927,46 @@ def list_external_hotnews_catalog(provider: str | None = None) -> dict[str, dict
                 "risk_tags": list(EXTERNAL_HOTNEWS_RISK_TAGS),
                 "command": f"guanlan hotnews tophub:catalog:{category} --limit 80",
             }
+    if provider_key in ("", "hotboard"):
+        catalog["hotboard:catalog"] = {
+            "surface": "hotnews",
+            "backend": "optional",
+            "optional_backend": "hotboard",
+            "provider_source_id": "local_nodes_catalog",
+            "status": "catalog",
+            "evidence_role": "source_catalog_entry",
+            "source_url": "packaged:guanlan/data/hotboard_nodes.json",
+            "risk_tags": list(EXTERNAL_HOTNEWS_RISK_TAGS) + ["paid_api_optional"],
+            "command": "guanlan hotnews hotboard:catalog --limit 100",
+            "caveat": "本地目录随包提供；详情 API 需显式配置 key，默认不产生额度消耗。",
+        }
+        for alias, node_id in sorted(_hotboard_common_aliases().items()):
+            catalog[f"hotboard:{alias}"] = {
+                "surface": "hotnews",
+                "backend": "optional",
+                "optional_backend": "hotboard",
+                "provider_source_id": node_id,
+                "status": "opt-in",
+                "evidence_role": "fresh_trend_signal",
+                "source_url": "",
+                "risk_tags": list(EXTERNAL_HOTNEWS_RISK_TAGS) + ["paid_api_optional", "cost_metered"],
+                "command": f"guanlan hotnews hotboard:{alias} --limit 80",
+                "caveat": "详情接口约 1u/次，观澜只在显式调用时使用，并带缓存兜底。",
+            }
     return catalog
+
+
+def _hotboard_common_aliases() -> dict[str, str]:
+    try:
+        from guanlan.hotboard_catalog import COMMON_ALIASES
+
+        return {
+            alias: node_id
+            for alias, node_id in COMMON_ALIASES.items()
+            if re.fullmatch(r"[a-z0-9_.-]+", alias)
+        }
+    except Exception:
+        return {}
 
 
 def fetch_vvhan(source: str = "all", limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
@@ -1047,6 +1104,175 @@ def fetch_tophub(source: str = "weibo", limit: int = DEFAULT_HOTNEWS_LIMIT) -> l
     return _fetch_external_with_cache("tophub", source_key, _fetch_node)[: max(limit, 1)]
 
 
+def fetch_hotboard(source: str = "catalog", limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
+    """Fetch hotboard catalog/detail/snapshot rows with local-first routing."""
+    from guanlan import hotboard_catalog as thd
+
+    source_key = (source or "catalog").strip()
+    lower = source_key.lower()
+    if lower in {"catalog", "list"} or lower.startswith("catalog:"):
+        category = source_key.split(":", 1)[1] if ":" in source_key else ""
+        nodes = thd.search_catalog(category=category, limit=max(limit, 1))
+        meta = thd.catalog_meta()
+        entries = [
+            {
+                "title": f"{node.get('name')} · {node.get('display')}".strip(" ·"),
+                "url": node.get("source_url") or "",
+                "node_id": node.get("hashid") or "",
+                "category": node.get("category_name") or "",
+                "summary": node.get("domain") or "",
+                "rank": idx,
+            }
+            for idx, node in enumerate(nodes, start=1)
+        ]
+        items = _catalog_entries_as_items(
+            entries,
+            provider="hotboard",
+            source_id=f"hotboard:catalog{':' + category if category else ''}",
+        )
+        for item in items:
+            metrics = dict(item.get("metrics") or {})
+            metrics.update(
+                {
+                    "provider": "hotboard",
+                    "provider_status": "local_catalog",
+                    "catalog_unique_count": meta.get("unique_count"),
+                    "catalog_fetched_at": meta.get("fetched_at"),
+                    "cost_u": 0,
+                }
+            )
+            item["metrics"] = {key: value for key, value in metrics.items() if value not in ("", None)}
+            item["risk_tags"] = _unique(
+                list(item.get("risk_tags") or []) + ["local_catalog", "api_key_not_required"]
+            )
+        return items[: max(limit, 1)]
+
+    if lower.startswith("snapshots:"):
+        node_value = source_key.split(":", 1)[1]
+        node = thd.resolve_node(node_value)
+        if not node:
+            raise ValueError(f"Unknown hotboard node: {node_value}")
+        node_id = str(node.get("hashid") or "")
+
+        def _fetch_snapshots() -> list[dict[str, Any]]:
+            payload = thd.fetch_node_snapshots(node_id)
+            rows = payload.get("data") if isinstance(payload, dict) else []
+            if not isinstance(rows, list):
+                rows = []
+            entries: list[dict[str, Any]] = []
+            for idx, row in enumerate(rows[: max(limit, 1)], start=1):
+                if not isinstance(row, dict):
+                    continue
+                timestamp = row.get("timestamp")
+                ssid = row.get("ssid")
+                entries.append(
+                    {
+                        "title": f"{node.get('name')} · {node.get('display')} 快照 {idx}",
+                        "url": node.get("source_url") or "",
+                        "summary": f"ssid={ssid} timestamp={timestamp}",
+                        "rank": idx,
+                        "time": _unix_time_iso(timestamp),
+                        "metric": ssid,
+                        "node_id": node_id,
+                    }
+                )
+            items = _normalize_external_rows(
+                entries,
+                source_id=f"hotboard:snapshots:{node_id}",
+                platform=f"hotboard:{node_id}",
+                provider="hotboard",
+            )
+            for item in items:
+                metrics = dict(item.get("metrics") or {})
+                metrics.update(
+                    {
+                        "provider_node_name": node.get("name"),
+                        "provider_node_display": node.get("display"),
+                        "snapshot_only": True,
+                        "cost_u": 0,
+                        "requires_active_balance": True,
+                    }
+                )
+                item["metrics"] = {key: value for key, value in metrics.items() if value not in ("", None)}
+            return items
+
+        return _fetch_external_with_cache(
+            "hotboard",
+            f"snapshots:{node_id}",
+            _fetch_snapshots,
+            cache_ttl=600,
+        )[: max(limit, 1)]
+
+    node_value = source_key.split(":", 1)[1] if lower.startswith("node:") else source_key
+    node = thd.resolve_node(node_value)
+    if not node:
+        raise ValueError(f"Unknown hotboard node: {node_value}")
+    node_id = str(node.get("hashid") or "")
+
+    def _fetch_node_detail() -> list[dict[str, Any]]:
+        api_error = ""
+        if thd.api_key():
+            try:
+                payload = thd.fetch_node_detail(node_id)
+                data = payload.get("data") if isinstance(payload, dict) else {}
+                rows = data.get("items") if isinstance(data, dict) else []
+                if not isinstance(rows, list):
+                    rows = []
+                items = _normalize_external_rows(
+                    [row for row in rows if isinstance(row, dict)],
+                    source_id=f"hotboard:{source_key.lower()}",
+                    platform=f"hotboard:{node_id}",
+                    provider="hotboard",
+                )
+                if not items:
+                    raise RuntimeError(f"Hotboard node {node_id!r} returned no detail rows.")
+                for item in items:
+                    metrics = dict(item.get("metrics") or {})
+                    metrics.update(
+                        {
+                            "provider_node_hashid": node_id,
+                            "provider_node_name": node.get("name"),
+                            "provider_node_display": node.get("display"),
+                            "provider_domain": node.get("domain"),
+                            "paid_api": True,
+                            "cost_u": 1,
+                            "estimated_cost_cny": 0.01,
+                        }
+                    )
+                    item["metrics"] = {
+                        key: value for key, value in metrics.items() if value not in ("", None)
+                    }
+                    item["risk_tags"] = _unique(
+                        list(item.get("risk_tags") or []) + ["paid_api_optional", "cost_metered"]
+                    )
+                return items
+            except Exception as exc:
+                api_error = str(exc)
+
+        fallback = fetch_tophub(node_id, limit=limit)
+        for item in fallback:
+            metrics = dict(item.get("metrics") or {})
+            metrics.update(
+                {
+                    "provider": "hotboard",
+                    "provider_status": "html_fallback",
+                    "provider_node_hashid": node_id,
+                    "provider_node_name": node.get("name"),
+                    "provider_node_display": node.get("display"),
+                    "cost_u": 0,
+                    "api_error": api_error,
+                    "fallback_provider": "public_html",
+                }
+            )
+            item["metrics"] = {key: value for key, value in metrics.items() if value not in ("", None)}
+            item["risk_tags"] = _unique(
+                list(item.get("risk_tags") or []) + ["html_fallback", "api_key_not_required"]
+            )
+        return fallback
+
+    return _fetch_external_with_cache("hotboard", f"node:{node_id}", _fetch_node_detail)[: max(limit, 1)]
+
+
 def _normalize_external_rows(
     rows: list[dict[str, Any]],
     source_id: str,
@@ -1065,7 +1291,7 @@ def _normalize_external_rows(
             base = source_page or url_fallback_base
             url = urllib.parse.urljoin(base, str(url))
         metrics = {
-            "heat": _pick(raw, "hot", "heat", "hot_value", "hotValue", "hotScore", "hot_score", "index", "views", "metric"),
+            "heat": _pick(raw, "hot", "heat", "hot_value", "hotValue", "hotScore", "hot_score", "index", "views", "metric", "extra"),
             "provider_source": _pick(raw, "type", "source_group", "node_id", "category"),
             "provider_updated_at": _pick(raw, "update_time", "updated_at", "time"),
         }
@@ -1256,6 +1482,8 @@ def fetch_hotnews(
         return fetch_uapis(raw_external or source.split(":", 1)[1], limit=limit)
     if source.startswith("tophub:"):
         return fetch_tophub(raw_external or source.split(":", 1)[1], limit=limit)
+    if source.startswith("hotboard:"):
+        return fetch_hotboard(raw_external or source.split(":", 1)[1], limit=limit)
     if source.startswith("newsnow:"):
         return fetch_newsnow(source.split(":", 1)[1], limit=limit, base_url=newsnow_base_url)
     if backend == "vvhan":
@@ -1264,10 +1492,12 @@ def fetch_hotnews(
         return fetch_uapis(source, limit=limit)
     if backend == "tophub":
         return fetch_tophub(source, limit=limit)
+    if backend == "hotboard":
+        return fetch_hotboard(source, limit=limit)
     if backend == "newsnow":
         return fetch_newsnow(source, limit=limit, base_url=newsnow_base_url)
     if backend not in {"auto", "native"}:
-        raise ValueError("backend must be one of: auto, native, newsnow, vvhan, uapis, tophub")
+        raise ValueError("backend must be one of: auto, native, newsnow, vvhan, uapis, tophub, hotboard")
     if source not in fetchers:
         if backend == "auto":
             return fetch_newsnow(source, limit=limit, base_url=newsnow_base_url)

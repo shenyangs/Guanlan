@@ -4236,6 +4236,7 @@ def build_research_packet(
     advisor: bool = False,
     advisor_style: str = "brief",
     select_top: int | None = None,
+    cache_ttl: int = 0,
 ) -> dict[str, Any]:
     """Build an agent-ready evidence packet from search + selected reads."""
     preset_config = resolve_research_preset(preset)
@@ -4326,6 +4327,7 @@ def build_research_packet(
         profile=effective_profile,
         include_open_fallback=not bool(explicit_scope or explicit_sites),
         query_strategy=query_strategy,
+        cache_ttl=max(cache_ttl, 0),
     )
     feed_results, feed_errors, feed_groups = _research_feed_discovery(
         query,
@@ -4380,6 +4382,7 @@ def build_research_packet(
         "search_backend": search_backend,
         "read_backend": read_backend,
         "read_top": effective_read_top,
+        "cache_ttl": max(cache_ttl, 0),
         "route_plan": route_plan.to_dict(),
         "query_strategy": query_strategy,
         "result_count": len(results),
@@ -4893,6 +4896,7 @@ def _research_search(
     profile: str | None,
     include_open_fallback: bool = True,
     query_strategy: dict[str, Any] | None = None,
+    cache_ttl: int = 0,
 ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
     errors: list[str] = []
     groups: list[dict[str, Any]] = []
@@ -4901,7 +4905,7 @@ def _research_search(
     if jobs and include_open_fallback:
         jobs.append(("general", "open_web"))
     if not jobs:
-        results = search_web(query, limit=limit, backend=search_backend, profile=profile)
+        results = search_web(query, limit=limit, backend=search_backend, profile=profile, cache_ttl=cache_ttl)
         return results, errors, [{"type": "general", "label": "web", "result_count": len(results), "results": results}]
 
     combined: list[dict[str, Any]] = []
@@ -4916,6 +4920,7 @@ def _research_search(
                 scope=target if job_type == "scope" else None,
                 backend=search_backend,
                 profile=profile,
+                cache_ttl=cache_ttl,
             )
             combined.extend(result)
             groups.append({"type": job_type, "label": target, "query": job_query, "result_count": len(result), "results": result})

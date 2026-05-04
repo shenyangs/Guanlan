@@ -199,32 +199,63 @@ def ingest_search(
     query: str,
     *,
     limit: int = 50,
-    read_top: int = 3,
+    read_top: int = 0,
     select_top: int = 8,
     preset: str = "general",
     profile: str | None = "china",
     dry_run: bool = False,
     db_path: str | Path | None = None,
+    read_backend: str = "direct",
+    read_concurrency: int = 3,
+    cache_ttl: int = 3600,
 ) -> dict[str, Any]:
     """Run Guanlan research and persist representative evidence into the archive."""
-    from guanlan.webtools import build_research_packet
+    started_at = time.time()
+    from guanlan.webtools import build_research_packet, read_batch
 
     packet = build_research_packet(
         query,
         limit=max(limit, 1),
-        read_top=max(read_top, 0),
+        # Archive ingest must return predictably. We collect candidates first,
+        # then perform bounded reads ourselves only when the user asks for them.
+        read_top=0,
         select_top=max(select_top, 1),
         preset=preset,
         profile=profile,
+        cache_ttl=max(cache_ttl, 0),
     )
+    selected_items = list(packet.get("selected_evidence") or packet.get("results", [])[:select_top])
+    read_attempted = max(read_top, 0)
+    selected_urls = [str(item.get("url", "")).strip() for item in selected_items if str(item.get("url", "")).strip()]
+    readings = list(packet.get("readings", []))
+    if read_attempted > 0 and selected_urls:
+        batch = read_batch(
+            selected_urls[:read_attempted],
+            max_chars=6000,
+            backend=read_backend,
+            fallback_search=False,
+            profile=profile,
+            cache_ttl=max(cache_ttl, 0),
+            concurrency=max(read_concurrency, 1),
+        )
+        readings.extend(
+            {
+                "url": item.get("url", ""),
+                "title": "",
+                "status": item.get("status", "error"),
+                "content": item.get("content", ""),
+                "error": item.get("error", ""),
+            }
+            for item in batch
+        )
     readings_by_url = {
         str(item.get("url", "")): item
-        for item in packet.get("readings", [])
+        for item in readings
         if item.get("status") == "ok"
     }
     records: list[dict[str, Any]] = []
     seen_urls: set[str] = set()
-    for item in packet.get("selected_evidence") or packet.get("results", [])[:select_top]:
+    for item in selected_items:
         url = str(item.get("url", "")).strip()
         if not url:
             continue
@@ -290,8 +321,16 @@ def ingest_search(
     return {
         "query": query,
         "dry_run": dry_run,
+        "ingest_mode": "search-first",
+        "read_top": read_attempted,
+        "read_backend": read_backend,
+        "read_concurrency": max(read_concurrency, 1),
+        "cache_ttl": max(cache_ttl, 0),
+        "elapsed_sec": round(time.time() - started_at, 3),
         "packet_result_count": packet.get("result_count", 0),
-        "selected_count": len(packet.get("selected_evidence") or []),
+        "selected_count": len(selected_items),
+        "read_attempted_count": min(read_attempted, len(selected_urls)),
+        "read_success_count": len(readings_by_url),
         "skipped_count": sum(1 for item in records if item.get("status") == "skipped"),
         "archived_count": sum(1 for item in records if item.get("status") in {"created", "updated", "unchanged"}),
         "audit_summary": _summarize_ingest_audits(records),
