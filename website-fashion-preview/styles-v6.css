@@ -131,17 +131,9 @@ pre {
 
 .header-action {
   justify-self: end;
-  width: 2.65rem;
-  padding: 0;
   border: 1px solid rgba(200, 255, 69, 0.28);
   color: var(--green);
   background: rgba(200, 255, 69, 0.07);
-}
-
-.header-action svg {
-  width: 1.35rem;
-  height: 1.35rem;
-  fill: currentColor;
 }
 
 main {
@@ -564,8 +556,7 @@ h1 {
 
   .header-action {
     min-height: 2.2rem;
-    width: 2.2rem;
-    padding: 0;
+    padding: 0 0.72rem;
     font-size: 0.82rem;
   }
 

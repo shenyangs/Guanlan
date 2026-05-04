@@ -1,0 +1,506 @@
+:root {
+  color-scheme: dark;
+  --black: #050505;
+  --ink: #f9f5ef;
+  --muted: rgba(249, 245, 239, 0.64);
+  --dim: rgba(249, 245, 239, 0.38);
+  --line: rgba(249, 245, 239, 0.16);
+  --cream: #f7efe3;
+  --cream-2: #efe3d2;
+  --charcoal: #171614;
+  --soft-line: rgba(23, 22, 20, 0.14);
+  --red: #d44232;
+  --acid: #c8ff45;
+  --blue: #70d7ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--black);
+  color: var(--ink);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  letter-spacing: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+code,
+pre {
+  font-family:
+    "SFMono-Regular", Consolas, "Liberation Mono", Menlo, "PingFang SC", monospace;
+}
+
+#flow-field {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  background: var(--black);
+}
+
+.site-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem clamp(1rem, 3vw, 3rem);
+  background: linear-gradient(to bottom, rgba(5, 5, 5, 0.78), rgba(5, 5, 5, 0));
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  gap: 0.65rem;
+  font-weight: 820;
+}
+
+.brand img {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.nav-links {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  background: rgba(5, 5, 5, 0.42);
+  backdrop-filter: blur(16px);
+}
+
+.nav-links a,
+.nav-action {
+  min-height: 2.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.9rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 720;
+}
+
+.nav-links a:hover,
+.nav-action:hover {
+  color: var(--ink);
+}
+
+.nav-action {
+  justify-self: end;
+  border: 1px solid var(--line);
+  background: rgba(249, 245, 239, 0.08);
+  backdrop-filter: blur(16px);
+}
+
+.hero {
+  min-height: 92svh;
+  display: grid;
+  align-items: end;
+  padding: clamp(7rem, 12vw, 11rem) clamp(1.25rem, 5vw, 5.75rem) clamp(2.5rem, 7vw, 5rem);
+  border-bottom: 1px solid var(--line);
+}
+
+.hero-copy {
+  width: min(100%, 86rem);
+}
+
+.eyebrow,
+.section-mark {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 860;
+  text-transform: uppercase;
+}
+
+.eyebrow {
+  max-width: 48rem;
+  margin-bottom: 1rem;
+  color: var(--acid);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  max-width: 9ch;
+  margin-bottom: 1rem;
+  font-size: clamp(4.8rem, 11vw, 11rem);
+  line-height: 0.84;
+  font-weight: 950;
+}
+
+.hero-statement {
+  max-width: 17ch;
+  margin-bottom: 1.5rem;
+  color: var(--cream);
+  font-size: clamp(1.7rem, 3.8vw, 4.8rem);
+  line-height: 0.98;
+  font-weight: 860;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.primary-action,
+.secondary-action,
+.command-shell button {
+  min-height: 3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1.15rem;
+  border: 1px solid transparent;
+  font-weight: 820;
+}
+
+.primary-action {
+  color: var(--charcoal);
+  background: var(--cream);
+}
+
+.secondary-action,
+.command-shell button {
+  color: var(--ink);
+  border-color: var(--line);
+  background: rgba(249, 245, 239, 0.08);
+}
+
+.signal-board,
+.studio,
+.install {
+  color: var(--charcoal);
+  background:
+    linear-gradient(135deg, rgba(212, 66, 50, 0.08), transparent 36rem),
+    var(--cream);
+}
+
+.signal-board {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1.05fr) minmax(18rem, 0.72fr);
+  gap: clamp(1.2rem, 4vw, 4rem);
+  align-items: start;
+  padding: clamp(4rem, 8vw, 7.25rem) clamp(1.25rem, 5vw, 5.75rem);
+  border-bottom: 1px solid var(--soft-line);
+}
+
+.signal-board .section-mark,
+.studio .section-mark,
+.install .section-mark {
+  color: var(--red);
+}
+
+.signal-copy h2,
+.studio-lead h2,
+.command-copy h2,
+.install-heading h2 {
+  margin-bottom: 1.1rem;
+  font-size: clamp(2.8rem, 6.6vw, 7.5rem);
+  line-height: 0.88;
+  font-weight: 940;
+}
+
+.signal-copy h2 {
+  max-width: 10ch;
+}
+
+.signal-copy p {
+  max-width: 39rem;
+  margin-bottom: 0;
+  color: rgba(23, 22, 20, 0.68);
+  font-size: 1.05rem;
+  line-height: 1.75;
+}
+
+.signal-list {
+  display: grid;
+  gap: 1px;
+  border: 1px solid var(--soft-line);
+  background: var(--soft-line);
+}
+
+.signal-list article {
+  min-height: 9.5rem;
+  padding: 1rem;
+  background: rgba(255, 250, 242, 0.86);
+}
+
+.signal-list span,
+.studio-grid span {
+  display: block;
+  margin-bottom: 0.7rem;
+  color: rgba(23, 22, 20, 0.48);
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.signal-list strong {
+  display: block;
+  font-size: clamp(1.2rem, 2vw, 1.75rem);
+  line-height: 1.1;
+}
+
+.studio {
+  padding: 0 clamp(1.25rem, 5vw, 5.75rem) clamp(4rem, 8vw, 7rem);
+}
+
+.studio > .section-mark {
+  padding-top: clamp(3.5rem, 7vw, 6rem);
+  margin-bottom: 1.2rem;
+  border-top: 1px solid var(--soft-line);
+}
+
+.studio-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(12rem, 0.7fr));
+  gap: 1px;
+  background: var(--soft-line);
+  border: 1px solid var(--soft-line);
+}
+
+.studio-grid article {
+  min-height: 24rem;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  background: rgba(255, 250, 242, 0.88);
+}
+
+.studio-lead {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.studio-lead h2 {
+  max-width: 11ch;
+}
+
+.studio-lead p,
+.studio-grid article:not(.studio-lead) p {
+  max-width: 27rem;
+  margin-bottom: 0;
+  color: rgba(23, 22, 20, 0.66);
+  line-height: 1.72;
+}
+
+.studio-grid article:not(.studio-lead) {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.studio-grid article:not(.studio-lead) p {
+  font-size: clamp(1.25rem, 2.35vw, 2.15rem);
+  line-height: 1.12;
+  font-weight: 790;
+}
+
+.command-stage {
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.65fr) minmax(0, 1fr);
+  gap: clamp(1.5rem, 5vw, 4rem);
+  align-items: end;
+  padding: clamp(4rem, 9vw, 8rem) clamp(1.25rem, 5vw, 5.75rem);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.command-copy .section-mark {
+  margin-bottom: 1rem;
+  color: var(--blue);
+}
+
+.command-copy h2 {
+  max-width: 9ch;
+}
+
+.command-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: end;
+  min-height: 23rem;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(135deg, rgba(112, 215, 255, 0.1), transparent 50%),
+    rgba(249, 245, 239, 0.07);
+}
+
+.shell-top {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.45rem;
+  align-self: start;
+}
+
+.shell-top span {
+  width: 0.7rem;
+  height: 0.7rem;
+  background: var(--dim);
+}
+
+.command-shell code {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--cream);
+  font-size: clamp(1.2rem, 2.7vw, 2.4rem);
+  line-height: 1.25;
+}
+
+.proof-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+
+.proof-strip div {
+  min-height: 13.5rem;
+  padding: clamp(1rem, 3vw, 1.75rem);
+  background: var(--black);
+}
+
+.proof-strip strong {
+  display: block;
+  margin-bottom: 0.8rem;
+  color: var(--acid);
+  font-size: clamp(1.35rem, 2.5vw, 2.45rem);
+  line-height: 1;
+}
+
+.proof-strip span {
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.install {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 0.9fr) minmax(20rem, 1.1fr);
+  gap: clamp(1.2rem, 4vw, 4rem);
+  align-items: start;
+  padding: clamp(4rem, 8vw, 7rem) clamp(1.25rem, 5vw, 5.75rem);
+}
+
+.install-heading h2 {
+  max-width: 10ch;
+}
+
+.install-heading p {
+  max-width: 31rem;
+  color: rgba(23, 22, 20, 0.66);
+  line-height: 1.7;
+}
+
+.install-commands {
+  display: grid;
+  gap: 1rem;
+}
+
+.install-commands article {
+  padding: clamp(1rem, 3vw, 1.35rem);
+  border: 1px solid var(--soft-line);
+  background: #fffaf2;
+}
+
+.install-commands strong {
+  display: block;
+  margin-bottom: 0.9rem;
+  color: var(--red);
+}
+
+.install-commands pre {
+  margin: 0;
+  overflow-x: auto;
+}
+
+.install-commands code {
+  color: var(--charcoal);
+  white-space: pre;
+}
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1.25rem clamp(1.25rem, 5vw, 5.75rem);
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+}
+
+.site-footer a:hover {
+  color: var(--ink);
+}
+
+@media (max-width: 1080px) {
+  .signal-board,
+  .install,
+  .command-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-grid,
+  .proof-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-grid article,
+  .command-shell,
+  .proof-strip div {
+    min-height: 14rem;
+  }
+}
+
+@media (max-width: 760px) {
+  .site-header {
+    grid-template-columns: 1fr auto;
+  }
+
+  .nav-links {
+    display: none;
+  }
+
+  h1 {
+    font-size: 4.2rem;
+  }
+
+  .hero {
+    min-height: 86svh;
+  }
+
+  .hero-actions {
+    display: grid;
+  }
+
+  .signal-list article {
+    min-height: 8rem;
+  }
+}

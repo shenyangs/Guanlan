@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>观澜 Guanlan | 中文预览 V4</title>
+    <meta
+      name="description"
+      content="观澜 Guanlan 是面向 AI Agent 的中文互联网研究底座。"
+    />
+    <link rel="icon" href="./assets/guanlan-logo.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="./styles-v4.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-shell nav-inner">
+        <a class="brand" href="#top" aria-label="观澜首页">
+          <img src="./assets/guanlan-logo.svg" alt="" />
+          <span>观澜</span>
+        </a>
+        <nav class="nav-links" aria-label="页面导航">
+          <a href="#flow">工作流</a>
+          <a href="#run">命令</a>
+          <a href="#install">安装</a>
+        </nav>
+        <a class="nav-action" href="https://github.com/shenyangs/Guanlan">GitHub</a>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="site-shell">
+          <div class="hero-copy">
+            <p class="eyebrow">面向 AI Agent 的中文互联网研究底座</p>
+            <h1>观澜 Guanlan</h1>
+            <p class="hero-line">
+              让 Agent 不只看到网页，而是看懂来源、语境与证据边界。
+            </p>
+            <div class="hero-actions">
+              <a class="primary-action" href="#install">开始安装</a>
+              <a class="secondary-action" href="#flow">查看工作流</a>
+            </div>
+          </div>
+
+          <div class="hero-demo" aria-label="观澜产品演示">
+            <div class="demo-topbar">
+              <span></span>
+              <span></span>
+              <span></span>
+              <strong>观澜研究证据包 / Guanlan research packet</strong>
+            </div>
+            <div class="demo-canvas">
+              <div class="query-panel">
+                <div>
+                  <span>研究问题</span>
+                  <h2>国产 AI 应用出海：政策、平台与用户反馈</h2>
+                  <p>
+                    Agent 只提出一个问题。观澜负责判断哪些信源该优先读、哪些只是舆论样本、哪些需要标注边界。
+                  </p>
+                </div>
+                <code class="command-chip">guanlan research "国产 AI 应用 出海" --profile china --limit 80 --advisor</code>
+              </div>
+
+              <div class="evidence-panel">
+                <div class="route-strip">
+                  <div class="route-card">
+                    <span class="panel-label">官方</span>
+                    <strong>政策原文</strong>
+                  </div>
+                  <div class="route-card">
+                    <span class="panel-label">媒体</span>
+                    <strong>产业报道</strong>
+                  </div>
+                  <div class="route-card">
+                    <span class="panel-label">社区</span>
+                    <strong>用户样本</strong>
+                  </div>
+                </div>
+                <div class="source-stack">
+                  <div class="source-card">
+                    <div>
+                      <span>证据角色</span>
+                      <strong>区分官方依据、媒体观察与开放讨论</strong>
+                    </div>
+                    <em>已整理</em>
+                  </div>
+                  <div class="source-card">
+                    <div>
+                      <span>时效边界</span>
+                      <strong>把近期信号和长期参考拆开呈现</strong>
+                    </div>
+                    <em>清晰</em>
+                  </div>
+                  <div class="source-card">
+                    <div>
+                      <span>下一步建议</span>
+                      <strong>在证据不足时提醒 Agent 继续补查</strong>
+                    </div>
+                    <em>可追踪</em>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="quiet-section" id="flow">
+        <div class="site-shell">
+          <div class="section-heading">
+            <span class="section-index">01 / 工作流</span>
+            <h2>从搜索到证据包，一套连续的研究流程。</h2>
+          </div>
+          <div class="flow-grid">
+            <article>
+              <span>Route</span>
+              <h3>先判断去哪找。</h3>
+              <p>通过 profile 和 scope 选择信源范围，避免 Agent 一上来只发宽泛搜索。</p>
+            </article>
+            <article>
+              <span>Read</span>
+              <h3>再读取原始材料。</h3>
+              <p>公开网页被整理成紧凑上下文，并保留来源、链接和阅读质量提示。</p>
+            </article>
+            <article>
+              <span>Research</span>
+              <h3>最后组织成证据。</h3>
+              <p>来源结构、时效提示、风险边界和下一步建议一起交给下游 Agent。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="run-section" id="run">
+        <div class="site-shell">
+          <div class="run-card">
+            <div class="run-copy">
+              <span class="section-index">02 / 命令</span>
+              <h2>输出不是答案，而是可继续推理的材料。</h2>
+              <p>
+                观澜的结果可以给 Claude、Codex、MCP 客户端或本地模型继续使用，不需要再猜每条材料代表什么。
+              </p>
+            </div>
+            <div class="terminal">
+              <div class="terminal-top"><span></span><span></span><span></span></div>
+              <code id="command-output">guanlan compare "产品A" "产品B" --focus "价格 口碑 风险" --limit 80 --format context</code>
+              <button class="copy-button" id="copy-command" type="button">复制</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="site-shell proof-grid" aria-label="能力摘要">
+        <article>
+          <strong>懂中文语境</strong>
+          <span>按照中文互联网的平台结构和信源角色组织材料。</span>
+        </article>
+        <article>
+          <strong>面向 Agent</strong>
+          <span>支持 Markdown、JSON、MCP 和本地工作流输出。</span>
+        </article>
+        <article>
+          <strong>可解释质量</strong>
+          <span>当证据不足或来源单一时，会明确给出质量信号。</span>
+        </article>
+        <article>
+          <strong>默认只读</strong>
+          <span>优先使用公开搜索与网页阅读，不自动执行社交动作。</span>
+        </article>
+      </section>
+
+      <section class="install-section" id="install">
+        <div class="site-shell install-layout">
+          <div class="install-copy">
+            <span class="section-index">03 / 安装</span>
+            <h2>把中文互联网接入你的 Agent。</h2>
+            <p>选择一条干净的安装路径，先跑版本和 doctor，再配置到你的 Agent 环境里。</p>
+          </div>
+          <div class="install-cards">
+            <article class="install-card">
+              <span>uv</span>
+              <pre><code>uv tool install --force --upgrade guanlan
+guanlan version
+guanlan doctor --install-check</code></pre>
+            </article>
+            <article class="install-card">
+              <span>Homebrew</span>
+              <pre><code>brew update
+brew reinstall shenyangs/tap/guanlan
+guanlan hotnews today --limit 80</code></pre>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-shell site-footer">
+      <span>Guanlan 中文预览 V4</span>
+      <a href="./index-v1.html">V1</a>
+      <a href="./index-v2.html">V2</a>
+      <a href="./index-v3.html">V3</a>
+      <a href="./index-v4.html">V4</a>
+      <a href="https://github.com/shenyangs/Guanlan#readme">README</a>
+    </footer>
+
+    <script src="./main-v4.js"></script>
+  </body>
+</html>

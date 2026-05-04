@@ -805,7 +805,7 @@ def render_feedback_inbox(rows):
     <span class="feedback-row">
       <span class="feedback-index">#{index}</span>
       <span class="feedback-time">{received}</span>
-      <span class="feedback-query">{query}</span>
+      <span class="feedback-query" title="{query_title}">{query}</span>
       <span class="feedback-reason-preview">{reason_preview}</span>
       <span class="feedback-inline-meta">{command} · {profile} · {backend} · {agent_kind}</span>
       <span class="feedback-version">v{version}</span>
@@ -814,6 +814,8 @@ def render_feedback_inbox(rows):
     </span>
   </summary>
   <div class="feedback-body">
+    <p><strong>搜索词 / Query</strong></p>
+    <p class="feedback-query-full">{query_full}</p>
     <p><strong>原因 / Reason</strong></p>
     <p class="feedback-reason">{reason}</p>
     <p class="feedback-meta">{command} · {profile} · {backend} · {agent_kind} · {version}</p>
@@ -823,6 +825,8 @@ def render_feedback_inbox(rows):
                 index=index,
                 received=received,
                 query=query_text or "(empty query)",
+                query_title=query_text or "(empty query)",
+                query_full=query_text or "(empty query)",
                 reason_preview=((reason_text[:80] + "...") if len(reason_text) > 80 else reason_text) or "(empty reason)",
                 reason=reason_text or "(empty reason)",
                 command=command or "unknown-command",
@@ -943,7 +947,7 @@ def render_dashboard():
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="5">
+  <meta http-equiv="refresh" content="30">
   <title>Guanlan Telemetry</title>
   <link rel="icon" href="/assets/guanlan-logo.svg" type="image/svg+xml">
   <style>
@@ -986,10 +990,10 @@ def render_dashboard():
     .feedback-item {{ border:1px solid #ececf2; border-radius:8px; margin-bottom:10px; background:#fff; }}
     .feedback-item summary {{ cursor:pointer; list-style:none; padding:10px 12px; }}
     .feedback-item summary::-webkit-details-marker {{ display:none; }}
-    .feedback-row {{ display:grid; grid-template-columns:70px 170px 1fr 1.2fr 1.1fr 80px 180px 130px; gap:10px; align-items:center; }}
+    .feedback-row {{ display:grid; grid-template-columns:70px 170px minmax(220px,1.15fr) minmax(240px,1.2fr) 1.05fr 80px 180px 130px; gap:10px; align-items:start; }}
     .feedback-index {{ font-weight:600; color:#4b5563; }}
     .feedback-time {{ color:#6e6e73; font-size:12px; }}
-    .feedback-query {{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+    .feedback-query {{ white-space:normal; overflow:visible; text-overflow:clip; word-break:break-word; line-height:1.35; }}
     .feedback-reason-preview {{ color:#3f3f46; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
     .feedback-inline-meta {{ color:#6e6e73; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
     .feedback-version {{ color:#0f172a; font-size:12px; font-weight:700; white-space:nowrap; }}
@@ -1001,6 +1005,7 @@ def render_dashboard():
     .feedback-item[open] .feedback-expand-hint::after {{ content:"（已展开）"; }}
     .feedback-body {{ border-top:1px solid #ececf2; padding:10px 12px 12px; }}
     .feedback-body p {{ margin:0 0 8px; }}
+    .feedback-query-full {{ white-space:pre-wrap; word-break:break-word; }}
     .feedback-reason {{ white-space:pre-wrap; word-break:break-word; }}
     .feedback-meta {{ color:#6e6e73; font-size:12px; }}
     .feedback-empty {{ color:#6e6e73; margin:4px 0; }}
@@ -1044,6 +1049,7 @@ def render_dashboard():
       {depth}
       {quality}
     </div>
+    {feedback_inbox}
     <section class="recent">
       <h2>最近事件 / Recent Events</h2>
       <table>
@@ -1051,7 +1057,6 @@ def render_dashboard():
         <tbody>{recent}</tbody>
       </table>
     </section>
-    {feedback_inbox}
   </main>
 </body>
 </html>""".format(

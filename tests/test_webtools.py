@@ -1842,7 +1842,7 @@ def test_bing_cjk_low_relevance_tries_disambiguation_variant(monkeypatch):
     calls = []
 
     def fake_backend(name, query, *, limit, network_mode="auto", profile=None):
-        calls.append(query)
+        calls.append((name, query))
         if len(calls) == 1:
             return [
                 webtools.SearchResult(
@@ -1852,6 +1852,8 @@ def test_bing_cjk_low_relevance_tries_disambiguation_variant(monkeypatch):
                     source="bing",
                 )
             ], [{"backend": name, "network_mode": network_mode, "status": "ok"}]
+        if name == "bing_generic":
+            return [], [{"backend": name, "network_mode": network_mode, "status": "ok"}]
         return [
             webtools.SearchResult(
                 title="固态电池量产时间表：动力电池产业化进展",
@@ -1869,9 +1871,84 @@ def test_bing_cjk_low_relevance_tries_disambiguation_variant(monkeypatch):
     assert results[0]["source"] == "bing"
     diagnostics = results[0]["trace"]["backend_diagnostics"]
     assert diagnostics[0]["status"] == "ok"
+    assert diagnostics[0]["bing_generic_recovery"]["status"] == "not_recovered"
     assert diagnostics[0]["bing_cjk_recovery"]["status"] == "recovered"
-    assert calls[0] == "固态电池量产时间表"
-    assert calls[1] != "固态电池量产时间表"
+    assert calls[0] == ("bing", "固态电池量产时间表")
+    assert calls[1] == ("bing_generic", "固态电池量产时间表")
+    assert calls[2][0] == "bing"
+    assert calls[2][1] != "固态电池量产时间表"
+
+
+def test_bing_cjk_low_relevance_uses_generic_before_disambiguation(monkeypatch):
+    calls = []
+
+    def fake_backend(name, query, *, limit, network_mode="auto", profile=None):
+        calls.append((name, query))
+        if name == "bing" and len(calls) == 1:
+            return [
+                webtools.SearchResult(
+                    title="如何评价《原神》兹白角色PV？",
+                    url="https://www.zhihu.com/genshin",
+                    snippet="原神 游戏 角色 PV",
+                    source="bing",
+                )
+            ], [{"backend": name, "network_mode": network_mode, "status": "ok"}]
+        if name == "bing_generic":
+            return [
+                webtools.SearchResult(
+                    title="原研哉设计哲学：从无到有",
+                    url="https://example.com/hara-design",
+                    snippet="原研哉 设计 哲学 日本 设计师",
+                    source="bing_generic",
+                )
+            ], [{"backend": name, "network_mode": network_mode, "status": "ok"}]
+        raise AssertionError("generic recovery should stop before disambiguation")
+
+    monkeypatch.setattr(webtools, "_search_backend_with_network", fake_backend)
+
+    results = webtools.search_web("原研哉 设计哲学", backend="bing", limit=5, trace=True)
+
+    assert len(results) == 1
+    assert results[0]["source"] == "bing"
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+    assert diagnostics[0]["status"] == "ok"
+    assert diagnostics[0]["bing_generic_recovery"]["status"] == "recovered"
+    assert diagnostics[0]["bing_generic_recovery"]["strategy"] == "bing_generic"
+    assert results[0]["trace"]["backend_entrypoint"] == "bing_generic"
+    assert calls == [("bing", "原研哉 设计哲学"), ("bing_generic", "原研哉 设计哲学")]
+
+
+def test_bing_parser_miss_tries_generic_fallback(monkeypatch):
+    calls = []
+
+    def fake_backend(name, query, *, limit, network_mode="auto", profile=None):
+        calls.append((name, query))
+        if name == "bing":
+            return [], [{"backend": name, "network_mode": network_mode, "status": "ok"}]
+        if name == "bing_generic":
+            return [
+                webtools.SearchResult(
+                    title="低空经济政策补贴官方汇总",
+                    url="https://example.gov.cn/low-altitude",
+                    snippet="低空经济 政策 补贴 政府 通知",
+                    source="bing_generic",
+                )
+            ], [{"backend": name, "network_mode": network_mode, "status": "ok"}]
+        raise AssertionError(name)
+
+    monkeypatch.setattr(webtools, "_search_backend_with_network", fake_backend)
+
+    results = webtools.search_web("低空经济政策补贴", backend="bing", limit=5, trace=True)
+
+    assert len(results) == 1
+    assert results[0]["source"] == "bing"
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+    assert diagnostics[0]["status"] == "ok"
+    assert diagnostics[0]["bing_generic_recovery"]["status"] == "recovered"
+    assert "Bing generic" in diagnostics[0]["note"]
+    assert calls[0][0] == "bing"
+    assert "低空经济政策补贴" in calls[0][1]
+    assert calls[1] == ("bing_generic", "低空经济政策补贴")
 
 
 def test_explicit_bing_unsafe_batch_is_filtered(monkeypatch):
@@ -1916,6 +1993,29 @@ def test_search_web_parses_bing_html_with_extra_li_attributes(monkeypatch):
     assert results[0]["title"] == "Bing B"
     assert results[0]["url"] == "https://example.com/b"
     assert results[0]["snippet"] == "Bing snippet with new li attributes"
+
+
+def test_search_web_parses_bing_html_when_class_attribute_is_not_first(monkeypatch):
+    html = """
+    <ol id="b_results">
+      <li data-id="SERP.1234" iid="SERP.5678" class='b_algo b_algoBorder'>
+        <h2><a href="https://example.com/c">Bing C</a></h2>
+        <p>Bing snippet with reordered li attributes</p>
+      </li>
+    </ol>
+    """
+
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda req, timeout=None: _FakeResponse(html),
+    )
+
+    results = webtools.search_web("agent search", backend="bing", limit=5)
+
+    assert results[0]["source"] == "bing"
+    assert results[0]["title"] == "Bing C"
+    assert results[0]["url"] == "https://example.com/c"
+    assert results[0]["snippet"] == "Bing snippet with reordered li attributes"
 
 
 def test_search_web_parses_baidu_html(monkeypatch):

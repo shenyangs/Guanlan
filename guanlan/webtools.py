@@ -1528,8 +1528,57 @@ def search_web(
                 attempt["network_mode"] = _first_ok_network_mode(network_attempts)
             batch_quality = _assess_backend_batch_quality(original_query, batch, quality)
             attempt["quality_gate"] = batch_quality
+            if not batch and name == "bing" and _contains_cjk(original_query):
+                recovered_batch, recovered_attempts, recovery_trace = _try_bing_generic_recovery(
+                    original_query,
+                    limit=limit,
+                    network_mode=network_mode,
+                    profile=profile,
+                    quality=quality,
+                )
+                if recovered_attempts:
+                    network_attempts.extend(recovered_attempts)
+                    attempt["network_attempts"] = network_attempts
+                    attempt["network_mode"] = _first_ok_network_mode(network_attempts)
+                if recovery_trace:
+                    attempt["bing_generic_recovery"] = recovery_trace
+                if recovered_batch:
+                    batch = recovered_batch
+                    attempt["result_count"] = len(batch)
+                    attempt["quality_gate"] = recovery_trace.get("quality_gate", batch_quality)
+                    attempt["status"] = "ok"
+                    attempt["note"] = (
+                        "Bing CN 入口未产出候选；观澜已补跑 Bing generic 入口，"
+                        "并仅保留通过相关性门控的候选。"
+                    )
+                    results.extend(batch)
+                    continue
             if batch and not batch_quality["usable"] and (backend == "auto" or name == "bing"):
                 if name == "bing" and _contains_cjk(original_query):
+                    recovered_batch, recovered_attempts, recovery_trace = _try_bing_generic_recovery(
+                        original_query,
+                        limit=limit,
+                        network_mode=network_mode,
+                        profile=profile,
+                        quality=quality,
+                    )
+                    if recovered_attempts:
+                        network_attempts.extend(recovered_attempts)
+                        attempt["network_attempts"] = network_attempts
+                        attempt["network_mode"] = _first_ok_network_mode(network_attempts)
+                    if recovery_trace:
+                        attempt["bing_generic_recovery"] = recovery_trace
+                    if recovered_batch:
+                        batch = recovered_batch
+                        attempt["result_count"] = len(batch)
+                        attempt["quality_gate"] = recovery_trace.get("quality_gate", batch_quality)
+                        attempt["status"] = "ok"
+                        attempt["note"] = (
+                            "Bing CN 入口中文召回疑似漂移；观澜已补跑 Bing generic 入口，"
+                            "并仅保留通过相关性门控的候选。"
+                        )
+                        results.extend(batch)
+                        continue
                     recovered_batch, recovered_attempts, recovery_trace = _try_bing_cjk_variant_recovery(
                         original_query,
                         limit=limit,
@@ -2659,6 +2708,62 @@ def _try_bing_cjk_variant_recovery(
     }
 
 
+def _try_bing_generic_recovery(
+    query: str,
+    *,
+    limit: int,
+    network_mode: str,
+    profile: str | None,
+    quality: dict[str, Any],
+) -> tuple[list[SearchResult], list[dict[str, Any]], dict[str, Any]]:
+    """Try Bing without region-locked query params when the CN entrypoint is weak."""
+    try:
+        batch, attempts = _search_backend_with_network(
+            "bing_generic",
+            query,
+            limit=limit,
+            network_mode=network_mode,
+            profile=profile,
+        )
+    except Exception as exc:  # noqa: BLE001 - represented as diagnostics, not fatal
+        attempts = getattr(exc, "attempts", None)
+        return [], attempts if isinstance(attempts, list) else [], {
+            "status": getattr(exc, "status", None) or _exception_backend_status(str(exc)),
+            "strategy": "bing_generic",
+            "error": str(exc),
+            "agent_note": (
+                "Bing CN 入口异常后，Bing generic 入口也未恢复；应继续使用后续后端或外部读取策略。"
+            ),
+        }
+
+    batch_quality = _assess_backend_batch_quality(query, batch, quality)
+    if batch and batch_quality["usable"]:
+        for item in batch:
+            item.source = "bing"
+            item.trace["backend_query_variant"] = query
+            item.trace["backend_query_variant_reason"] = "bing_generic_fallback"
+            item.trace["backend_entrypoint"] = "bing_generic"
+        return batch, attempts, {
+            "status": "recovered",
+            "strategy": "bing_generic",
+            "result_count": len(batch),
+            "quality_gate": batch_quality,
+            "agent_note": "Bing CN 入口异常或漂移，观澜用 Bing generic 入口补跑后恢复了可用结果。",
+        }
+
+    return [], attempts, {
+        "status": "not_recovered",
+        "strategy": "bing_generic",
+        "result_count": len(batch),
+        "quality_gate": batch_quality,
+        "rejected_samples": _diagnostic_result_samples(batch),
+        "agent_note": (
+            "Bing generic 入口仍未产出可用中文结果；应按 Bing 上游召回/页面问题处理，"
+            "不要归因于观澜质量门槛过紧。"
+        ),
+    }
+
+
 def _bing_cjk_query_variants(query: str, *, quality: dict[str, Any] | None = None) -> list[str]:
     normalized = _collapse_ws(query)
     terms = _query_relevance_terms(normalized)
@@ -3040,16 +3145,42 @@ def _network_modes_for_backend(backend: str, requested: str, profile: str | None
 
 def _open_url_with_network(req: urllib.request.Request, *, timeout: int, network_mode: str):
     mode = _normalize_network_mode(network_mode)
+    context = _default_ssl_context()
     if mode == "direct":
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=context))
         return opener.open(req, timeout=timeout)
     if mode == "proxy":
         proxy = _configured_proxy_url()
         if not proxy:
             raise RuntimeError("proxy_error: proxy mode requested but no proxy is configured")
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy, "https": proxy}),
+            urllib.request.HTTPSHandler(context=context),
+        )
         return opener.open(req, timeout=timeout)
-    return urllib.request.urlopen(req, timeout=timeout)
+    return _urlopen_with_context(req, timeout=timeout, context=context)
+
+
+def _default_ssl_context() -> ssl.SSLContext:
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
+
+
+def _urlopen_with_context(
+    req: urllib.request.Request,
+    *,
+    timeout: int,
+    context: ssl.SSLContext,
+):
+    try:
+        return urllib.request.urlopen(req, timeout=timeout, context=context)
+    except TypeError:
+        # Test doubles and older patched urlopen callables may not accept context.
+        return urllib.request.urlopen(req, timeout=timeout)
 
 
 def _classify_network_exception(exc: Exception, mode: str) -> str:
@@ -3139,6 +3270,7 @@ def _call_search_backend_once(
     fn = {
         "duckduckgo": _search_duckduckgo,
         "bing": _search_bing,
+        "bing_generic": _search_bing_generic,
         "baidu": _search_baidu,
     }[backend]
     try:
@@ -3212,17 +3344,39 @@ def _search_bing(
     limit: int = DEFAULT_SEARCH_LIMIT,
     network_mode: str = "current",
 ) -> list[SearchResult]:
+    return _search_bing_html(query, limit=limit, network_mode=network_mode, regional=True)
+
+
+def _search_bing_generic(
+    query: str,
+    limit: int = DEFAULT_SEARCH_LIMIT,
+    network_mode: str = "current",
+) -> list[SearchResult]:
+    return _search_bing_html(query, limit=limit, network_mode=network_mode, regional=False)
+
+
+def _search_bing_html(
+    query: str,
+    limit: int,
+    network_mode: str,
+    *,
+    regional: bool,
+) -> list[SearchResult]:
     params: dict[str, str | int] = {
         "q": query,
         "count": min(max(limit, 1), 50),
         "safeSearch": "Strict",
     }
-    if _contains_cjk(query):
-        params.update({"mkt": "zh-CN", "setLang": "zh-Hans", "cc": "CN"})
-        accept_language = "zh-CN,zh;q=0.9,en;q=0.6"
+    contains_cjk = _contains_cjk(query)
+    if regional:
+        if contains_cjk:
+            params.update({"mkt": "zh-CN", "setLang": "zh-Hans", "cc": "CN"})
+            accept_language = "zh-CN,zh;q=0.9,en;q=0.6"
+        else:
+            params.update({"mkt": "en-US", "setLang": "en", "cc": "US"})
+            accept_language = "en-US,en;q=0.9"
     else:
-        params.update({"mkt": "en-US", "setLang": "en", "cc": "US"})
-        accept_language = "en-US,en;q=0.9"
+        accept_language = "zh-CN,zh;q=0.9,en;q=0.6" if contains_cjk else "en-US,en;q=0.9"
     url = "https://www.bing.com/search?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(
         url,
@@ -3237,7 +3391,7 @@ def _search_bing(
     _raise_for_search_block(page, "bing")
 
     results: list[SearchResult] = []
-    for block in re.findall(r'<li class="b_algo".*?</li>', page, flags=re.S):
+    for block in re.findall(r'<li\b(?=[^>]*class=["\'][^"\']*\bb_algo\b[^"\']*["\'])[^>]*>.*?</li>', page, flags=re.S | re.I):
         match = re.search(r"<h2[^>]*>\s*<a[^>]+href=\"([^\"]+)\"[^>]*>(.*?)</a>", block, re.S)
         if not match:
             continue

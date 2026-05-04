@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>观澜 Guanlan | Zero Preview V2</title>
+    <meta
+      name="description"
+      content="观澜 Guanlan 是面向 AI Agent 的中文互联网研究底座。"
+    />
+    <link rel="icon" href="./assets/guanlan-logo.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="./styles-v2.css" />
+  </head>
+  <body>
+    <canvas id="flow-field" aria-hidden="true"></canvas>
+
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="观澜首页">
+        <img src="./assets/guanlan-logo.svg" alt="" />
+        <span>观澜</span>
+      </a>
+      <nav class="nav-links" aria-label="页面导航">
+        <a href="#signal">Signal</a>
+        <a href="#studio">Studio</a>
+        <a href="#install">Install</a>
+      </nav>
+      <a class="nav-action" href="https://github.com/shenyangs/Guanlan">GitHub</a>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Chinese web intelligence for autonomous agents</p>
+          <h1 id="hero-title">观澜 Guanlan</h1>
+          <p class="hero-statement">
+            A signal atelier for agents navigating the Chinese internet.
+          </p>
+          <div class="hero-actions">
+            <a class="primary-action" href="#install">Install</a>
+            <a class="secondary-action" href="#signal">Explore signal</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="signal-board" id="signal">
+        <div class="section-mark">01 / Signal</div>
+        <div class="signal-copy">
+          <h2>Not search. Source intelligence.</h2>
+          <p>
+            Guanlan turns fragmented public web traces into provenance-aware material an
+            agent can judge, cite, and continue from.
+          </p>
+        </div>
+        <div class="signal-list" aria-label="观澜信号层">
+          <article>
+            <span>Provenance</span>
+            <strong>Who said it, where, and through which platform context.</strong>
+          </article>
+          <article>
+            <span>Boundary</span>
+            <strong>What is official, what is media, what is only public discussion.</strong>
+          </article>
+          <article>
+            <span>Packet</span>
+            <strong>Evidence arrives already shaped for downstream agent reasoning.</strong>
+          </article>
+        </div>
+      </section>
+
+      <section class="studio" id="studio">
+        <div class="section-mark">02 / Studio</div>
+        <div class="studio-grid">
+          <article class="studio-lead">
+            <h2>Every query becomes a route.</h2>
+            <p>
+              Different questions deserve different waterways: government notices,
+              hotboards, ecommerce surfaces, developer communities, original pages.
+            </p>
+          </article>
+          <article>
+            <span>Route</span>
+            <p>Scope and profile select source families before the agent starts reading.</p>
+          </article>
+          <article>
+            <span>Read</span>
+            <p>Pages are cleaned into compact, source-aware context with quality notes.</p>
+          </article>
+          <article>
+            <span>Research</span>
+            <p>Source mix, freshness guardrails, and advisor notes make the packet useful.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="command-stage">
+        <div class="command-copy">
+          <div class="section-mark">03 / Run</div>
+          <h2>One command. Many signals.</h2>
+        </div>
+        <div class="command-shell">
+          <div class="shell-top">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <code id="command-output">guanlan research "国产 AI 应用 出海" --profile china --limit 80 --advisor</code>
+          <button id="copy-command" type="button" aria-label="复制命令">Copy</button>
+        </div>
+      </section>
+
+      <section class="proof-strip" aria-label="能力摘要">
+        <div>
+          <strong>China-aware</strong>
+          <span>Profiles and scopes mirror Chinese web structure.</span>
+        </div>
+        <div>
+          <strong>Agent-ready</strong>
+          <span>Markdown, JSON, MCP, and local workflow outputs.</span>
+        </div>
+        <div>
+          <strong>Traceable</strong>
+          <span>Quality signals tell you when evidence is thin.</span>
+        </div>
+      </section>
+
+      <section class="install" id="install">
+        <div class="section-mark">04 / Install</div>
+        <div class="install-heading">
+          <h2>Install the river into your agent.</h2>
+          <p>Use one clean install path, then smoke test before wiring it into your agent.</p>
+        </div>
+        <div class="install-commands">
+          <article>
+            <strong>uv</strong>
+            <pre><code>uv tool install --force --upgrade guanlan
+guanlan version
+guanlan doctor --install-check</code></pre>
+          </article>
+          <article>
+            <strong>Homebrew</strong>
+            <pre><code>brew update
+brew reinstall shenyangs/tap/guanlan
+guanlan hotnews today --limit 80</code></pre>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>Guanlan Zero Preview V2</span>
+      <a href="./index-v1.html">V1</a>
+      <a href="./index-v2.html">V2</a>
+      <a href="https://github.com/shenyangs/Guanlan#readme">README</a>
+      <a href="https://github.com/shenyangs/Guanlan/blob/main/docs/agent-usage.md">Agent Guide</a>
+    </footer>
+
+    <script src="./main-v2.js"></script>
+  </body>
+</html>

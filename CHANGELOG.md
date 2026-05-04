@@ -8,6 +8,24 @@
 
 - 暂无。下一轮变更先进入这里，发版时再移入对应版本。
 
+## v0.5.4 - 2026-05-04
+
+### Added
+
+- Bing 中文弱结果新增 `bing_generic` 异常兜底链：默认仍走 CN 入口，只有 CN 入口空结果、解析失败或低相关时才补跑非区域锁定入口；只有通过质量门控才会采用，并在 trace 中标注恢复路径。
+- Bing 诊断新增 `bing_generic_recovery`，让 Agent 能区分“Bing CN 入口漂移”“generic 入口恢复”“generic 入口也未恢复”，避免把上游召回问题归因给观澜质量门槛。
+- 新增官网视觉预览目录 `website-fashion-preview/`，用于保留官网改版过程中的静态版本和桌面/移动截图。
+
+### Changed
+
+- 官网首页重构为更聚焦的传播页：强调“AI Agent 的中文互联网研究层”，突出普通搜索与观澜证据结构的差异。
+- 遥测反馈面板刷新间隔从 5 秒放宽到 30 秒，反馈列表前置展示，长 query 可换行并可展开查看全文。
+
+### Fixed
+
+- 搜索网络层优先使用 `certifi` CA 证书上下文，降低 macOS/Python 证书链异常导致 Bing/DuckDuckGo/Baidu 全部 HTTPS 失败的概率。
+- Bing HTML 解析兼容 `<li>` 属性顺序变化和额外 `data-id/iid` 属性，避免 Bing 页面结构微调时被误判为 `parser_miss`。
+
 ## v0.5.3 - 2026-05-04
 
 ### Changed
