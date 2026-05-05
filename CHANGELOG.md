@@ -6,6 +6,13 @@
 
 ## Unreleased
 
+## v0.5.11 - 2026-05-05
+
+### Changed
+
+- 明确主仓提交规则：以后每次提交都必须将项目版本号递增 `0.0.1`，并同步包元数据、README、完整指南、Telemetry 示例、官网和 Changelog。
+- 官网版本与静态资源版本同步到 `0.5.11`。
+
 ## v0.5.10 - 2026-05-05
 
 ### Added
@@ -127,7 +134,6 @@
 
 - Bing 中文弱结果新增 `bing_generic` 异常兜底链：默认仍走 CN 入口，只有 CN 入口空结果、解析失败或低相关时才补跑非区域锁定入口；只有通过质量门控才会采用，并在 trace 中标注恢复路径。
 - Bing 诊断新增 `bing_generic_recovery`，让 Agent 能区分“Bing CN 入口漂移”“generic 入口恢复”“generic 入口也未恢复”，避免把上游召回问题归因给观澜质量门槛。
-- 新增官网视觉预览目录 `website-fashion-preview/`，用于保留官网改版过程中的静态版本和桌面/移动截图。
 
 ### Changed
 

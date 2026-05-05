@@ -12,6 +12,12 @@ commit subjects, changelog entries, and release notes. Keep conventional prefixe
 `feat:` / `fix:` / `docs:` when useful, but write the description in Chinese, for example
 `feat: 扩展垂直路由和搜索质量反馈`.
 
+Version bump rule: every commit to Guanlan must increase the project version by `0.0.1`.
+Before committing, bump the patch version across `pyproject.toml`, `guanlan/__init__.py`,
+`uv.lock`, `README.md`, `docs/full-guide.md`, `docs/telemetry.md`, `website/index.html`, and
+`CHANGELOG.md`; then run `scripts/pre_release_status.sh` or an equivalent version-sync check. Do
+not make a code/docs commit on `main` that leaves the package version unchanged.
+
 Release sync rule: when shipping a new Guanlan version, keep the public distribution surfaces in
 lockstep. Do not call a release complete until the GitHub repo/tag, PyPI/uv install path, Homebrew
 tap formula (`shenyangs/homebrew-tap`), and official website (`website/index.html` plus any deployed

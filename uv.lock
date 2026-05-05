@@ -455,7 +455,7 @@ wheels = [
 
 [[package]]
 name = "guanlan"
-version = "0.5.10"
+version = "0.5.11"
 source = { editable = "." }
 dependencies = [
     { name = "feedparser" },
