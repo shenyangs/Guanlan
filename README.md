@@ -109,7 +109,7 @@ guanlan doctor --install-check
 guanlan status
 ```
 
-看到 `观澜 / Guanlan v0.5.12`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.13`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
 
 ## 给 Agent 复制的安装指令
 

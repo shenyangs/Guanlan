@@ -1017,9 +1017,17 @@ def test_search_trace_exposes_pollution_and_agent_decision(monkeypatch):
             )
         ]
 
+    def fake_backend(name, query, *, limit, network_mode="auto", profile=None):
+        if name == "bing":
+            return polluted_bing(query, limit=limit), [{"backend": name, "network_mode": network_mode, "status": "ok"}]
+        if name == "bing_generic":
+            return [], [{"backend": name, "network_mode": network_mode, "status": "ok"}]
+        if name == "duckduckgo":
+            return official_duckduckgo(query, limit=limit), [{"backend": name, "network_mode": network_mode, "status": "ok"}]
+        raise AssertionError(name)
+
     monkeypatch.setattr(webtools, "backend_order", lambda *_args, **_kwargs: ["bing", "duckduckgo"])
-    monkeypatch.setattr(webtools, "_search_bing", polluted_bing)
-    monkeypatch.setattr(webtools, "_search_duckduckgo", official_duckduckgo)
+    monkeypatch.setattr(webtools, "_search_backend_with_network", fake_backend)
 
     results = webtools.search_web("人工智能 政策", backend="auto", profile="china", trace=True)
     rendered = webtools.format_search_trace(results)
