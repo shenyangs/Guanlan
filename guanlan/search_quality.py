@@ -20,6 +20,23 @@ KNOWN_LOW_VALUE_DOMAINS = {
     "support.microsoft.com",
 }
 
+LOW_VALUE_SAMPLE_DOMAINS = {
+    "zhidao.baidu.com",
+    "jingyan.baidu.com",
+    "wenku.baidu.com",
+    "baijiahao.baidu.com",
+}
+
+SEO_TITLE_TERMS = (
+    "客服电话",
+    "24小时",
+    "人工服务",
+    "号码是多少",
+    "联系电话",
+    "官网入口",
+    "app下载",
+)
+
 UNSAFE_RESULT_DOMAINS = {
     "xnxx.com",
     "xvideos.com",
@@ -45,6 +62,7 @@ CJK_RELEVANCE_PHRASES = (
     "跨境电子商务",
     "新质生产力",
     "人工智能",
+    "人工智能政策",
     "数据要素",
     "人形机器人",
     "具身智能",
@@ -70,6 +88,15 @@ CJK_RELEVANCE_PHRASES = (
     "风险",
     "口碑",
     "评价",
+    "导师",
+    "招生",
+    "研究生招生",
+    "官网",
+    "小米",
+    "小米su7",
+    "首销",
+    "权益",
+    "购车权益",
     "热榜",
     "热点",
 )
@@ -78,8 +105,11 @@ CJK_RELEVANCE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("zhuhai_hengqin_location", ("珠海", "横琴", "横琴粤澳深度合作区", "广东")),
     ("cross_border_ecommerce", ("跨境电商", "跨境电子商务", "电子商务", "海外仓")),
     ("policy_notice", ("政策", "扶持", "办法", "通知", "申报", "指南", "公示", "专项资金", "意见", "措施", "支持", "奖励", "实施方案", "行动计划")),
+    ("ai_policy", ("人工智能", "AI", "智能", "大模型", "算法")),
     ("solid_state_battery", ("固态电池", "全固态电池", "动力电池", "电池量产")),
     ("production_timeline", ("量产", "时间表", "产业化", "进展", "规划")),
+    ("university_admission", ("高校", "大学", "学院", "研究生招生", "招生", "导师", "院系", "官网")),
+    ("xiaomi_su7_product", ("小米", "小米SU7", "SU7", "汽车", "首销", "权益", "购车权益")),
     ("hara_kenya_design", ("原研哉", "设计哲学", "设计中的设计", "日本设计")),
 )
 
@@ -164,6 +194,7 @@ def assess_backend_batch_quality(
     matched_groups = matched_relevance_groups(batch, groups)
     group_coverage = len(matched_groups) / max(len(groups), 1) if groups else 1.0
     official_salvage = official_salvage_summary(batch, groups, quality)
+    pollution = backend_pollution_summary(query, batch)
     requested_required_groups = {
         str(group.get("name"))
         for group in groups
@@ -189,6 +220,12 @@ def assess_backend_batch_quality(
         reasons.append("query_terms_missing")
     if len(terms) >= 3 and term_coverage == 0 and top_domain_ratio >= 0.8 and len(batch) >= 4:
         reasons.append("single_domain_zero_query_overlap")
+    if (
+        pollution["severity"] == "high"
+        and len(batch) >= 3
+        and not official_salvage["salvaged_count"]
+    ):
+        reasons.append("low_value_domain_pollution")
 
     if reasons:
         hard_reasons = [reason for reason in reasons if reason.startswith("known_low_value_domain")]
@@ -207,6 +244,7 @@ def assess_backend_batch_quality(
                 "matched_groups": sorted(matched_groups),
                 "missing_required_groups": sorted(missing_required_groups),
                 "quality_intent": quality.get("intent", "general"),
+                "pollution": pollution,
                 "salvage": official_salvage,
                 "suppressed_reasons": reasons,
             }
@@ -224,6 +262,7 @@ def assess_backend_batch_quality(
             "matched_groups": sorted(matched_groups),
             "missing_required_groups": sorted(missing_required_groups),
             "quality_intent": quality.get("intent", "general"),
+            "pollution": pollution,
         }
     return {
         "usable": True,
@@ -239,6 +278,7 @@ def assess_backend_batch_quality(
         "matched_groups": sorted(matched_groups),
         "missing_required_groups": sorted(missing_required_groups),
         "quality_intent": quality.get("intent", "general"),
+        "pollution": pollution,
     }
 
 
@@ -262,6 +302,7 @@ def expand_relevance_term(term: str) -> list[str]:
     if not contains_cjk(term):
         return [term]
     expanded = [phrase for phrase in CJK_RELEVANCE_PHRASES if phrase in term]
+    expanded.extend(cjk_compound_windows(term))
     if expanded:
         # Keep the original term when it is short enough to be a meaningful
         # compound, but avoid making a long unsplit Chinese sentence the only
@@ -270,6 +311,26 @@ def expand_relevance_term(term: str) -> list[str]:
             expanded.insert(0, term)
         return unique_keep_order(expanded)
     return [term]
+
+
+def cjk_compound_windows(term: str) -> list[str]:
+    """Extract stable CJK compound windows without exploding into every bigram."""
+    if not contains_cjk(term):
+        return []
+    chunks = re.findall(r"[\u4e00-\u9fffA-Za-z0-9+._-]+", term)
+    compounds: list[str] = []
+    for chunk in chunks:
+        if not contains_cjk(chunk):
+            continue
+        if 2 <= len(chunk) <= 8:
+            compounds.append(chunk)
+        if len(chunk) <= 4:
+            continue
+        for idx in range(0, max(0, len(chunk) - 4 + 1)):
+            window = chunk[idx : idx + 4]
+            if any(phrase in window for phrase in CJK_RELEVANCE_PHRASES if len(phrase) >= 3):
+                compounds.append(window)
+    return unique_keep_order(compounds)
 
 
 def query_entity_terms(query: str) -> list[str]:
@@ -389,6 +450,49 @@ def filter_unsafe_search_results(batch: list[SearchResultLike]) -> dict[str, Any
         "dropped_count": len(dropped),
         "dropped": dropped[:5],
         "policy": "adult_or_unsafe_search_result_filter",
+    }
+
+
+def backend_pollution_summary(query: str, batch: list[SearchResultLike]) -> dict[str, Any]:
+    """Detect low-value Q&A/SEO pollution without treating it as final truth."""
+    if not batch:
+        return {"enabled": False, "severity": "none", "polluted_count": 0, "ratio": 0.0}
+    samples: list[dict[str, str]] = []
+    polluted_count = 0
+    for item in batch:
+        domain = (getattr(item, "domain", "") or _domain(getattr(item, "url", ""))).lower().removeprefix("www.")
+        text = collapse_ws(f"{getattr(item, 'title', '')} {getattr(item, 'snippet', '')}").lower()
+        reasons: list[str] = []
+        if domain in LOW_VALUE_SAMPLE_DOMAINS:
+            reasons.append(f"low_value_domain:{domain}")
+        if any(term.lower() in text for term in SEO_TITLE_TERMS):
+            reasons.append("seo_or_service_phone_title")
+        if reasons:
+            polluted_count += 1
+            if len(samples) < 5:
+                samples.append(
+                    {
+                        "title": collapse_ws(getattr(item, "title", ""))[:120],
+                        "domain": domain,
+                        "url": getattr(item, "url", ""),
+                        "reason": ",".join(reasons),
+                    }
+                )
+    ratio = polluted_count / max(len(batch), 1)
+    severity = "high" if ratio >= 0.5 else ("medium" if ratio >= 0.25 else ("low" if polluted_count else "none"))
+    return {
+        "enabled": bool(polluted_count),
+        "severity": severity,
+        "polluted_count": polluted_count,
+        "total": len(batch),
+        "ratio": round(ratio, 3),
+        "samples": samples,
+        "agent_note": (
+            "候选里出现百度知道/经验/文库、百家号或客服号码类 SEO 污染；"
+            "应降权并补官方、垂直或 scope 搜索，不要把这类样本当主证据。"
+            if polluted_count
+            else ""
+        ),
     }
 
 

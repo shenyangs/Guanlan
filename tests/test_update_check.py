@@ -87,6 +87,26 @@ def test_install_check_reports_duplicate_paths_and_stale_version():
     assert "uv tool install --force --upgrade guanlan" in text
 
 
+def test_install_check_reports_shadowed_homebrew_path():
+    with patch(
+        "guanlan.update_check._path_version",
+        side_effect=[("0.5.12", ""), ("0.5.12", "")],
+    ):
+        report = update_check.run_install_check(
+            "0.5.12",
+            latest="0.5.12",
+            command_path="/Users/sam/.local/bin/guanlan",
+            all_paths=["/Users/sam/.local/bin/guanlan", "/opt/homebrew/bin/guanlan"],
+        )
+
+    text = update_check.format_install_check(report)
+
+    assert report["status"] == "warn"
+    assert report["path_details"][1]["shadowed_by"] == "/Users/sam/.local/bin/guanlan"
+    assert "被 /Users/sam/.local/bin/guanlan shadow" in text
+    assert "以下安装入口被 PATH 前面的 guanlan shadow" in text
+
+
 def test_cached_update_info_reuses_local_cache(tmp_path, monkeypatch):
     cache_path = tmp_path / "update-check.json"
     monkeypatch.setenv("GUANLAN_UPDATE_CHECK", "1")

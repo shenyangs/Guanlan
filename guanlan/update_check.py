@@ -181,6 +181,13 @@ def run_install_check(
     if multiple_paths:
         recommendations.append(f"当前 shell 优先调用：{resolved_path or unique_paths[0]}。")
         recommendations.append("发现多个 guanlan 路径，可能存在 pipx/Homebrew/uv 混装导致的旧版本优先。")
+        shadowed = [
+            str(item.get("path"))
+            for item in path_details
+            if item.get("shadowed_by")
+        ]
+        if shadowed:
+            recommendations.append("以下安装入口被 PATH 前面的 guanlan shadow：" + "、".join(shadowed))
         stale_paths = [
             str(item.get("path"))
             for item in path_details
@@ -229,6 +236,9 @@ def format_install_check(report: dict[str, object]) -> str:
                 version = item.get("version") or "未知"
                 source = item.get("source_hint") or "unknown"
                 risk = item.get("risk") or ""
+                if item.get("shadowed_by"):
+                    shadow_risk = f"被 {item.get('shadowed_by')} shadow"
+                    risk = shadow_risk if not risk else f"{risk}；{shadow_risk}"
                 suffix = f"；{risk}" if risk else ""
                 lines.append(f"- {item.get('path')}{marker}（版本: {version}；来源: {source}{suffix}）")
         else:
@@ -284,6 +294,7 @@ def _path_details(paths: list[str], *, active_path: str = "", timeout: float = 1
                 "version": version,
                 "version_error": error,
                 "source_hint": _install_source_hint(path),
+                "shadowed_by": _shadowing_path(path, paths, active_real=active_real),
                 "risk": _path_risk(path, active_real=active_real, version=version, error=error),
             }
         )
@@ -330,6 +341,21 @@ def _path_risk(path: str, *, active_real: str, version: str, error: str) -> str:
         return "非当前优先路径"
     if not version:
         return "未识别版本"
+    return ""
+
+
+def _shadowing_path(path: str, paths: list[str], *, active_real: str) -> str:
+    if not active_real:
+        return ""
+    current_real = os.path.realpath(path)
+    if current_real == active_real:
+        return ""
+    for candidate in paths:
+        candidate_real = os.path.realpath(candidate)
+        if candidate_real == current_real:
+            return ""
+        if candidate_real == active_real:
+            return candidate
     return ""
 
 

@@ -6,6 +6,20 @@
 
 ## Unreleased
 
+## v0.5.12 - 2026-05-05
+
+### Added
+
+- 搜索 trace 新增 `agent_decision` 短决策字段，明确当前结果是 `usable`、`usable_with_gaps`、`needs_research`、`needs_scope_search`、`needs_hotnews` 还是 `do_not_answer_yet`。
+- 搜索后端质量门控新增百度知道/经验/文库、百家号和客服号码类 SEO 污染诊断，污染样本会进入 `backend_pollution` 与恢复建议。
+- 安装路径诊断新增 PATH shadow 提示，明确 Homebrew、uv 或 pipx 入口是否被更靠前的 `guanlan` 可执行文件遮蔽。
+- `scripts/pre_release_status.sh` 增加 Homebrew tap formula 与可选官网部署页版本检查；发布时可用 `GUANLAN_RELEASE_REQUIRE_DISTRIBUTIONS=1` 将未同步变成阻断错误。
+
+### Changed
+
+- 中文 CJK 复合词识别增加通用窗口和更多垂直语义组，降低政策、招生、产品权益类 query 被误判为低相关的概率。
+- 官网版本与静态资源版本同步到 `0.5.12`。
+
 ## v0.5.11 - 2026-05-05
 
 ### Changed

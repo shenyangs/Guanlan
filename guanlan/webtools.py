@@ -1330,6 +1330,13 @@ def search_web(
                 "fallback_rule": "扩写 query 前不要 fallback。",
                 "action_count": 0,
             },
+            "agent_decision": {
+                "code": "do_not_answer_yet",
+                "label": "先重写查询",
+                "should_answer": False,
+                "next_tool": "rewrite_query",
+                "reason": "query 信息量不足，继续搜索更可能返回噪声。",
+            },
             "suggestions": [
                 "把 query 扩写成“对象 + 关注点 + 时间/地区/来源类型”的形式后再搜。",
             ],
@@ -2893,6 +2900,7 @@ def _backend_diagnostic_summary(diagnostics: list[dict[str, Any]]) -> dict[str, 
     blocked = [item["backend"] for item in diagnostics if item.get("status") == "blocked"]
     errors = [item["backend"] for item in diagnostics if item.get("status") == "error"]
     network_errors = [item["backend"] for item in diagnostics if item.get("status") in _NETWORK_PROBLEM_STATUSES]
+    pollution = _backend_pollution_diagnostics(diagnostics)
     problem_statuses = {
         "parser_miss",
         "no_results",
@@ -2919,11 +2927,33 @@ def _backend_diagnostic_summary(diagnostics: list[dict[str, Any]]) -> dict[str, 
         "unsafe_filtered": unsafe_filtered,
         "blocked": blocked,
         "network_errors": network_errors,
+        "pollution": pollution,
+        "polluted_backends": [item["backend"] for item in pollution if item.get("severity") in {"medium", "high"}],
         "errors": errors,
         "fallback_used": fallback_used,
         "primary_backend": diagnostics[0]["backend"] if diagnostics else "",
         "primary_status": diagnostics[0]["status"] if diagnostics else "",
     }
+
+
+def _backend_pollution_diagnostics(diagnostics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item in diagnostics:
+        pollution = ((item.get("quality_gate") or {}).get("pollution") or {})
+        if not isinstance(pollution, dict) or not pollution.get("enabled"):
+            continue
+        rows.append(
+            {
+                "backend": str(item.get("backend") or ""),
+                "severity": str(pollution.get("severity") or "none"),
+                "ratio": pollution.get("ratio", 0),
+                "polluted_count": pollution.get("polluted_count", 0),
+                "total": pollution.get("total", 0),
+                "samples": list(pollution.get("samples") or [])[:3],
+                "agent_note": str(pollution.get("agent_note") or ""),
+            }
+        )
+    return rows
 
 
 def build_search_recovery_plan(
@@ -2950,7 +2980,30 @@ def build_search_recovery_plan(
     }
     problems = [item for item in diagnostics if item.get("status") in problem_statuses]
     ok_backends = [str(item.get("backend")) for item in diagnostics if item.get("status") == "ok"]
+    pollution_problems = [
+        item
+        for item in diagnostics
+        if ((item.get("quality_gate") or {}).get("pollution") or {}).get("severity") in {"medium", "high"}
+    ]
     if not problems:
+        if pollution_problems:
+            commands = _search_recovery_commands(
+                query,
+                route_plan=route_plan,
+                profile=profile,
+                ok_backends=ok_backends,
+                limit=limit,
+            )
+            return {
+                "status": "degraded",
+                "active_backends": ok_backends,
+                "auto_downgrade": False,
+                "guidance": [
+                    "搜索后端已返回结果，但候选里有百度知道/经验/文库、百家号或客服号码类污染；应降权并补官方、垂直或 scope 搜索。",
+                ],
+                "followup_commands": commands,
+                "polluted_backends": [str(item.get("backend")) for item in pollution_problems],
+            }
         return {
             "status": "ok",
             "active_backends": ok_backends,
@@ -2997,6 +3050,11 @@ def build_search_recovery_plan(
         )
     if auto_downgrade and ok_backends:
         guidance.append(f"已自动降级到 {', '.join(ok_backends)}，当前结果仍可继续使用，但应补充定向信源核验。")
+    if pollution_problems:
+        guidance.append(
+            "候选里有百度知道/经验/文库、百家号或客服号码类 SEO 污染；"
+            "观澜已标记污染样本，Agent 应优先补官方/垂直/scope 搜索。"
+        )
     if errors and not ok_backends:
         guidance.append(f"{', '.join(errors)} 后端异常，建议稍后重试或改用可选搜索服务。")
 
@@ -3016,6 +3074,7 @@ def build_search_recovery_plan(
         "unsafe_filtered_backends": unsafe_filtered,
         "network_error_backends": network_errors,
         "error_backends": errors,
+        "polluted_backends": [str(item.get("backend")) for item in pollution_problems],
         "auto_downgrade": auto_downgrade,
         "guidance": _unique_keep_order(guidance),
         "followup_commands": commands,
@@ -6581,6 +6640,12 @@ def _search_context_diagnostics(results: list[dict[str, Any]]) -> list[str]:
     user_facing_status = str(quality_summary.get("user_facing_status") or "")
     if quality_status:
         lines.append(f"> 质量状态: `{quality_status}`")
+    decision = quality_summary.get("agent_decision") or {}
+    if isinstance(decision, dict) and decision.get("code"):
+        lines.append(
+            f"> Agent 决策: `{decision.get('code')}` "
+            f"answer={bool(decision.get('should_answer'))} next={decision.get('next_tool') or '-'}"
+        )
     if user_facing_status:
         lines.append(f"> 当前进展: {user_facing_status}")
     if quality_interpretation:
@@ -6753,11 +6818,20 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
                 bing_recovery = item.get("bing_cjk_recovery") or {}
                 if isinstance(bing_recovery, dict) and bing_recovery.get("agent_note"):
                     lines.append(f"  bing_recovery:{item.get('backend')} => {bing_recovery.get('agent_note')}")
-                for sample in item.get("rejected_samples") or []:
-                    title = _collapse_ws(str(sample.get("title") or ""))[:80]
-                    domain = str(sample.get("domain") or "")
-                    suffix = f" ({domain})" if domain else ""
-                    lines.append(f"  rejected_sample:{item.get('backend')} => {title}{suffix}")
+            for sample in item.get("rejected_samples") or []:
+                title = _collapse_ws(str(sample.get("title") or ""))[:80]
+                domain = str(sample.get("domain") or "")
+                suffix = f" ({domain})" if domain else ""
+                lines.append(f"  rejected_sample:{item.get('backend')} => {title}{suffix}")
+            pollution = ((item.get("quality_gate") or {}).get("pollution") or {})
+            if isinstance(pollution, dict) and pollution.get("enabled"):
+                lines.append(
+                    f"  backend_pollution:{item.get('backend')} => "
+                    f"severity={pollution.get('severity')} ratio={pollution.get('ratio')} "
+                    f"count={pollution.get('polluted_count')}/{pollution.get('total')}"
+                )
+                if pollution.get("agent_note"):
+                    lines.append(f"  pollution_note:{item.get('backend')} => {pollution.get('agent_note')}")
             for network_attempt in item.get("network_attempts") or []:
                 n_status = str(network_attempt.get("status") or "")
                 if n_status and n_status != "ok":
@@ -6844,6 +6918,13 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
             lines.append(f"  warning: {warning}")
         if quality_summary.get("quality_status"):
             lines.append(f"  quality_status: {quality_summary.get('quality_status')}")
+        decision = quality_summary.get("agent_decision") or {}
+        if isinstance(decision, dict) and decision.get("code"):
+            lines.append(
+                f"  agent_decision: code={decision.get('code')} "
+                f"should_answer={bool(decision.get('should_answer'))} "
+                f"next={decision.get('next_tool') or '-'}"
+            )
         if quality_summary.get("user_facing_status"):
             lines.append(f"  user_facing_status: {quality_summary.get('user_facing_status')}")
         for reason in quality_summary.get("why_cautious") or []:
@@ -7337,6 +7418,13 @@ def search_quality_summary(
     followup_actions = _quality_followup_actions(quality, warnings, missing_roles, quality_status)
     workflow_plan = _quality_workflow_plan(quality, warnings, missing_roles, quality_status, followup_actions)
     execution_policy = _quality_execution_policy(quality_status, followup_actions, workflow_plan)
+    agent_decision = _quality_agent_decision(
+        quality_status,
+        workflow_plan=workflow_plan,
+        followup_actions=followup_actions,
+        warnings=warnings,
+        missing_roles=missing_roles,
+    )
     browser_assist_suggestion = _browser_assist_suggestion_from_results(results)
     if browser_assist_suggestion.get("enabled"):
         suggestions.append("命中动态/登录态平台页；如公开读取不足，可请求用户授权后用宿主浏览器可见页补证。")
@@ -7366,10 +7454,57 @@ def search_quality_summary(
         "user_facing_status": user_facing_status,
         "why_cautious": why_cautious,
         "agent_workflow_plan": workflow_plan,
+        "agent_decision": agent_decision,
         "followup_actions": followup_actions,
         "recommended_actions": followup_actions,
         "agent_execution_policy": execution_policy,
         "suggestions": _unique_keep_order([item for item in suggestions if item]),
+    }
+
+
+def _quality_agent_decision(
+    quality_status: str,
+    *,
+    workflow_plan: dict[str, Any],
+    followup_actions: list[dict[str, Any]],
+    warnings: list[str],
+    missing_roles: list[str],
+) -> dict[str, Any]:
+    tools = [str(item.get("tool") or "") for item in followup_actions if str(item.get("tool") or "")]
+    sequence = [str(item) for item in workflow_plan.get("tool_sequence") or [] if str(item)]
+    all_tools = _unique_keep_order([*tools, *sequence])
+    if quality_status == "ok":
+        return {
+            "code": "usable",
+            "label": "可回答",
+            "should_answer": True,
+            "next_tool": "read" if "read" in all_tools else "",
+            "reason": "结果已通过质量画像。",
+        }
+    if quality_status == "usable_with_gaps":
+        return {
+            "code": "usable_with_gaps",
+            "label": "可回答但需说明缺口",
+            "should_answer": True,
+            "next_tool": "read",
+            "reason": "已有强一手或偏好信源，但仍有证据角色缺口。",
+        }
+    if "hotnews" in all_tools:
+        code, next_tool = "needs_hotnews", "hotnews"
+    elif "feeds" in all_tools:
+        code, next_tool = "needs_research", "feeds"
+    elif "search" in all_tools or missing_roles:
+        code, next_tool = "needs_scope_search", "search"
+    elif "research" in all_tools:
+        code, next_tool = "needs_research", "research"
+    else:
+        code, next_tool = "do_not_answer_yet", "route"
+    return {
+        "code": code,
+        "label": "先补证据",
+        "should_answer": False,
+        "next_tool": next_tool,
+        "reason": (warnings[0] if warnings else (f"缺少 {missing_roles[0]} 角色证据。" if missing_roles else "证据面不足。")),
     }
 
 

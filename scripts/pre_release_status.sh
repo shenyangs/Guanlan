@@ -37,6 +37,39 @@ if [ -f CHANGELOG.md ] && ! grep -q "## v$version_from_pyproject" CHANGELOG.md; 
   fail "CHANGELOG.md missing v$version_from_pyproject entry"
 fi
 
+tap_formula="${GUANLAN_HOMEBREW_FORMULA:-}"
+if [ -z "$tap_formula" ]; then
+  for candidate in ../homebrew-tap/Formula/guanlan.rb /opt/homebrew/Library/Taps/shenyangs/homebrew-tap/Formula/guanlan.rb; do
+    if [ -f "$candidate" ]; then
+      tap_formula="$candidate"
+      break
+    fi
+  done
+fi
+
+if [ -n "$tap_formula" ]; then
+  [ -f "$tap_formula" ] || fail "Homebrew formula not found: $tap_formula"
+  if ! grep -q "guanlan-$version_from_pyproject.tar.gz" "$tap_formula"; then
+    if [ "${GUANLAN_RELEASE_REQUIRE_DISTRIBUTIONS:-0}" = "1" ]; then
+      fail "Homebrew formula $tap_formula does not reference guanlan-$version_from_pyproject.tar.gz"
+    fi
+    echo "pre-release warning: Homebrew formula $tap_formula does not reference guanlan-$version_from_pyproject.tar.gz" >&2
+  fi
+fi
+
+if [ -n "${GUANLAN_RELEASE_SITE_URL:-}" ]; then
+  site_html="$(curl -fsSL --max-time 8 "$GUANLAN_RELEASE_SITE_URL" || true)"
+  if [ -z "$site_html" ]; then
+    fail "official website check failed: $GUANLAN_RELEASE_SITE_URL"
+  fi
+  if ! printf '%s' "$site_html" | grep -q "$version_from_pyproject"; then
+    if [ "${GUANLAN_RELEASE_REQUIRE_DISTRIBUTIONS:-0}" = "1" ]; then
+      fail "official website $GUANLAN_RELEASE_SITE_URL does not mention version $version_from_pyproject"
+    fi
+    echo "pre-release warning: official website $GUANLAN_RELEASE_SITE_URL does not mention version $version_from_pyproject" >&2
+  fi
+fi
+
 status="$(git status --short)"
 if [ -n "$status" ] && [ "$ALLOW_DIRTY" != "1" ]; then
   echo "$status" >&2

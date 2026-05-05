@@ -120,6 +120,31 @@ def test_pre_release_status_allows_explicit_local_diagnostics():
     assert "version=" in completed.stdout
 
 
+def test_pre_release_status_can_require_homebrew_formula_sync(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    script = root / "scripts" / "pre_release_status.sh"
+    formula = tmp_path / "guanlan.rb"
+    formula.write_text('url "https://files.pythonhosted.org/packages/demo/guanlan-0.0.1.tar.gz"\n', encoding="utf-8")
+
+    completed = subprocess.run(
+        [str(script)],
+        cwd=root,
+        env={
+            **os.environ,
+            "GUANLAN_RELEASE_ALLOW_DIRTY": "1",
+            "GUANLAN_RELEASE_REQUIRE_DISTRIBUTIONS": "1",
+            "GUANLAN_HOMEBREW_FORMULA": str(formula),
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert "Homebrew formula" in completed.stderr
+
+
 def test_quality_backend_fixtures_cli_json(capsys):
     from guanlan.cli import main
 

@@ -911,6 +911,8 @@ def test_search_quality_summary_suggests_missing_roles():
     assert any("不要向 AI 使用者概括为" in item for item in summary["agent_reporting_contract"])
     assert any("未完全通过质量画像" in item for item in summary["agent_reporting_contract"])
     assert any("scope gov" in item for item in summary["suggestions"])
+    assert summary["agent_decision"]["code"] == "needs_scope_search"
+    assert summary["agent_decision"]["should_answer"] is False
 
 
 def test_search_quality_summary_treats_strong_primary_evidence_as_usable_with_gaps():
@@ -941,6 +943,98 @@ def test_search_quality_summary_treats_strong_primary_evidence_as_usable_with_ga
     assert summary["agent_execution_policy"]["mode"] == "continue_or_read"
     assert summary["agent_execution_policy"]["should_run_followups"] is False
     assert summary["followup_actions"][0]["tool"] == "read"
+    assert summary["agent_decision"]["code"] == "usable_with_gaps"
+    assert summary["agent_decision"]["should_answer"] is True
+
+
+def test_search_quality_gate_detects_low_value_baidu_pollution():
+    batch = [
+        webtools.SearchResult(
+            title="苹果客服电话24小时人工服务热线是多少？_百度知道",
+            url="https://zhidao.baidu.com/question/1120136526299781379.html",
+            snippet="客服电话、人工服务、号码是多少",
+            source="bing",
+            rank=1,
+        ),
+        webtools.SearchResult(
+            title="苹果售后人工服务号码是多少？",
+            url="https://jingyan.baidu.com/article/demo.html",
+            snippet="24小时 电话 客服",
+            source="bing",
+            rank=2,
+        ),
+        webtools.SearchResult(
+            title="苹果手机使用经验",
+            url="https://baijiahao.baidu.com/s?id=demo",
+            snippet="客服电话 官网入口",
+            source="bing",
+            rank=3,
+        ),
+    ]
+
+    gate = webtools._assess_backend_batch_quality("人工智能 政策", batch, {"intent": "policy"})
+
+    assert gate["usable"] is False
+    assert "low_value_domain_pollution" in gate["reason"]
+    assert gate["pollution"]["severity"] == "high"
+    assert gate["pollution"]["polluted_count"] == 3
+
+
+def test_search_trace_exposes_pollution_and_agent_decision(monkeypatch):
+    def polluted_bing(query, limit=10):
+        return [
+            webtools.SearchResult(
+                title="苹果客服电话24小时人工服务热线是多少？_百度知道",
+                url="https://zhidao.baidu.com/question/1120136526299781379.html",
+                snippet="客服电话、人工服务、号码是多少",
+                source="bing",
+                rank=1,
+            ),
+            webtools.SearchResult(
+                title="苹果售后人工服务号码是多少？",
+                url="https://jingyan.baidu.com/article/demo.html",
+                snippet="24小时 电话 客服",
+                source="bing",
+                rank=2,
+            ),
+            webtools.SearchResult(
+                title="苹果手机使用经验",
+                url="https://baijiahao.baidu.com/s?id=demo",
+                snippet="客服电话 官网入口",
+                source="bing",
+                rank=3,
+            ),
+        ]
+
+    def official_duckduckgo(query, limit=10):
+        return [
+            webtools.SearchResult(
+                title="国务院关于人工智能政策的通知",
+                url="https://www.gov.cn/zhengce/ai.htm",
+                snippet="人工智能 政策 官方 原文 通知",
+                source="duckduckgo",
+                rank=1,
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "backend_order", lambda *_args, **_kwargs: ["bing", "duckduckgo"])
+    monkeypatch.setattr(webtools, "_search_bing", polluted_bing)
+    monkeypatch.setattr(webtools, "_search_duckduckgo", official_duckduckgo)
+
+    results = webtools.search_web("人工智能 政策", backend="auto", profile="china", trace=True)
+    rendered = webtools.format_search_trace(results)
+
+    assert results[0]["trace"]["backend_diagnostics"][0]["quality_gate"]["pollution"]["severity"] == "high"
+    assert results[0]["trace"]["quality_summary"]["agent_decision"]["code"] == "usable_with_gaps"
+    assert "backend_pollution:bing" in rendered
+    assert "agent_decision: code=usable_with_gaps" in rendered
+
+
+def test_cjk_compound_terms_keep_chinese_search_intent():
+    terms = webtools._query_relevance_terms("人工智能政策")
+
+    assert "人工智能" in terms
+    assert "人工智能政策" in terms
 
 
 def test_search_quality_summary_upgrades_tech_queries_to_four_step_workflow():
@@ -1446,6 +1540,7 @@ def test_search_web_continues_after_low_relevance_bing_batch(monkeypatch):
 
     monkeypatch.setattr(webtools, "_search_baidu", blocked_baidu)
     monkeypatch.setattr(webtools, "_search_bing", noisy_bing)
+    monkeypatch.setattr(webtools, "_search_bing_generic", lambda query, limit=10: [])
     monkeypatch.setattr(webtools, "_search_duckduckgo", useful_duckduckgo)
 
     results = webtools.search_web(
