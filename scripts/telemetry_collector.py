@@ -19,9 +19,10 @@ import os
 import sqlite3
 import sys
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 DB_PATH = os.environ.get("GUANLAN_DB", "/var/lib/guanlan-telemetry/events.db")
 BIND_HOST = os.environ.get("GUANLAN_HOST", "0.0.0.0")
@@ -31,6 +32,16 @@ ADMIN_PASSWORD = os.environ.get("GUANLAN_ADMIN_PASSWORD", "")
 INGEST_TOKEN = os.environ.get("GUANLAN_INGEST_TOKEN", "")
 ACTIVE_TTL_SECONDS = int(os.environ.get("GUANLAN_ACTIVE_TTL_SECONDS", "180"))
 MAX_BODY_BYTES = 16 * 1024
+IP_GEO_LOOKUP_ENABLED = os.environ.get("GUANLAN_IP_GEO_LOOKUP", "1") != "0"
+IP_GEO_CACHE_TTL_SECONDS = int(os.environ.get("GUANLAN_IP_GEO_CACHE_TTL_SECONDS", str(7 * 24 * 3600)))
+SITE_VISIT_ALLOWED_HOSTS = set(
+    host.strip().lower()
+    for host in os.environ.get(
+        "GUANLAN_SITE_VISIT_ALLOWED_HOSTS",
+        "guanlan.xin,www.guanlan.xin,101.37.70.222",
+    ).split(",")
+    if host.strip()
+)
 SYNTHETIC_QUERY_EXACT = set(
     [
         "query",
@@ -94,6 +105,149 @@ def feedback_real_sql(column="query_text"):
         + " NOT LIKE 'sample %'"
         + ")"
     )
+
+
+def hash_site_ip(remote_addr):
+    ip = str(remote_addr or "").strip()
+    if not ip:
+        return ""
+    return hashlib.sha256(("guanlan-site-ip-v1|" + ip).encode("utf-8")).hexdigest()[:32]
+
+
+def parse_user_agent(user_agent):
+    ua = str(user_agent or "")
+    lowered = ua.lower()
+    if "micromessenger" in lowered:
+        browser = "WeChat"
+    elif "edg/" in lowered:
+        browser = "Edge"
+    elif "chrome/" in lowered or "crios/" in lowered:
+        browser = "Chrome"
+    elif "safari/" in lowered and "chrome/" not in lowered and "crios/" not in lowered:
+        browser = "Safari"
+    elif "firefox/" in lowered or "fxios/" in lowered:
+        browser = "Firefox"
+    elif "curl/" in lowered:
+        browser = "curl"
+    else:
+        browser = "unknown"
+
+    if "iphone" in lowered or "ipad" in lowered or "ios" in lowered:
+        os_name = "iOS"
+    elif "android" in lowered:
+        os_name = "Android"
+    elif "mac os x" in lowered or "macintosh" in lowered:
+        os_name = "macOS"
+    elif "windows" in lowered:
+        os_name = "Windows"
+    elif "linux" in lowered:
+        os_name = "Linux"
+    else:
+        os_name = "unknown"
+
+    if "bot" in lowered or "spider" in lowered or "crawler" in lowered:
+        device_type = "bot"
+    elif "ipad" in lowered or "tablet" in lowered:
+        device_type = "tablet"
+    elif "mobile" in lowered or "iphone" in lowered or "android" in lowered:
+        device_type = "mobile"
+    elif browser == "curl":
+        device_type = "script"
+    else:
+        device_type = "desktop"
+
+    return {"browser": browser, "os": os_name, "device_type": device_type}
+
+
+def is_public_ip(remote_addr):
+    ip = str(remote_addr or "").strip()
+    if not ip:
+        return False
+    if ":" in ip and ip.count(":") == 1 and ip.rsplit(":", 1)[1].isdigit():
+        ip = ip.rsplit(":", 1)[0]
+    try:
+        parts = ip.split(".")
+        if len(parts) != 4:
+            return False
+        first = int(parts[0])
+        second = int(parts[1])
+        if first == 10 or first == 127:
+            return False
+        if first == 172 and 16 <= second <= 31:
+            return False
+        if first == 192 and second == 168:
+            return False
+        if first == 169 and second == 254:
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def fetch_ip_geo(remote_addr):
+    if not IP_GEO_LOOKUP_ENABLED or not is_public_ip(remote_addr):
+        return {}
+    url = (
+        "http://ip-api.com/json/%s?fields=status,country,regionName,city,isp,org,as,query"
+        % str(remote_addr).strip()
+    )
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "guanlan-telemetry/1.0"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            payload = json.loads(resp.read(8192).decode("utf-8"))
+    except Exception:
+        return {}
+    if payload.get("status") != "success":
+        return {}
+    return {
+        "country": clamp_text(payload.get("country"), 80),
+        "region": clamp_text(payload.get("regionName"), 80),
+        "city": clamp_text(payload.get("city"), 80),
+        "isp": clamp_text(payload.get("isp"), 160),
+        "org": clamp_text(payload.get("org"), 160),
+        "asn": clamp_text(payload.get("as"), 120),
+    }
+
+
+def get_ip_geo(conn, remote_addr, allow_fetch=True):
+    ip_hash = hash_site_ip(remote_addr)
+    if not ip_hash:
+        return {}
+    current = now_ms()
+    row = conn.execute(
+        "SELECT country, region, city, isp, org, asn, updated_ms FROM ip_geo_cache WHERE ip_hash = ?",
+        (ip_hash,),
+    ).fetchone()
+    if row and current - int(row["updated_ms"] or 0) < IP_GEO_CACHE_TTL_SECONDS * 1000:
+        return dict(row)
+    if not allow_fetch:
+        return dict(row) if row else {}
+    geo = fetch_ip_geo(remote_addr)
+    if not geo:
+        if row:
+            return dict(row)
+        return {}
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO ip_geo_cache (
+            ip_hash, remote_addr, country, region, city, isp, org, asn, updated_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            ip_hash,
+            clamp_text(remote_addr, 80),
+            geo["country"],
+            geo["region"],
+            geo["city"],
+            geo["isp"],
+            geo["org"],
+            geo["asn"],
+            current,
+        ),
+    )
+    conn.commit()
+    geo["updated_ms"] = current
+    return geo
 
 
 def db_connect():
@@ -171,10 +325,67 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_feedback_received ON feedback(received_ms);
             CREATE INDEX IF NOT EXISTS idx_feedback_command ON feedback(command);
             CREATE INDEX IF NOT EXISTS idx_feedback_agent ON feedback(agent_id);
+
+            CREATE TABLE IF NOT EXISTS site_visits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                received_ms INTEGER NOT NULL,
+                ip_hash TEXT NOT NULL,
+                remote_addr TEXT NOT NULL DEFAULT '',
+                host TEXT NOT NULL DEFAULT '',
+                path TEXT NOT NULL,
+                referrer TEXT NOT NULL,
+                user_agent TEXT NOT NULL,
+                browser TEXT NOT NULL DEFAULT '',
+                os TEXT NOT NULL DEFAULT '',
+                device_type TEXT NOT NULL DEFAULT '',
+                language TEXT NOT NULL DEFAULT '',
+                languages TEXT NOT NULL DEFAULT '',
+                timezone TEXT NOT NULL DEFAULT '',
+                screen TEXT NOT NULL DEFAULT '',
+                viewport TEXT NOT NULL DEFAULT '',
+                device_pixel_ratio TEXT NOT NULL DEFAULT '',
+                network_effective_type TEXT NOT NULL DEFAULT '',
+                network_downlink TEXT NOT NULL DEFAULT '',
+                network_rtt TEXT NOT NULL DEFAULT '',
+                network_save_data TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_site_visits_received ON site_visits(received_ms);
+            CREATE INDEX IF NOT EXISTS idx_site_visits_ip ON site_visits(ip_hash);
+
+            CREATE TABLE IF NOT EXISTS ip_geo_cache (
+                ip_hash TEXT PRIMARY KEY,
+                remote_addr TEXT NOT NULL,
+                country TEXT NOT NULL DEFAULT '',
+                region TEXT NOT NULL DEFAULT '',
+                city TEXT NOT NULL DEFAULT '',
+                isp TEXT NOT NULL DEFAULT '',
+                org TEXT NOT NULL DEFAULT '',
+                asn TEXT NOT NULL DEFAULT '',
+                updated_ms INTEGER NOT NULL
+            );
             """
         )
         ensure_column(conn, "events", "agent_id", "TEXT NOT NULL DEFAULT ''")
         ensure_column(conn, "active_invocations", "agent_id", "TEXT NOT NULL DEFAULT ''")
+        for column, definition in (
+            ("remote_addr", "TEXT NOT NULL DEFAULT ''"),
+            ("host", "TEXT NOT NULL DEFAULT ''"),
+            ("browser", "TEXT NOT NULL DEFAULT ''"),
+            ("os", "TEXT NOT NULL DEFAULT ''"),
+            ("device_type", "TEXT NOT NULL DEFAULT ''"),
+            ("language", "TEXT NOT NULL DEFAULT ''"),
+            ("languages", "TEXT NOT NULL DEFAULT ''"),
+            ("timezone", "TEXT NOT NULL DEFAULT ''"),
+            ("screen", "TEXT NOT NULL DEFAULT ''"),
+            ("viewport", "TEXT NOT NULL DEFAULT ''"),
+            ("device_pixel_ratio", "TEXT NOT NULL DEFAULT ''"),
+            ("network_effective_type", "TEXT NOT NULL DEFAULT ''"),
+            ("network_downlink", "TEXT NOT NULL DEFAULT ''"),
+            ("network_rtt", "TEXT NOT NULL DEFAULT ''"),
+            ("network_save_data", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            ensure_column(conn, "site_visits", column, definition)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_site_visits_remote ON site_visits(remote_addr)")
         backfill_agent_ids(conn)
         dedupe_events(conn)
         conn.execute(
@@ -372,6 +583,61 @@ def record_feedback(payload, remote_addr):
             ) VALUES (
                 :ts_ms, :received_ms, :install_id, :agent_kind, :agent_id, :surface, :command,
                 :profile, :backend, :query_text, :reason_text, :version, :platform, :python, :remote_addr
+            )
+            """,
+            row,
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def record_site_visit(payload, remote_addr, headers):
+    ip_hash = hash_site_ip(remote_addr)
+    if not ip_hash:
+        return False
+    path = clamp_text(payload.get("path") or "/", 240)
+    if path.startswith("/guanlan-telemetry") or path.startswith("/telemetry"):
+        return False
+    user_agent = clamp_text(headers.get("User-Agent", ""), 240)
+    ua_info = parse_user_agent(user_agent)
+    row = {
+        "received_ms": now_ms(),
+        "ip_hash": ip_hash,
+        "remote_addr": clamp_text(remote_addr, 80),
+        "host": clamp_text(headers.get("Host", ""), 120),
+        "path": path,
+        "referrer": clamp_text(payload.get("referrer"), 240),
+        "user_agent": user_agent,
+        "browser": ua_info["browser"],
+        "os": ua_info["os"],
+        "device_type": ua_info["device_type"],
+        "language": clamp_text(payload.get("language"), 80),
+        "languages": clamp_text(payload.get("languages"), 160),
+        "timezone": clamp_text(payload.get("timezone"), 80),
+        "screen": clamp_text(payload.get("screen"), 40),
+        "viewport": clamp_text(payload.get("viewport"), 40),
+        "device_pixel_ratio": clamp_text(payload.get("device_pixel_ratio"), 20),
+        "network_effective_type": clamp_text(payload.get("network_effective_type"), 24),
+        "network_downlink": clamp_text(payload.get("network_downlink"), 24),
+        "network_rtt": clamp_text(payload.get("network_rtt"), 24),
+        "network_save_data": clamp_text(payload.get("network_save_data"), 12),
+    }
+    conn = db_connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO site_visits (
+                received_ms, ip_hash, remote_addr, host, path, referrer, user_agent,
+                browser, os, device_type, language, languages, timezone, screen, viewport,
+                device_pixel_ratio, network_effective_type, network_downlink, network_rtt,
+                network_save_data
+            ) VALUES (
+                :received_ms, :ip_hash, :remote_addr, :host, :path, :referrer, :user_agent,
+                :browser, :os, :device_type, :language, :languages, :timezone, :screen, :viewport,
+                :device_pixel_ratio, :network_effective_type, :network_downlink, :network_rtt,
+                :network_save_data
             )
             """,
             row,
@@ -700,6 +966,30 @@ def summary():
                 "SELECT COUNT(DISTINCT agent_id) FROM feedback WHERE received_ms >= ?",
                 (week,),
             ),
+            "site_unique_ips_all": query_one(
+                conn,
+                "SELECT COUNT(DISTINCT ip_hash) FROM site_visits WHERE ip_hash <> ''",
+            ),
+            "site_unique_ips_24h": query_one(
+                conn,
+                "SELECT COUNT(DISTINCT ip_hash) FROM site_visits WHERE received_ms >= ? AND ip_hash <> ''",
+                (day,),
+            ),
+            "site_unique_ips_7d": query_one(
+                conn,
+                "SELECT COUNT(DISTINCT ip_hash) FROM site_visits WHERE received_ms >= ? AND ip_hash <> ''",
+                (week,),
+            ),
+            "site_visits_24h": query_one(
+                conn,
+                "SELECT COUNT(*) FROM site_visits WHERE received_ms >= ?",
+                (day,),
+            ),
+            "site_visits_7d": query_one(
+                conn,
+                "SELECT COUNT(*) FROM site_visits WHERE received_ms >= ?",
+                (week,),
+            ),
             "calls_per_agent_24h": round(float(calls_24h) / unique_agents_24h, 2)
             if unique_agents_24h
             else 0,
@@ -840,8 +1130,752 @@ def render_feedback_inbox(rows):
         )
     if not items:
         items.append("<p class='feedback-empty'>暂无反馈 / No feedback yet</p>")
-    return "<section id='feedback-inbox' class='recent'><h2>反馈明细面板 / Feedback Inbox</h2>{}</section>".format(
+    return "<section id='feedback-inbox' class='recent'><h2>反馈明细面板 / Feedback Inbox <a class='section-link' href='./feedback-archive'>全量归档 / Archive</a></h2>{}</section>".format(
         "\n".join(items)
+    )
+
+
+def clamp_int(value, default, minimum, maximum):
+    try:
+        number = int(value)
+    except Exception:
+        number = default
+    return max(minimum, min(maximum, number))
+
+
+def first_param(params, key, default=""):
+    values = params.get(key) or []
+    if not values:
+        return default
+    return str(values[0]).strip()
+
+
+def query_distinct(conn, column, limit=80):
+    allowed = set(["command", "profile", "backend", "agent_kind", "version", "platform"])
+    if column not in allowed:
+        return []
+    rows = conn.execute(
+        """
+        SELECT DISTINCT {column} AS value
+        FROM feedback
+        WHERE {column} <> ''
+        ORDER BY value ASC
+        LIMIT ?
+        """.format(column=column),
+        (limit,),
+    ).fetchall()
+    return [r["value"] for r in rows]
+
+
+def build_archive_where(filters):
+    current = now_ms()
+    where = []
+    args = []
+    window = filters["window"]
+    if window == "24h":
+        where.append("received_ms >= ?")
+        args.append(current - 24 * 3600 * 1000)
+    elif window == "7d":
+        where.append("received_ms >= ?")
+        args.append(current - 7 * 24 * 3600 * 1000)
+    elif window == "30d":
+        where.append("received_ms >= ?")
+        args.append(current - 30 * 24 * 3600 * 1000)
+
+    kind = filters["kind"]
+    real_sql = feedback_real_sql("query_text")
+    if kind == "real":
+        where.append(real_sql)
+    elif kind == "synthetic":
+        where.append("NOT " + real_sql)
+
+    for column in ("command", "profile", "backend", "agent_kind", "version", "platform"):
+        value = filters.get(column) or ""
+        if value:
+            where.append(column + " = ?")
+            args.append(value)
+
+    keyword = filters["q"]
+    if keyword:
+        like = "%" + keyword + "%"
+        where.append("(query_text LIKE ? OR reason_text LIKE ?)")
+        args.extend([like, like])
+
+    return (" AND ".join(where) if where else "1=1"), args
+
+
+def query_feedback_archive(params):
+    raw_window = first_param(params, "window", "all")
+    window = raw_window if raw_window in ("24h", "7d", "30d", "all") else "all"
+    raw_kind = first_param(params, "kind", "all")
+    kind = raw_kind if raw_kind in ("all", "real", "synthetic") else "all"
+    filters = {
+        "window": window,
+        "kind": kind,
+        "q": clamp_text(first_param(params, "q", ""), 160),
+        "command": clamp_text(first_param(params, "command", ""), 40),
+        "profile": clamp_text(first_param(params, "profile", ""), 24),
+        "backend": clamp_text(first_param(params, "backend", ""), 40),
+        "agent_kind": clamp_text(first_param(params, "agent_kind", ""), 40),
+        "version": clamp_text(first_param(params, "version", ""), 40),
+        "platform": clamp_text(first_param(params, "platform", ""), 40),
+    }
+    page = clamp_int(first_param(params, "page", "1"), 1, 1, 1000000)
+    per_page = clamp_int(first_param(params, "per_page", "100"), 100, 20, 200)
+
+    conn = db_connect()
+    try:
+        where, args = build_archive_where(filters)
+        total = int(query_one(conn, "SELECT COUNT(*) FROM feedback WHERE " + where, tuple(args)) or 0)
+        pages = max(1, int((total + per_page - 1) // per_page))
+        page = min(page, pages)
+        offset = (page - 1) * per_page
+        rows = conn.execute(
+            """
+            SELECT id, received_ms, query_text, reason_text, command, profile, backend,
+                   agent_kind, agent_id, install_id, version, platform, python, remote_addr
+            FROM feedback
+            WHERE {where}
+            ORDER BY id DESC
+            LIMIT ? OFFSET ?
+            """.format(where=where),
+            tuple(args + [per_page, offset]),
+        ).fetchall()
+        return {
+            "filters": filters,
+            "page": page,
+            "per_page": per_page,
+            "pages": pages,
+            "total": total,
+            "rows": [dict(r) for r in rows],
+            "options": {
+                "command": query_distinct(conn, "command"),
+                "profile": query_distinct(conn, "profile"),
+                "backend": query_distinct(conn, "backend"),
+                "agent_kind": query_distinct(conn, "agent_kind"),
+                "version": query_distinct(conn, "version"),
+                "platform": query_distinct(conn, "platform"),
+            },
+        }
+    finally:
+        conn.close()
+
+
+def archive_url(filters, page, per_page):
+    query = {"page": page, "per_page": per_page}
+    for key, value in filters.items():
+        if value:
+            query[key] = value
+    return "./feedback-archive?" + urlencode(query)
+
+
+def render_select(name, label, current, options, include_all=True):
+    items = []
+    if include_all:
+        selected = " selected" if not current else ""
+        items.append("<option value=''{}>全部 / All</option>".format(selected))
+    for option in options:
+        value = html.escape(str(option))
+        selected = " selected" if str(option) == str(current) else ""
+        items.append("<option value=\"{}\"{}>{}</option>".format(value, selected, value))
+    return """
+<label>
+  <span>{label}</span>
+  <select name="{name}">{options}</select>
+</label>
+    """.strip().format(
+        label=html.escape(label),
+        name=html.escape(name),
+        options="\n".join(items),
+    )
+
+
+def render_feedback_archive(params):
+    data = query_feedback_archive(params)
+    filters = data["filters"]
+    rows = []
+    for row in data["rows"]:
+        synthetic = is_synthetic_feedback_query(row.get("query_text"))
+        kind_class = "kind-synthetic" if synthetic else "kind-real"
+        kind_text = "测试流量 / Synthetic" if synthetic else "真实反馈 / Real"
+        query_text = html.escape(row.get("query_text") or "")
+        reason_text = html.escape(row.get("reason_text") or "")
+        meta = " · ".join(
+            [
+                row.get("command") or "unknown-command",
+                row.get("profile") or "unknown-profile",
+                row.get("backend") or "unknown-backend",
+                row.get("agent_kind") or "unknown-agent",
+                row.get("platform") or "unknown-platform",
+            ]
+        )
+        rows.append(
+            """
+<details class="archive-item">
+  <summary>
+    <span class="archive-row">
+      <span class="archive-id">#{id}</span>
+      <span class="archive-time">{time}</span>
+      <span class="archive-query">{query}</span>
+      <span class="archive-reason">{reason_preview}</span>
+      <span class="archive-meta">{meta}</span>
+      <span class="archive-version">v{version}</span>
+      <span class="{kind_class}">{kind_text}</span>
+      <span class="archive-action">展开 / Open</span>
+    </span>
+  </summary>
+  <div class="archive-body">
+    <p><strong>搜索词 / Query</strong></p>
+    <p class="full-text">{query_full}</p>
+    <p><strong>原因 / Reason</strong></p>
+    <p class="full-text">{reason}</p>
+    <div class="detail-grid">
+      <p><strong>命令 / Command</strong><br>{command}</p>
+      <p><strong>Profile</strong><br>{profile}</p>
+      <p><strong>Backend</strong><br>{backend}</p>
+      <p><strong>Agent</strong><br>{agent_kind}</p>
+      <p><strong>版本 / Version</strong><br>{version}</p>
+      <p><strong>平台 / Platform</strong><br>{platform}</p>
+      <p><strong>Python</strong><br>{python}</p>
+      <p><strong>Install ID</strong><br>{install_id}</p>
+      <p><strong>Agent ID</strong><br>{agent_id}</p>
+      <p><strong>Remote</strong><br>{remote_addr}</p>
+    </div>
+  </div>
+</details>
+            """.strip().format(
+                id=int(row.get("id") or 0),
+                time=html.escape(format_time(row.get("received_ms"))),
+                query=query_text or "(empty query)",
+                query_full=query_text or "(empty query)",
+                reason_preview=html.escape(clamp_text(row.get("reason_text") or "", 72)) or "(empty reason)",
+                reason=reason_text or "(empty reason)",
+                meta=html.escape(meta),
+                command=html.escape(row.get("command") or ""),
+                profile=html.escape(row.get("profile") or ""),
+                backend=html.escape(row.get("backend") or ""),
+                agent_kind=html.escape(row.get("agent_kind") or ""),
+                version=html.escape(row.get("version") or "unknown"),
+                platform=html.escape(row.get("platform") or ""),
+                python=html.escape(row.get("python") or ""),
+                install_id=html.escape(row.get("install_id") or ""),
+                agent_id=html.escape(row.get("agent_id") or ""),
+                remote_addr=html.escape(row.get("remote_addr") or ""),
+                kind_class=kind_class,
+                kind_text=kind_text,
+            )
+        )
+    if not rows:
+        rows.append("<p class='empty'>没有匹配的反馈 / No matching feedback.</p>")
+
+    page = data["page"]
+    pages = data["pages"]
+    per_page = data["per_page"]
+    prev_link = (
+        "<a href='{}'>上一页 / Previous</a>".format(
+            html.escape(archive_url(filters, page - 1, per_page))
+        )
+        if page > 1
+        else "<span>上一页 / Previous</span>"
+    )
+    next_link = (
+        "<a href='{}'>下一页 / Next</a>".format(
+            html.escape(archive_url(filters, page + 1, per_page))
+        )
+        if page < pages
+        else "<span>下一页 / Next</span>"
+    )
+
+    filter_options = data["options"]
+    return """<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guanlan Feedback Archive</title>
+  <link rel="icon" href="/assets/guanlan-logo.svg" type="image/svg+xml">
+  <style>
+    :root {{ --bg:#f5f5f7; --card:#fff; --border:#e7e7ec; --text:#1d1d1f; --muted:#6e6e73; --blue:#2563eb; }}
+    body {{ margin:0; font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif; background:var(--bg); color:var(--text); }}
+    header {{ position:sticky; top:0; z-index:10; padding:14px 24px; background:rgba(255,255,255,.86); border-bottom:1px solid var(--border); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }}
+    .topbar {{ max-width:1280px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:16px; }}
+    .brand {{ display:flex; align-items:center; gap:12px; }}
+    .brand img {{ width:38px; height:38px; border-radius:8px; }}
+    .brand strong {{ display:block; font-size:20px; }}
+    .brand span {{ display:block; color:var(--muted); font-size:12px; }}
+    .nav a {{ color:var(--blue); text-decoration:none; font-weight:600; }}
+    main {{ max-width:1280px; margin:0 auto; padding:18px 24px 36px; }}
+    .panel {{ background:var(--card); border:1px solid var(--border); border-radius:8px; box-shadow:0 6px 18px rgba(15,23,42,.06); }}
+    .filters {{ padding:14px; display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; align-items:end; }}
+    label span {{ display:block; color:var(--muted); font-size:12px; margin-bottom:4px; }}
+    input, select {{ width:100%; box-sizing:border-box; border:1px solid #d8d8de; border-radius:8px; padding:9px 10px; background:#fff; color:var(--text); font:inherit; }}
+    button {{ border:0; border-radius:8px; padding:10px 14px; background:#1d1d1f; color:#fff; font-weight:700; cursor:pointer; }}
+    .summary {{ margin:14px 0; display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--muted); }}
+    .summary strong {{ color:var(--text); font-size:20px; }}
+    .pager {{ display:flex; gap:10px; align-items:center; }}
+    .pager a, .pager span {{ padding:8px 11px; border:1px solid var(--border); border-radius:8px; background:#fff; color:var(--blue); text-decoration:none; }}
+    .pager span {{ color:var(--muted); }}
+    .archive-list {{ padding:10px; }}
+    .archive-item {{ border:1px solid #ececf2; border-radius:8px; margin-bottom:10px; background:#fff; overflow:hidden; }}
+    .archive-item summary {{ cursor:pointer; list-style:none; padding:10px 12px; }}
+    .archive-item summary::-webkit-details-marker {{ display:none; }}
+    .archive-row {{ display:grid; grid-template-columns:72px 170px minmax(240px,1.25fr) minmax(260px,1.3fr) minmax(220px,1fr) 80px 150px 100px; gap:10px; align-items:start; }}
+    .archive-id {{ font-weight:700; color:#4b5563; }}
+    .archive-time, .archive-meta {{ color:var(--muted); font-size:12px; }}
+    .archive-query {{ font-weight:600; white-space:normal; word-break:break-word; }}
+    .archive-reason {{ color:#3f3f46; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+    .archive-meta {{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+    .archive-version {{ color:#0f172a; font-size:12px; font-weight:800; white-space:nowrap; }}
+    .kind-real {{ color:#0f766e; font-weight:700; white-space:nowrap; }}
+    .kind-synthetic {{ color:#b45309; font-weight:700; white-space:nowrap; }}
+    .archive-action {{ color:var(--blue); justify-self:end; white-space:nowrap; }}
+    .archive-body {{ border-top:1px solid #ececf2; padding:12px; }}
+    .archive-body p {{ margin:0 0 10px; }}
+    .full-text {{ white-space:pre-wrap; word-break:break-word; }}
+    .detail-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; color:var(--muted); }}
+    .detail-grid strong {{ color:var(--text); }}
+    .empty {{ color:var(--muted); margin:8px 4px; }}
+    @media (max-width: 900px) {{
+      header {{ position:static; }}
+      .topbar, .summary {{ align-items:flex-start; flex-direction:column; }}
+      .archive-row {{ grid-template-columns:1fr; gap:4px; }}
+      .archive-action {{ justify-self:start; }}
+    }}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div class="brand">
+        <img src="/assets/guanlan-logo.svg" alt="">
+        <div>
+          <strong>反馈归档 / Feedback Archive</strong>
+          <span>全量反馈分页查看，不影响主面板刷新</span>
+        </div>
+      </div>
+      <div class="nav"><a href="./">返回遥测面板 / Back to Dashboard</a></div>
+    </div>
+  </header>
+  <main>
+    <form class="panel filters" method="get" action="">
+      <label><span>关键词 / Keyword</span><input name="q" value="{q}" placeholder="搜索 query 或 reason"></label>
+      {window_select}
+      {kind_select}
+      {version_select}
+      {platform_select}
+      {agent_select}
+      {command_select}
+      {profile_select}
+      {backend_select}
+      <label><span>每页 / Per Page</span><select name="per_page">
+        <option value="50"{pp50}>50</option>
+        <option value="100"{pp100}>100</option>
+        <option value="200"{pp200}>200</option>
+      </select></label>
+      <button type="submit">筛选 / Filter</button>
+    </form>
+    <div class="summary">
+      <div><strong>{total}</strong> 条反馈 / feedback · 第 {page}/{pages} 页 · 每页 {per_page}</div>
+      <div class="pager">{prev_link}{next_link}</div>
+    </div>
+    <section class="panel archive-list">{rows}</section>
+  </main>
+</body>
+</html>""".format(
+        q=html.escape(filters["q"]),
+        window_select=render_select(
+            "window",
+            "时间 / Window",
+            filters["window"],
+            [("24h"), ("7d"), ("30d"), ("all")],
+            include_all=False,
+        ),
+        kind_select=render_select(
+            "kind",
+            "类型 / Kind",
+            filters["kind"],
+            [("all"), ("real"), ("synthetic")],
+            include_all=False,
+        ),
+        version_select=render_select("version", "版本 / Version", filters["version"], filter_options["version"]),
+        platform_select=render_select("platform", "平台 / Platform", filters["platform"], filter_options["platform"]),
+        agent_select=render_select("agent_kind", "Agent 类型 / Agent", filters["agent_kind"], filter_options["agent_kind"]),
+        command_select=render_select("command", "命令 / Command", filters["command"], filter_options["command"]),
+        profile_select=render_select("profile", "Profile", filters["profile"], filter_options["profile"]),
+        backend_select=render_select("backend", "Backend", filters["backend"], filter_options["backend"]),
+        pp50=" selected" if per_page == 50 else "",
+        pp100=" selected" if per_page == 100 else "",
+        pp200=" selected" if per_page == 200 else "",
+        total=data["total"],
+        page=page,
+        pages=pages,
+        per_page=per_page,
+        prev_link=prev_link,
+        next_link=next_link,
+        rows="\n".join(rows),
+    )
+
+
+def query_site_visit_options(conn, column, limit=80):
+    allowed = set(["browser", "os", "device_type", "network_effective_type"])
+    if column not in allowed:
+        return []
+    rows = conn.execute(
+        """
+        SELECT DISTINCT {column} AS value
+        FROM site_visits
+        WHERE {column} <> ''
+        ORDER BY value ASC
+        LIMIT ?
+        """.format(column=column),
+        (limit,),
+    ).fetchall()
+    return [r["value"] for r in rows]
+
+
+def build_site_visit_where(filters):
+    current = now_ms()
+    where = []
+    args = []
+    window = filters["window"]
+    if window == "24h":
+        where.append("received_ms >= ?")
+        args.append(current - 24 * 3600 * 1000)
+    elif window == "7d":
+        where.append("received_ms >= ?")
+        args.append(current - 7 * 24 * 3600 * 1000)
+    elif window == "30d":
+        where.append("received_ms >= ?")
+        args.append(current - 30 * 24 * 3600 * 1000)
+
+    for column in ("browser", "os", "device_type", "network_effective_type"):
+        value = filters.get(column) or ""
+        if value:
+            where.append(column + " = ?")
+            args.append(value)
+
+    keyword = filters["q"]
+    if keyword:
+        like = "%" + keyword + "%"
+        where.append(
+            """
+            (
+                remote_addr LIKE ? OR path LIKE ? OR referrer LIKE ? OR user_agent LIKE ?
+                OR language LIKE ? OR timezone LIKE ? OR host LIKE ?
+            )
+            """
+        )
+        args.extend([like, like, like, like, like, like, like])
+
+    return (" AND ".join(where) if where else "1=1"), args
+
+
+def query_site_visit_archive(params):
+    raw_window = first_param(params, "window", "24h")
+    window = raw_window if raw_window in ("24h", "7d", "30d", "all") else "24h"
+    filters = {
+        "window": window,
+        "q": clamp_text(first_param(params, "q", ""), 160),
+        "browser": clamp_text(first_param(params, "browser", ""), 40),
+        "os": clamp_text(first_param(params, "os", ""), 40),
+        "device_type": clamp_text(first_param(params, "device_type", ""), 40),
+        "network_effective_type": clamp_text(first_param(params, "network_effective_type", ""), 24),
+    }
+    page = clamp_int(first_param(params, "page", "1"), 1, 1, 1000000)
+    per_page = clamp_int(first_param(params, "per_page", "100"), 100, 20, 200)
+    conn = db_connect()
+    try:
+        where, args = build_site_visit_where(filters)
+        total = int(query_one(conn, "SELECT COUNT(*) FROM site_visits WHERE " + where, tuple(args)) or 0)
+        pages = max(1, int((total + per_page - 1) // per_page))
+        page = min(page, pages)
+        offset = (page - 1) * per_page
+        rows = conn.execute(
+            """
+            SELECT id, received_ms, remote_addr, host, path, referrer, user_agent,
+                   browser, os, device_type, language, languages, timezone, screen,
+                   viewport, device_pixel_ratio, network_effective_type, network_downlink,
+                   network_rtt, network_save_data
+            FROM site_visits
+            WHERE {where}
+            ORDER BY id DESC
+            LIMIT ? OFFSET ?
+            """.format(where=where),
+            tuple(args + [per_page, offset]),
+        ).fetchall()
+        enriched = []
+        geo_fetches = 0
+        for row in rows:
+            item = dict(row)
+            allow_fetch = geo_fetches < 8
+            item["geo"] = get_ip_geo(conn, item.get("remote_addr"), allow_fetch=allow_fetch)
+            if allow_fetch and item["geo"]:
+                geo_fetches += 1
+            enriched.append(item)
+        return {
+            "filters": filters,
+            "page": page,
+            "per_page": per_page,
+            "pages": pages,
+            "total": total,
+            "rows": enriched,
+            "options": {
+                "browser": query_site_visit_options(conn, "browser"),
+                "os": query_site_visit_options(conn, "os"),
+                "device_type": query_site_visit_options(conn, "device_type"),
+                "network_effective_type": query_site_visit_options(conn, "network_effective_type"),
+            },
+        }
+    finally:
+        conn.close()
+
+
+def site_visit_url(filters, page, per_page):
+    query = {"page": page, "per_page": per_page}
+    for key, value in filters.items():
+        if value:
+            query[key] = value
+    return "./site-visits?" + urlencode(query)
+
+
+def format_geo(geo):
+    if not geo:
+        return "未知 / Unknown"
+    parts = [geo.get("country"), geo.get("region"), geo.get("city")]
+    location = " / ".join([p for p in parts if p])
+    isp = geo.get("isp") or geo.get("org") or ""
+    if location and isp:
+        return "%s · %s" % (location, isp)
+    return location or isp or "未知 / Unknown"
+
+
+def render_site_visits(params):
+    data = query_site_visit_archive(params)
+    filters = data["filters"]
+    rows = []
+    for row in data["rows"]:
+        geo = row.get("geo") or {}
+        location = format_geo(geo)
+        network_bits = []
+        if row.get("network_effective_type"):
+            network_bits.append(row["network_effective_type"])
+        if row.get("network_downlink"):
+            network_bits.append(str(row["network_downlink"]) + "Mbps")
+        if row.get("network_rtt"):
+            network_bits.append(str(row["network_rtt"]) + "ms")
+        if row.get("network_save_data"):
+            network_bits.append("saveData=" + str(row["network_save_data"]))
+        network = " · ".join(network_bits) if network_bits else "浏览器未提供 / Not provided"
+        device = " · ".join(
+            [
+                item
+                for item in (row.get("device_type"), row.get("os"), row.get("browser"))
+                if item
+            ]
+        ) or "unknown"
+        rows.append(
+            """
+<details class="visit-item">
+  <summary>
+    <span class="visit-row">
+      <span class="visit-id">#{id}</span>
+      <span class="visit-time">{time}</span>
+      <span class="visit-ip">{ip}</span>
+      <span class="visit-location">{location}</span>
+      <span class="visit-device">{device}</span>
+      <span class="visit-path">{path}</span>
+      <span class="visit-action">展开 / Open</span>
+    </span>
+  </summary>
+  <div class="visit-body">
+    <div class="detail-grid">
+      <p><strong>IP</strong><br>{ip}</p>
+      <p><strong>IP 归属 / Location</strong><br>{location}</p>
+      <p><strong>ISP / Org / ASN</strong><br>{isp}<br>{org}<br>{asn}</p>
+      <p><strong>设备 / Device</strong><br>{device}</p>
+      <p><strong>网络 / Network</strong><br>{network}</p>
+      <p><strong>语言 / Language</strong><br>{language}<br>{languages}</p>
+      <p><strong>时区 / Timezone</strong><br>{timezone}</p>
+      <p><strong>屏幕 / Screen</strong><br>{screen} · viewport {viewport} · DPR {dpr}</p>
+      <p><strong>Host</strong><br>{host}</p>
+      <p><strong>Path</strong><br>{path}</p>
+      <p><strong>Referrer</strong><br>{referrer}</p>
+      <p><strong>User-Agent</strong><br>{ua}</p>
+    </div>
+  </div>
+</details>
+            """.strip().format(
+                id=int(row.get("id") or 0),
+                time=html.escape(format_time(row.get("received_ms"))),
+                ip=html.escape(row.get("remote_addr") or "(historical hash only)"),
+                location=html.escape(location),
+                device=html.escape(device),
+                path=html.escape(row.get("path") or ""),
+                isp=html.escape(geo.get("isp") or ""),
+                org=html.escape(geo.get("org") or ""),
+                asn=html.escape(geo.get("asn") or ""),
+                network=html.escape(network),
+                language=html.escape(row.get("language") or ""),
+                languages=html.escape(row.get("languages") or ""),
+                timezone=html.escape(row.get("timezone") or ""),
+                screen=html.escape(row.get("screen") or ""),
+                viewport=html.escape(row.get("viewport") or ""),
+                dpr=html.escape(row.get("device_pixel_ratio") or ""),
+                host=html.escape(row.get("host") or ""),
+                referrer=html.escape(row.get("referrer") or ""),
+                ua=html.escape(row.get("user_agent") or ""),
+            )
+        )
+    if not rows:
+        rows.append("<p class='empty'>没有匹配的访问记录 / No matching visits.</p>")
+    else:
+        rows.insert(
+            0,
+            """
+<div class="visit-row visit-head">
+  <span>ID</span>
+  <span>时间 / Time</span>
+  <span>IP</span>
+  <span>IP 归属 / Location</span>
+  <span>设备 / Device</span>
+  <span>路径 / Path</span>
+  <span>详情 / Detail</span>
+</div>
+            """.strip(),
+        )
+
+    page = data["page"]
+    pages = data["pages"]
+    per_page = data["per_page"]
+    prev_link = (
+        "<a href='{}'>上一页 / Previous</a>".format(
+            html.escape(site_visit_url(filters, page - 1, per_page))
+        )
+        if page > 1
+        else "<span>上一页 / Previous</span>"
+    )
+    next_link = (
+        "<a href='{}'>下一页 / Next</a>".format(
+            html.escape(site_visit_url(filters, page + 1, per_page))
+        )
+        if page < pages
+        else "<span>下一页 / Next</span>"
+    )
+    options = data["options"]
+    return """<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guanlan Website Visits</title>
+  <link rel="icon" href="/assets/guanlan-logo.svg" type="image/svg+xml">
+  <style>
+    :root {{ --bg:#f5f5f7; --card:#fff; --border:#e7e7ec; --text:#1d1d1f; --muted:#6e6e73; --blue:#2563eb; }}
+    body {{ margin:0; font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif; background:var(--bg); color:var(--text); }}
+    header {{ position:sticky; top:0; z-index:10; padding:14px 24px; background:rgba(255,255,255,.86); border-bottom:1px solid var(--border); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }}
+    .topbar {{ max-width:1280px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:16px; }}
+    .brand {{ display:flex; align-items:center; gap:12px; }}
+    .brand img {{ width:38px; height:38px; border-radius:8px; }}
+    .brand strong {{ display:block; font-size:20px; }}
+    .brand span {{ display:block; color:var(--muted); font-size:12px; }}
+    .nav a {{ color:var(--blue); text-decoration:none; font-weight:600; }}
+    main {{ max-width:1280px; margin:0 auto; padding:18px 24px 36px; }}
+    .panel {{ background:var(--card); border:1px solid var(--border); border-radius:8px; box-shadow:0 6px 18px rgba(15,23,42,.06); }}
+    .filters {{ padding:14px; display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; align-items:end; }}
+    label span {{ display:block; color:var(--muted); font-size:12px; margin-bottom:4px; }}
+    input, select {{ width:100%; box-sizing:border-box; border:1px solid #d8d8de; border-radius:8px; padding:9px 10px; background:#fff; color:var(--text); font:inherit; }}
+    button {{ border:0; border-radius:8px; padding:10px 14px; background:#1d1d1f; color:#fff; font-weight:700; cursor:pointer; }}
+    .explain {{ margin:14px 0; padding:12px 14px; color:#3f3f46; }}
+    .explain strong {{ color:var(--text); }}
+    .explain p {{ margin:0 0 6px; }}
+    .explain p:last-child {{ margin-bottom:0; }}
+    .summary {{ margin:14px 0; display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--muted); }}
+    .summary strong {{ color:var(--text); font-size:20px; }}
+    .pager {{ display:flex; gap:10px; align-items:center; }}
+    .pager a, .pager span {{ padding:8px 11px; border:1px solid var(--border); border-radius:8px; background:#fff; color:var(--blue); text-decoration:none; }}
+    .pager span {{ color:var(--muted); }}
+    .visit-list {{ padding:10px; }}
+    .visit-head {{ padding:8px 12px; color:var(--muted); font-size:12px; font-weight:700; border-bottom:1px solid #ececf2; margin-bottom:8px; }}
+    .visit-item {{ border:1px solid #ececf2; border-radius:8px; margin-bottom:10px; background:#fff; overflow:hidden; }}
+    .visit-item summary {{ cursor:pointer; list-style:none; padding:10px 12px; }}
+    .visit-item summary::-webkit-details-marker {{ display:none; }}
+    .visit-row {{ display:grid; grid-template-columns:70px 170px 130px minmax(220px,1.2fr) minmax(170px,.9fr) minmax(220px,1fr) 100px; gap:10px; align-items:start; }}
+    .visit-id {{ font-weight:700; color:#4b5563; }}
+    .visit-time {{ color:var(--muted); font-size:12px; }}
+    .visit-ip {{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }}
+    .visit-location, .visit-device, .visit-path {{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+    .visit-action {{ color:var(--blue); justify-self:end; white-space:nowrap; }}
+    .visit-body {{ border-top:1px solid #ececf2; padding:12px; }}
+    .detail-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; color:var(--muted); }}
+    .detail-grid strong {{ color:var(--text); }}
+    .detail-grid p {{ margin:0; word-break:break-word; }}
+    .empty {{ color:var(--muted); margin:8px 4px; }}
+    @media (max-width: 900px) {{
+      header {{ position:static; }}
+      .topbar, .summary {{ align-items:flex-start; flex-direction:column; }}
+      .visit-head {{ display:none; }}
+      .visit-row {{ grid-template-columns:1fr; gap:4px; }}
+      .visit-action {{ justify-self:start; }}
+    }}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div class="brand">
+        <img src="/assets/guanlan-logo.svg" alt="">
+        <div>
+          <strong>官网访问明细 / Website Visits</strong>
+          <span>IP、归属地、设备、网络与访问上下文</span>
+        </div>
+      </div>
+      <div class="nav"><a href="./">返回遥测面板 / Back to Dashboard</a></div>
+    </div>
+  </header>
+  <main>
+    <form class="panel filters" method="get" action="">
+      <label><span>关键词 / Keyword</span><input name="q" value="{q}" placeholder="IP / path / UA / referrer"></label>
+      {window_select}
+      {device_select}
+      {os_select}
+      {browser_select}
+      {network_select}
+      <label><span>每页 / Per Page</span><select name="per_page">
+        <option value="50"{pp50}>50</option>
+        <option value="100"{pp100}>100</option>
+        <option value="200"{pp200}>200</option>
+      </select></label>
+      <button type="submit">筛选 / Filter</button>
+    </form>
+    <section class="panel explain">
+      <p><strong>下面是官网页面访问记录 / Website page visits.</strong></p>
+      <p>新官网脚本会记录 IP、访问路径、来源页、User-Agent、语言、时区、屏幕和浏览器可提供的网络信息；历史日志回填只包含 Nginx 当时留下的 IP、路径、来源页和 User-Agent。</p>
+      <p>如果显示未知，通常是浏览器没有提供该字段、User-Agent 无法识别、或历史记录早于新版官网 beacon。</p>
+    </section>
+    <div class="summary">
+      <div><strong>{total}</strong> 条访问 / visits · 第 {page}/{pages} 页 · 每页 {per_page}</div>
+      <div class="pager">{prev_link}{next_link}</div>
+    </div>
+    <section class="panel visit-list">{rows}</section>
+  </main>
+</body>
+</html>""".format(
+        q=html.escape(filters["q"]),
+        window_select=render_select("window", "时间 / Window", filters["window"], ["24h", "7d", "30d", "all"], include_all=False),
+        device_select=render_select("device_type", "设备 / Device", filters["device_type"], options["device_type"]),
+        os_select=render_select("os", "系统 / OS", filters["os"], options["os"]),
+        browser_select=render_select("browser", "浏览器 / Browser", filters["browser"], options["browser"]),
+        network_select=render_select("network_effective_type", "网络 / Network", filters["network_effective_type"], options["network_effective_type"]),
+        pp50=" selected" if per_page == 50 else "",
+        pp100=" selected" if per_page == 100 else "",
+        pp200=" selected" if per_page == 200 else "",
+        total=data["total"],
+        page=page,
+        pages=pages,
+        per_page=per_page,
+        prev_link=prev_link,
+        next_link=next_link,
+        rows="\n".join(rows),
     )
 
 
@@ -856,13 +1890,28 @@ def render_dashboard():
         {"label": "24h 独立 Agent / 24h Unique Agents", "value": data["unique_agents_24h"]},
         {"label": "24h 独立设备 / 24h Unique Devices", "value": data["active_installs_24h"]},
         {"label": "24h 新增设备 / 24h New Devices", "value": data["new_installs_24h"]},
-        {"label": "24h 有效反馈 / 24h Real Feedback", "value": data["feedback_24h"], "href": "#feedback-inbox"},
+        {"label": "24h 有效反馈 / 24h Real Feedback", "value": data["feedback_24h"], "href": "./feedback-archive?window=24h&kind=real"},
+        {
+            "label": "官网全部独立 IP / All-time Website Unique IPs",
+            "value": data["site_unique_ips_all"],
+            "href": "./site-visits?window=all",
+            "hint": "打开访问明细",
+        },
+        {
+            "label": "24h 官网独立 IP / 24h Website Unique IPs",
+            "value": data["site_unique_ips_24h"],
+            "href": "./site-visits?window=24h",
+            "hint": "打开访问明细",
+        },
     ]
     secondary_cards = [
         ("当前并发 / Active Concurrency", data["active_now"]),
         ("最近事件 / Last Event", fmt_ms(data["last_event_age_ms"]) + " 前"),
         ("24h 调用 / 24h Calls", data["calls_24h"]),
         ("7d 调用 / 7d Calls", data["calls_7d"]),
+        ("7d 官网独立 IP / 7d Website Unique IPs", data["site_unique_ips_7d"]),
+        ("24h 官网访问 / 24h Website Visits", data["site_visits_24h"]),
+        ("7d 官网访问 / 7d Website Visits", data["site_visits_7d"]),
         ("7d 反馈 / 7d Feedback", data["feedback_7d"]),
         ("24h 反馈总量 / 24h Feedback Total", data["feedback_24h_total"]),
         ("24h 测试反馈 / 24h Synthetic Feedback", data["feedback_24h_synthetic"]),
@@ -883,10 +1932,11 @@ def render_dashboard():
     ]
     core_card_html = "\n".join(
         (
-            "<a class='core-card core-card-link' href='{href}'><span>{label}</span><strong>{value}</strong><em>打开逐条反馈</em></a>".format(
+            "<a class='core-card core-card-link' href='{href}'><span>{label}</span><strong>{value}</strong><em>{hint}</em></a>".format(
                 href=html.escape(str(card.get("href") or "")),
                 label=html.escape(str(card.get("label") or "")),
                 value=html.escape(str(card.get("value") or "")),
+                hint=html.escape(str(card.get("hint") or "打开逐条反馈")),
             )
             if card.get("href")
             else "<div class='core-card'><span>{label}</span><strong>{value}</strong></div>".format(
@@ -983,6 +2033,7 @@ def render_dashboard():
     .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px; margin-top:16px; }}
     section {{ padding:14px 16px; overflow:auto; }}
     h2 {{ margin:0 0 10px; font-size:15px; }}
+    .section-link {{ float:right; color:#2563eb; text-decoration:none; font-size:12px; font-weight:600; }}
     table {{ width:100%; border-collapse:collapse; }}
     td, th {{ padding:8px 6px; border-bottom:1px solid #eef0f3; text-align:left; white-space:nowrap; }}
     th {{ color:var(--muted); font-size:12px; }}
@@ -1130,6 +2181,30 @@ class Handler(BaseHTTPRequestHandler):
             token = (parse_qs(parsed.query).get("token") or [""])[0]
         return hmac.compare_digest(token, INGEST_TOKEN)
 
+    def client_ip(self):
+        forwarded = self.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return clamp_text(forwarded.split(",", 1)[0], 80)
+        real_ip = self.headers.get("X-Real-IP", "")
+        if real_ip:
+            return clamp_text(real_ip, 80)
+        return clamp_text(self.client_address[0], 80)
+
+    def site_visit_authorized(self):
+        if not SITE_VISIT_ALLOWED_HOSTS:
+            return True
+        candidates = []
+        host = (self.headers.get("Host") or "").split(":", 1)[0].lower()
+        if host:
+            candidates.append(host)
+        for header_name in ("Origin", "Referer"):
+            value = self.headers.get(header_name, "")
+            if value:
+                parsed = urlparse(value)
+                if parsed.hostname:
+                    candidates.append(parsed.hostname.lower())
+        return any(item in SITE_VISIT_ALLOWED_HOSTS for item in candidates)
+
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/healthz":
@@ -1145,14 +2220,28 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_text(200, render_dashboard(), "text/html; charset=utf-8")
             return
+        if parsed.path in ("/feedback-archive", "/feedback-archive/"):
+            if not self.require_auth():
+                return
+            self.send_text(200, render_feedback_archive(parse_qs(parsed.query)), "text/html; charset=utf-8")
+            return
+        if parsed.path in ("/site-visits", "/site-visits/"):
+            if not self.require_auth():
+                return
+            self.send_text(200, render_site_visits(parse_qs(parsed.query)), "text/html; charset=utf-8")
+            return
         self.send_text(404, "not found\n")
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path not in ("/v1/events", "/v1/feedback"):
+        if parsed.path not in ("/v1/events", "/v1/feedback", "/v1/site-visits"):
             self.send_text(404, "not found\n")
             return
-        if not self.ingest_authorized(parsed):
+        if parsed.path == "/v1/site-visits":
+            if not self.site_visit_authorized():
+                self.send_text(401, "unauthorized\n")
+                return
+        elif not self.ingest_authorized(parsed):
             self.send_text(401, "unauthorized\n")
             return
         try:
@@ -1171,9 +2260,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_text(400, "bad payload\n")
             return
         if parsed.path == "/v1/events":
-            ok = record_event(payload, self.client_address[0])
+            ok = record_event(payload, self.client_ip())
+        elif parsed.path == "/v1/feedback":
+            ok = record_feedback(payload, self.client_ip())
         else:
-            ok = record_feedback(payload, self.client_address[0])
+            ok = record_site_visit(payload, self.client_ip(), self.headers)
         if not ok:
             self.send_text(400, "ignored\n")
             return

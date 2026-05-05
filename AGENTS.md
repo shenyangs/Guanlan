@@ -49,7 +49,7 @@ If diagnosis emits `browser_assist.recommended=true`, ask the user for explicit 
 using the host Agent browser to open the target URL and read only the target page's visible content. If login, verification, or account switching is needed, let the user complete it in the browser first. Report it as
 "Guanlan planned the route, then I used user-authorized browser-visible evidence as supplementary
 evidence." For the visible-page task, do not read Cookie, Token, password, keychain, private messages, orders, admin pages, or
-unrelated personal data; Cookie access is allowed only after a separate explicit user authorization for the target platform, and do not post, like, comment, follow, message, purchase, or submit forms.
+unrelated personal data; Cookie access is allowed only after a separate explicit user authorization for the target platform, purpose, risk, and read-only scope, and do not post, like, comment, follow, message, purchase, or submit forms.
 If the user authorizes visible-page evidence, it may be archived with
 `guanlan archive add-browser-note --from-json browser-notes.jsonl`; keep the
 `browser_assisted` / `visible_page_only` boundary. `--url ... --text-file` is only a manual fallback when the host Agent has no browser extraction capability.
@@ -157,6 +157,8 @@ guanlan route "中文研究需求" --json
 guanlan workflow "中文研究需求" --json
 guanlan diagnose page "https://example.com/article"
 guanlan browser-assist plan "https://example.com/article" --json
+guanlan browser-assist adapters
+guanlan browser-assist run "https://example.com/article" --adapter host-browser --json
 guanlan recipe list
 guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"
 guanlan recipe run university-advisor "南京师范大学中北学院 计算机 导师 招生"
@@ -218,7 +220,7 @@ Read [docs/agent-playbook.md](docs/agent-playbook.md) and [docs/agent-usage.md](
 
 Safety rules:
 
-- Do not read browser cookies unless the user explicitly asks.
+- Do not read browser cookies unless the user gives separate explicit authorization for the target platform, purpose, risk, and read-only scope.
 - Do not run `guanlan configure --from-browser ...` without user approval.
 - Do not run `guanlan doctor --auth-check` unless the user wants deep auth checks.
 - Do not post, comment, like, follow, or send messages automatically.
@@ -227,7 +229,7 @@ Safety rules:
 - Use `guanlan capabilities` when the user asks what Guanlan can do, which Guanlan command/tool to use, or why the tool is relevant.
 - Use `guanlan route "query"` when deciding which source pools, sites, evidence roles, and caveats fit a request; route plans are soft guidance, not hard filters.
 - Use `guanlan diagnose page "URL"` before repeatedly retrying a weak `read`; if it reports dynamic shell, access gate, or search-fallback-only context, use the recommended structured/scoped/archive path instead of treating the page as evidence.
-- If `diagnose page` recommends browser-assisted evidence, ask first and only read the target browser-visible page content; never read cookies, private areas, or perform write actions. Archive authorized visible notes with `archive add-browser-note` and preserve the evidence boundary.
+- If `diagnose page` recommends browser-assisted evidence, ask first and only read the target browser-visible page content; use `browser-assist adapters` / `browser-assist run --adapter host-browser` to get the execution contract for the host Agent browser. Do not install Playwright, launch a separate browser profile, or read a browser profile for this flow. Never read cookies, private areas, or perform write actions unless the user gives a separate Cookie authorization for that platform and purpose. Archive authorized visible notes with `archive add-browser-note` and preserve the evidence boundary.
 - Use `guanlan recipe run <recipe> "query"` when the user task matches a reusable vertical workflow; recipes are plans and boundaries, not final conclusions.
 - Use `guanlan search ... --trace` or `guanlan research ...` when you need query_strategy, source diagnostics, and evidence-role query rewrites; do not rely on one broad query for serious research.
 - Use `guanlan compare`, `guanlan timeline`, or `guanlan dossier` when the user asks for comparison, event chronology, or an entity dossier; these are structured views over evidence packets, not final truth.

@@ -2177,6 +2177,7 @@ def test_search_web_auto_skips_wechat_sogou_when_public_results_are_enough(monke
 def test_search_web_auto_uses_wechat_sogou_when_public_results_are_insufficient(monkeypatch):
     monkeypatch.setattr(webtools, "_search_baidu", lambda query, limit=10: [])
     monkeypatch.setattr(webtools, "_search_bing", lambda query, limit=10: [])
+    monkeypatch.setattr(webtools, "_search_bing_generic", lambda query, limit=10: [])
     monkeypatch.setattr(webtools, "_search_duckduckgo", lambda query, limit=10: [])
     monkeypatch.setattr(
         webtools,
@@ -2203,6 +2204,7 @@ def test_search_web_auto_uses_wechat_sogou_when_public_results_are_insufficient(
 def test_search_web_auto_treats_wechat_sogou_as_non_fatal_backup(monkeypatch):
     monkeypatch.setattr(webtools, "_search_baidu", lambda query, limit=10: [])
     monkeypatch.setattr(webtools, "_search_bing", lambda query, limit=10: [])
+    monkeypatch.setattr(webtools, "_search_bing_generic", lambda query, limit=10: [])
     monkeypatch.setattr(webtools, "_search_duckduckgo", lambda query, limit=10: [])
     monkeypatch.setattr(
         webtools,

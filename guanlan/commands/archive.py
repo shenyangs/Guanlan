@@ -443,6 +443,11 @@ def _format_archive_ingest_summary(result: dict) -> str:
     ]
     if result.get("timeout_boundary"):
         lines.append(f"- Timeout 边界: {result.get('timeout_boundary')}")
+    timeout_rec = result.get("timeout_recommendation") or {}
+    if timeout_rec:
+        lines.append(f"- Agent 耐心预算: {timeout_rec.get('patient_wait_seconds', result.get('timeout_budget_hint_seconds', 120))}s；重试可放宽到 {timeout_rec.get('retry_timeout_seconds', 180)}s")
+        if timeout_rec.get("agent_instruction"):
+            lines.append(f"- Agent 提醒: {timeout_rec.get('agent_instruction')}")
     audit = result.get("audit_summary") or {}
     if audit:
         lines.extend(

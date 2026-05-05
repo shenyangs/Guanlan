@@ -114,3 +114,37 @@ document.querySelectorAll(".copy-button").forEach((button) => {
     }
   });
 });
+
+function reportWebsiteVisit() {
+  if (!/^https?:$/.test(window.location.protocol)) {
+    return;
+  }
+  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection || {};
+  const payload = JSON.stringify({
+    path: `${window.location.pathname}${window.location.search}`,
+    referrer: document.referrer || "",
+    language: navigator.language || "",
+    languages: Array.isArray(navigator.languages) ? navigator.languages.join(",") : "",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    screen: `${window.screen?.width || 0}x${window.screen?.height || 0}`,
+    viewport: `${window.innerWidth || 0}x${window.innerHeight || 0}`,
+    device_pixel_ratio: String(window.devicePixelRatio || ""),
+    network_effective_type: connection.effectiveType || "",
+    network_downlink: connection.downlink ? String(connection.downlink) : "",
+    network_rtt: connection.rtt ? String(connection.rtt) : "",
+    network_save_data: connection.saveData ? "true" : "false",
+  });
+  const endpoint = "/guanlan-telemetry/v1/site-visits";
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon(endpoint, new Blob([payload], { type: "application/json" }));
+    return;
+  }
+  fetch(endpoint, {
+    method: "POST",
+    body: payload,
+    headers: { "Content-Type": "application/json" },
+    keepalive: true,
+  }).catch(() => {});
+}
+
+reportWebsiteVisit();

@@ -214,6 +214,40 @@ class TestCLI:
         assert data["cookie_access_policy"]["default"] == "forbidden_for_visible_page_task"
         assert "read_cookies" in data["forbidden_actions"]
 
+    def test_browser_assist_adapters_command_lists_host_and_external(self, capsys):
+        with patch("sys.argv", ["guanlan", "browser-assist", "adapters", "--json"]):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        ids = {item["id"] for item in data}
+        assert {"host-browser", "open-cli", "xhs-cli"} <= ids
+        host = next(item for item in data if item["id"] == "host-browser")
+        assert host["available"] is True
+        assert host["safety"]["cookie_access_requires_separate_explicit_authorization"] is True
+
+    def test_browser_assist_run_host_browser_returns_execution_contract(self, capsys):
+        with patch(
+            "sys.argv",
+            [
+                "guanlan",
+                "browser-assist",
+                "run",
+                "https://www.xiaohongshu.com/explore/demo",
+                "--adapter",
+                "host-browser",
+                "--json",
+            ],
+        ):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["adapter"] == "host-browser"
+        assert data["status"] == "requires_host_browser_execution"
+        assert data["contract"]["safety"]["visible_page_only_by_default"] is True
+        assert data["plan"]["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
+
     def test_recipe_run_command_returns_plan(self, capsys):
         with patch(
             "sys.argv",

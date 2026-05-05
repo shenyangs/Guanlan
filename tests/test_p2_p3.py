@@ -31,7 +31,7 @@ def test_serve_dispatch_health_and_route():
     status, tools = serve.dispatch_request("GET", "/tools")
     assert status == 200
     tool_names = {tool["name"] for tool in tools["tools"]}
-    assert {"guanlan_search", "guanlan_research", "guanlan_archive_search", "guanlan_browser_assist_plan"} <= tool_names
+    assert {"guanlan_search", "guanlan_research", "guanlan_archive_search", "guanlan_browser_assist_plan", "guanlan_browser_assist_run"} <= tool_names
     assert "只读工具面" in tools["boundary"]
 
 
@@ -52,6 +52,22 @@ def test_serve_dispatch_browser_assist_plan_is_read_only():
     assert body["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
     assert "cookies_without_separate_explicit_authorization" in body["browser_assist_task"]["must_not_access"]
     assert body["browser_assist_task"]["conditional_access"]["cookies"] == "allowed_only_after_separate_explicit_user_authorization"
+
+
+def test_serve_dispatch_browser_assist_run_returns_adapter_contract():
+    status, body = serve.dispatch_request(
+        "POST",
+        "/browser-assist/run",
+        {
+            "url": "https://www.xiaohongshu.com/explore/demo",
+            "adapter": "host-browser",
+        },
+    )
+
+    assert status == 200
+    assert body["adapter"] == "host-browser"
+    assert body["status"] == "requires_host_browser_execution"
+    assert body["contract"]["safety"]["cookie_access_requires_separate_explicit_authorization"] is True
 
 
 def test_serve_dispatch_search_uses_webtools(monkeypatch):

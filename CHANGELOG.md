@@ -6,7 +6,26 @@
 
 ## Unreleased
 
-- 暂无。下一轮变更先进入这里，发版时再移入对应版本。
+## v0.5.10 - 2026-05-05
+
+### Added
+
+- 浏览器辅助补证新增适配器发现与运行契约：`guanlan browser-assist adapters` 可列出 `host-browser` / `open-cli` / `xhs-cli`，`guanlan browser-assist run "URL" --adapter host-browser --json` 默认返回宿主 Agent 浏览器执行契约。
+- MCP 新增 `guanlan_browser_assist_run`，HTTP 只读服务新增 `/browser-assist/run`，让 CLI、MCP、HTTP 三个工具面共享同一套补证边界。
+- 新增本轮改动报告 `docs/release-report-v0.5.10.md`，记录浏览器辅助补证、Archive 超时耐心提示、文档同步、测试与残余风险。
+
+### Changed
+
+- 同步根目录耐久文档：`CONTRIBUTING.md`、`SECURITY.md`、`CLAUDE.md`、`.env.example`、`constraints.txt`、`llms.txt` 对齐 0.5.10 的安装、质量门禁、默认结果池、浏览器辅助补证和 Cookie 单独授权边界。
+- 安全边界补充：浏览器可见页补证默认不读取 Cookie；如确实需要 Cookie，必须单独说明目标平台、用途、风险和只读范围，并获得用户单独明确授权。
+- Agent 文档、Skill 和 `llms.txt` 补充 `browser-assist adapters/run` 用法，明确 `open-cli` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。
+- Archive search-first 入库结果增加 `timeout_recommendation`，摘要输出会提醒 Agent 保持耐心，优先观察阶段进度，不要过早把弱网络长链路判成无结果。
+- 官网版本与静态资源版本同步到 `0.5.10`。
+
+### Fixed
+
+- 修复工具注册表与 MCP 工具面的漂移：`guanlan_browser_assist_run` 已纳入 robust quality gate。
+- 补充 Bing generic 恢复路径下的微信搜狗兜底测试，避免测试遗漏新后端链路。
 
 ## v0.5.9 - 2026-05-04
 

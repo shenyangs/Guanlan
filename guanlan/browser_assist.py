@@ -9,6 +9,10 @@ local credential stores.
 from __future__ import annotations
 
 import json
+import os
+import shlex
+import shutil
+import subprocess
 import time
 from typing import Any
 from urllib.parse import urlparse
@@ -70,6 +74,51 @@ BROWSER_ASSIST_TRIGGER_PLATFORMS = {
     "bilibili",
     "douban",
     "linkedin",
+}
+
+BROWSER_ASSIST_ADAPTERS: dict[str, dict[str, Any]] = {
+    "host-browser": {
+        "id": "host-browser",
+        "aliases": ["host", "browser", "agent-browser"],
+        "kind": "host_agent_browser",
+        "stability": "stable",
+        "description": "宿主 Agent 已有浏览器/Computer Use/WebView；观澜只生成任务契约，由宿主 Agent 读取可见页。",
+        "executable": "",
+        "env_command": "",
+        "supports_platforms": ["*"],
+        "can_extract": True,
+        "can_open": True,
+        "requires_execute": False,
+        "privacy_boundary": "visible_page_only_by_default",
+    },
+    "open-cli": {
+        "id": "open-cli",
+        "aliases": ["open", "system-open", "browser-open"],
+        "kind": "system_open",
+        "stability": "best-effort",
+        "description": "调用系统 open/xdg-open/start 打开目标 URL；只负责打开页面，正文仍由宿主 Agent 可见页读取。",
+        "executable": "open",
+        "env_command": "GUANLAN_BROWSER_ASSIST_OPEN_CLI_COMMAND",
+        "supports_platforms": ["*"],
+        "can_extract": False,
+        "can_open": True,
+        "requires_execute": True,
+        "privacy_boundary": "opens_visible_page_only",
+    },
+    "xhs-cli": {
+        "id": "xhs-cli",
+        "aliases": ["xiaohongshu-cli", "xiaohongshu", "xhs"],
+        "kind": "external_platform_cli",
+        "stability": "experimental",
+        "description": "小红书外部 CLI 适配入口；需要用户已安装并配置外部 CLI，推荐用命令模板显式声明参数。",
+        "executable": "xhs-cli",
+        "env_command": "GUANLAN_BROWSER_ASSIST_XHS_CLI_COMMAND",
+        "supports_platforms": ["xiaohongshu"],
+        "can_extract": True,
+        "can_open": True,
+        "requires_execute": True,
+        "privacy_boundary": "external_cli_user_authorized_visible_or_cookie_flow",
+    },
 }
 
 SENSITIVE_PAYLOAD_KEYS = {
@@ -154,6 +203,234 @@ def build_browser_assist_plan(
         "archive_next_step": "guanlan archive add-browser-note --from-json browser-notes.jsonl",
         "manual_fallback_next_step": 'guanlan archive add-browser-note --url "URL" --text-file notes.md',
     }
+
+
+def list_browser_assist_adapters() -> list[dict[str, Any]]:
+    """Return adapter descriptors for Agent-facing capability discovery."""
+
+    return [build_browser_assist_adapter_contract(adapter_id) for adapter_id in BROWSER_ASSIST_ADAPTERS]
+
+
+def build_browser_assist_adapter_contract(adapter: str = "host-browser", *, platform: str = "") -> dict[str, Any]:
+    """Return a stable contract for a browser-assist adapter."""
+
+    adapter_id = resolve_browser_assist_adapter(adapter)
+    spec = dict(BROWSER_ASSIST_ADAPTERS[adapter_id])
+    executable = str(spec.get("executable") or "")
+    command_env = str(spec.get("env_command") or "")
+    command_template = os.environ.get(command_env, "").strip() if command_env else ""
+    executable_path = _resolve_adapter_executable(adapter_id, executable)
+    platform_ok = _adapter_supports_platform(spec, platform)
+    return {
+        **spec,
+        "id": adapter_id,
+        "available": bool(adapter_id == "host-browser" or executable_path or command_template),
+        "executable_path": executable_path,
+        "command_template_env": command_env,
+        "command_template_configured": bool(command_template),
+        "platform": platform,
+        "platform_supported": platform_ok,
+        "output_schema": build_browser_assist_task(
+            ["https://example.com/article"],
+            platform=platform,
+            max_pages=1,
+            max_chars_per_page=3000,
+        )["output_schema"],
+        "archive_next_step": "guanlan archive add-browser-note --from-json browser-notes.jsonl",
+        "safety": {
+            "read_only": True,
+            "visible_page_only_by_default": True,
+            "cookie_access_requires_separate_explicit_authorization": True,
+            "forbidden_actions": FORBIDDEN_BROWSER_ASSIST_ACTIONS,
+            "forbidden_implementations": FORBIDDEN_BROWSER_ASSIST_IMPLEMENTATIONS,
+        },
+    }
+
+
+def resolve_browser_assist_adapter(adapter: str = "host-browser") -> str:
+    """Resolve adapter aliases to canonical IDs."""
+
+    value = str(adapter or "host-browser").strip().lower().replace("_", "-")
+    if value in BROWSER_ASSIST_ADAPTERS:
+        return value
+    for adapter_id, spec in BROWSER_ASSIST_ADAPTERS.items():
+        aliases = {str(item).lower().replace("_", "-") for item in spec.get("aliases", [])}
+        if value in aliases:
+            return adapter_id
+    return "host-browser"
+
+
+def run_browser_assist_adapter(
+    url: str,
+    *,
+    adapter: str = "host-browser",
+    execute: bool = False,
+    command_template: str = "",
+    timeout: int = 90,
+    output_path: str = "",
+    page_type: str = "access_gate",
+    signals: list[str] | None = None,
+    platform: str = "",
+    max_pages: int = 3,
+    max_chars_per_page: int = 3000,
+    task_goal: str = "",
+) -> dict[str, Any]:
+    """Build or execute a browser-assist adapter bridge.
+
+    External adapters are intentionally opt-in and command-template driven. This
+    keeps Guanlan stable while letting host environments plug in xhs-cli/open-cli
+    style tools when they exist.
+    """
+
+    normalized_url = str(url or "").strip()
+    adapter_id = resolve_browser_assist_adapter(adapter)
+    inferred_platform = platform or platform_hint(normalized_url)
+    contract = build_browser_assist_adapter_contract(adapter_id, platform=inferred_platform)
+    plan = build_browser_assist_plan(
+        normalized_url,
+        page_type=page_type,
+        signals=signals or [],
+        force=True,
+        max_pages=max(max_pages, 1),
+        max_chars_per_page=max(max_chars_per_page, 1),
+        task_goal=task_goal,
+    )
+    if inferred_platform:
+        plan["platform"] = inferred_platform
+        if isinstance(plan.get("browser_assist_task"), dict):
+            plan["browser_assist_task"]["platform"] = inferred_platform
+
+    response: dict[str, Any] = {
+        "adapter": adapter_id,
+        "status": "planned",
+        "execute": bool(execute),
+        "url": normalized_url,
+        "platform": inferred_platform,
+        "contract": contract,
+        "plan": plan,
+        "payloads": [],
+        "archive_next_step": "guanlan archive add-browser-note --from-json browser-notes.jsonl",
+        "agent_instruction": (
+            "Guanlan planned the browser-assisted route. Use this adapter only after user authorization; "
+            "do not read cookies unless the user separately authorizes Cookie access for the target platform."
+        ),
+    }
+    if not normalized_url:
+        response.update({"status": "error", "error": "url_required"})
+        return response
+    if not contract.get("platform_supported", True):
+        response.update(
+            {
+                "status": "adapter_not_recommended_for_platform",
+                "error": f"{adapter_id} does not support platform {inferred_platform}",
+            }
+        )
+        return response
+    if adapter_id == "host-browser":
+        response["status"] = "requires_host_browser_execution"
+        response["execution_boundary"] = "host_agent_must_open_and_read_visible_page"
+        return response
+
+    if adapter_id == "open-cli":
+        command = _open_cli_command(normalized_url, command_template=command_template)
+        response["command"] = command
+        if not execute:
+            response["status"] = "ready_to_open"
+            response["next_step"] = "Run with --execute, then let the host Agent read visible page content."
+            return response
+        return _execute_adapter_command(
+            response,
+            command,
+            timeout=timeout,
+            output_path=output_path,
+            parse_stdout=False,
+            post_status="opened_requires_host_extraction",
+        )
+
+    command = _external_adapter_command(
+        adapter_id,
+        normalized_url,
+        command_template=command_template,
+        output_path=output_path,
+    )
+    response["command"] = command
+    if not command:
+        env_name = str(contract.get("command_template_env") or "")
+        response.update(
+            {
+                "status": "adapter_config_required",
+                "error": "external_cli_command_template_required",
+                "setup_hint": (
+                    f"设置 {env_name}，例如包含 {{url}} 和可选 {{output}} 的只读命令模板；"
+                    "或者传入 --command-template。"
+                ),
+            }
+        )
+        return response
+    if not execute:
+        response["status"] = "ready_to_execute_external_cli"
+        response["next_step"] = "确认用户授权和外部 CLI 配置后，加 --execute 执行；输出应为 Guanlan browser-visible JSON/JSONL。"
+        return response
+    return _execute_adapter_command(
+        response,
+        command,
+        timeout=timeout,
+        output_path=output_path,
+        parse_stdout=True,
+        post_status="executed",
+    )
+
+
+def format_browser_assist_adapters_markdown(adapters: list[dict[str, Any]]) -> str:
+    """Render adapter registry in compact Markdown."""
+
+    lines = ["# 观澜浏览器辅助补证适配器", ""]
+    for item in adapters:
+        lines.append(f"## {item.get('id')}")
+        lines.append(f"- 类型: {item.get('kind')}")
+        lines.append(f"- 稳定性: {item.get('stability')}")
+        lines.append(f"- 可用: {'是' if item.get('available') else '否'}")
+        lines.append(f"- 支持平台: {', '.join(item.get('supports_platforms') or [])}")
+        lines.append(f"- 说明: {item.get('description')}")
+        if item.get("command_template_env"):
+            lines.append(f"- 命令模板环境变量: `{item.get('command_template_env')}`")
+        lines.append(f"- 入库: `{item.get('archive_next_step')}`")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def format_browser_assist_run_markdown(result: dict[str, Any]) -> str:
+    """Render adapter run/plan result."""
+
+    lines = [
+        "# 观澜浏览器辅助补证运行计划",
+        "",
+        f"- 适配器: {result.get('adapter')}",
+        f"- 状态: {result.get('status')}",
+        f"- URL: {result.get('url')}",
+        f"- 平台: {result.get('platform') or '-'}",
+        f"- 是否执行: {'是' if result.get('execute') else '否'}",
+        f"- 入库: `{result.get('archive_next_step', '')}`",
+    ]
+    if result.get("command"):
+        lines.append("- 命令: `" + " ".join(shlex.quote(str(part)) for part in result.get("command") or []) + "`")
+    if result.get("setup_hint"):
+        lines.append(f"- 配置提示: {result.get('setup_hint')}")
+    if result.get("next_step"):
+        lines.append(f"- 下一步: {result.get('next_step')}")
+    if result.get("error"):
+        lines.append(f"- 错误: {result.get('error')}")
+    payloads = result.get("payloads") or []
+    if payloads:
+        lines.append(f"- 已提取 payload: {len(payloads)} 条")
+    plan = result.get("plan") or {}
+    task = plan.get("browser_assist_task") or {}
+    steps = task.get("collection_steps") or []
+    if steps:
+        lines.append("")
+        lines.append("## 执行边界")
+        lines.extend(f"- {item}" for item in steps[:6])
+    return "\n".join(lines)
 
 
 def build_browser_assist_task(
@@ -473,6 +750,128 @@ def suggest_browser_assist_from_results(
             "不要把浏览器可见页材料伪装成所有人可复现的普通公开网页证据。",
         ],
     }
+
+
+def _adapter_supports_platform(spec: dict[str, Any], platform: str = "") -> bool:
+    supported = [str(item) for item in spec.get("supports_platforms") or []]
+    return not platform or "*" in supported or platform in supported
+
+
+def _resolve_adapter_executable(adapter_id: str, executable: str = "") -> str:
+    if adapter_id == "host-browser":
+        return ""
+    if adapter_id == "open-cli":
+        for candidate in [executable, "open", "xdg-open", "start"]:
+            if not candidate:
+                continue
+            found = shutil.which(candidate)
+            if found:
+                return found
+        return ""
+    if executable:
+        return shutil.which(executable) or ""
+    return ""
+
+
+def _open_cli_command(url: str, *, command_template: str = "") -> list[str]:
+    template = str(command_template or os.environ.get("GUANLAN_BROWSER_ASSIST_OPEN_CLI_COMMAND") or "").strip()
+    if template:
+        return _render_command_template(template, url=url, output="")
+    executable = _resolve_adapter_executable("open-cli", "open")
+    if executable:
+        return [executable, url]
+    return []
+
+
+def _external_adapter_command(
+    adapter_id: str,
+    url: str,
+    *,
+    command_template: str = "",
+    output_path: str = "",
+) -> list[str]:
+    spec = BROWSER_ASSIST_ADAPTERS.get(adapter_id, {})
+    env_name = str(spec.get("env_command") or "")
+    template = str(command_template or (os.environ.get(env_name, "") if env_name else "") or "").strip()
+    if not template:
+        return []
+    return _render_command_template(template, url=url, output=output_path)
+
+
+def _render_command_template(template: str, *, url: str, output: str = "") -> list[str]:
+    rendered = template.format(url=url, output=output)
+    return shlex.split(rendered)
+
+
+def _execute_adapter_command(
+    response: dict[str, Any],
+    command: list[str],
+    *,
+    timeout: int,
+    output_path: str,
+    parse_stdout: bool,
+    post_status: str,
+) -> dict[str, Any]:
+    if not command:
+        response.update({"status": "adapter_unavailable", "error": "command_not_found"})
+        return response
+    executable = shutil.which(command[0]) or (command[0] if os.path.isabs(command[0]) else "")
+    if not executable:
+        response.update({"status": "adapter_unavailable", "error": f"executable_not_found: {command[0]}"})
+        return response
+    command = [executable, *command[1:]]
+    response["command"] = command
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=max(timeout, 1),
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        response.update({"status": "timeout", "error": f"adapter_timeout_after_{max(timeout, 1)}s"})
+        return response
+    except Exception as exc:
+        response.update({"status": "error", "error": str(exc)})
+        return response
+    response["returncode"] = completed.returncode
+    response["stdout_preview"] = (completed.stdout or "")[:800]
+    response["stderr_preview"] = (completed.stderr or "")[:800]
+    if completed.returncode != 0:
+        response.update({"status": "adapter_failed", "error": completed.stderr.strip() or f"exit={completed.returncode}"})
+        return response
+    payloads: list[dict[str, Any]] = []
+    if parse_stdout and completed.stdout.strip():
+        try:
+            payloads = _parse_visible_payload_text(completed.stdout)
+        except Exception as exc:
+            response["parse_error"] = str(exc)
+    response["payloads"] = payloads
+    if payloads and output_path:
+        with open(output_path, "w", encoding="utf-8") as f:
+            for item in payloads:
+                f.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
+        response["output_path"] = output_path
+        response["archive_command"] = f"guanlan archive add-browser-note --from-json {output_path}"
+    response["status"] = post_status
+    if parse_stdout and not payloads:
+        response["status"] = "executed_no_parseable_payload"
+        response["next_step"] = "外部 CLI 已执行，但 stdout 不是 Guanlan browser-visible JSON/JSONL；请检查命令模板或手动转换。"
+    return response
+
+
+def _parse_visible_payload_text(raw: str) -> list[dict[str, Any]]:
+    stripped = str(raw or "").strip()
+    if not stripped:
+        return []
+    if stripped.startswith("{") or stripped.startswith("["):
+        data = json.loads(stripped)
+        rows = data if isinstance(data, list) else [data]
+    else:
+        rows = [json.loads(line) for line in stripped.splitlines() if line.strip()]
+    return [normalize_browser_visible_payload(row) for row in rows if isinstance(row, dict)]
 
 
 def platform_hint(url: str) -> str:

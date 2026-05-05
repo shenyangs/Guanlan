@@ -31,6 +31,7 @@ CORE_AGENT_TOOLS: tuple[AgentTool, ...] = (
     AgentTool("guanlan_search", ("cli", "mcp", "http"), "stable", "guanlan search", "broad_search", "/search", 80),
     AgentTool("guanlan_route", ("cli", "mcp", "http"), "stable", "guanlan route", "source_routing", "/route", 80),
     AgentTool("guanlan_browser_assist_plan", ("cli", "mcp", "http"), "stable", "guanlan browser-assist plan", "browser_visible_evidence_plan", "/browser-assist/plan"),
+    AgentTool("guanlan_browser_assist_run", ("cli", "http"), "experimental", "guanlan browser-assist run", "browser_visible_evidence_adapter", "/browser-assist/run"),
     AgentTool("guanlan_read", ("cli", "mcp", "http"), "stable", "guanlan read", "page_reading", "/read", 20),
     AgentTool("guanlan_research", ("cli", "mcp", "http"), "stable", "guanlan research", "evidence_packet", "/research", 80),
     AgentTool("guanlan_compare", ("cli", "mcp", "http"), "stable", "guanlan compare", "comparative_research", "/compare", 80),

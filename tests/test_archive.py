@@ -508,6 +508,8 @@ def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkey
     assert captured_kwargs["cache_ttl"] == 3600
     assert result["audit_summary"]["kept"] == 1
     assert result["timeout_budget_hint_seconds"] == 120
+    assert result["timeout_recommendation"]["patient_wait_seconds"] == 120
+    assert "不要过早判定卡死" in result["timeout_recommendation"]["agent_instruction"]
     assert result["phase_log"][0]["phase"] == "research_start"
     assert result["phase_log"][-1]["phase"] == "archive_done"
     assert progress_events[-1]["phase"] == "archive_done"
@@ -559,6 +561,7 @@ def test_archive_ingest_optional_reads_are_bounded_outside_research(tmp_path, mo
     assert captured_read_kwargs["fallback_search"] is False
     assert captured_read_kwargs["concurrency"] == 3
     assert result["timeout_budget_hint_seconds"] == 240
+    assert result["timeout_recommendation"]["retry_timeout_seconds"] == 300
     assert any(item["phase"] == "read_start" for item in result["phase_log"])
     assert any(item["phase"] == "read_done" for item in result["phase_log"])
     assert result["read_attempted_count"] == 1

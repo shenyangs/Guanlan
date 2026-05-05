@@ -1,17 +1,25 @@
 # 观澜 / Guanlan tested dependency set
 # Usage:
 #   pip install -c constraints.txt -e .[dev]
+# This file pins the top-level runtime/dev packages used by the local lockfile.
 
-requests==2.32.5
+requests==2.33.1
 feedparser==6.0.12
 python-dotenv==1.2.1
 loguru==0.7.3
 PyYAML==6.0.3
-rich==14.3.2
+rich==14.3.3
 yt-dlp==2025.5.22
 
 pytest==8.0.0
 ruff==0.15.1
 mypy==1.19.1
-types-requests==2.32.4.20260107
+types-requests==2.33.0.20260327
 types-PyYAML==6.0.12.20250915
+
+# Optional extras are constrained here only when installed.
+playwright==1.58.0
+browser-cookie3==0.20.1
+mcp==1.26.0
+wechatsogou==4.5.4
+Werkzeug==0.16.1

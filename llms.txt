@@ -1,28 +1,59 @@
-# Guanlan
+# Guanlan / 观澜
 
-Guanlan is an AI-agent-first search and source-routing tool for the Chinese internet. It focuses on public search, webpage reading, Chinese hotnews, source classification, safe diagnostics, and explicit authentication boundaries.
+Guanlan is a CLI-first Chinese-web research tool for AI agents. It routes source families, searches public web results, reads webpages into model-friendly Markdown/context, observes hotnews and RSS, builds evidence packets, and stores reusable local archive/RAG material.
 
-## Documentation
+## Current Version
 
-- `README.md`: Canonical product documentation in Chinese
-- `docs/agent-usage.md`: Agent-facing commands, routing rules, and fallback behavior
-- `docs/local-llm.md`: How local models use Guanlan evidence
-- `docs/troubleshooting.md`: Keychain, network, cookie, and platform diagnostics
-- `docs/SOURCE_ATTRIBUTION.md`: Open-source references
+- Package version: 0.5.9
+- Stage: Alpha
+- Default posture: public, read-only, low-disturbance, source-aware
+
+## Canonical Documentation
+
+- `README.md`: concise product overview and install path
+- `AGENTS.md`: durable operating rules for coding agents in this repository
+- `docs/agent-playbook.md`: practical workflow ladder and evidence rules
+- `docs/agent-usage.md`: agent-facing command cookbook
+- `docs/full-guide.md`: complete user manual
+- `docs/contract.md`: stable output fields for downstream agents
+- `docs/local-llm.md`: local model / Ollama / Open WebUI usage
+- `docs/troubleshooting.md`: keychain, network, cookie, and platform diagnostics
+- `docs/SOURCE_ATTRIBUTION.md`: open-source references
 
 ## Core Commands
 
-- `guanlan welcome`
-- `guanlan capabilities`
-- `guanlan search "keyword" --profile china --limit 50`
-- `guanlan search "keyword" --profile china --scope party_central`
-- `guanlan search "keyword" --profile china --scope ecommerce`
-- `guanlan read "https://example.com/article"`
-- `guanlan read "https://example.com/article" --backend direct`
-- `guanlan research "keyword" --profile china --advisor`
-- `guanlan hotnews today --limit 50`
-- `guanlan doctor --trace`
+```bash
+guanlan welcome
+guanlan capabilities
+guanlan version
+guanlan doctor --install-check
+guanlan doctor --trace
+guanlan search "中文问题" --profile china --limit 80 --trace
+guanlan route "中文研究需求" --json
+guanlan research "复杂研究需求" --profile china --limit 80 --format context
+guanlan read "https://example.com/article" --quality-report --trace
+guanlan diagnose page "https://example.com/article"
+guanlan browser-assist plan "https://example.com/article" --json
+guanlan browser-assist adapters
+guanlan browser-assist run "https://example.com/article" --adapter host-browser --json
+guanlan hotnews today --limit 80 --trends
+guanlan feeds curated --limit 80
+guanlan archive ingest-research "query" --limit 80 --read-top 3
+guanlan archive add-browser-note --from-json browser-notes.jsonl
+guanlan archive search "query" --limit 20
+guanlan compare "A" "B" --focus "价格 口碑 风险" --limit 80 --format context
+guanlan timeline "事件 最新进展" --limit 80 --format context
+guanlan dossier "对象" --focus "业务 口碑 风险" --limit 80 --format context
+```
 
-## Safety
+## Agent Operating Notes
 
-Guanlan defaults to public, read-only, low-disturbance workflows. Cookie, browser, Keychain, and login-state access should only happen after explicit user authorization.
+- Prefer a large enough result pool. Use `--limit 80` for normal search/research and only lower it for smoke checks.
+- For recent, latest, hot, or today queries, include `hotnews`; for tech/AI/developer tasks, include an RSS/feeds pass.
+- For weak page reads, run `diagnose page` before retrying. If diagnosis recommends browser assist, ask the user before using the host browser.
+- Browser-assisted evidence means: Guanlan plans the route; `browser-assist run --adapter host-browser` returns the execution contract; the host Agent reads only the user-authorized target page's visible content.
+- Do not install Playwright, launch a separate browser, or read a browser profile for browser assist. Use `open-cli` only to open a page, and use `xhs-cli` only when the user has already configured that external adapter.
+- Visible-page browser assist does not read Cookie, Token, password, Keychain, browser storage, private messages, orders, admin pages, or unrelated personal data.
+- Cookie access is allowed only after a separate explicit user authorization for the target platform, purpose, risk, and read-only scope.
+- Do not post, comment, like, follow, message, purchase, submit forms, or perform any write action.
+- Archive/Wiki/RAG output is local evidence memory, not whole-web truth.

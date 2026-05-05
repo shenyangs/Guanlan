@@ -261,6 +261,9 @@ def main():
         help="Plan user-authorized visible-browser evidence handoff without reading browser state",
     )
     browser_assist_sub = p_browser_assist.add_subparsers(dest="browser_assist_command", help="Browser assist commands")
+    p_browser_assist_adapters = browser_assist_sub.add_parser("adapters", help="List browser-assist adapters")
+    p_browser_assist_adapters.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
+    p_browser_assist_adapters.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
     p_browser_assist_plan = browser_assist_sub.add_parser("plan", help="Build a host-browser visible evidence task")
     p_browser_assist_plan.add_argument("url", help="Target page URL")
     p_browser_assist_plan.add_argument("--page-type", default="access_gate", help="Diagnosis page type hint")
@@ -271,6 +274,21 @@ def main():
     p_browser_assist_plan.add_argument("--task-goal", default="", help="Optional host-agent task goal")
     p_browser_assist_plan.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_browser_assist_plan.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_browser_assist_run = browser_assist_sub.add_parser("run", help="Bridge a browser-assist task to host-browser/open-cli/xhs-cli adapters")
+    p_browser_assist_run.add_argument("url", help="Target page URL")
+    p_browser_assist_run.add_argument("--adapter", default="host-browser", help="Adapter: host-browser, open-cli, xhs-cli")
+    p_browser_assist_run.add_argument("--execute", action="store_true", help="Execute external adapter when safe/configured; host-browser still returns a host task")
+    p_browser_assist_run.add_argument("--command-template", default="", help="External CLI command template; supports {url} and {output}")
+    p_browser_assist_run.add_argument("--output", default="", help="Optional JSONL output path for parsed adapter payloads")
+    p_browser_assist_run.add_argument("--timeout", type=int, default=90, help="External adapter timeout seconds")
+    p_browser_assist_run.add_argument("--page-type", default="access_gate", help="Diagnosis page type hint")
+    p_browser_assist_run.add_argument("--signal", action="append", default=[], help="Diagnosis signal hint; can be repeated")
+    p_browser_assist_run.add_argument("--platform", default="", help="Optional platform label override")
+    p_browser_assist_run.add_argument("--max-pages", type=int, default=3, help="Maximum browser-visible target pages")
+    p_browser_assist_run.add_argument("--max-chars-per-page", type=int, default=3000, help="Maximum visible characters per page")
+    p_browser_assist_run.add_argument("--task-goal", default="", help="Optional host-agent task goal")
+    p_browser_assist_run.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
+    p_browser_assist_run.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
 
     # ── search ──
     p_search = sub.add_parser("search", help="Search the web for agent-ready results")
@@ -1595,10 +1613,43 @@ def _cmd_browser_assist(args):
     if not getattr(args, "browser_assist_command", None):
         print("Error: browser-assist command is required (try: guanlan browser-assist plan URL)", file=sys.stderr)
         sys.exit(2)
+    from guanlan.browser_assist import (
+        build_browser_assist_plan,
+        format_browser_assist_adapters_markdown,
+        format_browser_assist_markdown,
+        format_browser_assist_run_markdown,
+        list_browser_assist_adapters,
+        run_browser_assist_adapter,
+    )
+
+    if args.browser_assist_command == "adapters":
+        adapters = list_browser_assist_adapters()
+        output_format = "json" if args.json else args.format
+        print(json.dumps(adapters, ensure_ascii=False, indent=2) if output_format == "json" else format_browser_assist_adapters_markdown(adapters))
+        return
+
+    if args.browser_assist_command == "run":
+        result = run_browser_assist_adapter(
+            args.url,
+            adapter=args.adapter,
+            execute=bool(args.execute),
+            command_template=args.command_template,
+            timeout=max(args.timeout, 1),
+            output_path=args.output,
+            page_type=args.page_type,
+            signals=list(args.signal or []),
+            platform=args.platform,
+            max_pages=max(args.max_pages, 1),
+            max_chars_per_page=max(args.max_chars_per_page, 1),
+            task_goal=args.task_goal,
+        )
+        output_format = "json" if args.json else args.format
+        print(json.dumps(result, ensure_ascii=False, indent=2) if output_format == "json" else format_browser_assist_run_markdown(result))
+        return
+
     if args.browser_assist_command != "plan":
         print(f"Error: unknown browser-assist command: {args.browser_assist_command}", file=sys.stderr)
         sys.exit(2)
-    from guanlan.browser_assist import build_browser_assist_plan, format_browser_assist_markdown
 
     plan = build_browser_assist_plan(
         args.url,

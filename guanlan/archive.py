@@ -552,6 +552,21 @@ def ingest_search(
     skipped_count = sum(1 for item in records if item.get("status") == "skipped")
     read_success_count = len(readings_by_url)
     timeout_budget_hint_seconds = 240 if read_attempted > 0 else 120
+    timeout_recommendation = {
+        "outer_timeout_seconds": timeout_budget_hint_seconds,
+        "patient_wait_seconds": timeout_budget_hint_seconds,
+        "retry_timeout_seconds": 300 if read_attempted > 0 else 180,
+        "agent_instruction": (
+            "archive ingest 是搜索、候选审计、可选读取和写库的长链路；"
+            "看到 phase_log 持续推进时不要过早判定卡死。若外层超时，请先用 --dry-run 预览，"
+            "或降低 --read-top，但不要把 --limit 降到 30 以下来牺牲证据池。"
+        ),
+        "safe_speedup": [
+            "先运行 --dry-run 查看候选和审计。",
+            "保持 --limit 80，必要时把 --read-top 设为 0-2。",
+            "保留 --cache-ttl 3600 以减少重复请求。",
+        ],
+    }
     timeout_boundary = (
         "默认 search-first ingest 建议给外层 120 秒；如果开启 --read-top，或网络较弱/上游较慢，"
         "建议放宽到 180-300 秒。"
@@ -590,6 +605,7 @@ def ingest_search(
         "audit_summary": _summarize_ingest_audits(records),
         "phase_log": phase_log,
         "timeout_budget_hint_seconds": timeout_budget_hint_seconds,
+        "timeout_recommendation": timeout_recommendation,
         "timeout_boundary": timeout_boundary,
         "next_steps": next_steps,
         "records": records,

@@ -223,6 +223,34 @@ def _tool_definitions() -> list[dict]:
             },
         },
         {
+            "name": "guanlan_browser_assist_run",
+            "description": (
+                "Prepare or run a user-authorized browser-assist adapter bridge. Default host-browser mode "
+                "returns an execution contract for the host Agent browser; open-cli and external adapters are "
+                "explicit opt-in and remain read-only visible-page evidence flows. Cookie access still requires "
+                "separate explicit user authorization for the target platform."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                    "url": {"type": "string"},
+                    "adapter": {"type": "string", "default": "host-browser"},
+                    "execute": {"type": "boolean", "default": False},
+                    "command_template": {"type": "string"},
+                    "timeout": {"type": "integer", "default": 90, "minimum": 1, "maximum": 600},
+                    "output": {"type": "string"},
+                    "page_type": {"type": "string", "default": "access_gate"},
+                    "signals": {"type": "array", "items": {"type": "string"}},
+                    "platform": {"type": "string"},
+                    "max_pages": {"type": "integer", "default": 3, "minimum": 1, "maximum": 20},
+                    "max_chars_per_page": {"type": "integer", "default": 3000, "minimum": 1, "maximum": 20000},
+                    "task_goal": {"type": "string"},
+                    "format": {"type": "string", "enum": ["markdown", "json"], "default": "json"},
+                },
+            },
+        },
+        {
             "name": "guanlan_recipe",
             "description": (
                 "List or render reusable Guanlan research recipes, such as university advisor lookup, "
@@ -718,6 +746,30 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         if str(args.get("format") or "json") == "json":
             return payload
         return format_browser_assist_markdown(payload)
+
+    if name == "guanlan_browser_assist_run":
+        from guanlan.browser_assist import (
+            format_browser_assist_run_markdown,
+            run_browser_assist_adapter,
+        )
+
+        payload = run_browser_assist_adapter(
+            str(args.get("url", "")).strip(),
+            adapter=str(args.get("adapter") or "host-browser"),
+            execute=bool(args.get("execute", False)),
+            command_template=str(args.get("command_template") or ""),
+            timeout=max(int(args.get("timeout") or 90), 1),
+            output_path=str(args.get("output") or ""),
+            page_type=str(args.get("page_type") or "access_gate"),
+            signals=[str(item) for item in args.get("signals", [])] if isinstance(args.get("signals"), list) else [],
+            platform=str(args.get("platform") or ""),
+            max_pages=max(int(args.get("max_pages") or 3), 1),
+            max_chars_per_page=max(int(args.get("max_chars_per_page") or 3000), 1),
+            task_goal=str(args.get("task_goal") or ""),
+        )
+        if str(args.get("format") or "json") == "json":
+            return payload
+        return format_browser_assist_run_markdown(payload)
 
     if name == "guanlan_recipe":
         from guanlan.recipes import (

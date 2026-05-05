@@ -85,6 +85,23 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 if isinstance(plan.get("browser_assist_task"), dict):
                     plan["browser_assist_task"]["platform"] = str(payload.get("platform"))
             return 200, plan
+        if method == "POST" and route == "/browser-assist/run":
+            from guanlan.browser_assist import run_browser_assist_adapter
+
+            return 200, run_browser_assist_adapter(
+                str(payload.get("url", "")).strip(),
+                adapter=str(payload.get("adapter") or "host-browser"),
+                execute=bool(payload.get("execute", False)),
+                command_template=str(payload.get("command_template") or ""),
+                timeout=max(_int(payload.get("timeout"), 90), 1),
+                output_path=str(payload.get("output") or ""),
+                page_type=str(payload.get("page_type") or "access_gate"),
+                signals=[str(item) for item in payload.get("signals", [])] if isinstance(payload.get("signals"), list) else [],
+                platform=str(payload.get("platform") or ""),
+                max_pages=max(_int(payload.get("max_pages"), 3), 1),
+                max_chars_per_page=max(_int(payload.get("max_chars_per_page"), 3000), 1),
+                task_goal=str(payload.get("task_goal") or ""),
+            )
         if method == "POST" and route == "/search":
             from guanlan.webtools import search_web
 

@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """Tests for reusable recipes and page diagnosis."""
 
+from guanlan.browser_assist import (
+    build_browser_assist_adapter_contract,
+    run_browser_assist_adapter,
+)
 from guanlan.page_diagnosis import diagnose_page, format_page_diagnosis_markdown
 from guanlan.recipes import (
     build_recipe_plan,
@@ -81,3 +85,26 @@ def test_browser_assist_plan_is_read_only_and_user_authorized():
     assert plan["browser_assist_task"]["host_browser_contract"]["cookie_access_requires_separate_explicit_authorization"] is True
     assert plan["cookie_access_policy"]["can_escalate"] == "yes_but_only_after_separate_explicit_user_authorization"
     assert "Cookie" in plan["user_prompt"]
+
+
+def test_browser_assist_adapter_contract_keeps_xhs_optional_and_explicit():
+    contract = build_browser_assist_adapter_contract("xhs-cli", platform="xiaohongshu")
+
+    assert contract["id"] == "xhs-cli"
+    assert contract["stability"] == "experimental"
+    assert contract["platform_supported"] is True
+    assert contract["safety"]["cookie_access_requires_separate_explicit_authorization"] is True
+
+
+def test_browser_assist_external_adapter_requires_template_before_execution(monkeypatch):
+    monkeypatch.delenv("GUANLAN_BROWSER_ASSIST_XHS_CLI_COMMAND", raising=False)
+
+    result = run_browser_assist_adapter(
+        "https://www.xiaohongshu.com/explore/demo",
+        adapter="xhs-cli",
+        execute=True,
+    )
+
+    assert result["adapter"] == "xhs-cli"
+    assert result["status"] == "adapter_config_required"
+    assert "GUANLAN_BROWSER_ASSIST_XHS_CLI_COMMAND" in result["setup_hint"]
