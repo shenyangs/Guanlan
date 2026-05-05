@@ -226,6 +226,31 @@ class TestCLI:
         assert host["available"] is True
         assert host["safety"]["cookie_access_requires_separate_explicit_authorization"] is True
 
+    def test_browser_assist_adapters_check_reports_readiness(self, capsys, monkeypatch):
+        monkeypatch.delenv("GUANLAN_BROWSER_ASSIST_XHS_CLI_COMMAND", raising=False)
+        with patch(
+            "sys.argv",
+            [
+                "guanlan",
+                "browser-assist",
+                "adapters",
+                "--check",
+                "--platform",
+                "xiaohongshu",
+                "--json",
+            ],
+        ):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        host = next(item for item in data if item["id"] == "host-browser")
+        xhs = next(item for item in data if item["id"] == "xhs-cli")
+        assert host["check"]["status"] == "ok"
+        assert host["check"]["dry_run_available"] is True
+        assert xhs["check"]["ready"] is False
+        assert any(check["name"] == "command_template" for check in xhs["check"]["checks"])
+
     def test_browser_assist_run_host_browser_returns_execution_contract(self, capsys):
         with patch(
             "sys.argv",

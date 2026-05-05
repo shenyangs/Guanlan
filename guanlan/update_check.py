@@ -159,10 +159,12 @@ def run_install_check(
     """
     resolved_path = command_path if command_path is not None else shutil.which("guanlan")
     resolved_paths = all_paths if all_paths is not None else _all_command_paths("guanlan")
+    unique_paths = _unique_paths(resolved_paths)
     latest_version = latest if latest is not None else latest_pypi_version(timeout=timeout)
     stale = bool(latest_version and is_newer_version(latest_version, current))
-    multiple_paths = len(_unique_paths(resolved_paths)) > 1
+    multiple_paths = len(unique_paths) > 1
     executable = bool(resolved_path)
+    path_details = _path_details(unique_paths, active_path=resolved_path or "", timeout=min(timeout, 1.0))
     status = "ok"
     if not executable or stale:
         status = "fail"
@@ -177,7 +179,17 @@ def run_install_check(
             f"当前 v{current} 低于公开最新 v{latest_version}，先升级再配置 MCP 或可选渠道。"
         )
     if multiple_paths:
+        recommendations.append(f"当前 shell 优先调用：{resolved_path or unique_paths[0]}。")
         recommendations.append("发现多个 guanlan 路径，可能存在 pipx/Homebrew/uv 混装导致的旧版本优先。")
+        stale_paths = [
+            str(item.get("path"))
+            for item in path_details
+            if item.get("version") and latest_version and is_newer_version(str(latest_version), str(item.get("version")))
+        ]
+        if stale_paths:
+            recommendations.append("以下路径看起来不是公开最新版本：" + "、".join(stale_paths))
+        recommendations.append("升级后运行 `hash -r`，再核对 `command -v guanlan`、`which -a guanlan`、`guanlan version`。")
+        recommendations.append("建议只保留一个主安装入口；若 Homebrew 滞后，先切到 `uv tool install --force --upgrade guanlan`。")
     if not recommendations:
         recommendations.append("安装路径和版本未发现明显风险，可以继续配置 MCP 或 Agent。")
 
@@ -186,8 +198,9 @@ def run_install_check(
         "current_version": current,
         "latest_version": latest_version or "",
         "command_path": resolved_path or "",
-        "all_paths": _unique_paths(resolved_paths),
-        "path_count": len(_unique_paths(resolved_paths)),
+        "all_paths": unique_paths,
+        "path_count": len(unique_paths),
+        "path_details": path_details,
         "python": sys.executable,
         "stale": stale,
         "multiple_paths": multiple_paths,
@@ -209,8 +222,18 @@ def format_install_check(report: dict[str, object]) -> str:
     paths = report.get("all_paths") or []
     if isinstance(paths, list) and paths:
         lines.extend(["", "## PATH 中的 guanlan"])
-        for path in paths:
-            lines.append(f"- {path}")
+        details = report.get("path_details") or []
+        if isinstance(details, list) and details:
+            for item in details:
+                marker = " <= 当前优先" if item.get("active") else ""
+                version = item.get("version") or "未知"
+                source = item.get("source_hint") or "unknown"
+                risk = item.get("risk") or ""
+                suffix = f"；{risk}" if risk else ""
+                lines.append(f"- {item.get('path')}{marker}（版本: {version}；来源: {source}{suffix}）")
+        else:
+            for path in paths:
+                lines.append(f"- {path}")
     lines.extend(["", "## 建议"])
     for item in report.get("recommendations") or []:
         lines.append(f"- {item}")
@@ -247,6 +270,67 @@ def _all_command_paths(command: str) -> list[str]:
         found = shutil.which(command)
         return [found] if found else []
     return [line.strip() for line in (result.stdout or "").splitlines() if line.strip()]
+
+
+def _path_details(paths: list[str], *, active_path: str = "", timeout: float = 1.0) -> list[dict[str, object]]:
+    active_real = os.path.realpath(active_path) if active_path else ""
+    details: list[dict[str, object]] = []
+    for path in paths:
+        version, error = _path_version(path, timeout=timeout)
+        details.append(
+            {
+                "path": path,
+                "active": bool(active_real and os.path.realpath(path) == active_real),
+                "version": version,
+                "version_error": error,
+                "source_hint": _install_source_hint(path),
+                "risk": _path_risk(path, active_real=active_real, version=version, error=error),
+            }
+        )
+    return details
+
+
+def _path_version(path: str, *, timeout: float = 1.0) -> tuple[str, str]:
+    if not path:
+        return "", "path_empty"
+    try:
+        result = subprocess.run(
+            [path, "version"],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=max(timeout, 0.2),
+            check=False,
+        )
+    except Exception as exc:
+        return "", type(exc).__name__
+    if result.returncode != 0:
+        return "", (result.stderr or f"exit={result.returncode}").strip()[:120]
+    match = re.search(r"v?(\d+(?:\.\d+){1,3}[A-Za-z0-9.-]*)", result.stdout or "")
+    return (match.group(1) if match else "", "" if match else "version_not_found")
+
+
+def _install_source_hint(path: str) -> str:
+    normalized = path.lower()
+    if "homebrew" in normalized or normalized.startswith("/opt/homebrew/") or normalized.startswith("/usr/local/cellar/"):
+        return "homebrew"
+    if "pipx" in normalized:
+        return "pipx"
+    if ".local/bin" in normalized or ".local/share/uv" in normalized or "/uv/tools/" in normalized:
+        return "uv_or_user_local"
+    if ".venv" in normalized:
+        return "project_venv"
+    return "path"
+
+
+def _path_risk(path: str, *, active_real: str, version: str, error: str) -> str:
+    if error:
+        return f"版本探测失败: {error}"
+    if active_real and os.path.realpath(path) != active_real:
+        return "非当前优先路径"
+    if not version:
+        return "未识别版本"
+    return ""
 
 
 def _unique_paths(paths: list[str] | None) -> list[str]:

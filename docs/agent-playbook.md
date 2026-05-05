@@ -97,12 +97,12 @@ guanlan diagnose page "URL"
 授权后的浏览器可见页结果优先由宿主 Agent 直接提取为 JSON/JSONL，然后这样入库：
 
 ```bash
-guanlan browser-assist adapters
+guanlan browser-assist adapters --check
 guanlan browser-assist run "URL" --adapter host-browser --json
 guanlan archive add-browser-note --from-json browser-notes.jsonl
 ```
 
-`browser-assist run` 默认只返回宿主浏览器执行契约，告诉 Agent 该打开哪些 URL、提取哪些可见字段、哪些动作不能做。`open-cli` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先安装并配置命令模板；不要为了补证临时下载 Playwright、启动独立浏览器或读取浏览器 profile。只有用户另外明确授权 Cookie 平台、用途、风险和只读范围时，才允许走 Cookie 相关流程。
+`browser-assist adapters --check` 只做只读可用性探测：检查可执行文件、命令模板、平台匹配和 dry-run 构造，不会打开页面、读取浏览器状态或调用外部平台。`browser-assist run` 默认只返回宿主浏览器执行契约，告诉 Agent 该打开哪些 URL、提取哪些可见字段、哪些动作不能做。`open-cli` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先安装并配置命令模板；不要为了补证临时下载 Playwright、启动独立浏览器或读取浏览器 profile。只有用户另外明确授权 Cookie 平台、用途、风险和只读范围时，才允许走 Cookie 相关流程。
 
 如果宿主 Agent 没有浏览器提取能力，才退回 `--url "URL" --text-file notes.md` 的手动兜底。
 

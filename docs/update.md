@@ -48,6 +48,19 @@ guanlan hotnews today --limit 5 --trends
 - smoke 中 `hotnews today --trends` 应该返回至少一个来源；如果失败，报告错误文本和版本路径。
 - 任何一步版本或路径不一致，都停止配置 MCP、可选渠道和登录态，先修安装入口。
 
+## 维护者发布同步
+
+发布新版本时不要只推主仓 tag。维护者需要在同一轮确认这些公开入口都同步到同一版本：
+
+- GitHub 主仓、tag 和 release notes。
+- PyPI/uv 安装结果。
+- Homebrew tap：`shenyangs/homebrew-tap` 的 `Formula/guanlan.rb`。
+- 官网：`website/index.html` 和实际部署后的站点页面。
+
+Homebrew 本地缓存可能滞后。先跑 `brew update` 再判断；如果 `brew info shenyangs/tap/guanlan`
+仍显示旧 stable，说明 tap 公式本身没同步，必须更新并推送 `Formula/guanlan.rb` 后再告诉用户
+Homebrew 已经可用。官网如果展示版本、安装命令、能力说明或发版口径，也必须跟随同一版本更新和部署。
+
 ## GitHub 源码更新
 
 确认你位于观澜仓库根目录后，先拉取最新代码，再重装：

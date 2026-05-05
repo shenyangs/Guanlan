@@ -264,6 +264,9 @@ def main():
     p_browser_assist_adapters = browser_assist_sub.add_parser("adapters", help="List browser-assist adapters")
     p_browser_assist_adapters.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_browser_assist_adapters.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_browser_assist_adapters.add_argument("--check", action="store_true", help="Run read-only adapter readiness checks")
+    p_browser_assist_adapters.add_argument("--platform", default="", help="Optional platform label for adapter compatibility checks")
+    p_browser_assist_adapters.add_argument("--dry-run-url", default="https://example.com/article", help="Example URL used to validate dry-run command construction")
     p_browser_assist_plan = browser_assist_sub.add_parser("plan", help="Build a host-browser visible evidence task")
     p_browser_assist_plan.add_argument("url", help="Target page URL")
     p_browser_assist_plan.add_argument("--page-type", default="access_gate", help="Diagnosis page type hint")
@@ -1623,7 +1626,11 @@ def _cmd_browser_assist(args):
     )
 
     if args.browser_assist_command == "adapters":
-        adapters = list_browser_assist_adapters()
+        adapters = list_browser_assist_adapters(
+            check=bool(getattr(args, "check", False)),
+            platform=getattr(args, "platform", "") or "",
+            dry_run_url=getattr(args, "dry_run_url", "") or "https://example.com/article",
+        )
         output_format = "json" if args.json else args.format
         print(json.dumps(adapters, ensure_ascii=False, indent=2) if output_format == "json" else format_browser_assist_adapters_markdown(adapters))
         return

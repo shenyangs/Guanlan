@@ -64,18 +64,26 @@ def test_check_update_uses_pypi_without_github_repo(capsys, monkeypatch):
 
 
 def test_install_check_reports_duplicate_paths_and_stale_version():
-    report = update_check.run_install_check(
-        "0.2.9",
-        latest="0.3.0",
-        command_path="/usr/local/bin/guanlan",
-        all_paths=["/usr/local/bin/guanlan", "/opt/homebrew/bin/guanlan"],
-    )
+    with patch(
+        "guanlan.update_check._path_version",
+        side_effect=[("0.2.9", ""), ("0.3.0", "")],
+    ):
+        report = update_check.run_install_check(
+            "0.2.9",
+            latest="0.3.0",
+            command_path="/usr/local/bin/guanlan",
+            all_paths=["/usr/local/bin/guanlan", "/opt/homebrew/bin/guanlan"],
+        )
     text = update_check.format_install_check(report)
 
     assert report["status"] == "fail"
     assert report["stale"] is True
     assert report["multiple_paths"] is True
+    assert report["path_details"][0]["active"] is True
+    assert report["path_details"][0]["version"] == "0.2.9"
     assert "多个 guanlan 路径" in text
+    assert "当前优先" in text
+    assert "以下路径看起来不是公开最新版本" in text
     assert "uv tool install --force --upgrade guanlan" in text
 
 

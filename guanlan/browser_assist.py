@@ -205,10 +205,25 @@ def build_browser_assist_plan(
     }
 
 
-def list_browser_assist_adapters() -> list[dict[str, Any]]:
+def list_browser_assist_adapters(
+    *,
+    check: bool = False,
+    platform: str = "",
+    dry_run_url: str = "https://example.com/article",
+) -> list[dict[str, Any]]:
     """Return adapter descriptors for Agent-facing capability discovery."""
 
-    return [build_browser_assist_adapter_contract(adapter_id) for adapter_id in BROWSER_ASSIST_ADAPTERS]
+    adapters = []
+    for adapter_id in BROWSER_ASSIST_ADAPTERS:
+        contract = build_browser_assist_adapter_contract(adapter_id, platform=platform)
+        if check:
+            contract["check"] = check_browser_assist_adapter(
+                adapter_id,
+                platform=platform,
+                dry_run_url=dry_run_url,
+            )
+        adapters.append(contract)
+    return adapters
 
 
 def build_browser_assist_adapter_contract(adapter: str = "host-browser", *, platform: str = "") -> dict[str, Any]:
@@ -244,6 +259,92 @@ def build_browser_assist_adapter_contract(adapter: str = "host-browser", *, plat
             "forbidden_actions": FORBIDDEN_BROWSER_ASSIST_ACTIONS,
             "forbidden_implementations": FORBIDDEN_BROWSER_ASSIST_IMPLEMENTATIONS,
         },
+    }
+
+
+def check_browser_assist_adapter(
+    adapter: str = "host-browser",
+    *,
+    platform: str = "",
+    dry_run_url: str = "https://example.com/article",
+) -> dict[str, Any]:
+    """Return a read-only readiness check for one browser-assist adapter."""
+
+    adapter_id = resolve_browser_assist_adapter(adapter)
+    contract = build_browser_assist_adapter_contract(adapter_id, platform=platform)
+    checks: list[dict[str, Any]] = []
+    hints: list[str] = []
+    dry_run_command: list[str] = []
+
+    def add(name: str, status: str, message: str, **extra: Any) -> None:
+        checks.append({"name": name, "status": status, "message": message, **extra})
+
+    platform_supported = bool(contract.get("platform_supported", True))
+    if platform and not platform_supported:
+        add("platform", "fail", f"{adapter_id} 不支持平台 {platform}")
+        hints.append("改用 host-browser，或选择匹配该平台的外部适配器。")
+    elif platform:
+        add("platform", "ok", f"{adapter_id} 支持平台 {platform}")
+    else:
+        add("platform", "ok", "未指定平台；按适配器声明能力检查。")
+
+    if adapter_id == "host-browser":
+        add("host_browser_contract", "ok", "宿主浏览器路径只生成任务契约，不需要本机可执行文件。")
+        add("dry_run", "ok", "dry-run 可用：返回 host Agent 可执行契约，不读取浏览器状态。")
+        return {
+            "status": "ok" if platform_supported else "fail",
+            "ready": platform_supported,
+            "checks": checks,
+            "dry_run_available": platform_supported,
+            "dry_run_mode": "contract_only",
+            "repair_hints": hints,
+        }
+
+    executable_path = str(contract.get("executable_path") or "")
+    command_env = str(contract.get("command_template_env") or "")
+    template_configured = bool(contract.get("command_template_configured"))
+    if executable_path:
+        add("executable", "ok", "已找到可执行文件。", path=executable_path)
+    else:
+        add("executable", "warn", "未在 PATH 中找到默认可执行文件。")
+
+    if command_env:
+        if template_configured:
+            add("command_template", "ok", f"已配置 {command_env}。")
+        else:
+            template_status = "warn" if adapter_id == "open-cli" else "fail"
+            add("command_template", template_status, f"未配置 {command_env}。")
+            if adapter_id == "xhs-cli":
+                hints.append(f"设置 {command_env}，命令模板需包含 {{url}}，可选包含 {{output}}。")
+
+    if adapter_id == "open-cli":
+        dry_run_command = _open_cli_command(dry_run_url)
+    else:
+        dry_run_command = _external_adapter_command(adapter_id, dry_run_url, output_path="")
+    executable_ok = _command_executable_available(dry_run_command)
+    if dry_run_command and executable_ok:
+        add("dry_run", "ok", "dry-run 命令可构造，入口可执行；未实际打开或抓取页面。")
+    elif dry_run_command:
+        add("dry_run", "fail", f"dry-run 命令入口不可执行：{dry_run_command[0]}")
+        hints.append("确认命令模板中的第一个命令在 PATH 中，或改用绝对路径。")
+    else:
+        add("dry_run", "fail", "dry-run 命令不可构造。")
+
+    ready = bool(platform_supported and dry_run_command and executable_ok)
+    status = "ok" if ready else ("fail" if adapter_id != "xhs-cli" else "warn")
+    if adapter_id == "open-cli" and not ready:
+        hints.append("安装系统打开命令，或配置 GUANLAN_BROWSER_ASSIST_OPEN_CLI_COMMAND。")
+    if adapter_id == "xhs-cli" and not executable_path:
+        hints.append("如需小红书外部适配器，先安装并配置 xhs-cli；否则继续使用 host-browser 稳定路径。")
+
+    return {
+        "status": status,
+        "ready": ready,
+        "checks": checks,
+        "dry_run_available": ready,
+        "dry_run_mode": "command_template" if template_configured else ("builtin_open" if adapter_id == "open-cli" else ""),
+        "command_preview": _safe_command_preview(dry_run_command) if dry_run_command else [],
+        "repair_hints": _unique(hints),
     }
 
 
@@ -394,6 +495,15 @@ def format_browser_assist_adapters_markdown(adapters: list[dict[str, Any]]) -> s
         lines.append(f"- 说明: {item.get('description')}")
         if item.get("command_template_env"):
             lines.append(f"- 命令模板环境变量: `{item.get('command_template_env')}`")
+        check = item.get("check") or {}
+        if check:
+            lines.append(f"- 自检状态: {check.get('status')} / ready={bool(check.get('ready'))}")
+            if check.get("dry_run_available"):
+                lines.append(f"- Dry-run: 可用（{check.get('dry_run_mode') or 'command'}）")
+            else:
+                lines.append("- Dry-run: 不可用")
+            for hint in check.get("repair_hints") or []:
+                lines.append(f"- 修复提示: {hint}")
         lines.append(f"- 入库: `{item.get('archive_next_step')}`")
         lines.append("")
     return "\n".join(lines).strip()
@@ -801,6 +911,22 @@ def _external_adapter_command(
 def _render_command_template(template: str, *, url: str, output: str = "") -> list[str]:
     rendered = template.format(url=url, output=output)
     return shlex.split(rendered)
+
+
+def _command_executable_available(command: list[str]) -> bool:
+    if not command:
+        return False
+    executable = str(command[0] or "")
+    return bool(shutil.which(executable) or (os.path.isabs(executable) and os.path.exists(executable)))
+
+
+def _safe_command_preview(command: list[str]) -> list[str]:
+    if not command:
+        return []
+    preview = [str(part) for part in command[:3]]
+    if len(command) > 3:
+        preview.append("...")
+    return preview
 
 
 def _execute_adapter_command(

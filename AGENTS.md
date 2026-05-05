@@ -12,6 +12,14 @@ commit subjects, changelog entries, and release notes. Keep conventional prefixe
 `feat:` / `fix:` / `docs:` when useful, but write the description in Chinese, for example
 `feat: 扩展垂直路由和搜索质量反馈`.
 
+Release sync rule: when shipping a new Guanlan version, keep the public distribution surfaces in
+lockstep. Do not call a release complete until the GitHub repo/tag, PyPI/uv install path, Homebrew
+tap formula (`shenyangs/homebrew-tap`), and official website (`website/index.html` plus any deployed
+site flow) all reflect the same version and positioning. If Homebrew reports an older stable version,
+run `brew update` first; if the tap itself is stale, update and push `Formula/guanlan.rb` before
+telling users Homebrew is current. If the website carries version, install, capability, or release
+copy, update and deploy it in the same release pass.
+
 Install/update rule: after installing or upgrading Guanlan, always do a full reinstall, not an
 incremental upgrade, before configuring MCP, optional channels, or auth. Prefer one clean path:
 `uv tool install --force --upgrade guanlan`; if the user explicitly wants Homebrew, run

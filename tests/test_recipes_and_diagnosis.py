@@ -3,6 +3,7 @@
 
 from guanlan.browser_assist import (
     build_browser_assist_adapter_contract,
+    check_browser_assist_adapter,
     run_browser_assist_adapter,
 )
 from guanlan.page_diagnosis import diagnose_page, format_page_diagnosis_markdown
@@ -94,6 +95,17 @@ def test_browser_assist_adapter_contract_keeps_xhs_optional_and_explicit():
     assert contract["stability"] == "experimental"
     assert contract["platform_supported"] is True
     assert contract["safety"]["cookie_access_requires_separate_explicit_authorization"] is True
+
+
+def test_browser_assist_adapter_check_is_read_only_and_actionable(monkeypatch):
+    monkeypatch.delenv("GUANLAN_BROWSER_ASSIST_XHS_CLI_COMMAND", raising=False)
+
+    result = check_browser_assist_adapter("xhs-cli", platform="xiaohongshu")
+
+    assert result["status"] == "warn"
+    assert result["ready"] is False
+    assert result["dry_run_available"] is False
+    assert any("GUANLAN_BROWSER_ASSIST_XHS_CLI_COMMAND" in hint for hint in result["repair_hints"])
 
 
 def test_browser_assist_external_adapter_requires_template_before_execution(monkeypatch):
