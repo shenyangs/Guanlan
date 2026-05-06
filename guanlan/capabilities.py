@@ -432,6 +432,7 @@ def format_capabilities_markdown(capabilities: list[dict[str, Any]] | None = Non
         "## Agent 超时预算",
         "",
         "- 外层工具 timeout 建议：`search/read/status/doctor` 60-90 秒；`hotnews/feeds/pulse/read batch` 120 秒；`research/compare/timeline/dossier/archive ingest-research` 180-300 秒；安装/升级/发布 smoke 300-600 秒。",
+        "- 单位按宿主字段名换算：`timeout_budget_seconds` 传秒；`timeout_ms` / `timeout_milliseconds` 传毫秒，例如 120 秒 = 120000 ms、300 秒 = 300000 ms；不要把 `timeout=120` 这种裸数字交给下游。",
         "- 网络超时只能说明本轮网络或上游源未完成，不代表没有证据；优先重试一次、使用 `--cache-ttl 3600`，或降低 `--read-top`，不要把正常 80 条候选池砍成小样本。",
         "",
         "## 能力清单",

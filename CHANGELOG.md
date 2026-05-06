@@ -6,6 +6,13 @@
 
 ## Unreleased
 
+## v0.5.19 - 2026-05-06
+
+### Changed
+
+- `guanlan capabilities` 的 Agent 超时预算同步补充 `timeout_ms` / `timeout_milliseconds` 毫秒换算和裸数字禁用提醒，让能力发现入口也遵守 timeout 单位契约。
+- 官网版本与静态资源版本同步到 `0.5.19`。
+
 ## v0.5.18 - 2026-05-06
 
 ### Added
