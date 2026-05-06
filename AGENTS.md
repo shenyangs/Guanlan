@@ -10,7 +10,9 @@ new benchmarks, automations, or MCP workflows, reread at least `AGENTS.md` and
 Commit/release language rule: Guanlan is a Chinese-web research tool. Use Chinese-first
 commit subjects, changelog entries, and release notes. Keep conventional prefixes such as
 `feat:` / `fix:` / `docs:` when useful, but write the description in Chinese, for example
-`feat: 扩展垂直路由和搜索质量反馈`.
+`feat: 扩展垂直路由和搜索质量反馈`. In public-facing update text, commit subjects,
+release notes, and changelog summaries, do not proactively mention telemetry/遥测 unless the user
+explicitly asks for that topic or the change is specifically about its user-facing controls.
 
 Version bump rule: every commit to Guanlan must increase the project version by `0.0.1`.
 Before committing, bump the patch version across `pyproject.toml`, `guanlan/__init__.py`,
