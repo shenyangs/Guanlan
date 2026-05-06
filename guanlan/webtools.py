@@ -1707,6 +1707,21 @@ def search_web(
         limit=limit,
     )
 
+    if not site and backend in {"auto", "duckduckgo"}:
+        _run_route_target_site_rescue_pass(
+            results,
+            diagnostics=backend_diagnostics,
+            errors=errors,
+            original_query=original_query,
+            route_plan=route_plan.to_dict(),
+            effective_scope=effective_scope,
+            recency=recency,
+            quality=quality,
+            limit=limit,
+            network_mode=network_mode,
+            profile=profile,
+        )
+
     if not results and effective_scope == "university" and not site and backend in {"auto", "duckduckgo"}:
         fallback_query = _apply_recency_query(original_query, recency)
         attempt = {
@@ -2218,7 +2233,18 @@ def _append_direct_source_seed_results(
         return
     intents = list(route_plan.get("primary_intents") or []) + list(route_plan.get("secondary_intents") or [])
     scopes = _unique_keep_order([scope for scope in [effective_scope, *(route_plan.get("preferred_scopes") or [])] if scope])
-    should_seed_with_results = is_live_sports_lookup(original_query, intents=intents, scopes=scopes) or is_finance_lookup(original_query, intents=intents, scopes=scopes)
+    seed_with_results_intents = {
+        "academic",
+        "cybersecurity",
+        "science",
+        "test_prep",
+        "weather_disaster",
+    }
+    should_seed_with_results = (
+        is_live_sports_lookup(original_query, intents=intents, scopes=scopes)
+        or is_finance_lookup(original_query, intents=intents, scopes=scopes)
+        or bool(seed_with_results_intents & set(intents + scopes))
+    )
     if results and not should_seed_with_results:
         return
     seeds = direct_source_seeds(
@@ -2277,6 +2303,132 @@ def _append_direct_source_seed_results(
             "seed_ids": [str(item.trace.get("seed_id") or "") for item in added],
         }
     )
+
+
+def _run_route_target_site_rescue_pass(
+    results: list[SearchResult],
+    *,
+    diagnostics: list[dict[str, Any]],
+    errors: list[str],
+    original_query: str,
+    route_plan: dict[str, Any],
+    effective_scope: str | None,
+    recency: dict[str, Any],
+    quality: dict[str, Any],
+    limit: int,
+    network_mode: str,
+    profile: str | None,
+) -> None:
+    """Use route-planned target sites when the current pool misses the vertical entrypoints."""
+    target_sites = _route_target_site_rescue_domains(route_plan, effective_scope)
+    if not target_sites:
+        return
+    if not _route_target_site_rescue_needed(results, route_plan=route_plan, quality=quality, target_sites=target_sites):
+        return
+
+    attempted_queries = {
+        str(item.get("query") or "").strip()
+        for item in diagnostics
+        if str(item.get("query") or "").strip()
+    }
+    per_site_limit = max(3, min(8, max(limit, 1)))
+    for domain in target_sites:
+        query = _apply_recency_query(f"site:{domain} {original_query}", recency)
+        if query in attempted_queries:
+            continue
+        attempted_queries.add(query)
+        before_count = len(results)
+        _run_duckduckgo_recovery_attempt(
+            results,
+            diagnostics=diagnostics,
+            errors=errors,
+            backend_name="duckduckgo:route_target_site",
+            query=query,
+            original_query=original_query,
+            quality=quality,
+            limit=per_site_limit,
+            note=f"路由计划给出高置信目标站点 {domain}，当前候选覆盖不足，自动补一轮站内搜索。",
+            site=domain,
+            extra={"route_target_site": domain},
+            network_mode=network_mode,
+            profile=profile,
+        )
+        if len(results) > before_count and _route_target_site_coverage_count(results, target_sites) >= 1:
+            break
+
+
+def _route_target_site_rescue_domains(route_plan: dict[str, Any], effective_scope: str | None) -> list[str]:
+    intents = {
+        str(item)
+        for item in list(route_plan.get("primary_intents") or []) + list(route_plan.get("secondary_intents") or [])
+        if str(item)
+    }
+    high_confidence_intents = {
+        "cybersecurity",
+        "science",
+        "test_prep",
+        "university_admissions",
+        "weather_disaster",
+    }
+    if not (high_confidence_intents & intents or effective_scope in {"cybersecurity", "science", "test_prep", "university", "weather_disaster"}):
+        return []
+    domains: list[str] = []
+    for raw in route_plan.get("target_sites") or []:
+        domain = _normalize_site_constraint(str(raw))
+        if not domain:
+            continue
+        if domain == "edu.cn":
+            continue
+        domains.append(domain)
+    return _unique_keep_order(domains)[:4]
+
+
+def _route_target_site_rescue_needed(
+    results: list[SearchResult],
+    *,
+    route_plan: dict[str, Any],
+    quality: dict[str, Any],
+    target_sites: list[str],
+) -> bool:
+    if not results:
+        return True
+    if _route_target_site_coverage_count(results, target_sites) > 0:
+        return False
+    intents = {
+        str(item)
+        for item in list(route_plan.get("primary_intents") or []) + list(route_plan.get("secondary_intents") or [])
+        if str(item)
+    }
+    if "university_admissions" in intents:
+        return True
+    preferred_scopes = {str(item) for item in quality.get("preferred_scopes") or [] if str(item)}
+    preferred_types = {str(item) for item in quality.get("preferred_source_types") or [] if str(item)}
+    preferred_hits = [
+        item
+        for item in results
+        if item.matched_scope in preferred_scopes or item.source_type in preferred_types
+    ]
+    if not preferred_hits:
+        return True
+    route_roles = {str(item) for item in route_plan.get("evidence_roles") or [] if str(item)}
+    if route_roles:
+        role_hits = [item for item in results if item.evidence_role in route_roles]
+        if not role_hits and intents & {"academic", "cybersecurity", "science", "test_prep", "weather_disaster"}:
+            return True
+    return False
+
+
+def _route_target_site_coverage_count(results: list[SearchResult], target_sites: list[str]) -> int:
+    normalized_sites = [_normalize_site_constraint(site) for site in target_sites if _normalize_site_constraint(site)]
+    if not normalized_sites:
+        return 0
+    covered = {
+        site
+        for item in results
+        for site in normalized_sites
+        if _site_matches_constraint(item.domain or _domain(item.url), site)
+    }
+    return len(covered)
 
 
 def _run_duckduckgo_recovery_pass(
@@ -8635,6 +8787,20 @@ def _infer_evidence_role(
         if "transfer_report" in route_roles or re.search(r"转会|合同|续约|transfer|contract", title_blob):
             return "transfer_report"
         return "sports_report"
+    if scope == "cybersecurity" or roles & {"security_advisory", "vulnerability_record", "vendor_patch"} or "网络安全" in source_type:
+        domain = _domain(item.url)
+        if domain in {"openssl.org", "msrc.microsoft.com"} or re.search(r"补丁|修复版本|patch|security advisories|update guide", title_blob):
+            return "vendor_patch"
+        if domain in {"cisa.gov", "cert.org.cn", "cert.org"} or re.search(r"安全公告|安全预警|advisory|known exploited|kev", title_blob):
+            return "security_advisory"
+        if (
+            domain in {"nvd.nist.gov", "cve.org", "cnvd.org.cn", "cnnvd.org.cn", "avd.aliyun.com"}
+            or re.search(r"\bcve-\d{4}-\d{4,7}\b|漏洞库|vulnerabilities|vulnerability database", title_blob)
+        ):
+            return "vulnerability_record"
+        if roles & {"discussion", "developer_discussion"}:
+            return "developer_discussion"
+        return "security_advisory"
     finance_scopes = {"finance", "finance_quote", "finance_company", "finance_disclosure", "finance_news", "finance_macro", "finance_sentiment", "finance_research"}
     finance_roles = {
         "market_quote",

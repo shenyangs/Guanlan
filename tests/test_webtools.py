@@ -253,6 +253,64 @@ def test_search_web_adds_direct_finance_seeds_even_with_search_results(monkeypat
     assert any(item["backend"].startswith("direct:finance") and item["status"] == "ok" for item in diagnostics)
 
 
+def test_search_web_adds_direct_security_seeds_even_with_search_results(monkeypatch):
+    def fake_search(query, limit=10):
+        return [
+            webtools.SearchResult(
+                title="OpenSSL 漏洞讨论",
+                url="https://example.com/openssl-note",
+                snippet="OpenSSL CVE 最新 漏洞 影响版本",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web(
+        "OpenSSL CVE 最新 漏洞 影响版本",
+        backend="duckduckgo",
+        scope="cybersecurity",
+        limit=8,
+        trace=True,
+    )
+
+    urls = [item["url"] for item in results]
+    assert any("cisa.gov/known-exploited-vulnerabilities-catalog" in url for url in urls)
+    assert any("openssl.org/news/secadv" in url for url in urls)
+    assert any(item["evidence_role"] == "vendor_patch" for item in results)
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+    assert any(item["backend"].startswith("direct:cybersecurity") and item["status"] == "ok" for item in diagnostics)
+
+
+def test_rank_results_maps_security_domains_to_evidence_roles():
+    route = webtools.build_route_plan("OpenSSL CVE 最新 漏洞 影响版本", scope="cybersecurity").to_dict()
+    quality = webtools.detect_search_quality_profile("OpenSSL CVE 最新 漏洞 影响版本", scope="cybersecurity")
+    quality = webtools._quality_with_route_plan(quality, route, explicit_scope="cybersecurity")
+
+    ranked = webtools.rank_results(
+        [
+            webtools.SearchResult(
+                title="国家信息安全漏洞库 CVE-2026-12345",
+                url="https://www.cnnvd.org.cn/home/globalSearch?keyword=CVE-2026-12345",
+                snippet="OpenSSL 漏洞 影响版本。",
+                source="duckduckgo",
+            ),
+            webtools.SearchResult(
+                title="OpenSSL Security Advisories",
+                url="https://www.openssl.org/news/secadv/",
+                snippet="OpenSSL security advisory and fixed versions.",
+                source="direct_source",
+            ),
+        ],
+        query="OpenSSL CVE 最新 漏洞 影响版本",
+        preferred_scope="cybersecurity",
+        quality=quality,
+    )
+
+    roles = {item.domain: item.evidence_role for item in ranked}
+    assert roles["cnnvd.org.cn"] == "vulnerability_record"
+    assert roles["openssl.org"] == "vendor_patch"
+
+
 def test_entertainment_scopes_use_short_site_expression(monkeypatch):
     captured_queries = []
 
@@ -339,10 +397,15 @@ def test_scoped_search_retries_open_query_when_site_expression_is_empty(monkeypa
         trace=True,
     )
 
-    assert len(results) == 1
+    assert len(results) >= 1
     assert captured_queries[0].startswith("(")
     assert captured_queries[1].startswith("OpenSSL CVE latest affected versions")
     assert "retried the original query" in results[0]["trace"]["backend_diagnostics"][0]["note"]
+    assert any("openssl.org/news/secadv" in item["url"] for item in results)
+    assert any(
+        item["backend"].startswith("direct:cybersecurity")
+        for item in results[0]["trace"]["backend_diagnostics"]
+    )
 
 
 def test_search_quality_profile_detects_english_company_intent():
@@ -1867,6 +1930,47 @@ def test_search_web_strict_scope_skips_open_mix(monkeypatch):
     assert len(requested) == 1
     assert requested[0].startswith("(")
     assert results[0]["trace"]["scope_mode"] == "strict"
+
+
+def test_search_web_rescues_university_scope_with_route_target_site(monkeypatch):
+    requested = []
+
+    def fake_search(query, limit=10):
+        requested.append(query)
+        if query.startswith("site:cs.tsinghua.edu.cn"):
+            return [
+                webtools.SearchResult(
+                    title="清华大学计算机科学与技术系2025年硕士统招生复试录取实施细则",
+                    url="https://cs.tsinghua.edu.cn/info/1088/1234.htm",
+                    snippet="清华大学计算机科学与技术系 研究生招生 导师 复试 录取。",
+                    source="duckduckgo",
+                )
+            ]
+        return [
+            webtools.SearchResult(
+                title="中国研究生招生信息网",
+                url="https://yz.chsi.com.cn/",
+                snippet="全国硕士研究生招生考试报名和调剂入口。",
+                source="duckduckgo",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web(
+        "清华大学计算机系研究生招生 导师",
+        backend="duckduckgo",
+        profile="china",
+        scope="university",
+        limit=8,
+        trace=True,
+    )
+
+    assert any("site:cs.tsinghua.edu.cn" in query for query in requested)
+    assert any(item["domain"] == "cs.tsinghua.edu.cn" for item in results)
+    assert results[0]["source_type"] == "高校/院系官网"
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+    assert any(item["backend"] == "duckduckgo:route_target_site" and item["status"] == "ok" for item in diagnostics)
 
 
 def test_research_english_profile_adapts_legacy_tech_preset(monkeypatch):

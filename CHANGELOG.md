@@ -6,6 +6,17 @@
 
 ## Unreleased
 
+## v0.5.20 - 2026-05-06
+
+### Added
+
+- 高置信垂直路由新增目标站点补救：当安全、科学、考试、天气灾害、高校招生等任务缺少 route 规划的目标站点覆盖时，自动补一轮站内搜索并在 trace 中标注 `duckduckgo:route_target_site`。
+- 安全/CVE 查询在已有普通搜索结果时也会保留 CISA、OpenSSL 等 direct source seeds，并为漏洞库、厂商公告、安全公告映射更清晰的 evidence role。
+
+### Changed
+
+- 官网版本与静态资源版本同步到 `0.5.20`。
+
 ## v0.5.19 - 2026-05-06
 
 ### Changed
