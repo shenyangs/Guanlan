@@ -6,6 +6,19 @@
 
 ## Unreleased
 
+## v0.5.17 - 2026-05-06
+
+### Added
+
+- 新增 `scripts/publish_release.sh`，把发布前闸门、推送 `main`、创建并推送同版本 `v*` tag 串成一个动作，避免只推 GitHub 主分支却漏掉 PyPI 发布。
+
+### Changed
+
+- 发布文档明确 PyPI 由 tag 触发，正式发布优先使用 `scripts/publish_release.sh`，不要把“版本提交已推送”误认为“公共安装渠道已同步”。
+- PyPI 发布 workflow 生成 Homebrew 公式时把 `depends_on` 放在资源块之前，并使用中文优先的 tap 提交标题。
+- 发布前状态检查兼容 Homebrew 公式使用显式 `version` 字段，避免 GitHub 源码包过渡期被误报为版本未同步。
+- 官网版本与静态资源版本同步到 `0.5.17`。
+
 ## v0.5.16 - 2026-05-06
 
 ### Added

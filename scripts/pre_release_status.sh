@@ -49,11 +49,12 @@ fi
 
 if [ -n "$tap_formula" ]; then
   [ -f "$tap_formula" ] || fail "Homebrew formula not found: $tap_formula"
-  if ! grep -q "guanlan-$version_from_pyproject.tar.gz" "$tap_formula"; then
+  if ! grep -q "guanlan-$version_from_pyproject.tar.gz" "$tap_formula" \
+    && ! grep -q "version \"$version_from_pyproject\"" "$tap_formula"; then
     if [ "${GUANLAN_RELEASE_REQUIRE_DISTRIBUTIONS:-0}" = "1" ]; then
-      fail "Homebrew formula $tap_formula does not reference guanlan-$version_from_pyproject.tar.gz"
+      fail "Homebrew formula $tap_formula does not reference version $version_from_pyproject"
     fi
-    echo "pre-release warning: Homebrew formula $tap_formula does not reference guanlan-$version_from_pyproject.tar.gz" >&2
+    echo "pre-release warning: Homebrew formula $tap_formula does not reference version $version_from_pyproject" >&2
   fi
 fi
 

@@ -5717,13 +5717,14 @@ def _audit_claim_differences(observations: list[dict[str, Any]]) -> list[dict[st
             by_category.setdefault(category, {}).setdefault(value, []).append(obs)
     differences: list[dict[str, Any]] = []
     for category, values in by_category.items():
-        if len(values) < 2 or len(values) > 8:
+        if len(values) < 2:
             continue
+        selected_values = dict(list(values.items())[:8])
         source_urls = {str(obs.get("url") or "") for obs_list in values.values() for obs in obs_list}
         if len(source_urls) < 2:
             continue
         sources: list[dict[str, str]] = []
-        for value, obs_list in values.items():
+        for value, obs_list in selected_values.items():
             for obs in obs_list[:2]:
                 sources.append(
                     {
@@ -5737,7 +5738,7 @@ def _audit_claim_differences(observations: list[dict[str, Any]]) -> list[dict[st
         differences.append(
             {
                 "category": category,
-                "values": sorted(values.keys(), key=str.lower),
+                "values": sorted(selected_values.keys(), key=str.lower),
                 "sources": sources,
                 "severity": "needs_review",
             }
