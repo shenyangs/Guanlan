@@ -43,6 +43,10 @@ def test_recipe_plan_builds_trajectory_map_workflow():
     assert any("guanlan dossier" in command for command in plan["commands"])
     assert any("guanlan compare" in command for command in plan["commands"])
     assert any("guanlan sources explain" in command for command in plan["commands"])
+    assert plan["timeout_budget_seconds"] == 300
+    assert plan["timeout_budget_ms"] == 300000
+    assert any("timeout_ms" in item for item in plan["timeout_unit_contract"])
+    assert "300000 ms" in rendered
     assert "不要凭印象编造竞品清单" in rendered
     assert suggest_recipe("帮我搞懂 Manus Agent 的来龙去脉和竞品格局").id == "trajectory-map"
 

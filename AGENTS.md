@@ -138,10 +138,13 @@ agent platform, MCP client, or automation runner lets you set a tool timeout, us
 60-90 seconds for `status`, `doctor`, `search`, and single-URL `read`; 120 seconds for `hotnews`,
 `feeds`, `pulse`, batch reads, and default search-first `archive ingest-research`; 180-300 seconds
 for `research`, `compare`, `timeline`, `dossier`, and `archive ingest-research --read-top N`;
-300-600 seconds for install/update/release smoke workflows. On timeout,
-retry once with `--cache-ttl 3600` where supported or reduce `--read-top`, but do not shrink the
-result pool below the normal 80 just to make the command finish faster. A timeout is network evidence,
-not evidence that the topic has no results.
+300-600 seconds for install/update/release smoke workflows. These budgets are seconds by default.
+If the host field is named `timeout_ms`, `timeout_milliseconds`, or otherwise documents milliseconds,
+convert explicitly: 90 seconds = 90000 ms, 120 seconds = 120000 ms, 300 seconds = 300000 ms, and
+600 seconds = 600000 ms. Do not pass a bare number such as `timeout=120` to downstream agents or
+tools without confirming the unit. On timeout, retry once with `--cache-ttl 3600` where supported or
+reduce `--read-top`, but do not shrink the result pool below the normal 80 just to make the command
+finish faster. A timeout is network evidence, not evidence that the topic has no results.
 
 When using Guanlan as an agent, prefer this minimal command set:
 

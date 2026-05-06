@@ -152,6 +152,12 @@ Recipe 输出的是计划、证据层和边界，不是最终答案。执行时�
 
 如果 trace 出现 `quality_gate.reason=partial_salvage`，表示观澜从低覆盖批次里救回了强官方/垂直信源线索；这不是失败，应该先读取代表原文并说明证据角色仍有缺口。如果 `read` 输出 `兜底状态: unusable`，表示搜索兜底无法确认同一页面，不要引用兜底内容，改走 `diagnose page`、结构化入口、scope 搜索或 WebFetch 定点补证。
 
+### Timeout 单位契约
+
+Guanlan 输出给 Agent 的外层预算默认是秒：`status`、`doctor`、`search`、单 URL `read` 用 60-90 秒；`hotnews`、`feeds`、`pulse`、批量读取和默认 `archive ingest-research` 用 120 秒；`research`、`compare`、`timeline`、`dossier` 和带 `--read-top` 的入库用 180-300 秒；安装、升级、发布 smoke 用 300-600 秒。
+
+如果宿主工具字段名是 `timeout_ms`、`timeout_milliseconds`，或平台文档说明按毫秒解释，要显式换算：90 秒 = 90000 ms，120 秒 = 120000 ms，300 秒 = 300000 ms，600 秒 = 600000 ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或自动化工具，必须先确认单位。
+
 ## 垂直权威入口
 
 有些问题不该只赌搜索引擎发现。例如体育比分、财经行情/公告披露/宏观数据、天气灾害、CVE 漏洞、科学机构声明、文娱榜单/票房、考试官方信息，用户真正需要的是“先去哪个权威入口核验”。Guanlan 会在这些高确定性场景里自动加入少量 direct source seeds，并在 `route` 里给出 `guanlan read` 命令。

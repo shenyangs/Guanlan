@@ -54,3 +54,15 @@ def test_workflow_markdown_is_agent_readable():
     assert "观澜工作流分流" in text
     assert "建议执行链路" in text
     assert "不要过度思考" in text
+    assert "300000 ms" in text
+    assert "Timeout 单位契约" in text
+    assert "裸数字" in text
+
+
+def test_workflow_json_exposes_timeout_seconds_and_ms():
+    decision = decide_workflow("某公司 档案 风险 舆情", command="search", profile="china")
+    payload = decision.to_dict()
+
+    assert payload["timeout_budget_seconds"] == 300
+    assert payload["timeout_budget_ms"] == 300000
+    assert any("timeout_ms" in item for item in payload["timeout_unit_contract"])

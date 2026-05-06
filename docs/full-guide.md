@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.5.17`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.18`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -850,12 +850,16 @@ CLI 是默认主路径；如果当前 Agent 或平台支持 MCP，可以把 `gua
 
 观澜内部会给单个网页、RSS 和热榜源设置请求超时，防止一个上游无限卡住；但 Agent/MCP/自动化平台包住整个命令时，要给组合流程更大的外层 timeout。建议：
 
-| 命令场景 | 外层 timeout |
-| --- | --- |
-| `status`、`doctor`、`search`、单 URL `read` | 60-90 秒 |
-| `hotnews`、`feeds`、`pulse`、`read batch` | 120 秒 |
-| `research`、`compare`、`timeline`、`dossier`、`archive ingest-research` | 180-300 秒 |
-| 安装、升级、发布 smoke、Homebrew/PyPI 校验 | 300-600 秒 |
+| 命令场景 | seconds 字段 | `timeout_ms` / milliseconds 字段 |
+| --- | --- | --- |
+| `status`、`doctor`、`search`、单 URL `read` | 60-90 秒 | 60000-90000 ms |
+| `hotnews`、`feeds`、`pulse`、`read batch` | 120 秒 | 120000 ms |
+| `research`、`compare`、`timeline`、`dossier`、`archive ingest-research` | 180-300 秒 | 180000-300000 ms |
+| 安装、升级、发布 smoke、Homebrew/PyPI 校验 | 300-600 秒 | 300000-600000 ms |
+
+Agent 读取 Guanlan JSON 时优先看 `timeout_budget_seconds` 和 `timeout_budget_ms`。字段名包含
+`seconds` / `sec` 时传秒；字段名是 `timeout_ms`、`timeout_milliseconds` 或平台文档写明毫秒时传
+ms。不要把 `timeout=120` 这种裸数字继续传给下游，必须先确认单位。
 
 如果超时，先重试一次；支持缓存的命令可加 `--cache-ttl 3600`。严肃研究优先降低 `--read-top` 到 0 或 1，而不是把 `--limit 80` 砍成很小样本。超时只能说明本轮网络或上游源未完成，不代表没有证据。
 

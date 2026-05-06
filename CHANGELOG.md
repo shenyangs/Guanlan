@@ -6,6 +6,17 @@
 
 ## Unreleased
 
+## v0.5.18 - 2026-05-06
+
+### Added
+
+- `guanlan workflow --json`、Recipe 计划和 live-smoke 契约新增 `timeout_budget_seconds` / `timeout_budget_ms` 双字段，并输出 `timeout_unit_contract`，让 Agent 按宿主字段名选择秒或毫秒。
+
+### Changed
+
+- Agent 记忆面、完整指南和 Skill 明确 timeout 单位换算：`timeout_ms` / `timeout_milliseconds` 必须传毫秒，禁止把 `timeout=120` 这类裸数字继续交给下游。
+- 官网版本与静态资源版本同步到 `0.5.18`。
+
 ## v0.5.17 - 2026-05-06
 
 ### Added

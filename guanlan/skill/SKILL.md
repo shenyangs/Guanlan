@@ -59,7 +59,7 @@ metadata:
 - `quality_gate.reason=partial_salvage` 表示观澜保留了强官方/垂直信源线索但仍有覆盖缺口；先读代表原文，不要写成失败。`read` 出现 `兜底状态: unusable` 时，不要引用搜索兜底，改用页面诊断、结构化入口、scope 搜索或 WebFetch 定点补证。
 - 如果 Guanlan 输出 `external_fetch_strategy`，可以调用宿主 Agent 的 WebFetch/WebRead 读取候选 URL；外显时说明这是“Guanlan 规划信源 + WebFetch 定点补证”的搜索策略，不是 Guanlan 脆弱。
 - 做 benchmark 时不要误用：实时题必须带 `hotnews`，技术/AI 题必须带 `feeds` 或 `research --preset tech`，政策题不要只测单次泛搜。
-- 如果 Agent/MCP/自动化平台能设置工具 timeout：`search/read/status/doctor` 用 60-90 秒；`hotnews/feeds/pulse/read batch` 和默认 `archive ingest-research` 用 120 秒；`research/compare/timeline/dossier/archive ingest-research --read-top N` 用 180-300 秒；安装/升级/发布 smoke 用 300-600 秒。
+- 如果 Agent/MCP/自动化平台能设置工具 timeout：`search/read/status/doctor` 用 60-90 秒；`hotnews/feeds/pulse/read batch` 和默认 `archive ingest-research` 用 120 秒；`research/compare/timeline/dossier/archive ingest-research --read-top N` 用 180-300 秒；安装/升级/发布 smoke 用 300-600 秒。单位要按宿主字段名换算：`timeout_budget_seconds` 传秒，`timeout_ms` / `timeout_milliseconds` 传毫秒，例如 120 秒 = 120000 ms、300 秒 = 300000 ms；不要把 `timeout=120` 这种裸数字交给下游。
 - 超时只代表网络或上游源未完成，不代表没有证据；优先重试一次、加 `--cache-ttl 3600`，或把 `--read-top` 降到 0/1，不要为了速度把 80 条候选池砍成小样本。
 - 科技/AI/开发者/工程实践类问题必须额外补一轮 RSS/精品内容流；`research --preset tech` 会自动补，若只跑 `route` 或 `search`，再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。
 - 文娱/影视/综艺/明星/游戏/票房/评分/口碑类问题优先用 `route` 或 `research --preset entertainment`；把平台热度、用户评分、产业报道、宣发通稿和粉圈讨论分层看。

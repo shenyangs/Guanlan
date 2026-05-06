@@ -25,6 +25,7 @@ from guanlan.search_quality import (
     filter_unsafe_search_results,
     query_relevance_terms,
 )
+from guanlan.workflow_decider import timeout_budget_ms, timeout_unit_contract
 
 SEARCH_RANKING_FIXTURES: list[dict[str, Any]] = [
     {
@@ -427,6 +428,8 @@ def run_live_smoke_checks(limit: int = 5, timeout_budget: int = 180, profile: st
         "principle": "live-smoke 是可选外网探针，用来发现网络/源站/后端波动；默认不阻断发版，--strict 才按失败退出。",
         "blocking": False,
         "timeout_budget_seconds": max(int(timeout_budget or 0), 1),
+        "timeout_budget_ms": timeout_budget_ms(timeout_budget),
+        "timeout_unit_contract": timeout_unit_contract(timeout_budget),
         "profile": profile or "china",
         "agent_timeout_hint": "Agent/自动化外层建议给 live-smoke 至少 120-180 秒；超时是网络证据，不等同于主题无结果。",
         "sample_policy": "覆盖政策、产业、科技/RSS、热榜、正文读取和中文复合词后端漂移样本；单项 warn 不等同于发版失败。",

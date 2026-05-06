@@ -99,8 +99,10 @@ class WorkflowDecision:
     recommended_limit: int = DEFAULT_SEARCH_LIMIT
     recommended_read_top: int = 0
     timeout_budget_seconds: int = 90
+    timeout_budget_ms: int = 90000
     do_not_overthink: bool = False
     workflow_contract: list[str] = field(default_factory=list)
+    timeout_unit_contract: list[str] = field(default_factory=list)
     fallback_policy: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     route_plan: dict[str, Any] = field(default_factory=dict)
@@ -295,7 +297,7 @@ def format_workflow_decision_markdown(decision: WorkflowDecision | dict[str, Any
             f"- 最少步骤: {data.get('minimum_steps')}",
             f"- 建议候选池: {data.get('recommended_limit')}",
             f"- 建议读取数: {data.get('recommended_read_top')}",
-            f"- 外层 timeout: {data.get('timeout_budget_seconds')} 秒",
+            f"- 外层 timeout: {data.get('timeout_budget_seconds')} 秒 / {data.get('timeout_budget_ms')} ms",
             f"- 不要过度思考: {'是' if data.get('do_not_overthink') else '否'}",
             f"- 判断理由: {data.get('reason')}",
             f"- 路由意图: {', '.join(data.get('route_intents') or []) or 'general'}",
@@ -307,6 +309,9 @@ def format_workflow_decision_markdown(decision: WorkflowDecision | dict[str, Any
         lines.append(f"- {step}")
     lines.extend(["", "## 工作流契约"])
     for item in data.get("workflow_contract") or []:
+        lines.append(f"- {item}")
+    lines.extend(["", "## Timeout 单位契约"])
+    for item in data.get("timeout_unit_contract") or []:
         lines.append(f"- {item}")
     lines.extend(["", "## 兜底策略"])
     for item in data.get("fallback_policy") or []:
@@ -352,12 +357,32 @@ def _decision(
         recommended_limit=limit,
         recommended_read_top=read_top,
         timeout_budget_seconds=timeout,
+        timeout_budget_ms=timeout_budget_ms(timeout),
         do_not_overthink=do_not_overthink,
         workflow_contract=_workflow_contract(tier),
+        timeout_unit_contract=timeout_unit_contract(timeout),
         fallback_policy=_fallback_policy(tier, intents),
         warnings=_unique(warnings or []),
         route_plan=route_data,
     )
+
+
+def timeout_budget_ms(seconds: int) -> int:
+    """Convert Guanlan's outer timeout budget from seconds to milliseconds."""
+
+    return max(int(seconds or 0), 1) * 1000
+
+
+def timeout_unit_contract(seconds: int) -> list[str]:
+    """Return agent-facing timeout unit rules for JSON and Markdown contracts."""
+
+    safe_seconds = max(int(seconds or 0), 1)
+    safe_ms = timeout_budget_ms(safe_seconds)
+    return [
+        f"`timeout_budget_seconds={safe_seconds}` 的单位是秒，适合字段名包含 `seconds` 或 `sec` 的宿主工具。",
+        f"`timeout_budget_ms={safe_ms}` 的单位是毫秒，适合字段名为 `timeout_ms`、`timeout_milliseconds` 或默认按 ms 解释的平台。",
+        "不要把 `timeout=120` 这类裸数字交给下游；必须先确认字段单位，再传 seconds 或 ms。",
+    ]
 
 
 def _workflow_contract(tier: str) -> list[str]:

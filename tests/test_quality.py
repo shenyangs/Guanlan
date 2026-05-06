@@ -111,4 +111,6 @@ def test_quality_cli_live_smoke_is_non_blocking_by_default(capsys):
     assert payload["mode"] == "live"
     assert payload["contract"]["blocking"] is False
     assert payload["contract"]["timeout_budget_seconds"] == 180
+    assert payload["contract"]["timeout_budget_ms"] == 180000
+    assert any("timeout_ms" in item for item in payload["contract"]["timeout_unit_contract"])
     assert payload["summary"]["fail"] == 1

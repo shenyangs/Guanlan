@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from guanlan.limits import DEFAULT_RESEARCH_LIMIT
+from guanlan.workflow_decider import timeout_budget_ms, timeout_unit_contract
 
 
 @dataclass(frozen=True)
@@ -42,8 +43,11 @@ class RecipePlan:
     profile: str
     limit: int
     read_top: int
+    timeout_budget_seconds: int = 180
+    timeout_budget_ms: int = 180000
     commands: list[str] = field(default_factory=list)
     workflow_contract: list[str] = field(default_factory=list)
+    timeout_unit_contract: list[str] = field(default_factory=list)
     expected_output: list[str] = field(default_factory=list)
     boundaries: list[str] = field(default_factory=list)
 
@@ -206,6 +210,7 @@ def build_recipe_plan(
     clean_query = " ".join((query or "").split())
     effective_limit = max(int(limit or DEFAULT_RESEARCH_LIMIT), DEFAULT_RESEARCH_LIMIT)
     effective_read_top = _default_read_top(recipe, read_top)
+    timeout_seconds = _default_timeout_budget_seconds(recipe)
     commands = _commands_for_recipe(recipe, clean_query, profile=profile, limit=effective_limit, read_top=effective_read_top)
     plan = RecipePlan(
         recipe=recipe.to_dict(),
@@ -213,12 +218,15 @@ def build_recipe_plan(
         profile=profile,
         limit=effective_limit,
         read_top=effective_read_top,
+        timeout_budget_seconds=timeout_seconds,
+        timeout_budget_ms=timeout_budget_ms(timeout_seconds),
         commands=commands,
         workflow_contract=[
             "先执行 recipe 给出的高层链路，不要退化成一次泛搜。",
             "把不同 evidence layer 分开写，不能把社区样本、媒体观点和官方披露混为一谈。",
             "只有当前链路仍缺关键证据时，才调用宿主 Agent 的通用 WebFetch/WebSearch 补证。",
         ],
+        timeout_unit_contract=timeout_unit_contract(timeout_seconds),
         expected_output=[
             "来源分层清楚的证据包",
             "可引用材料与不可引用线索分开",
@@ -250,6 +258,7 @@ def format_recipe_plan_markdown(plan: dict[str, Any]) -> str:
         f"- profile: {plan.get('profile')}",
         f"- limit: {plan.get('limit')}",
         f"- read_top: {plan.get('read_top')}",
+        f"- timeout: {plan.get('timeout_budget_seconds')} 秒 / {plan.get('timeout_budget_ms')} ms",
         f"- 定位: {recipe.get('description')}",
         "",
         "## 证据层",
@@ -259,6 +268,8 @@ def format_recipe_plan_markdown(plan: dict[str, Any]) -> str:
     lines.extend(f"- `{item}`" for item in plan.get("commands") or [])
     lines.extend(["", "## 工作流契约"])
     lines.extend(f"- {item}" for item in plan.get("workflow_contract") or [])
+    lines.extend(["", "## Timeout 单位契约"])
+    lines.extend(f"- {item}" for item in plan.get("timeout_unit_contract") or [])
     lines.extend(["", "## 预期输出"])
     lines.extend(f"- {item}" for item in plan.get("expected_output") or [])
     if plan.get("boundaries"):
@@ -342,6 +353,14 @@ def _default_read_top(recipe: ResearchRecipe, requested: int | None) -> int:
     if recipe.id in {"finance-risk", "security-advisory"}:
         return 5
     return 3
+
+
+def _default_timeout_budget_seconds(recipe: ResearchRecipe) -> int:
+    if recipe.id == "trajectory-map":
+        return 300
+    if recipe.id in {"finance-risk", "entertainment-pulse", "security-advisory", "tech-radar"}:
+        return 240
+    return 180
 
 
 def _normalize_id(value: str) -> str:

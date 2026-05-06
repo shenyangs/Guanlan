@@ -82,12 +82,16 @@
 
 观澜内部会给单个网页、RSS、热榜源设置较短的请求超时，避免一个源站无限卡住。但 Agent/MCP/自动化平台包住整个命令时，需要给组合流程更大的外层预算。建议值：
 
-| 场景 | 建议外层 timeout |
-| --- | --- |
-| `guanlan status`、`doctor`、`search`、单 URL `read` | 60-90 秒 |
-| `hotnews`、`feeds`、`pulse`、`read batch`、默认 `archive ingest-research` | 120 秒 |
-| `research`、`compare`、`timeline`、`dossier`、`archive ingest-research --read-top N` | 180-300 秒 |
-| 安装、升级、发布 smoke、Homebrew/PyPI 校验 | 300-600 秒 |
+| 场景 | seconds 字段 | `timeout_ms` / milliseconds 字段 |
+| --- | --- | --- |
+| `guanlan status`、`doctor`、`search`、单 URL `read` | 60-90 秒 | 60000-90000 ms |
+| `hotnews`、`feeds`、`pulse`、`read batch`、默认 `archive ingest-research` | 120 秒 | 120000 ms |
+| `research`、`compare`、`timeline`、`dossier`、`archive ingest-research --read-top N` | 180-300 秒 | 180000-300000 ms |
+| 安装、升级、发布 smoke、Homebrew/PyPI 校验 | 300-600 秒 | 300000-600000 ms |
+
+Guanlan 的 JSON 契约会同时给出 `timeout_budget_seconds` 和 `timeout_budget_ms`。字段名包含
+`seconds` / `sec` 时用秒；字段名是 `timeout_ms`、`timeout_milliseconds` 或平台文档说明按毫秒解释时用
+ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必须先确认单位。
 
 如果发生超时：
 
