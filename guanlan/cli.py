@@ -121,7 +121,7 @@ def main():
     p_install.add_argument("--channels", default="",
                            help="Comma-separated optional channels to install "
                                 "(twitter,weibo,wechat,xiaoyuzhou,xueqiu,xiaohongshu,"
-                                "reddit,bilibili,douyin,linkedin,all)")
+                                "reddit,bilibili,browseruse,douyin,linkedin,all)")
 
     # ── configure ──
     p_conf = sub.add_parser("configure", help="Set a config value or auto-extract from browser")
@@ -277,9 +277,9 @@ def main():
     p_browser_assist_plan.add_argument("--task-goal", default="", help="Optional host-agent task goal")
     p_browser_assist_plan.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_browser_assist_plan.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
-    p_browser_assist_run = browser_assist_sub.add_parser("run", help="Bridge a browser-assist task to host-browser/open-cli/xhs-cli adapters")
+    p_browser_assist_run = browser_assist_sub.add_parser("run", help="Bridge a browser-assist task to host-browser/open-cli/browser-use/xhs-cli adapters")
     p_browser_assist_run.add_argument("url", help="Target page URL")
-    p_browser_assist_run.add_argument("--adapter", default="host-browser", help="Adapter: host-browser, open-cli, xhs-cli")
+    p_browser_assist_run.add_argument("--adapter", default="host-browser", help="Adapter: host-browser, open-cli, browser-use, xhs-cli")
     p_browser_assist_run.add_argument("--execute", action="store_true", help="Execute external adapter when safe/configured; host-browser still returns a host task")
     p_browser_assist_run.add_argument("--command-template", default="", help="External CLI command template; supports {url} and {output}")
     p_browser_assist_run.add_argument("--output", default="", help="Optional JSONL output path for parsed adapter payloads")
@@ -1126,6 +1126,8 @@ def _cmd_install(args):
         "xiaohongshu": _install_xhs_deps,
         "reddit":      _install_reddit_deps,
         "bilibili":    _install_bili_deps,
+        "browseruse":  _install_browser_use_deps,
+        "browser-use": _install_browser_use_deps,
         # douyin/linkedin: manual setup, no auto-install
     }
     COOKIE_CHANNELS = {"twitter", "xueqiu", "bilibili"}
@@ -1133,10 +1135,11 @@ def _cmd_install(args):
     requested_channels = set()
     if args.channels:
         raw = [c.strip().lower() for c in args.channels.split(",") if c.strip()]
-        if "all" in raw:
+        normalized = ["browseruse" if item in {"browser-use", "browser_use"} else item for item in raw]
+        if "all" in normalized:
             requested_channels = set(CHANNEL_INSTALLERS.keys()) | {"xueqiu", "douyin", "linkedin"}
         else:
-            requested_channels = set(raw)
+            requested_channels = set(normalized)
 
     # Auto-detect environment
     env = args.env
@@ -2943,7 +2946,7 @@ def _install_system_deps():
             except Exception:
                 print("  -- Could not configure yt-dlp JS runtime (YouTube may not work)")
 
-    # NOTE: twitter-cli, weibo, xiaoyuzhou, wechat, xhs-cli etc. are optional.
+    # NOTE: twitter-cli, browser-use, weibo, xiaoyuzhou, wechat, xhs-cli etc. are optional.
     # They are installed via --channels flag, not here.
     # See CHANNEL_INSTALLERS in _cmd_install().
 
@@ -3013,6 +3016,40 @@ def _install_twitter_deps():
             except Exception:
                 pass
     print("  [!]  twitter-cli install failed. Run: pipx install twitter-cli")
+
+
+def _install_browser_use_deps():
+    """Install browser-use CLI bridge for browser-assisted evidence handoff."""
+    import shutil
+    import subprocess
+
+    print("Setting up browser-use CLI...")
+
+    browser_use_bin = shutil.which("browser-use")
+    if browser_use_bin:
+        print("  ✅ browser-use already installed")
+        return
+
+    if sys.version_info < (3, 11):
+        version_text = f"{sys.version_info.major}.{sys.version_info.minor}"
+        print(f"  -- Current Python {version_text} is below browser-use requirement (>=3.11).")
+        print("     Use a Python 3.11+ env and run: uvx --from 'browser-use[cli]' browser-use doctor")
+        return
+
+    for tool, cmd in [
+        ("uv", ["uv", "tool", "install", "browser-use[cli]"]),
+        ("pipx", ["pipx", "install", "browser-use[cli]"]),
+    ]:
+        if not shutil.which(tool):
+            continue
+        try:
+            subprocess.run(cmd, capture_output=True, encoding="utf-8", errors="replace", timeout=180)
+            if shutil.which("browser-use"):
+                print("  ✅ browser-use installed")
+                return
+        except Exception:
+            pass
+    print("  [!]  browser-use install failed. Try: uvx --from 'browser-use[cli]' browser-use doctor")
 
 
 def _install_xhs_deps():

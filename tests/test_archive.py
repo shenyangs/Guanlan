@@ -188,9 +188,14 @@ def test_archive_cli_add_browser_note_from_json_ingests_host_browser_payload(tmp
                 "visible_text": "这是宿主 Agent 在用户授权后从浏览器可见页读取到的正文。" * 4,
                 "platform": "xiaohongshu",
                 "author": "可见作者",
+                "engagement_summary": "点赞 12，收藏 3",
+                "visible_comment_summary": "可见评论集中讨论使用体验。",
                 "captured_at": "2026-05-04T10:00:00+08:00",
+                "source_mode": "browser_visible",
+                "browser_assisted": True,
                 "user_authorized": True,
                 "visible_page_only": True,
+                "session_dependent": True,
             },
             ensure_ascii=False,
         )
@@ -219,6 +224,9 @@ def test_archive_cli_add_browser_note_from_json_ingests_host_browser_payload(tmp
     assert records[0]["browser_visible_quality"]["status"] == "pass"
     record = archive.search_documents("浏览器可见页", db_path=db)[0]
     assert record["metadata"]["source_mode"] == "browser_visible"
+    assert record["metadata"]["schema_version"] == "browser_visible_v2"
+    assert record["metadata"]["session_dependent"] is True
+    assert record["metadata"]["browser_visible_fields"]["engagement_summary"] == "点赞 12，收藏 3"
     assert record["metadata"]["browser_visible_quality"]["usable"] is True
 
 

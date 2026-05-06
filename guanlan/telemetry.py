@@ -35,6 +35,8 @@ DEFAULT_ENDPOINT = (
 )
 MAX_QUEUE_EVENTS = 2000
 MAX_FLUSH_EVENTS = 5
+END_EVENT_RETRY = 1
+END_EVENT_RETRY_DELAY_SECONDS = 0.05
 _TRUTHY = {"1", "true", "yes", "on"}
 _FALSY = {"0", "false", "no", "off"}
 _QUEUE_LOCK = threading.Lock()
@@ -231,10 +233,14 @@ def _payload(
     return data
 
 
-def emit(settings: TelemetrySettings, payload: dict[str, object]) -> None:
+def emit(settings: TelemetrySettings, payload: dict[str, object], retries: int = 0) -> None:
     """Best-effort POST with local durable queue on failure."""
-    if _post(settings, payload):
-        return
+    attempts = max(1, 1 + int(retries or 0))
+    for index in range(attempts):
+        if _post(settings, payload):
+            return
+        if index + 1 < attempts:
+            time.sleep(END_EVENT_RETRY_DELAY_SECONDS)
     _enqueue(settings, payload)
 
 
@@ -452,4 +458,7 @@ def telemetry_span(
                 status=status,
                 duration_ms=duration_ms,
             ),
+            retries=END_EVENT_RETRY,
         )
+        # Push tail events opportunistically; still non-fatal on network failure.
+        flush_queue(settings)

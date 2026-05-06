@@ -32,10 +32,10 @@
     <link rel="icon" href="./assets/guanlan-logo.svg" type="image/svg+xml" />
     <link rel="icon" href="./assets/guanlan-logo-512.png" type="image/png" sizes="512x512" />
     <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
-    <link rel="stylesheet" href="./styles.css?v=0.5.13-search-stability-20260505" />
+    <link rel="stylesheet" href="./styles.css?v=0.5.14-screen-story-20260506" />
   </head>
   <body>
-    <canvas id="flow-field" aria-hidden="true"></canvas>
+    <canvas id="research-field" aria-hidden="true"></canvas>
 
     <header class="site-header">
       <a class="brand" href="#top" aria-label="观澜首页">
@@ -44,147 +44,152 @@
         <span>Guanlan</span>
       </a>
       <nav class="nav-links" aria-label="主导航">
-        <a href="#shift">为什么</a>
-        <a href="#before-after">对比</a>
+        <a href="#why">为什么</a>
+        <a href="#compare">对比</a>
         <a href="#install">接入</a>
       </nav>
-      <a class="header-action" href="https://github.com/shenyangs/Guanlan" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+      <a
+        class="github-link"
+        href="https://github.com/shenyangs/Guanlan"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="GitHub"
+        title="GitHub"
+      >
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path
-            d="M12 2C6.48 2 2 6.59 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.09.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.36 1.12 2.93.85.09-.67.35-1.12.63-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.28 9.28 0 0 1 12 6.96c.85 0 1.7.12 2.5.34 1.9-1.33 2.74-1.05 2.74-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.59.69.49A10.15 10.15 0 0 0 22 12.25C22 6.59 17.52 2 12 2Z"
+            fill="currentColor"
+            d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.74.08-.74 1.21.09 1.85 1.25 1.85 1.25 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.45 11.45 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22v3.3c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"
           />
         </svg>
       </a>
     </header>
 
     <main id="top">
-      <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-copy">
-          <p class="eyebrow">Guanlan for AI Agents</p>
-          <h1 id="hero-title">AI Agent 的中文互联网研究层</h1>
-          <p class="hero-description">
-            让 Agent 不只是搜索网页，而是理解中文信源、平台语境、证据边界和可复用资料。
-          </p>
-          <div class="hero-actions">
-            <a class="primary-action" href="#install">开始接入</a>
-            <a class="secondary-action" href="#before-after">看接入前后</a>
+      <section class="hero screen" aria-labelledby="hero-title">
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">Guanlan for AI Agents</p>
+            <h1 id="hero-title"><span>AI Agent 的</span><span>中文互联网研究层</span></h1>
+            <p class="hero-description">
+              让 Agent 不只是搜索网页，而是理解中文信源、平台语境、证据边界和可复用资料。
+            </p>
+            <div class="hero-actions">
+              <a class="primary-action" href="#install">开始接入</a>
+              <a class="secondary-action" href="#compare">看接入前后</a>
+            </div>
+          </div>
+
+          <div class="signal-panel" aria-label="观澜信息层示意">
+            <p>普通搜索给 Agent 网页</p>
+            <div class="signal-line"></div>
+            <strong>观澜给 Agent 中文互联网证据结构</strong>
           </div>
         </div>
-        <div class="hero-signal" aria-label="观澜信息层示意">
-          <div class="signal-title">普通搜索给 Agent 网页</div>
-          <div class="signal-divider"></div>
-          <div class="signal-title is-strong">观澜给 Agent 中文互联网证据结构</div>
-        </div>
       </section>
 
-      <section class="section-block shift-block" id="shift">
-        <div class="section-heading">
-          <p class="eyebrow">The Shift</p>
-          <h2>不要把观澜讲成搜索工具，要把它放进 Agent 的工作流位置里。</h2>
+      <section class="thesis screen" id="why" aria-labelledby="why-title">
+        <div class="thesis-copy">
+          <p class="eyebrow">The Thesis</p>
+          <h2 id="why-title">Agent 真正缺的不是更多链接，而是能持续判断信息的那一层。</h2>
         </div>
-        <div class="shift-copy">
-          <p>
-            Agent 真正缺的不是更多链接，而是一层能持续判断“去哪找、谁在说、能不能信、怎么复用”的信息结构。
-          </p>
-          <p>
-            观澜把中文互联网里的官方、媒体、社区、热榜、网页正文和本地 archive 组织成 Agent 能继续工作的证据包。
-          </p>
-        </div>
+        <p class="thesis-body">
+          中文互联网不是一个平面网页库。它由官方口径、垂直媒体、平台社区、热榜流、动态页面和大量营销内容共同构成。观澜把这些材料先变成结构，再交给 Agent 使用。
+        </p>
       </section>
 
-      <section class="section-block compare-block" id="before-after" aria-labelledby="compare-title">
-        <div class="section-heading">
-          <p class="eyebrow">Before / After</p>
-          <h2 id="compare-title">从零散搜索结果，到持续研究上下文。</h2>
+      <section class="flow-section screen" aria-label="观澜研究路径">
+        <div class="flow-sticky">
+          <p class="eyebrow">Research Layer</p>
+          <h2>从搜索请求到证据包，观澜只做一件事：让 Agent 更会研究。</h2>
         </div>
-        <div class="compare-grid">
-          <article class="compare-panel">
-            <span class="panel-label">没有观澜</span>
-            <h3>Agent 只能拿零散搜索结果工作。</h3>
-            <ul>
-              <li><span>×</span>不知道该去哪搜</li>
-              <li><span>×</span>分不清官方、媒体、社区和营销内容</li>
-              <li><span>×</span>容易把网页片段当事实</li>
-              <li><span>×</span>查过的资料用完就丢</li>
-            </ul>
-          </article>
-          <article class="compare-panel is-after">
-            <span class="panel-label">接入观澜后</span>
-            <h3>Agent 开始围绕证据包持续研究。</h3>
-            <ul>
-              <li><span>✓</span>自动路由中文信源</li>
-              <li><span>✓</span>阅读网页并判断正文质量</li>
-              <li><span>✓</span>保留来源身份和证据角色</li>
-              <li><span>✓</span>把资料沉淀到 archive / Wiki / RAG</li>
-            </ul>
-          </article>
-        </div>
-      </section>
-
-      <section class="section-block layer-block">
-        <div class="layer-statement">
-          <p class="eyebrow">What Agent Gets</p>
-          <h2>不是功能堆叠，是一层可调用的信息判断力。</h2>
-        </div>
-        <div class="layer-list" aria-label="观澜信息层能力">
+        <div class="flow-steps">
           <article>
             <span>01</span>
-            <h3>信源路由</h3>
-            <p>根据问题把 Agent 带到官方、垂类、社区、热榜或开发者信源。</p>
+            <h3>先判断去哪找</h3>
+            <p>把问题路由到官方、垂直、社区、财经、学术、娱乐、开发者或热榜信源。</p>
           </article>
           <article>
             <span>02</span>
-            <h3>语境识别</h3>
-            <p>保留来源身份、平台语境、证据角色和结果边界。</p>
+            <h3>再判断谁在说</h3>
+            <p>保留来源身份、平台语境、证据角色、时间线和风险提示，让链接不再只是链接。</p>
           </article>
           <article>
             <span>03</span>
-            <h3>网页阅读</h3>
-            <p>读取正文、判断质量，并在弱页面时给出诊断和下一步路径。</p>
-          </article>
-          <article>
-            <span>04</span>
-            <h3>资料复用</h3>
-            <p>把研究材料沉淀为 archive、Wiki、RAG 或 Agent 上下文。</p>
+            <h3>最后沉淀成资料</h3>
+            <p>把研究过程留在 archive、Wiki、RAG 或 Agent 上下文里，下一次可以继续工作。</p>
           </article>
         </div>
       </section>
 
-      <section class="install-block" id="install">
-        <div class="section-heading">
-          <p class="eyebrow">Three Steps</p>
-          <h2>三步接入，让 Agent 开始围绕中文证据工作。</h2>
+      <section class="compare-section screen" id="compare" aria-labelledby="compare-title">
+        <div class="section-kicker">
+          <p class="eyebrow">Before / After</p>
+          <h2 id="compare-title">普通搜索结束于网页。观澜开始于证据结构。</h2>
         </div>
-        <div class="install-steps">
-          <article>
-            <span>1</span>
-            <h3>安装观澜 CLI</h3>
-            <pre><code>uv tool install --force --upgrade guanlan</code></pre>
-            <button class="copy-button" type="button" aria-label="复制安装命令">复制</button>
+        <div class="compare-stack">
+          <article class="compare-row">
+            <span>没有观澜</span>
+            <h3>Agent 拿到一堆零散结果。</h3>
+            <p>不知道该信谁，不知道页面正文质量，也很难把一次搜索变成下一次可复用的研究上下文。</p>
           </article>
-          <article>
-            <span>2</span>
-            <h3>交给 Agent 使用</h3>
-            <pre><code>guanlan mcp config --client codex</code></pre>
-            <button class="copy-button" type="button" aria-label="复制 MCP 命令">复制</button>
+          <article class="compare-row is-after">
+            <span>接入观澜后</span>
+            <h3>Agent 拿到可继续工作的证据包。</h3>
+            <p>知道去哪找、谁在说、证据边界在哪，以及这些材料应该如何进入 archive / Wiki / RAG。</p>
           </article>
-          <article>
-            <span>3</span>
-            <h3>开始研究</h3>
-            <pre><code>guanlan research "中文问题" --advisor</code></pre>
-            <button class="copy-button" type="button" aria-label="复制研究命令">复制</button>
-          </article>
+        </div>
+      </section>
+
+      <section class="install-section screen" id="install" aria-labelledby="install-title">
+        <div class="section-kicker">
+          <p class="eyebrow">Install</p>
+          <h2 id="install-title">三步接入。让 Agent 开始认真处理中文互联网。</h2>
+        </div>
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span></span>
+            <span></span>
+            <span></span>
+            <strong>guanlan setup</strong>
+          </div>
+          <ol class="install-list">
+            <li>
+              <span>1</span>
+              <div>
+                <h3>安装观澜 CLI</h3>
+                <pre><code>uv tool install --force --upgrade guanlan</code></pre>
+              </div>
+              <button class="copy-button" type="button" aria-label="复制安装命令">复制</button>
+            </li>
+            <li>
+              <span>2</span>
+              <div>
+                <h3>交给 Agent 使用</h3>
+                <pre><code>guanlan mcp config --client codex</code></pre>
+              </div>
+              <button class="copy-button" type="button" aria-label="复制 MCP 命令">复制</button>
+            </li>
+            <li>
+              <span>3</span>
+              <div>
+                <h3>开始研究</h3>
+                <pre><code>guanlan research "中文问题" --advisor</code></pre>
+              </div>
+              <button class="copy-button" type="button" aria-label="复制研究命令">复制</button>
+            </li>
+          </ol>
         </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <span>Guanlan v0.5.13</span>
+      <span>Guanlan v0.5.14</span>
       <a href="https://github.com/shenyangs/Guanlan" target="_blank" rel="noopener noreferrer">GitHub</a>
       <a href="https://github.com/shenyangs/Guanlan#readme" target="_blank" rel="noopener noreferrer">README</a>
       <a href="https://github.com/shenyangs/Guanlan/blob/main/docs/install.md" target="_blank" rel="noopener noreferrer">Install</a>
     </footer>
 
-    <script src="./main.js?v=0.5.13-search-stability-20260505"></script>
+    <script src="./main.js?v=0.5.14-screen-story-20260506"></script>
   </body>
 </html>

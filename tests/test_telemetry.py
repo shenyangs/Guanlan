@@ -122,6 +122,38 @@ def test_telemetry_queues_failed_events_and_flushes_later(tmp_path, monkeypatch)
     assert not queue_path.exists()
 
 
+def test_telemetry_emit_retries_before_queueing(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_TELEMETRY_ENDPOINT", "https://metrics.example/v1/events")
+    monkeypatch.setenv("GUANLAN_TELEMETRY", "1")
+    config = Config(config_path=tmp_path / "config.yaml")
+    settings = load_settings(config)
+    assert settings is not None
+    attempts = {"count": 0}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, *_args):
+            return b""
+
+    def flaky_urlopen(_req, timeout=0):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise TimeoutError("first try fails")
+        return FakeResponse()
+
+    with patch("guanlan.telemetry.request.urlopen", flaky_urlopen):
+        emit(settings, {"event": "invocation_end", "invocation_id": "retry-ok"}, retries=1)
+
+    queue_path = tmp_path / "telemetry_queue.jsonl"
+    assert attempts["count"] == 2
+    assert not queue_path.exists()
+
+
 def test_telemetry_config_off_wins_over_endpoint(tmp_path, monkeypatch):
     monkeypatch.setenv("GUANLAN_TELEMETRY_ENDPOINT", "https://metrics.example/v1/events")
     monkeypatch.delenv("GUANLAN_TELEMETRY", raising=False)

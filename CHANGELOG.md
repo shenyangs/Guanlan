@@ -6,6 +6,19 @@
 
 ## Unreleased
 
+## v0.5.14 - 2026-05-06
+
+### Added
+
+- 浏览器辅助补证新增适配器能力分层和自检评分，区分 `extractor` / `opener`，并输出 `can_open`、`can_extract_visible_text`、`can_reuse_existing_session`、`cookie_flow_available`、`capability_score` 与 `risk_score`，降低 Agent 把“打开页面”误判为“完成补证”的概率。
+- 新增小红书、知乎、公众号的浏览器可见页字段模板，补证任务会明确建议提取标题、正文、作者、发布时间、互动/评论摘要等平台相关字段。
+- `diagnose page` 在动态页壳、访问门槛和搜索兜底场景下直接给出 `browser-assist adapters --check`、`browser-assist run` 和 `archive add-browser-note` 的后续命令。
+
+### Changed
+
+- 浏览器可见页入库 schema 升级为 `browser_visible_v2`，保留 `browser_assisted`、`visible_page_only`、`user_authorized`、`session_dependent` 和平台模板元数据。
+- 官网版本与静态资源版本同步到 `0.5.14`。
+
 ## v0.5.13 - 2026-05-05
 
 ### Fixed

@@ -211,6 +211,9 @@ class TestCLI:
         assert data["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
         assert data["browser_assist_task"]["host_browser_contract"]["manual_copy_is_fallback_only"] is True
         assert data["browser_assist_task"]["host_browser_contract"]["cookie_access_requires_separate_explicit_authorization"] is True
+        assert data["browser_assist_task"]["platform_template"]["name"] == "小红书可见笔记"
+        assert "engagement_summary" in data["browser_assist_task"]["extract_fields"]
+        assert data["recommended_adapter"] == "host-browser"
         assert data["cookie_access_policy"]["default"] == "forbidden_for_visible_page_task"
         assert "read_cookies" in data["forbidden_actions"]
 
@@ -221,10 +224,34 @@ class TestCLI:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         ids = {item["id"] for item in data}
-        assert {"host-browser", "open-cli", "xhs-cli"} <= ids
+        assert {"host-browser", "open-cli", "browser-use", "xhs-cli"} <= ids
         host = next(item for item in data if item["id"] == "host-browser")
         assert host["available"] is True
+        assert host["capability_layer"] == "extractor"
+        assert host["capability_score"] >= 90
         assert host["safety"]["cookie_access_requires_separate_explicit_authorization"] is True
+
+    def test_browser_assist_run_browser_use_without_install_is_actionable(self, capsys, monkeypatch):
+        monkeypatch.setattr("shutil.which", lambda _: None)
+        with patch(
+            "sys.argv",
+            [
+                "guanlan",
+                "browser-assist",
+                "run",
+                "https://example.com/article",
+                "--adapter",
+                "browser-use",
+                "--json",
+            ],
+        ):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["adapter"] == "browser-use"
+        assert data["status"] == "adapter_unavailable"
+        assert data["error"] == "browser_use_not_installed"
 
     def test_browser_assist_adapters_check_reports_readiness(self, capsys, monkeypatch):
         monkeypatch.delenv("GUANLAN_BROWSER_ASSIST_XHS_CLI_COMMAND", raising=False)
@@ -248,6 +275,7 @@ class TestCLI:
         xhs = next(item for item in data if item["id"] == "xhs-cli")
         assert host["check"]["status"] == "ok"
         assert host["check"]["dry_run_available"] is True
+        assert host["check"]["can_extract_visible_text"] is True
         assert xhs["check"]["ready"] is False
         assert any(check["name"] == "command_template" for check in xhs["check"]["checks"])
 
@@ -271,6 +299,7 @@ class TestCLI:
         assert data["adapter"] == "host-browser"
         assert data["status"] == "requires_host_browser_execution"
         assert data["contract"]["safety"]["visible_page_only_by_default"] is True
+        assert data["contract"]["capabilities"]["can_reuse_existing_session"] is True
         assert data["plan"]["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
 
     def test_recipe_run_command_returns_plan(self, capsys):

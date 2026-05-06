@@ -1,10 +1,10 @@
-const canvas = document.querySelector("#flow-field");
+const canvas = document.querySelector("#research-field");
 const ctx = canvas.getContext("2d");
-const colors = ["#d44232", "#c8ff45", "#70d7ff", "#f7efe3"];
+const colors = ["#d44232", "#c8ff45", "#69d6ff", "#f5f2e9"];
 let width = 0;
 let height = 0;
 let dpr = 1;
-let particles = [];
+let points = [];
 let pointer = { x: 0, y: 0, active: false };
 
 function resize() {
@@ -17,68 +17,72 @@ function resize() {
   canvas.style.height = `${height}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  const count = Math.max(80, Math.min(180, Math.floor((width * height) / 9000)));
-  particles = Array.from({ length: count }, (_, index) => ({
+  const count = Math.max(70, Math.min(150, Math.floor((width * height) / 12000)));
+  points = Array.from({ length: count }, (_, index) => ({
     x: Math.random() * width,
     y: Math.random() * height,
     seed: Math.random() * 1000,
-    speed: 0.28 + Math.random() * 0.72,
+    speed: 0.18 + Math.random() * 0.42,
     color: colors[index % colors.length],
-    radius: 0.7 + Math.random() * 1.6,
+    radius: 0.55 + Math.random() * 1.15,
   }));
 }
 
-function field(x, y, time, seed) {
-  const scale = 0.0024;
+function angleAt(x, y, time, seed) {
+  const scale = 0.0022;
   return (
-    Math.sin((x + seed * 13) * scale + time * 0.00026) +
-    Math.cos((y - seed * 7) * scale - time * 0.0002)
-  );
+    Math.sin((x + seed * 17) * scale + time * 0.00018) +
+    Math.cos((y - seed * 11) * scale - time * 0.00014)
+  ) * Math.PI;
 }
 
-function animate(time = 0) {
-  ctx.fillStyle = "rgba(5, 5, 5, 0.24)";
-  ctx.fillRect(0, 0, width, height);
-
+function drawGrid(time) {
   ctx.save();
-  ctx.globalAlpha = 0.14;
-  ctx.strokeStyle = "#f7efe3";
+  ctx.globalAlpha = 0.12;
+  ctx.strokeStyle = "#f5f2e9";
   ctx.lineWidth = 1;
-  for (let y = 0; y < height; y += 86) {
+  const gap = width < 700 ? 76 : 96;
+  for (let y = -gap; y < height + gap; y += gap) {
     ctx.beginPath();
-    ctx.moveTo(0, y + Math.sin(time * 0.00022 + y) * 14);
-    for (let x = 0; x <= width; x += 64) {
-      ctx.lineTo(x, y + Math.sin(x * 0.007 + time * 0.00032 + y * 0.018) * 20);
+    ctx.moveTo(0, y + Math.sin(time * 0.00016 + y) * 10);
+    for (let x = 0; x <= width; x += 56) {
+      ctx.lineTo(x, y + Math.sin(x * 0.006 + time * 0.00024 + y * 0.015) * 15);
     }
     ctx.stroke();
   }
   ctx.restore();
+}
 
-  for (const particle of particles) {
-    const angle = field(particle.x, particle.y, time, particle.seed) * Math.PI;
-    let vx = Math.cos(angle) * particle.speed;
-    let vy = Math.sin(angle) * particle.speed;
+function animate(time = 0) {
+  ctx.fillStyle = "rgba(5, 5, 5, 0.28)";
+  ctx.fillRect(0, 0, width, height);
+  drawGrid(time);
+
+  for (const point of points) {
+    const angle = angleAt(point.x, point.y, time, point.seed);
+    let vx = Math.cos(angle) * point.speed;
+    let vy = Math.sin(angle) * point.speed;
     if (pointer.active) {
-      const dx = pointer.x - particle.x;
-      const dy = pointer.y - particle.y;
+      const dx = pointer.x - point.x;
+      const dy = pointer.y - point.y;
       const distance = Math.hypot(dx, dy);
-      if (distance < 210) {
-        vx += (dx / Math.max(distance, 1)) * 0.28;
-        vy += (dy / Math.max(distance, 1)) * 0.28;
+      if (distance < 190) {
+        vx += (dx / Math.max(distance, 1)) * 0.16;
+        vy += (dy / Math.max(distance, 1)) * 0.16;
       }
     }
-    particle.x += vx;
-    particle.y += vy;
+    point.x += vx;
+    point.y += vy;
 
-    if (particle.x < -20) particle.x = width + 20;
-    if (particle.x > width + 20) particle.x = -20;
-    if (particle.y < -20) particle.y = height + 20;
-    if (particle.y > height + 20) particle.y = -20;
+    if (point.x < -20) point.x = width + 20;
+    if (point.x > width + 20) point.x = -20;
+    if (point.y < -20) point.y = height + 20;
+    if (point.y > height + 20) point.y = -20;
 
-    ctx.globalAlpha = 0.64;
-    ctx.fillStyle = particle.color;
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = point.color;
     ctx.beginPath();
-    ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+    ctx.arc(point.x, point.y, point.radius, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -98,9 +102,33 @@ ctx.fillStyle = "#050505";
 ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
 animate();
 
+const screens = document.querySelectorAll(".screen");
+
+if ("IntersectionObserver" in window) {
+  const screenObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        entry.target.classList.toggle("is-visible", entry.isIntersecting);
+      }
+    },
+    {
+      root: null,
+      threshold: 0.36,
+      rootMargin: "-8% 0px -18% 0px",
+    },
+  );
+
+  screens.forEach((screen, index) => {
+    if (index === 0) screen.classList.add("is-visible");
+    screenObserver.observe(screen);
+  });
+} else {
+  screens.forEach((screen) => screen.classList.add("is-visible"));
+}
+
 document.querySelectorAll(".copy-button").forEach((button) => {
   button.addEventListener("click", async () => {
-    const command = button.closest("article")?.querySelector("code")?.textContent ?? "";
+    const command = button.closest("li")?.querySelector("code")?.textContent ?? "";
     try {
       await navigator.clipboard.writeText(command);
       button.classList.add("is-copied");

@@ -230,6 +230,7 @@ def add_browser_visible_note(
     captured_at: float | None = None,
     visible_context: str = "",
     skipped_reason: str = "",
+    extra_metadata: dict[str, Any] | None = None,
     db_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Persist user-authorized visible browser content with explicit boundaries."""
@@ -267,6 +268,8 @@ def add_browser_visible_note(
         metadata["visible_context"] = visible_context
     if skipped_reason:
         metadata["skipped_reason"] = skipped_reason
+    if extra_metadata:
+        metadata["browser_visible_fields"] = dict(extra_metadata)
     if not text and skipped_reason:
         text = f"浏览器可见页未入正文：{skipped_reason}"
     if title and not text.lstrip().startswith("#"):
@@ -301,8 +304,13 @@ def add_browser_visible_payload(
     from guanlan.browser_assist import normalize_browser_visible_payload
 
     row = normalize_browser_visible_payload(payload)
-    if not row.get("user_authorized", True) or not row.get("visible_page_only", True):
-        raise ValueError("browser visible payload must be user_authorized and visible_page_only")
+    if (
+        row.get("source_mode") != "browser_visible"
+        or not row.get("browser_assisted", True)
+        or not row.get("user_authorized", True)
+        or not row.get("visible_page_only", True)
+    ):
+        raise ValueError("browser visible payload must declare browser_visible/browser_assisted/user_authorized/visible_page_only")
     return add_browser_visible_note(
         row["url"],
         row["visible_text"],
@@ -313,6 +321,11 @@ def add_browser_visible_payload(
         captured_at=_coerce_timestamp(row.get("captured_at")),
         visible_context=row.get("visible_context", ""),
         skipped_reason=row.get("skipped_reason", ""),
+        extra_metadata={
+            key: row.get(key, "")
+            for key in ("engagement_summary", "visible_comment_summary", "question", "account", "session_dependent")
+            if row.get(key, "") not in ("", None)
+        },
         db_path=db_path,
     )
 

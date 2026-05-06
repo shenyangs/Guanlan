@@ -236,6 +236,9 @@ def _page_type(quality_report: dict[str, Any], signals: list[str], errors: list[
 def _recommended_commands(url: str, page_type: str, signals: list[str]) -> list[str]:
     domain = urlparse(url).netloc.lower()
     commands: list[str] = []
+    from guanlan.browser_assist import platform_hint, recommend_browser_assist_adapter
+
+    platform = platform_hint(url)
     symbol = _extract_stock_symbol(url)
     if "finance_dynamic_candidate" in signals or "finance_social_page" in signals:
         if symbol:
@@ -246,6 +249,10 @@ def _recommended_commands(url: str, page_type: str, signals: list[str]) -> list[
         if domain:
             commands.append(f'guanlan search "关键词" --site {domain} --limit 80 --trace')
         commands.append(f'guanlan read "{url}" --backend direct --extract metadata')
+        adapter = recommend_browser_assist_adapter(platform=platform, need_extraction=True)
+        commands.append("guanlan browser-assist adapters --check")
+        commands.append(f'guanlan browser-assist run "{url}" --adapter {adapter} --json')
+        commands.append("guanlan archive add-browser-note --from-json browser-notes.jsonl")
         commands.append('guanlan route "原始研究问题" --json')
     elif page_type == "readable_article":
         commands.append(f'guanlan read "{url}" --quality-report')
@@ -253,7 +260,7 @@ def _recommended_commands(url: str, page_type: str, signals: list[str]) -> list[
     else:
         commands.append(f'guanlan read "{url}" --strict --trace')
         commands.append('guanlan research "原始研究问题" --limit 80 --read-top 3')
-    return _unique(commands)[:6]
+    return _unique(commands)[:8]
 
 
 def _boundaries(page_type: str) -> list[str]:

@@ -88,6 +88,9 @@ BROWSER_ASSIST_ADAPTERS: dict[str, dict[str, Any]] = {
         "supports_platforms": ["*"],
         "can_extract": True,
         "can_open": True,
+        "can_reuse_existing_session": True,
+        "adapter_role": "extractor",
+        "risk_level": "low",
         "requires_execute": False,
         "privacy_boundary": "visible_page_only_by_default",
     },
@@ -102,8 +105,28 @@ BROWSER_ASSIST_ADAPTERS: dict[str, dict[str, Any]] = {
         "supports_platforms": ["*"],
         "can_extract": False,
         "can_open": True,
+        "can_reuse_existing_session": True,
+        "adapter_role": "opener",
+        "risk_level": "low",
         "requires_execute": True,
         "privacy_boundary": "opens_visible_page_only",
+    },
+    "browser-use": {
+        "id": "browser-use",
+        "aliases": ["browseruse", "browser_use", "bu", "browser-use-cli"],
+        "kind": "external_browser_cli",
+        "stability": "best-effort",
+        "description": "Browser Use CLI 适配入口；默认只用于打开目标页，正文仍由宿主 Agent 按可见页契约提取。",
+        "executable": "browser-use",
+        "env_command": "GUANLAN_BROWSER_ASSIST_BROWSER_USE_COMMAND",
+        "supports_platforms": ["*"],
+        "can_extract": False,
+        "can_open": True,
+        "can_reuse_existing_session": False,
+        "adapter_role": "opener",
+        "risk_level": "medium",
+        "requires_execute": True,
+        "privacy_boundary": "open_or_connect_visible_page_only",
     },
     "xhs-cli": {
         "id": "xhs-cli",
@@ -116,8 +139,89 @@ BROWSER_ASSIST_ADAPTERS: dict[str, dict[str, Any]] = {
         "supports_platforms": ["xiaohongshu"],
         "can_extract": True,
         "can_open": True,
+        "can_reuse_existing_session": False,
+        "adapter_role": "extractor",
+        "risk_level": "medium",
         "requires_execute": True,
         "privacy_boundary": "external_cli_user_authorized_visible_or_cookie_flow",
+    },
+}
+
+BROWSER_ASSIST_PLATFORM_TEMPLATES: dict[str, dict[str, Any]] = {
+    "xiaohongshu": {
+        "name": "小红书可见笔记",
+        "evidence_role": "user_visible_sample",
+        "extract_fields": [
+            "url",
+            "title",
+            "visible_text",
+            "author",
+            "published_at",
+            "engagement_summary",
+            "visible_comment_summary",
+            "captured_at",
+            "visible_context",
+            "skipped_reason",
+        ],
+        "field_hints": [
+            "正文优先于推荐流、页脚和登录提示。",
+            "评论只取当前页面可见摘要，不翻私信、不扩大到无关页面。",
+            "互动数仅作为样本语境，不写成平台全量结论。",
+        ],
+        "quality_checks": [
+            "visible_text 至少包含标题或正文之一。",
+            "如果只能看到登录/扫码/验证码，填写 skipped_reason=needs_login_or_verification。",
+            "作者、发布时间缺失时保留空值，不编造。",
+        ],
+    },
+    "zhihu": {
+        "name": "知乎可见问答",
+        "evidence_role": "user_visible_answer",
+        "extract_fields": [
+            "url",
+            "title",
+            "question",
+            "visible_text",
+            "author",
+            "published_at",
+            "engagement_summary",
+            "captured_at",
+            "visible_context",
+            "skipped_reason",
+        ],
+        "field_hints": [
+            "区分问题标题、回答正文和评论区。",
+            "赞同数、评论数只作可见页上下文。",
+            "不要把推荐回答混入目标 URL 的正文。",
+        ],
+        "quality_checks": [
+            "visible_text 应来自目标回答或目标问题页可见主体。",
+            "如果只读到登录弹层或推荐列表，填写 skipped_reason。",
+        ],
+    },
+    "wechat": {
+        "name": "公众号可见文章",
+        "evidence_role": "user_visible_article",
+        "extract_fields": [
+            "url",
+            "title",
+            "visible_text",
+            "author",
+            "account",
+            "published_at",
+            "captured_at",
+            "visible_context",
+            "skipped_reason",
+        ],
+        "field_hints": [
+            "优先提取文章标题、公众号账号、发布时间和正文。",
+            "不要采集微信私聊、收藏、通讯录或后台页面。",
+            "如果页面需要在微信内打开，说明 access gate，不要绕过。",
+        ],
+        "quality_checks": [
+            "visible_text 应明显多于页脚、二维码和相关推荐。",
+            "账号和发布时间能看到就提取，看不到就留空。",
+        ],
     },
 }
 
@@ -154,6 +258,7 @@ def build_browser_assist_plan(
     normalized_url = str(url or "").strip()
     signal_set = set(signals or [])
     platform = platform_hint(normalized_url)
+    template = browser_assist_platform_template(platform)
     reasons = _reasons(page_type=page_type, signals=signal_set, platform=platform)
     recommended = bool(force or reasons)
     status = "suggested" if recommended else "not_needed"
@@ -173,17 +278,26 @@ def build_browser_assist_plan(
         max_chars_per_page=max_chars_per_page,
         task_goal=task_goal,
     )
+    recommended_adapter = recommend_browser_assist_adapter(platform=platform, need_extraction=True)
     return {
         "recommended": recommended,
         "status": status,
         "reason": "；".join(reasons) if reasons else "当前页面可走普通公开读取，不建议升级到浏览器辅助补证。",
         "platform": platform,
-        "evidence_role": "user_visible_sample" if recommended else "",
+        "platform_template": template,
+        "evidence_role": template.get("evidence_role") or ("user_visible_sample" if recommended else ""),
         "candidate_urls": urls,
         "allowed_actions": ALLOWED_BROWSER_ASSIST_ACTIONS,
         "forbidden_actions": FORBIDDEN_BROWSER_ASSIST_ACTIONS,
         "forbidden_implementations": FORBIDDEN_BROWSER_ASSIST_IMPLEMENTATIONS,
         "browser_assist_task": task,
+        "recommended_adapter": recommended_adapter,
+        "recommended_commands": [
+            "guanlan browser-assist adapters --check",
+            f'guanlan browser-assist run "{normalized_url}" --adapter {recommended_adapter} --json',
+            "guanlan archive add-browser-note --from-json browser-notes.jsonl",
+        ],
+        "failure_taxonomy": browser_assist_failure_taxonomy(),
         "user_prompt": user_prompt,
         "agent_execution_rule": (
             "Use only the host Agent's already-available browser/computer-use/webview tool. "
@@ -236,10 +350,15 @@ def build_browser_assist_adapter_contract(adapter: str = "host-browser", *, plat
     command_template = os.environ.get(command_env, "").strip() if command_env else ""
     executable_path = _resolve_adapter_executable(adapter_id, executable)
     platform_ok = _adapter_supports_platform(spec, platform)
+    capabilities = _adapter_capabilities(adapter_id, spec, platform_supported=platform_ok, available=bool(adapter_id == "host-browser" or executable_path or command_template))
     return {
         **spec,
         "id": adapter_id,
         "available": bool(adapter_id == "host-browser" or executable_path or command_template),
+        "capability_layer": capabilities["capability_layer"],
+        "capability_score": capabilities["capability_score"],
+        "risk_score": capabilities["risk_score"],
+        "capabilities": capabilities,
         "executable_path": executable_path,
         "command_template_env": command_env,
         "command_template_configured": bool(command_template),
@@ -291,9 +410,17 @@ def check_browser_assist_adapter(
     if adapter_id == "host-browser":
         add("host_browser_contract", "ok", "宿主浏览器路径只生成任务契约，不需要本机可执行文件。")
         add("dry_run", "ok", "dry-run 可用：返回 host Agent 可执行契约，不读取浏览器状态。")
+        capabilities = dict(contract.get("capabilities") or {})
         return {
             "status": "ok" if platform_supported else "fail",
             "ready": platform_supported,
+            "capability_layer": capabilities.get("capability_layer", "extractor"),
+            "capability_score": capabilities.get("capability_score", 0),
+            "risk_score": capabilities.get("risk_score", 0),
+            "can_open": bool(capabilities.get("can_open")),
+            "can_extract_visible_text": bool(capabilities.get("can_extract_visible_text")),
+            "can_reuse_existing_session": bool(capabilities.get("can_reuse_existing_session")),
+            "cookie_flow_available": bool(capabilities.get("cookie_flow_available")),
             "checks": checks,
             "dry_run_available": platform_supported,
             "dry_run_mode": "contract_only",
@@ -319,6 +446,8 @@ def check_browser_assist_adapter(
 
     if adapter_id == "open-cli":
         dry_run_command = _open_cli_command(dry_run_url)
+    elif adapter_id == "browser-use":
+        dry_run_command = _browser_use_doctor_command()
     else:
         dry_run_command = _external_adapter_command(adapter_id, dry_run_url, output_path="")
     executable_ok = _command_executable_available(dry_run_command)
@@ -331,18 +460,42 @@ def check_browser_assist_adapter(
         add("dry_run", "fail", "dry-run 命令不可构造。")
 
     ready = bool(platform_supported and dry_run_command and executable_ok)
-    status = "ok" if ready else ("fail" if adapter_id != "xhs-cli" else "warn")
+    can_extract = bool(contract.get("can_extract"))
+    can_open = bool(contract.get("can_open"))
+    can_reuse_existing_session = bool(contract.get("can_reuse_existing_session"))
+    capabilities = _adapter_capabilities(
+        adapter_id,
+        dict(contract),
+        platform_supported=platform_supported,
+        available=bool(contract.get("available")),
+        executable_ready=executable_ok,
+    )
+    status = "ok" if ready else ("fail" if adapter_id not in {"xhs-cli", "browser-use"} else "warn")
     if adapter_id == "open-cli" and not ready:
         hints.append("安装系统打开命令，或配置 GUANLAN_BROWSER_ASSIST_OPEN_CLI_COMMAND。")
     if adapter_id == "xhs-cli" and not executable_path:
         hints.append("如需小红书外部适配器，先安装并配置 xhs-cli；否则继续使用 host-browser 稳定路径。")
+    if adapter_id == "browser-use" and not ready:
+        hints.append(
+            "如需 browser-use，可安装后再试：`uvx --from 'browser-use[cli]' browser-use doctor`，或配置 "
+            "`GUANLAN_BROWSER_ASSIST_BROWSER_USE_COMMAND`。"
+        )
 
     return {
         "status": status,
         "ready": ready,
+        "capability_layer": capabilities.get("capability_layer", "opener"),
+        "capability_score": capabilities.get("capability_score", 0),
+        "risk_score": capabilities.get("risk_score", 0),
+        "can_open": can_open and executable_ok,
+        "can_extract_visible_text": can_extract and executable_ok,
+        "can_reuse_existing_session": can_reuse_existing_session,
+        "cookie_flow_available": adapter_id == "xhs-cli",
         "checks": checks,
         "dry_run_available": ready,
-        "dry_run_mode": "command_template" if template_configured else ("builtin_open" if adapter_id == "open-cli" else ""),
+        "dry_run_mode": "command_template"
+        if template_configured
+        else ("builtin_open" if adapter_id == "open-cli" else ("builtin_doctor" if adapter_id == "browser-use" else "")),
         "command_preview": _safe_command_preview(dry_run_command) if dry_run_command else [],
         "repair_hints": _unique(hints),
     }
@@ -447,6 +600,40 @@ def run_browser_assist_adapter(
             parse_stdout=False,
             post_status="opened_requires_host_extraction",
         )
+    if adapter_id == "browser-use":
+        command = _browser_use_open_command(
+            normalized_url,
+            command_template=command_template,
+            output_path=output_path,
+        )
+        response["command"] = command
+        if not command:
+            response.update(
+                {
+                    "status": "adapter_unavailable",
+                    "error": "browser_use_not_installed",
+                    "setup_hint": (
+                        "先安装 browser-use CLI（例如 `uvx --from 'browser-use[cli]' browser-use doctor`），"
+                        "或通过 `GUANLAN_BROWSER_ASSIST_BROWSER_USE_COMMAND` 配置命令模板。"
+                    ),
+                }
+            )
+            return response
+        if not execute:
+            response["status"] = "ready_to_open"
+            response["next_step"] = (
+                "加 --execute 打开页面；如需使用已有登录态，请在宿主 Agent 的浏览器里完成登录/验证，"
+                "并按可见页契约提取正文。"
+            )
+            return response
+        return _execute_adapter_command(
+            response,
+            command,
+            timeout=timeout,
+            output_path=output_path,
+            parse_stdout=False,
+            post_status="opened_requires_host_extraction",
+        )
 
     command = _external_adapter_command(
         adapter_id,
@@ -489,7 +676,9 @@ def format_browser_assist_adapters_markdown(adapters: list[dict[str, Any]]) -> s
     for item in adapters:
         lines.append(f"## {item.get('id')}")
         lines.append(f"- 类型: {item.get('kind')}")
+        lines.append(f"- 能力层: {item.get('capability_layer') or item.get('adapter_role') or '-'}")
         lines.append(f"- 稳定性: {item.get('stability')}")
+        lines.append(f"- 能力评分: {item.get('capability_score', 0)} / 风险评分: {item.get('risk_score', 0)}")
         lines.append(f"- 可用: {'是' if item.get('available') else '否'}")
         lines.append(f"- 支持平台: {', '.join(item.get('supports_platforms') or [])}")
         lines.append(f"- 说明: {item.get('description')}")
@@ -498,6 +687,13 @@ def format_browser_assist_adapters_markdown(adapters: list[dict[str, Any]]) -> s
         check = item.get("check") or {}
         if check:
             lines.append(f"- 自检状态: {check.get('status')} / ready={bool(check.get('ready'))}")
+            lines.append(
+                "- 自检能力: "
+                f"open={bool(check.get('can_open'))}, "
+                f"extract={bool(check.get('can_extract_visible_text'))}, "
+                f"session={bool(check.get('can_reuse_existing_session'))}, "
+                f"cookie_flow={bool(check.get('cookie_flow_available'))}"
+            )
             if check.get("dry_run_available"):
                 lines.append(f"- Dry-run: 可用（{check.get('dry_run_mode') or 'command'}）")
             else:
@@ -562,12 +758,18 @@ def build_browser_assist_task(
     clean_urls = _unique(urls)
     max_pages = max(max_pages, 1)
     max_chars_per_page = max(max_chars_per_page, 1)
+    template = browser_assist_platform_template(platform)
+    extract_fields = _unique(
+        [*(template.get("extract_fields") or []), "url", "title", "visible_text", "captured_at", "skipped_reason"]
+    )
+    platform_quality_checks = list(template.get("quality_checks") or [])
     return {
         "task_type": "open_and_read_visible_page",
         "status": "requires_user_approval",
         "read_only": True,
         "platform": platform,
-        "evidence_role": evidence_role,
+        "platform_template": template,
+        "evidence_role": template.get("evidence_role") or evidence_role,
         "task_goal": task_goal or "补充公开读取不足的目标页面可见证据；只取可见页，不扩大到账号隐私区。",
         "urls": clean_urls[:max_pages],
         "max_pages": max_pages,
@@ -577,21 +779,12 @@ def build_browser_assist_task(
             "确认当前 Agent 平台已经提供浏览器/Computer Use/WebView 工具；如果没有，不要安装 Playwright 或自建浏览器，直接走手动兜底。",
             "使用宿主 Agent 已有浏览器能力打开任务 urls；如果用户需要登录、验证或切换账号，请让用户在可见浏览器里完成。",
             "只读取任务目标页的浏览器可见内容；如需滚动，只为读取目标页可见正文或公开评论摘要。",
-            "每页提取标题、URL、可见正文、作者/账号、发布时间、采集时间和可见上下文说明。",
+            "按 platform_template.extract_fields 提取字段；平台无模板时提取标题、URL、可见正文、作者/账号、发布时间、采集时间和可见上下文说明。",
             "如果页面要求登录但浏览器已可见，只读取当前页面可见内容；不要在本任务里读取 Cookie、Token、浏览器 profile、localStorage、sessionStorage、钥匙串、浏览器数据库或无关个人资料。",
             "如果仅靠可见浏览器仍无法访问，停止并向用户说明：下一步需要单独 Cookie 授权；用户未明确同意前不要尝试提取 Cookie。",
             "遇到私信、订单、后台、账号设置、支付、发布框或表单，立即跳过并在输出中标记 skipped_reason。",
         ],
-        "extract_fields": [
-            "url",
-            "title",
-            "visible_text",
-            "author",
-            "published_at",
-            "captured_at",
-            "visible_context",
-            "skipped_reason",
-        ],
+        "extract_fields": extract_fields,
         "output_schema": {
             "url": "string",
             "title": "string",
@@ -601,9 +794,18 @@ def build_browser_assist_task(
             "captured_at": "unix_timestamp_or_iso8601",
             "visible_context": "string",
             "platform": "string",
+            "source_mode": "browser_visible",
+            "browser_assisted": True,
             "user_authorized": True,
             "visible_page_only": True,
+            "session_dependent": True,
         },
+        "execution_contract": build_browser_assist_execution_contract(
+            clean_urls[:max_pages],
+            platform=platform,
+            extract_fields=extract_fields,
+            max_chars_per_page=max_chars_per_page,
+        ),
         "archive_commands": [
             "guanlan archive add-browser-note --from-json browser-notes.jsonl",
             'guanlan archive add-browser-note --url "URL" --text-file notes.md  # fallback only',
@@ -625,6 +827,7 @@ def build_browser_assist_task(
             "fallback_command": 'guanlan archive add-browser-note --url "URL" --text-file notes.md',
         },
         "quality_checks": [
+            *platform_quality_checks,
             "visible_text 不应为空，建议至少 80 个中文字符或等价信息量。",
             "url 必须是目标页或同一任务候选页，不要把推荐流无关页面混入。",
             "如果只能看到登录提示、验证码或空壳，应输出 skipped_reason，而不是伪造成正文证据。",
@@ -660,8 +863,106 @@ def build_browser_assist_task(
             "browser_assisted": True,
             "visible_page_only": True,
             "user_authorized": True,
+            "session_dependent": True,
             "reproducibility": "session_dependent",
         },
+    }
+
+
+def build_browser_assist_execution_contract(
+    urls: list[str],
+    *,
+    platform: str = "",
+    extract_fields: list[str] | None = None,
+    max_chars_per_page: int = 3000,
+) -> dict[str, Any]:
+    """Stable instructions that host agents can execute with their own browser tool."""
+
+    fields = _unique(extract_fields or [])
+    return {
+        "version": "browser_visible_v2",
+        "task": "open_target_urls_and_extract_visible_page_only",
+        "platform": platform,
+        "urls": _unique(urls),
+        "extract_fields": fields,
+        "max_chars_per_page": max(max_chars_per_page, 1),
+        "wait_for_user_steps": [
+            "login",
+            "verification",
+            "account_switch",
+        ],
+        "success_criteria": [
+            "url matches the target page or task candidate page",
+            "visible_text or skipped_reason is present",
+            "browser_assisted=true, visible_page_only=true, user_authorized=true, session_dependent=true",
+        ],
+        "failure_reasons": list(browser_assist_failure_taxonomy().keys()),
+        "output_schema": {
+            "url": "string",
+            "title": "string",
+            "visible_text": "string",
+            "author": "string",
+            "published_at": "string",
+            "captured_at": "iso8601_or_unix_timestamp",
+            "visible_context": "string",
+            "skipped_reason": "string",
+            "platform": "string",
+            "source_mode": "browser_visible",
+            "browser_assisted": True,
+            "visible_page_only": True,
+            "user_authorized": True,
+            "session_dependent": True,
+        },
+    }
+
+
+def browser_assist_platform_template(platform: str = "") -> dict[str, Any]:
+    """Return a platform-specific visible-page extraction template."""
+
+    normalized = str(platform or "").strip().lower()
+    template = dict(BROWSER_ASSIST_PLATFORM_TEMPLATES.get(normalized) or {})
+    if not template:
+        return {
+            "name": "通用可见页",
+            "evidence_role": "user_visible_sample",
+            "extract_fields": [
+                "url",
+                "title",
+                "visible_text",
+                "author",
+                "published_at",
+                "captured_at",
+                "visible_context",
+                "skipped_reason",
+            ],
+            "field_hints": ["只读取任务目标页可见内容。"],
+            "quality_checks": ["visible_text 为空时必须填写 skipped_reason。"],
+        }
+    return template
+
+
+def recommend_browser_assist_adapter(*, platform: str = "", need_extraction: bool = True) -> str:
+    """Pick the least surprising adapter for Agent-facing plans."""
+
+    if need_extraction:
+        return "host-browser"
+    if platform == "xiaohongshu":
+        return "host-browser"
+    return "open-cli"
+
+
+def browser_assist_failure_taxonomy() -> dict[str, str]:
+    """Machine-readable reasons for browser-assist failures."""
+
+    return {
+        "needs_login": "目标页要求用户在可见浏览器里登录。",
+        "needs_verification": "目标页要求用户完成验证码、安全验证或设备确认。",
+        "visible_shell_only": "浏览器里只能看到动态壳、加载页或登录提示。",
+        "adapter_can_open_but_cannot_extract": "当前适配器只能打开页面，不能直接产出结构化可见正文。",
+        "host_browser_not_available": "宿主 Agent 没有可用浏览器/Computer Use/WebView 提取能力。",
+        "target_url_mismatch": "浏览器实际页面不是任务目标 URL 或同一候选页。",
+        "private_area_detected": "页面进入私信、订单、后台、账号设置、支付或其他无关个人区域。",
+        "cookie_authorization_required": "仅靠可见页仍不足，下一步需要单独 Cookie 授权。",
     }
 
 
@@ -676,6 +977,7 @@ def format_browser_assist_markdown(plan: dict[str, Any]) -> str:
         f"- 原因: {plan.get('reason', '')}",
         f"- 证据角色: {plan.get('evidence_role', '')}",
         f"- 平台提示: {plan.get('platform') or '-'}",
+        f"- 推荐适配器: {plan.get('recommended_adapter') or '-'}",
         "- 给用户的授权话术:",
         f"  {plan.get('user_prompt', '')}",
         "- 允许动作: " + ", ".join(plan.get("allowed_actions") or []),
@@ -695,6 +997,18 @@ def format_browser_assist_markdown(plan: dict[str, Any]) -> str:
         lines.append(f"  - 默认: {cookie_policy.get('default', '')}")
         lines.append(f"  - 可升级: {cookie_policy.get('can_escalate', '')}")
         lines.append(f"  - 授权话术: {cookie_policy.get('authorization_prompt', '')}")
+    template = plan.get("platform_template") or {}
+    if template:
+        lines.append("- 平台模板:")
+        lines.append(f"  - 名称: {template.get('name', '')}")
+        lines.append("  - 字段: " + ", ".join(template.get("extract_fields") or []))
+    commands = plan.get("recommended_commands") or []
+    if commands:
+        lines.append("- 推荐命令:")
+        lines.extend(f"  - `{item}`" for item in commands)
+    failures = plan.get("failure_taxonomy") or {}
+    if failures:
+        lines.append("- 失败原因枚举: " + ", ".join(list(failures.keys())[:8]))
     task = plan.get("browser_assist_task") or {}
     steps = task.get("collection_steps") or []
     if steps:
@@ -719,13 +1033,16 @@ def browser_visible_metadata(
     """Metadata used when a user-authorized visible browser note is archived."""
 
     return {
+        "schema_version": "browser_visible_v2",
         "source_mode": "browser_visible",
         "browser_assisted": True,
         "visible_page_only": True,
         "user_authorized": True,
+        "session_dependent": True,
         "reproducibility": "session_dependent",
         "evidence_role": "user_visible_sample",
         "platform": platform or platform_hint(url),
+        "platform_template": browser_assist_platform_template(platform or platform_hint(url)),
         "author": author,
         "published_at": published_at,
         "captured_at": captured_at or time.time(),
@@ -752,6 +1069,10 @@ def browser_visible_quality_report(payload: dict[str, Any]) -> dict[str, Any]:
     title = str(payload.get("title") or "").strip()
     visible_text = str(payload.get("visible_text") or payload.get("text") or payload.get("content") or "").strip()
     skipped_reason = str(payload.get("skipped_reason") or "").strip()
+    source_mode = str(payload.get("source_mode") or "browser_visible").strip()
+    browser_assisted = bool(payload.get("browser_assisted", True))
+    visible_page_only = bool(payload.get("visible_page_only", True))
+    user_authorized = bool(payload.get("user_authorized", True))
     sensitive_keys = sorted(_sensitive_keys_in_payload(payload))
     warnings: list[str] = []
     if not url:
@@ -760,11 +1081,19 @@ def browser_visible_quality_report(payload: dict[str, Any]) -> dict[str, Any]:
         warnings.append("missing_title")
     if not visible_text and not skipped_reason:
         warnings.append("missing_visible_text")
+    if source_mode != "browser_visible":
+        warnings.append("invalid_source_mode")
+    if not browser_assisted:
+        warnings.append("missing_browser_assisted_boundary")
+    if not visible_page_only:
+        warnings.append("visible_page_only_not_confirmed")
+    if not user_authorized:
+        warnings.append("user_authorization_not_confirmed")
     if 0 < len(visible_text) < 80:
         warnings.append("thin_visible_text")
     if sensitive_keys:
         warnings.append("contains_forbidden_payload_keys")
-    usable = bool(url and visible_text and not sensitive_keys)
+    usable = bool(url and visible_text and not sensitive_keys and source_mode == "browser_visible" and browser_assisted and visible_page_only and user_authorized)
     return {
         "usable": usable,
         "status": "pass" if usable and len(visible_text) >= 80 else ("skip" if skipped_reason and not visible_text else "warn"),
@@ -773,6 +1102,7 @@ def browser_visible_quality_report(payload: dict[str, Any]) -> dict[str, Any]:
         "sensitive_keys": sensitive_keys,
         "skipped_reason": skipped_reason,
         "boundary": "browser_visible_user_authorized",
+        "schema_version": "browser_visible_v2",
     }
 
 
@@ -795,8 +1125,15 @@ def normalize_browser_visible_payload(payload: dict[str, Any]) -> dict[str, Any]
         "captured_at": payload.get("captured_at"),
         "visible_context": str(payload.get("visible_context") or "").strip(),
         "skipped_reason": str(payload.get("skipped_reason") or "").strip(),
+        "engagement_summary": str(payload.get("engagement_summary") or "").strip(),
+        "visible_comment_summary": str(payload.get("visible_comment_summary") or "").strip(),
+        "question": str(payload.get("question") or "").strip(),
+        "account": str(payload.get("account") or "").strip(),
+        "source_mode": str(payload.get("source_mode") or "browser_visible").strip(),
+        "browser_assisted": bool(payload.get("browser_assisted", True)),
         "user_authorized": bool(payload.get("user_authorized", True)),
         "visible_page_only": bool(payload.get("visible_page_only", True)),
+        "session_dependent": bool(payload.get("session_dependent", True)),
     }
 
 
@@ -867,6 +1204,51 @@ def _adapter_supports_platform(spec: dict[str, Any], platform: str = "") -> bool
     return not platform or "*" in supported or platform in supported
 
 
+def _adapter_capabilities(
+    adapter_id: str,
+    spec: dict[str, Any],
+    *,
+    platform_supported: bool,
+    available: bool,
+    executable_ready: bool | None = None,
+) -> dict[str, Any]:
+    can_open = bool(spec.get("can_open"))
+    can_extract = bool(spec.get("can_extract"))
+    can_reuse_existing_session = bool(spec.get("can_reuse_existing_session"))
+    cookie_flow_available = adapter_id == "xhs-cli"
+    executable_ok = available if executable_ready is None else executable_ready
+    capability_layer = "extractor" if can_extract else "opener" if can_open else "planner"
+    score = 0
+    if platform_supported:
+        score += 20
+    if available:
+        score += 20
+    if can_open and (adapter_id == "host-browser" or executable_ok):
+        score += 20
+    if can_extract:
+        score += 25
+    if can_reuse_existing_session:
+        score += 10
+    if cookie_flow_available:
+        score += 5
+    risk_level = str(spec.get("risk_level") or "medium")
+    risk_score = {"low": 1, "medium": 2, "high": 3}.get(risk_level, 2)
+    return {
+        "adapter_id": adapter_id,
+        "capability_layer": capability_layer,
+        "capability_score": min(score, 100),
+        "risk_level": risk_level,
+        "risk_score": risk_score,
+        "can_open": can_open,
+        "can_extract_visible_text": can_extract,
+        "can_reuse_existing_session": can_reuse_existing_session,
+        "cookie_flow_available": cookie_flow_available,
+        "platform_supported": platform_supported,
+        "available": available,
+        "executable_ready": executable_ok,
+    }
+
+
 def _resolve_adapter_executable(adapter_id: str, executable: str = "") -> str:
     if adapter_id == "host-browser":
         return ""
@@ -890,6 +1272,23 @@ def _open_cli_command(url: str, *, command_template: str = "") -> list[str]:
     executable = _resolve_adapter_executable("open-cli", "open")
     if executable:
         return [executable, url]
+    return []
+
+
+def _browser_use_doctor_command() -> list[str]:
+    executable = _resolve_adapter_executable("browser-use", "browser-use")
+    if executable:
+        return [executable, "doctor"]
+    return []
+
+
+def _browser_use_open_command(url: str, *, command_template: str = "", output_path: str = "") -> list[str]:
+    template = str(command_template or os.environ.get("GUANLAN_BROWSER_ASSIST_BROWSER_USE_COMMAND") or "").strip()
+    if template:
+        return _render_command_template(template, url=url, output=output_path)
+    executable = _resolve_adapter_executable("browser-use", "browser-use")
+    if executable:
+        return [executable, "open", url]
     return []
 
 

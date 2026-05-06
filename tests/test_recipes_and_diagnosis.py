@@ -49,6 +49,7 @@ def test_page_diagnosis_marks_dynamic_shell_without_network():
     assert payload["browser_assist"]["recommended"] is True
     assert "read_cookies" in payload["browser_assist"]["forbidden_actions"]
     assert payload["browser_assist"]["browser_assist_task"]["status"] == "requires_user_approval"
+    assert any("browser-assist run" in command for command in payload["recommended_commands"])
     assert any("guanlan stock detail" in command for command in payload["recommended_commands"])
     rendered = format_page_diagnosis_markdown(payload)
     assert "页面诊断" in rendered
@@ -81,6 +82,9 @@ def test_browser_assist_plan_is_read_only_and_user_authorized():
     assert "read_visible_text" in plan["allowed_actions"]
     assert "post" in plan["forbidden_actions"]
     assert plan["browser_assist_task"]["output_contract"]["visible_page_only"] is True
+    assert plan["browser_assist_task"]["output_contract"]["session_dependent"] is True
+    assert plan["browser_assist_task"]["execution_contract"]["version"] == "browser_visible_v2"
+    assert "visible_comment_summary" in plan["browser_assist_task"]["extract_fields"]
     assert plan["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
     assert plan["browser_assist_task"]["host_browser_contract"]["manual_copy_is_fallback_only"] is True
     assert plan["browser_assist_task"]["host_browser_contract"]["cookie_access_requires_separate_explicit_authorization"] is True
@@ -93,6 +97,17 @@ def test_browser_assist_adapter_contract_keeps_xhs_optional_and_explicit():
 
     assert contract["id"] == "xhs-cli"
     assert contract["stability"] == "experimental"
+    assert contract["capability_layer"] == "extractor"
+    assert contract["platform_supported"] is True
+    assert contract["safety"]["cookie_access_requires_separate_explicit_authorization"] is True
+
+
+def test_browser_assist_adapter_contract_exposes_browser_use():
+    contract = build_browser_assist_adapter_contract("browser-use", platform="xiaohongshu")
+
+    assert contract["id"] == "browser-use"
+    assert contract["stability"] == "best-effort"
+    assert contract["capability_layer"] == "opener"
     assert contract["platform_supported"] is True
     assert contract["safety"]["cookie_access_requires_separate_explicit_authorization"] is True
 

@@ -806,6 +806,53 @@ def query_returning_installs(conn, since_ms):
     )
 
 
+def query_retention_stats(conn, field, offsets=(1, 3, 7, 14, 30)):
+    allowed = set(["install_id", "agent_id"])
+    if field not in allowed:
+        return []
+    current_date = (_dt.datetime.utcfromtimestamp(now_ms() / 1000.0) + _dt.timedelta(hours=8)).date()
+    stats = []
+    for offset in offsets:
+        cutoff_date = (current_date - _dt.timedelta(days=offset)).isoformat()
+        row = conn.execute(
+            """
+            WITH firsts AS (
+                SELECT {field} AS entity,
+                       MIN(date(received_ms / 1000, 'unixepoch', '+8 hours')) AS first_date
+                FROM events
+                WHERE event = 'invocation_start'
+                  AND {field} <> ''
+                GROUP BY {field}
+            ),
+            eligible AS (
+                SELECT entity, first_date
+                FROM firsts
+                WHERE first_date <= ?
+            )
+            SELECT COUNT(DISTINCT eligible.entity) AS cohort,
+                   COUNT(DISTINCT events.{field}) AS retained
+            FROM eligible
+            LEFT JOIN events
+              ON events.{field} = eligible.entity
+             AND events.event = 'invocation_start'
+             AND date(events.received_ms / 1000, 'unixepoch', '+8 hours') =
+                 date(eligible.first_date, '+' || ? || ' days')
+            """.format(field=field),
+            (cutoff_date, offset),
+        ).fetchone()
+        cohort = int(row["cohort"] or 0) if row else 0
+        retained = int(row["retained"] or 0) if row else 0
+        stats.append(
+            {
+                "offset": offset,
+                "cohort": cohort,
+                "retained": retained,
+                "rate": round(100.0 * retained / cohort, 1) if cohort else 0,
+            }
+        )
+    return stats
+
+
 def query_orphan_starts(conn, since_ms, current_ms):
     cutoff = current_ms - ACTIVE_TTL_SECONDS * 1000
     return query_one(
@@ -816,13 +863,72 @@ def query_orphan_starts(conn, since_ms, current_ms):
         LEFT JOIN events ends
           ON ends.invocation_id = starts.invocation_id
          AND ends.event = 'invocation_end'
+        LEFT JOIN active_invocations active
+          ON active.invocation_id = starts.invocation_id
+         AND active.last_seen_ms >= ?
         WHERE starts.event = 'invocation_start'
           AND starts.received_ms >= ?
           AND starts.received_ms < ?
           AND ends.id IS NULL
+          AND active.invocation_id IS NULL
         """,
-        (since_ms, cutoff),
+        (cutoff, since_ms, cutoff),
     )
+
+
+def query_orphan_sources(conn, since_ms, current_ms, limit=12):
+    cutoff = current_ms - ACTIVE_TTL_SECONDS * 1000
+    rows = conn.execute(
+        """
+        WITH starts AS (
+            SELECT invocation_id, command, agent_kind, version, platform
+            FROM events
+            WHERE event = 'invocation_start'
+              AND received_ms >= ?
+              AND received_ms < ?
+        ),
+        ended AS (
+            SELECT DISTINCT invocation_id
+            FROM events
+            WHERE event = 'invocation_end'
+        ),
+        active AS (
+            SELECT DISTINCT invocation_id
+            FROM active_invocations
+            WHERE last_seen_ms >= ?
+        )
+        SELECT starts.command AS command,
+               starts.agent_kind AS agent_kind,
+               starts.version AS version,
+               starts.platform AS platform,
+               COUNT(*) AS starts,
+               SUM(CASE WHEN ended.invocation_id IS NULL AND active.invocation_id IS NULL THEN 1 ELSE 0 END) AS orphans
+        FROM starts
+        LEFT JOIN ended ON ended.invocation_id = starts.invocation_id
+        LEFT JOIN active ON active.invocation_id = starts.invocation_id
+        GROUP BY starts.command, starts.agent_kind, starts.version, starts.platform
+        HAVING orphans > 0
+        ORDER BY orphans DESC, starts DESC
+        LIMIT ?
+        """,
+        (since_ms, cutoff, cutoff, limit),
+    ).fetchall()
+    items = []
+    for row in rows:
+        starts = int(row["starts"] or 0)
+        orphans = int(row["orphans"] or 0)
+        items.append(
+            {
+                "command": row["command"] or "unknown",
+                "agent_kind": row["agent_kind"] or "unknown",
+                "version": row["version"] or "unknown",
+                "platform": row["platform"] or "unknown",
+                "starts": starts,
+                "orphans": orphans,
+                "rate": fmt_rate(orphans, starts),
+            }
+        )
+    return items
 
 
 def fmt_ms(ms):
@@ -845,6 +951,34 @@ def fmt_rate(numerator, denominator):
     if not denominator:
         return "0%"
     return "%.1f%%" % (100.0 * float(numerator) / float(denominator))
+
+
+def parse_rate_value(rate_text):
+    text = str(rate_text or "").strip()
+    if text.endswith("%"):
+        text = text[:-1]
+    try:
+        return float(text)
+    except Exception:
+        return 0.0
+
+
+def metric_text(value, default="0"):
+    if value is None:
+        return default
+    text = str(value).strip()
+    if not text:
+        return default
+    return text
+
+
+def tone_by_threshold(value, good_max, warn_max):
+    number = float(value or 0)
+    if number <= good_max:
+        return "good"
+    if number <= warn_max:
+        return "warn"
+    return "bad"
 
 
 def summary():
@@ -1009,6 +1143,9 @@ def summary():
             "platform_unique_agents": query_platform_unique(conn, "agent_id", week),
             "platform_unique_devices_all": query_platform_unique(conn, "install_id"),
             "platform_unique_agents_all": query_platform_unique(conn, "agent_id"),
+            "retention_devices": query_retention_stats(conn, "install_id"),
+            "retention_agents": query_retention_stats(conn, "agent_id"),
+            "orphan_sources_24h": query_orphan_sources(conn, day, current),
             "feedback_commands": query_feedback_groups(conn, "command", week, 12, real_only=True),
             "feedback_queries": query_feedback_groups(conn, "query_text", week, 12, real_only=True),
             "feedback_reasons": query_feedback_groups(conn, "reason_text", week, 12, real_only=True),
@@ -1074,6 +1211,76 @@ def render_key_values(title, rows):
     return "<section><h2>{}</h2><table><tbody>{}</tbody></table></section>".format(
         html.escape(title), "\n".join(items)
     )
+
+
+def render_retention_panel(device_rows, agent_rows):
+    def cards(rows, prefix):
+        items = []
+        for row in rows:
+            offset = int(row.get("offset") or 0)
+            label = "D{} {}".format(offset, prefix)
+            items.append(
+                """
+<div class="retention-card">
+  <strong>{rate}%</strong>
+  <span>{label}</span>
+  <em>{retained}/{cohort} retained</em>
+</div>
+                """.strip().format(
+                    rate=html.escape(str(row.get("rate") or 0)),
+                    label=html.escape(label),
+                    retained=html.escape(str(row.get("retained") or 0)),
+                    cohort=html.escape(str(row.get("cohort") or 0)),
+                )
+            )
+        return "\n".join(items)
+
+    return """
+<section class="retention-panel">
+  <div class="retention-heading">
+    <div>
+      <h2>留存分析 / Retention</h2>
+      <p>按首次激活日期分群；D1 / D3 / D7 / D14 / D30 表示首次激活后第 N 天是否再次调用 Guanlan。历史不足 N 天的 cohort 不进入分母。</p>
+    </div>
+  </div>
+  <h3>独立设备留存 / Unique Device Retention</h3>
+  <div class="retention-grid">{device_cards}</div>
+  <h3>独立 Agent 留存 / Unique Agent Retention</h3>
+  <div class="retention-grid">{agent_cards}</div>
+</section>
+    """.strip().format(
+        device_cards=cards(device_rows, "设备 / Devices"),
+        agent_cards=cards(agent_rows, "Agent"),
+    )
+
+
+def render_orphan_sources_panel(rows):
+    items = []
+    for row in rows:
+        items.append(
+            "<tr><td>{command}</td><td>{agent_kind}</td><td>{version}</td><td>{platform}</td><td>{starts}</td><td>{orphans}</td><td>{rate}</td></tr>".format(
+                command=html.escape(str(row.get("command") or "")),
+                agent_kind=html.escape(str(row.get("agent_kind") or "")),
+                version=html.escape(str(row.get("version") or "")),
+                platform=html.escape(str(row.get("platform") or "")),
+                starts=html.escape(str(row.get("starts") or 0)),
+                orphans=html.escape(str(row.get("orphans") or 0)),
+                rate=html.escape(str(row.get("rate") or "0%")),
+            )
+        )
+    if not items:
+        items.append("<tr><td colspan='7'>暂无异常来源 / No orphan sources</td></tr>")
+    return """
+<section>
+  <h2>异常来源 Top / Top Orphan Sources (24h)</h2>
+  <table>
+    <thead>
+      <tr><th>命令 / Command</th><th>Agent</th><th>版本 / Version</th><th>平台 / Platform</th><th>启动 / Starts</th><th>异常 / Orphans</th><th>异常率 / Rate</th></tr>
+    </thead>
+    <tbody>{rows}</tbody>
+  </table>
+</section>
+    """.strip().format(rows="\n".join(items))
 
 
 def render_feedback_inbox(rows):
@@ -1904,31 +2111,41 @@ def render_dashboard():
             "hint": "打开访问明细",
         },
     ]
+    error_rate_value = parse_rate_value(data["error_rate_24h"])
+    orphan_rate_value = parse_rate_value(data["orphan_rate_24h"])
     secondary_cards = [
-        ("当前并发 / Active Concurrency", data["active_now"]),
-        ("最近事件 / Last Event", fmt_ms(data["last_event_age_ms"]) + " 前"),
-        ("24h 调用 / 24h Calls", data["calls_24h"]),
-        ("7d 调用 / 7d Calls", data["calls_7d"]),
-        ("7d 官网独立 IP / 7d Website Unique IPs", data["site_unique_ips_7d"]),
-        ("24h 官网访问 / 24h Website Visits", data["site_visits_24h"]),
-        ("7d 官网访问 / 7d Website Visits", data["site_visits_7d"]),
-        ("7d 反馈 / 7d Feedback", data["feedback_7d"]),
-        ("24h 反馈总量 / 24h Feedback Total", data["feedback_24h_total"]),
-        ("24h 测试反馈 / 24h Synthetic Feedback", data["feedback_24h_synthetic"]),
-        ("7d 测试反馈 / 7d Synthetic Feedback", data["feedback_7d_synthetic"]),
-        ("7d 反馈 Agent / 7d Feedback Agents", data["feedback_unique_agents_7d"]),
-        ("7d 反馈 Agent 总量 / 7d Feedback Agents Total", data["feedback_unique_agents_7d_total"]),
-        ("7d 独立 Agent / 7d Unique Agents", data["unique_agents_7d"]),
-        ("7d 独立设备 / 7d Unique Devices", data["active_installs_7d"]),
-        ("24h 回访设备 / 24h Returning Devices", data["returning_installs_24h"]),
-        ("Agent 日均调用 / Daily Calls per Agent", data["calls_per_agent_24h"]),
-        ("设备日均调用 / Daily Calls per Device", data["calls_per_device_24h"]),
-        ("任务平均时长 / Avg Task Duration", fmt_ms(task_24h["avg_ms"])),
-        ("任务 P95 时长 / P95 Task Duration", fmt_ms(task_24h["p95_ms"])),
-        ("Session 平均时长 / Avg Session Duration", fmt_ms(session_24h["avg_duration_ms"])),
-        ("Session P95 时长 / P95 Session Duration", fmt_ms(session_24h["p95_duration_ms"])),
-        ("24h 错误率 / 24h Error Rate", data["error_rate_24h"]),
-        ("24h 异常结束率 / 24h Orphan Rate", data["orphan_rate_24h"]),
+        {"label": "当前并发 / Active Concurrency", "value": metric_text(data["active_now"]), "tone": "neutral"},
+        {"label": "最近事件 / Last Event", "value": fmt_ms(data["last_event_age_ms"]) + " 前", "tone": "neutral"},
+        {"label": "24h 调用 / 24h Calls", "value": data["calls_24h"], "tone": "neutral"},
+        {"label": "7d 调用 / 7d Calls", "value": data["calls_7d"], "tone": "neutral"},
+        {"label": "7d 官网独立 IP / 7d Website Unique IPs", "value": data["site_unique_ips_7d"], "tone": "neutral"},
+        {"label": "24h 官网访问 / 24h Website Visits", "value": data["site_visits_24h"], "tone": "neutral"},
+        {"label": "7d 官网访问 / 7d Website Visits", "value": data["site_visits_7d"], "tone": "neutral"},
+        {"label": "7d 反馈 / 7d Feedback", "value": data["feedback_7d"], "tone": "good"},
+        {"label": "24h 反馈总量 / 24h Feedback Total", "value": data["feedback_24h_total"], "tone": "good"},
+        {"label": "24h 测试反馈 / 24h Synthetic Feedback", "value": metric_text(data["feedback_24h_synthetic"]), "tone": "neutral"},
+        {"label": "7d 测试反馈 / 7d Synthetic Feedback", "value": data["feedback_7d_synthetic"], "tone": "neutral"},
+        {"label": "7d 反馈 Agent / 7d Feedback Agents", "value": data["feedback_unique_agents_7d"], "tone": "good"},
+        {"label": "7d 反馈 Agent 总量 / 7d Feedback Agents Total", "value": data["feedback_unique_agents_7d_total"], "tone": "good"},
+        {"label": "7d 独立 Agent / 7d Unique Agents", "value": data["unique_agents_7d"], "tone": "neutral"},
+        {"label": "7d 独立设备 / 7d Unique Devices", "value": data["active_installs_7d"], "tone": "neutral"},
+        {"label": "24h 回访设备 / 24h Returning Devices", "value": data["returning_installs_24h"], "tone": "good"},
+        {"label": "Agent 日均调用 / Daily Calls per Agent", "value": data["calls_per_agent_24h"], "tone": "neutral"},
+        {"label": "设备日均调用 / Daily Calls per Device", "value": data["calls_per_device_24h"], "tone": "neutral"},
+        {"label": "任务平均时长 / Avg Task Duration", "value": fmt_ms(task_24h["avg_ms"]), "tone": "neutral"},
+        {"label": "任务 P95 时长 / P95 Task Duration", "value": fmt_ms(task_24h["p95_ms"]), "tone": "neutral"},
+        {"label": "Session 平均时长 / Avg Session Duration", "value": fmt_ms(session_24h["avg_duration_ms"]), "tone": "neutral"},
+        {"label": "Session P95 时长 / P95 Session Duration", "value": fmt_ms(session_24h["p95_duration_ms"]), "tone": "neutral"},
+        {
+            "label": "24h 错误率 / 24h Error Rate",
+            "value": data["error_rate_24h"],
+            "tone": tone_by_threshold(error_rate_value, 1.0, 3.0),
+        },
+        {
+            "label": "24h 异常结束率 / 24h Orphan Rate",
+            "value": data["orphan_rate_24h"],
+            "tone": tone_by_threshold(orphan_rate_value, 5.0, 12.0),
+        },
     ]
     core_card_html = "\n".join(
         (
@@ -1947,8 +2164,12 @@ def render_dashboard():
         for card in core_cards
     )
     secondary_card_html = "\n".join(
-        "<div class='card'><span>{}</span><strong>{}</strong></div>".format(label, value)
-        for label, value in secondary_cards
+        "<div class='card card-{tone}'><span>{label}</span><strong>{value}</strong></div>".format(
+            tone=html.escape(str(card.get("tone") or "neutral")),
+            label=html.escape(str(card.get("label") or "")),
+            value=html.escape(str(card.get("value") or "")),
+        )
+        for card in secondary_cards
     )
     recent_rows = []
     for row in data["recent"]:
@@ -1991,6 +2212,8 @@ def render_dashboard():
             ("24h 回访设备 / 24h Returning Devices", data["returning_installs_24h"]),
         ],
     )
+    retention_panel = render_retention_panel(data["retention_devices"], data["retention_agents"])
+    orphan_sources_panel = render_orphan_sources_panel(data["orphan_sources_24h"])
 
     return """<!doctype html>
 <html>
@@ -2023,16 +2246,29 @@ def render_dashboard():
     .core-card, .card, section {{ background:var(--card); border:1px solid var(--card-border); border-radius:8px; box-shadow:var(--shadow); }}
     .core-card {{ padding:14px 16px; min-height:96px; }}
     .core-card span {{ display:block; color:var(--muted); font-size:12px; }}
-    .core-card strong {{ display:block; margin-top:8px; font-size:36px; line-height:1; }}
+    .core-card strong {{ display:block; margin-top:8px; font-size:36px; line-height:1; color:#10b981; }}
     .core-card-link {{ text-decoration:none; color:inherit; position:relative; }}
     .core-card-link:hover {{ border-color:#c8c9d4; box-shadow:0 8px 24px rgba(15,23,42,0.1); }}
     .core-card-link em {{ position:absolute; right:14px; bottom:12px; color:#2563eb; font-style:normal; font-size:12px; }}
     .card {{ padding:14px 16px; }}
     .card span {{ display:block; color:var(--muted); font-size:12px; }}
-    .card strong {{ display:block; margin-top:6px; font-size:26px; line-height:1.1; }}
+    .card strong {{ display:block; margin-top:6px; font-size:26px; line-height:1.1; color:#1d1d1f; }}
+    .card strong:empty::before {{ content:"0"; color:#1d1d1f; }}
+    .card.card-good strong {{ color:#10b981; }}
+    .card.card-warn strong {{ color:#f59e0b; }}
+    .card.card-bad strong {{ color:#ef4444; }}
     .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px; margin-top:16px; }}
     section {{ padding:14px 16px; overflow:auto; }}
     h2 {{ margin:0 0 10px; font-size:15px; }}
+    .retention-panel {{ margin-top:16px; }}
+    .retention-heading {{ display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }}
+    .retention-heading p {{ margin:0 0 12px; color:var(--muted); }}
+    .retention-panel h3 {{ margin:12px 0 8px; font-size:13px; color:#3f3f46; }}
+    .retention-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; }}
+    .retention-card {{ border:1px solid #ececf2; border-radius:8px; padding:14px; background:#fff; text-align:center; }}
+    .retention-card strong {{ display:block; color:#10b981; font-size:32px; line-height:1; }}
+    .retention-card span {{ display:block; margin-top:8px; color:#4b5563; font-weight:700; }}
+    .retention-card em {{ display:block; margin-top:5px; color:var(--muted); font-size:12px; font-style:normal; }}
     .section-link {{ float:right; color:#2563eb; text-decoration:none; font-size:12px; font-weight:600; }}
     table {{ width:100%; border-collapse:collapse; }}
     td, th {{ padding:8px 6px; border-bottom:1px solid #eef0f3; text-align:left; white-space:nowrap; }}
@@ -2086,6 +2322,7 @@ def render_dashboard():
       {core_platform_agents}
     </div>
     <div class="stats-cards">{secondary_cards}</div>
+    {retention}
     <div class="grid">
       {surface}
       {commands}
@@ -2099,6 +2336,7 @@ def render_dashboard():
       {feedback_reasons}
       {depth}
       {quality}
+      {orphan_sources}
     </div>
     {feedback_inbox}
     <section class="recent">
@@ -2127,6 +2365,8 @@ def render_dashboard():
         feedback_reasons=render_group("有效问题原因 / Real Pain Reasons", data["feedback_reasons"]),
         depth=depth_panel,
         quality=quality_panel,
+        orphan_sources=orphan_sources_panel,
+        retention=retention_panel,
         recent="\n".join(recent_rows),
         feedback_inbox=render_feedback_inbox(data["recent_feedback"]),
     )
