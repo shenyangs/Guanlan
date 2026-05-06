@@ -179,6 +179,7 @@ guanlan browser-assist run "https://example.com/article" --adapter browser-use -
 guanlan recipe list
 guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"
 guanlan recipe run university-advisor "南京师范大学中北学院 计算机 导师 招生"
+guanlan recipe run trajectory-map "Cursor 发展历程 竞品格局"
 guanlan investigate "复杂研究需求" --limit 80 --format context
 guanlan investigate "复杂研究需求" --budget deep --dry-run
 guanlan sources explain "中文研究需求"

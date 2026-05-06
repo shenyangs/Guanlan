@@ -583,6 +583,22 @@ class TestCLI:
         capsys.readouterr()
         assert calls[0]["network_mode"] == "direct"
 
+    def test_search_strict_scope_option_is_passed_to_webtools(self, capsys, monkeypatch):
+        calls = []
+
+        def fake_search_web(*_args, **kwargs):
+            calls.append(kwargs)
+            return []
+
+        monkeypatch.setattr("guanlan.webtools.search_web", fake_search_web)
+
+        with patch("sys.argv", ["guanlan", "search", "人工智能", "--scope", "tech_dev", "--strict-scope", "--json"]):
+            main()
+
+        capsys.readouterr()
+        assert calls[0]["scope"] == "tech_dev"
+        assert calls[0]["strict_scope"] is True
+
     def test_search_prints_compact_update_notice_to_stderr_without_polluting_json(self, capsys, monkeypatch):
         def fake_search_web(*_args, **_kwargs):
             return []

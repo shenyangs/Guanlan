@@ -85,6 +85,7 @@ def _tool_definitions() -> list[dict]:
                     },
                     "site": {"type": "string"},
                     "scope": {"type": "string"},
+                    "strict_scope": {"type": "boolean", "default": False},
                     "backend": {"type": "string", "default": "auto"},
                     "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"]},
                     "format": {"type": "string", "enum": ["markdown", "context", "prompt", "json"], "default": "context"},
@@ -642,6 +643,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             profile=args.get("profile") or None,
             trace=bool(args.get("trace")),
             cache_ttl=int(args.get("cache_ttl") or 0),
+            strict_scope=bool(args.get("strict_scope")),
         )
         output_format = str(args.get("format") or "context")
         if output_format == "json":

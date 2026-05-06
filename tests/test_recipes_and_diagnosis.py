@@ -33,6 +33,20 @@ def test_recipe_list_and_suggestion_cover_university():
     assert suggest_recipe("南京师范大学中北学院 计算机 导师 招生").id == "university-advisor"
 
 
+def test_recipe_plan_builds_trajectory_map_workflow():
+    plan = build_recipe_plan("trajectory-map", "Cursor 发展历程 竞品格局")
+    rendered = format_recipe_plan_markdown(plan)
+
+    assert plan["recipe"]["id"] == "trajectory-map"
+    assert "起源与关键节点" in plan["recipe"]["evidence_layers"]
+    assert any("guanlan timeline" in command for command in plan["commands"])
+    assert any("guanlan dossier" in command for command in plan["commands"])
+    assert any("guanlan compare" in command for command in plan["commands"])
+    assert any("guanlan sources explain" in command for command in plan["commands"])
+    assert "不要凭印象编造竞品清单" in rendered
+    assert suggest_recipe("帮我搞懂 Manus Agent 的来龙去脉和竞品格局").id == "trajectory-map"
+
+
 def test_page_diagnosis_marks_dynamic_shell_without_network():
     payload = diagnose_page(
         "https://xueqiu.com/snowman/provider/zz/gp_detail?symbol=SH600519",

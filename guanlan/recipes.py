@@ -112,6 +112,29 @@ _RECIPES: tuple[ResearchRecipe, ...] = (
         evidence_layers=["官方/项目源", "开发者社区", "RSS/技术媒体", "论文/文档", "用户反馈"],
         boundaries=["技术结论要说明版本、发布时间和适用环境。", "营销稿不能替代文档或真实使用反馈。"],
     ),
+    ResearchRecipe(
+        id="trajectory-map",
+        name="对象脉络/同类格局",
+        description="把一个产品、公司、技术概念或人物拆成发展脉络、同类格局和交叉判断，形成可继续核验的研究骨架。",
+        when_to_use="用户想系统搞懂一个对象、做竞品分析、梳理来龙去脉、判断赛道格局或准备深度研究材料时。",
+        preset="general",
+        scopes=["business", "tech_dev", "reputation", "social_web"],
+        evidence_layers=[
+            "对象定义/官方自述",
+            "起源与关键节点",
+            "阶段变化/路径依赖",
+            "同类对象/竞品样本",
+            "用户与社区反馈",
+            "媒体/行业观察",
+            "冲突、缺口与待核验问题",
+        ],
+        boundaries=[
+            "先确认对象边界和同类对象，不要凭印象编造竞品清单。",
+            "时间线只收有可见日期或可追溯节点的材料；无日期材料单列为背景。",
+            "同类对比必须分清官方定位、媒体判断和用户样本，不能把单一社区意见写成总体结论。",
+            "输出是证据骨架和研究判断，不是替用户做最终商业或投资决策。",
+        ],
+    ),
 )
 
 
@@ -148,6 +171,24 @@ def suggest_recipe(query: str, *, route_plan: dict[str, Any] | None = None) -> R
         return get_recipe("entertainment-pulse")
     if "cybersecurity" in intents or any(term in text for term in ("cve", "漏洞", "诈骗", "钓鱼")):
         return get_recipe("security-advisory")
+    if any(
+        term in text
+        for term in (
+            "竞品",
+            "对比分析",
+            "深度研究",
+            "系统研究",
+            "搞懂",
+            "摸清楚",
+            "来龙去脉",
+            "发展历程",
+            "演进",
+            "格局",
+            "赛道",
+            "同类",
+        )
+    ):
+        return get_recipe("trajectory-map")
     if "tech" in intents or any(term in text for term in ("github", "开源", "技术", "ai", "llm")):
         return get_recipe("tech-radar")
     return get_recipe("product-reputation")
@@ -269,6 +310,16 @@ def _commands_for_recipe(recipe: ResearchRecipe, query: str, *, profile: str, li
             [
                 f"guanlan research {q} --preset tech --profile {profile} --limit {limit} --read-top {read_top}",
                 "guanlan feeds curated --limit 80",
+            ]
+        )
+    elif recipe.id == "trajectory-map":
+        commands.extend(
+            [
+                f"guanlan research {q} --profile {profile} --limit {limit} --read-top {read_top} --advisor",
+                f"guanlan timeline {q} --limit {limit} --format context",
+                f"guanlan dossier {q} --focus '定义 起源 演变 同类格局 口碑 风险 缺口' --limit {limit} --format context",
+                f"guanlan compare {q} '主要同类对象' --focus '定位 技术路线 用户口碑 商业模式 风险' --limit {limit} --format context",
+                f"guanlan sources explain {q}",
             ]
         )
     else:

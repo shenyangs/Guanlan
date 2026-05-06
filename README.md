@@ -54,13 +54,16 @@ guanlan search "人工智能 政策 最新" --profile china --limit 80
 2. **信源路由**：政策看官方和党央媒，口碑看社区样本，技术看开发者与 RSS，产业看垂类媒体。
 3. **网页阅读**：把网页转成 Markdown，并提供正文质量、噪声、fallback 和 trace。
 4. **热榜观察**：用 `hotnews` 和 `feeds` 帮 Agent 观察“今天中文互联网在涌动什么”。
-5. **证据包输出**：`research`、`compare`、`timeline`、`dossier`、`archive`、`--format context` 面向 Agent 继续推理。
+5. **证据包输出**：`research`、`compare`、`timeline`、`dossier`、`recipe`、`archive`、`--format context` 面向 Agent 继续推理。
 
 ## 典型命令
 
 ```bash
 # 1. 搜中文网页，默认建议给 Agent 足够候选池
 guanlan search "新质生产力 政策 原文" --profile china --limit 80 --trace
+
+# scope 默认是软收敛：优先看这类信源，质量不足时自动混入开放网页
+guanlan search "AI Agent 发展趋势 2025" --profile china --scope tech_dev --limit 80 --trace
 
 # 2. 读取网页正文，检查是否干净
 guanlan read "https://example.com/article" --quality-report --trace
@@ -73,6 +76,9 @@ guanlan hotnews today --limit 80 --trends
 
 # 5. 不确定去哪搜时，先看信源路由
 guanlan route "AI 产业政策 地方 补贴" --json
+
+# 6. 想系统搞懂一个对象时，先生成对象脉络/同类格局研究链路
+guanlan recipe run trajectory-map "Cursor 发展历程 竞品格局"
 ```
 
 更多命令见 [完整使用手册](docs/full-guide.md) 和 [Agent 使用指南](docs/agent-usage.md)。
@@ -109,7 +115,7 @@ guanlan doctor --install-check
 guanlan status
 ```
 
-看到 `观澜 / Guanlan v0.5.15`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.16`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
 
 ## 给 Agent 复制的安装指令
 

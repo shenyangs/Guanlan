@@ -1240,6 +1240,7 @@ def search_web(
     cluster_threshold: str = "conservative",
     cache_ttl: int = 0,
     use_cache: bool = True,
+    strict_scope: bool = False,
 ) -> list[dict[str, Any]]:
     """Search the web and return normalized result dictionaries."""
     original_query = query.strip()
@@ -1422,6 +1423,7 @@ def search_web(
                     "end_date": recency["end_date"],
                 },
                 "quality_intent": quality["intent"],
+                "strict_scope": bool(strict_scope),
             },
         )
         cached = _cache_get("search", cache_key, ttl=cache_ttl)
@@ -1676,6 +1678,7 @@ def search_web(
             limit=limit,
             network_mode=network_mode,
             profile=profile,
+            strict_scope=strict_scope,
         )
 
     if backend in {"auto", "duckduckgo"} and not site and effective_scope != "university":
@@ -1891,6 +1894,7 @@ def search_web(
                 "time_constraint": time_constraint,
                 "agent_limit_advice": limit_advice,
                 "scope_distinction": scope_distinction,
+                "scope_mode": "strict" if strict_scope and effective_scope else ("soft" if effective_scope else "open"),
                 "external_fetch_strategy": external_fetch_strategy,
                 "backend_diagnostics": backend_diagnostics,
                 "backend_summary": backend_summary,
@@ -1931,6 +1935,7 @@ def search_web(
         backend_recovery=backend_recovery,
         errors=errors,
         network_profile=network_profile,
+        scope_mode="strict" if strict_scope and effective_scope else ("soft" if effective_scope else "open"),
     )
     return SearchResults(output, diagnostics=shared_diagnostics)
 
@@ -1956,6 +1961,7 @@ def _search_shared_diagnostics(
     backend_recovery: dict[str, Any],
     errors: list[str],
     network_profile: dict[str, Any] | None = None,
+    scope_mode: str = "open",
     site_filter: dict[str, Any] | None = None,
     time_constraint: dict[str, Any] | None = None,
     limit_advice: dict[str, Any] | None = None,
@@ -1986,6 +1992,7 @@ def _search_shared_diagnostics(
         "time_constraint": time_constraint or {"enabled": False},
         "agent_limit_advice": limit_advice or {"enabled": False},
         "scope_distinction": scope_distinction or {"enabled": False},
+        "scope_mode": scope_mode,
         "external_fetch_strategy": external_fetch_strategy or {"enabled": False},
         "backend_diagnostics": backend_diagnostics,
         "backend_summary": backend_summary,
@@ -2286,11 +2293,20 @@ def _run_duckduckgo_recovery_pass(
     limit: int,
     network_mode: str,
     profile: str | None,
+    strict_scope: bool = False,
 ) -> None:
     """Try lower-friction DuckDuckGo queries after blocked/over-narrow attempts."""
-    if _usable_candidate_count(results, original_query, quality) >= _recovery_target_count(limit):
+    soft_scope_mix_needed = (
+        bool(effective_scope)
+        and not strict_scope
+        and _scope_open_mix_needed(results, original_query, quality, limit)
+    )
+    if (
+        not soft_scope_mix_needed
+        and _usable_candidate_count(results, original_query, quality) >= _recovery_target_count(limit)
+    ):
         return
-    if not _recovery_needed(results, diagnostics, original_query, quality, limit):
+    if not soft_scope_mix_needed and not _recovery_needed(results, diagnostics, original_query, quality, limit):
         return
 
     attempted_queries = {
@@ -2321,19 +2337,23 @@ def _run_duckduckgo_recovery_pass(
                 profile=profile,
             )
 
-    if _usable_candidate_count(results, original_query, quality) < _recovery_target_count(limit):
+    if soft_scope_mix_needed or _usable_candidate_count(results, original_query, quality) < _recovery_target_count(limit):
         if fallback_open_query not in attempted_queries:
             attempted_queries.add(fallback_open_query)
             _run_duckduckgo_recovery_attempt(
                 results,
                 diagnostics=diagnostics,
                 errors=errors,
-                backend_name="duckduckgo:open_fallback",
+                backend_name="duckduckgo:scope_open_mix" if soft_scope_mix_needed else "duckduckgo:open_fallback",
                 query=fallback_open_query,
                 original_query=original_query,
                 quality=quality,
                 limit=limit,
-                note="主后端受阻或 scope 过窄，自动用原始 query 开放补搜，并继续按信源质量排序。",
+                note=(
+                    "scope 内候选相关性或覆盖面不足，自动混入开放网页补搜，并继续按信源质量排序。"
+                    if soft_scope_mix_needed
+                    else "主后端受阻或 scope 过窄，自动用原始 query 开放补搜，并继续按信源质量排序。"
+                ),
                 network_mode=network_mode,
                 profile=profile,
             )
@@ -2358,6 +2378,56 @@ def _run_duckduckgo_recovery_pass(
             network_mode=network_mode,
             profile=profile,
         )
+
+
+def _scope_open_mix_needed(
+    results: list[SearchResult],
+    original_query: str,
+    quality: dict[str, Any],
+    limit: int,
+) -> bool:
+    if not results:
+        return False
+    target = _recovery_target_count(limit)
+    deduped = _dedupe_results(results)
+    if len(deduped) < target:
+        return True
+    gate = _assess_backend_batch_quality(original_query, deduped[: max(target, 3)], quality)
+    if not gate.get("usable"):
+        return True
+    term_coverage = float(gate.get("term_coverage") or 0.0)
+    entity_coverage = float(gate.get("entity_coverage") or 0.0)
+    group_coverage = float(gate.get("group_coverage") or 0.0)
+    preferred_scopes = {str(item) for item in quality.get("preferred_scopes") or [] if str(item)}
+    preferred_types = {str(item) for item in quality.get("preferred_source_types") or [] if str(item)}
+    preferred_hits = []
+    for item in deduped:
+        matched_scope = item.matched_scope
+        source_type = item.source_type
+        if not (matched_scope or source_type):
+            domain = item.domain or _domain(item.url)
+            try:
+                from guanlan.search_sources import classify_domain
+
+                quality_scope = _preferred_quality_scope_for_domain(domain, list(preferred_scopes))
+                meta = classify_domain(domain, preferred_scope=quality_scope)
+                matched_scope = str(meta.get("matched_scope") or "")
+                source_type = str(meta.get("source_type") or "")
+            except Exception:
+                matched_scope = ""
+                source_type = ""
+        if matched_scope in preferred_scopes or source_type in preferred_types:
+            preferred_hits.append(item)
+    if not preferred_hits:
+        return True
+    if _contains_cjk(original_query):
+        if term_coverage < 0.75 and group_coverage < 0.75:
+            return True
+        if entity_coverage < 0.75:
+            return True
+    elif term_coverage < 0.6:
+        return True
+    return False
 
 
 def _run_multi_entity_fanout_pass(

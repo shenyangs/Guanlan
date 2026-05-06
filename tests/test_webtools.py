@@ -1792,6 +1792,83 @@ def test_search_web_prefers_requested_scope_for_overlapping_domains(monkeypatch)
     assert results[0]["matched_scope"] == "ecommerce"
 
 
+def test_search_web_scope_mixes_open_results_when_scoped_batch_is_weak(monkeypatch):
+    requested = []
+    original = "AI Agent 发展趋势 2025"
+
+    def fake_search(query, limit=10):
+        requested.append(query)
+        if query.startswith(original):
+            return [
+                webtools.SearchResult(
+                    title="AI Agent 2025 技术发展趋势深度分析",
+                    url="https://qbitai.com/agent-2025",
+                    snippet="AI Agent 2025 技术发展趋势、模型调用、工具使用和多智能体架构。",
+                    source="duckduckgo",
+                )
+            ]
+        return [
+            webtools.SearchResult(
+                title=f"如何禁用搜狗输入法旺仔AI {idx}",
+                url=f"https://ithome.com/0/{idx}.htm",
+                snippet="输入法 AI 功能设置。",
+                source="duckduckgo",
+            )
+            for idx in range(5)
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web(
+        original,
+        backend="duckduckgo",
+        scope="tech_dev",
+        limit=6,
+        trace=True,
+    )
+
+    assert requested[0].startswith("(")
+    assert any(query.startswith(original) for query in requested)
+    assert any(item["url"] == "https://qbitai.com/agent-2025" for item in results)
+    assert any(
+        item["backend"] == "duckduckgo:scope_open_mix"
+        for item in results[0]["trace"]["backend_diagnostics"]
+    )
+    assert results[0]["trace"]["scope_mode"] == "soft"
+
+
+def test_search_web_strict_scope_skips_open_mix(monkeypatch):
+    requested = []
+    original = "AI Agent 发展趋势 2025"
+
+    def fake_search(query, limit=10):
+        requested.append(query)
+        return [
+            webtools.SearchResult(
+                title=f"如何禁用搜狗输入法旺仔AI {idx}",
+                url=f"https://ithome.com/0/{idx}.htm",
+                snippet="输入法 AI 功能设置。",
+                source="duckduckgo",
+            )
+            for idx in range(5)
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web(
+        original,
+        backend="duckduckgo",
+        scope="tech_dev",
+        strict_scope=True,
+        limit=5,
+        trace=True,
+    )
+
+    assert len(requested) == 1
+    assert requested[0].startswith("(")
+    assert results[0]["trace"]["scope_mode"] == "strict"
+
+
 def test_research_english_profile_adapts_legacy_tech_preset(monkeypatch):
     def fake_search(query, limit=10, site=None, scope=None, backend="auto", profile=None, **kwargs):
         return [

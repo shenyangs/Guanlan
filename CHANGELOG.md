@@ -6,11 +6,20 @@
 
 ## Unreleased
 
-## v0.5.15 - 2026-05-06
+## v0.5.16 - 2026-05-06
 
 ### Added
 
 - 新增 `trajectory-map` 研究 Recipe，把产品、公司、技术概念或人物拆成对象定义、发展脉络、同类格局、用户样本、证据冲突和待核验问题，输出可继续执行的 `research/timeline/dossier/compare/sources explain` 链路。
+- `search --scope` 默认改为软收敛：优先跑指定信源池，质量或覆盖不足时自动混入开放网页；新增 `--strict-scope` 保留窄范围模式。
+- MCP `guanlan_search` 同步支持 `strict_scope` 参数，搜索 trace 会显式标注 `scope_mode=soft|strict|open`。
+
+### Changed
+
+- README、完整指南和 Skill 同步补充 `trajectory-map`、软 scope 与 `--strict-scope` 使用口径。
+- 官网版本与静态资源版本同步到 `0.5.16`。
+
+## v0.5.15 - 2026-05-06
 
 ### Changed
 

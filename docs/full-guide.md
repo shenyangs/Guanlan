@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.5.15`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.16`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -455,6 +455,7 @@ guanlan configure --from-browser chrome
 | `guanlan research "关键词" --route-chart` | 追加 ASCII 路由诊断图，展示意图、证据角色和 scope 权重。 |
 | `guanlan research "关键词" --advisor` | 在证据包后追加助理视角规则，帮助 Agent 基于证据生成建议。 |
 | `guanlan research "关键词" --advisor --advisor-style risk` | 按风险/决策/策略等风格生成更自然的 Agent 作答骨架。 |
+| `guanlan recipe run trajectory-map "Cursor 发展历程 竞品格局"` | 对产品、公司、技术概念或人物生成对象脉络/同类格局研究链路，串起 `research/timeline/dossier/compare`。 |
 | `guanlan compare "A" "B" --focus "价格 口碑" --limit 80` | 对多个对象分别建证据包，再按官方/媒体/用户样本/近期动态/风险维度做对比。 |
 | `guanlan timeline "某政策 最新进展" --limit 80` | 从宽候选池里抽取带日期的事件线索，并把无日期但可能重要的证据单列出来。 |
 | `guanlan dossier "某公司" --focus "业务 口碑 风险" --limit 80` | 生成一个实体研究档案：信源概览、分面证据、近期时间线、待核验问题和下一步命令。 |
@@ -681,6 +682,7 @@ guanlan search "清华大学计算机系研究生招生 导师" --profile china 
 guanlan compare "LangGraph" "AutoGen" "CrewAI" --focus "中文资料 技术选型 社区反馈" --preset tech --limit 80 --format context
 guanlan timeline "低空经济 广东 政策 最新进展" --preset local --limit 80
 guanlan dossier "某公司" --focus "业务 口碑 风险 近期动态" --limit 80 --read-top 5
+guanlan recipe run trajectory-map "Manus Agent 来龙去脉 同类格局"
 ```
 
 三者适用边界：
@@ -688,6 +690,7 @@ guanlan dossier "某公司" --focus "业务 口碑 风险 近期动态" --limit 
 - `compare`：适合多产品、多公司、多政策方案、多技术路线对照；它会按官方/产业/用户样本/近期动态/风险维度提示“证据足不足”。
 - `timeline`：适合近期进展、事件演变、政策发布、版本发布；日期来自公开材料可见线索，缺日期的重要证据会单列。
 - `dossier`：适合做公司、产品、政策、事件的研究档案；输出的是可继续补证的骨架，不是最终定论。
+- `recipe run trajectory-map`：适合用户想“系统搞懂一个对象”时使用；它不是写作风格模板，而是把对象定义、起源演变、同类对象、用户样本、冲突缺口和后续核验命令整理成 Guanlan 可执行的证据路线。
 
 ### 11. 读取单篇文章或网页
 
@@ -1035,11 +1038,11 @@ guanlan research "某产品 用户评价" --preset reputation --read-top 0 --adv
 
 `research` 会把搜索结果、同题聚类、信源多样性和原文摘读整理成一份更适合 Agent 消化的证据包。
 
-`route` 会先解释“为什么这样搜”：识别需求标签，给出优先 scope、推荐站点、证据角色、风险提醒和查询改写。它是软路由，不会把世界缩小成白名单；`research` 会把优先信源和开放网页兜底一起纳入候选池，避免信源池过窄。
+`route` 会先解释“为什么这样搜”：识别需求标签，给出优先 scope、推荐站点、证据角色、风险提醒和查询改写。它是软路由，不会把世界缩小成白名单；`search --scope` 默认也是软收敛，会优先检索该类信源，并在相关性或覆盖面不足时自动混入开放网页。只有 `--site` 和 `--strict-scope` 表示窄范围。
 
 如果用户需要建议、下一步、风险提醒，或希望你判断“他为什么搜这个”，加 `--advisor`。助理视角规则会告诉 Agent 当前证据能支持什么、不能支持什么，以及回答时必须守住哪些边界；最终建议应由 Agent 结合用户问题自然生成，不能机械复述模板，也不能当作用户真实目的或高风险专业结论。
 
-Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会查 `gov + party_central`，`reputation` 会查 `social_web + tech_dev + business`，`entertainment` 会查 `entertainment + social_web + business` 并补充豆瓣、猫眼/灯塔、B站、微博、TapTap 等公开页证据块；`global_entertainment` 会查 Variety、Deadline、Hollywood Reporter、Billboard 等欧美文娱源；`jp_kr_entertainment` 会查 Soompi、Oricon、Natalie、Naver 娱乐等日韩源；`cybersecurity`、`weather_disaster`、`sports`、`science`、`career`、`podcast`、`test_prep` 会分别路由到漏洞/反诈、天气灾害、体育、科学、职场、播客和考试备考信源。用户显式传入 `--scope`、`--site` 或 `--sites` 时，以用户指定范围为准。
+Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会查 `gov + party_central`，`reputation` 会查 `social_web + tech_dev + business`，`entertainment` 会查 `entertainment + social_web + business` 并补充豆瓣、猫眼/灯塔、B站、微博、TapTap 等公开页证据块；`global_entertainment` 会查 Variety、Deadline、Hollywood Reporter、Billboard 等欧美文娱源；`jp_kr_entertainment` 会查 Soompi、Oricon、Natalie、Naver 娱乐等日韩源；`cybersecurity`、`weather_disaster`、`sports`、`science`、`career`、`podcast`、`test_prep` 会分别路由到漏洞/反诈、天气灾害、体育、科学、职场、播客和考试备考信源。用户显式传入 `--scope` 时，以该信源类型优先；用户显式传入 `--site`、`--sites` 或 `--strict-scope` 时，才按窄范围处理。
 
 ## 中文语境
 

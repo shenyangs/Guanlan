@@ -302,6 +302,8 @@ def main():
                           help="Restrict search to a domain, e.g. zhihu.com")
     p_search.add_argument("--scope", default="",
                           help="Curated China source scope, e.g. party_central, local_official, ecommerce")
+    p_search.add_argument("--strict-scope", action="store_true",
+                          help="Keep --scope narrow; skip automatic open-web mixing")
     p_search.add_argument("--list-scopes", action="store_true",
                           help="List curated search scopes and exit")
     p_search.add_argument("--backend", default="auto",
@@ -1711,6 +1713,7 @@ def _cmd_search(args):
             cluster_threshold=args.cluster_threshold,
             cache_ttl=max(args.cache_ttl, 0),
             use_cache=not args.no_cache,
+            strict_scope=args.strict_scope,
         )
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

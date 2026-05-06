@@ -52,7 +52,7 @@ metadata:
 - 轻重分流：不确定任务该轻搜还是深查时，先跑 `guanlan workflow "query" --json`；simple/direct 任务不要过度规划，复杂/高风险/对比/时间线/档案任务才用 `guanlan investigate "query" --limit 80 --format context`。
 - 页面诊断：当 `read` 读到动态页壳、登录墙、WAF、安全验证、搜索兜底或弱正文时，先跑 `guanlan diagnose page "URL"`；诊断只解释页面是否能当证据，不读取 Cookie，不执行浏览器动作。
 - 浏览器辅助补证：如果 `diagnose page` 输出 `browser_assist.recommended=true`，必须先询问用户授权；如需登录、验证或切换账号，让用户自己在浏览器里完成；Agent 只读取目标页面的浏览器可见内容，本次可见页补证不读取 Cookie、Token、钥匙串、私信、订单、后台或无关个人信息；如果仍需 Cookie，必须另行说明平台、用途和风险并获得用户明确同意，也不点赞、评论、关注、发帖、私信、下单或提交表单。用户授权后可先用 `guanlan browser-assist adapters --check` 查看只读适配器自检，再用 `guanlan browser-assist run "URL" --adapter host-browser --json` 取得宿主浏览器执行契约；可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库。`open-cli` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
-- 研究模板：高频垂直任务先用 `guanlan recipe list` / `guanlan recipe run <recipe> "query"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`。
+- 研究模板：高频垂直任务先用 `guanlan recipe list` / `guanlan recipe run <recipe> "query"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`、`trajectory-map`。
 - 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究至少走 `route -> research -> scoped search`；热点题再补 `hotnews`；技术/AI 题再补 `feeds`；来源过窄时再补 `dossier/compare/timeline`。
 - 体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE、安全公告、科学机构声明、文娱榜单/票房、考试官方信息等高确定性垂直题，优先执行 `route` 推荐的 direct `guanlan read` 命令，再用匹配的 `preset/scope` 扩大证据面；不要只看搜索引擎是否返回。
 - 在完成当前档位要求的 Guanlan 工具前，不要立刻切 `web_search/web_fetch`。`quality_summary=warn` 通常表示证据包还不完整，不等于 Guanlan 搜索失败。
@@ -139,6 +139,7 @@ guanlan browser-assist adapters --check
 guanlan browser-assist run "https://example.com/article" --adapter host-browser --json
 guanlan recipe list
 guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"
+guanlan recipe run trajectory-map "Cursor 发展历程 竞品格局"
 guanlan search "query" --site zhihu.com --limit 80
 guanlan search "query" --site gov.cn --limit 80 --trace  # 硬过滤，空结果不放宽到域外
 guanlan search "query" --trace
