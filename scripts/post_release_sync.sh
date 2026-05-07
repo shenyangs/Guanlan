@@ -7,6 +7,7 @@ cd "$ROOT"
 VERSION="${1:-$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -1)}"
 TAG="v$VERSION"
 REPO="${GUANLAN_GITHUB_REPO:-shenyangs/Guanlan}"
+RELEASE_WORKFLOW_PATH="${GUANLAN_RELEASE_WORKFLOW_PATH:-.github/workflows/release-pypi.yml}"
 PYPI_PACKAGE="${GUANLAN_PYPI_PACKAGE:-guanlan}"
 TAP_REPO="${GUANLAN_HOMEBREW_TAP_REPO:-shenyangs/homebrew-tap}"
 TAP_FORMULA_PATH="${GUANLAN_HOMEBREW_FORMULA_PATH:-Formula/guanlan.rb}"
@@ -54,33 +55,38 @@ wait_for_condition() {
 }
 
 check_github_release_workflow() {
-  python3 - "$REPO" "$TAG" <<'PY'
+  python3 - "$REPO" "$TAG" "$RELEASE_WORKFLOW_PATH" <<'PY'
 import json
 import sys
-import urllib.request
+import subprocess
 
 repo = sys.argv[1]
 tag = sys.argv[2]
-url = f"https://api.github.com/repos/{repo}/actions/runs?branch={tag}&per_page=30"
-req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
+workflow_path = sys.argv[3]
+url = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow_path}/runs?branch={tag}&per_page=5"
+headers = ["-H", "Accept: application/vnd.github+json"]
+token = ""
 try:
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        payload = json.load(resp)
+    token = subprocess.check_output(["bash", "-lc", "printf %s \"${GITHUB_TOKEN:-}\""], text=True).strip()
+except Exception:
+    token = ""
+if token:
+    headers += ["-H", f"Authorization: Bearer {token}"]
+
+try:
+    raw = subprocess.check_output(
+        ["curl", "-fsSL", "--max-time", "20", *headers, url],
+        text=True,
+    )
+    payload = json.loads(raw)
 except Exception:
     sys.exit(1)
 
 runs = payload.get("workflow_runs") or []
-release_runs = []
-for run in runs:
-    name = str(run.get("name") or "").lower()
-    path = str(run.get("path") or "").lower()
-    if "release" in name or "release" in path:
-        release_runs.append(run)
-
-if not release_runs:
+if not runs:
     sys.exit(1)
 
-run = release_runs[0]
+run = runs[0]
 status = str(run.get("status") or "")
 conclusion = str(run.get("conclusion") or "")
 if status == "completed" and conclusion == "success":
@@ -91,23 +97,20 @@ PY
 
 check_pypi_release() {
   python3 - "$PYPI_PACKAGE" "$VERSION" <<'PY'
-import json
 import sys
-import urllib.request
+import subprocess
 
 package = sys.argv[1]
 version = sys.argv[2]
-url = f"https://pypi.org/pypi/{package}/json"
-req = urllib.request.Request(url, headers={"Accept": "application/json"})
+url = f"https://pypi.org/pypi/{package}/{version}/json"
 try:
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        payload = json.load(resp)
+    subprocess.check_output(
+        ["curl", "-fsSL", "--max-time", "20", "-H", "Accept: application/json", url],
+        text=True,
+    )
+    sys.exit(0)
 except Exception:
     sys.exit(1)
-
-releases = payload.get("releases") or {}
-files = releases.get(version) or []
-sys.exit(0 if files else 1)
 PY
 }
 
@@ -142,7 +145,7 @@ sync_local_installs() {
 
   if command -v uv >/dev/null 2>&1; then
     echo "[sync] refreshing uv tool install..."
-    uv tool install --force --upgrade guanlan
+    uv tool install --force --upgrade --refresh --index-url https://pypi.org/simple guanlan
   else
     echo "[sync] uv not found, skip uv sync."
   fi

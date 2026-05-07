@@ -6,6 +6,19 @@
 
 ## Unreleased
 
+## v0.5.22 - 2026-05-07
+
+### Fixed
+
+- `scripts/post_release_sync.sh` 的发布工作流轮询改为显式检查 `.github/workflows/release-pypi.yml`，避免因工作流名/路径歧义导致的同步误判。
+- 发布后同步的 GitHub/PyPI 检查改为 `curl` 驱动并支持 `GITHUB_TOKEN`，降低公共 API 限流和本机证书链差异导致的卡顿。
+- 本机 `uv` 同步改为 `uv tool install --force --upgrade --refresh --index-url https://pypi.org/simple guanlan`，减少索引缓存导致的旧版回装。
+
+### Changed
+
+- 发布自动化文档新增 `GUANLAN_RELEASE_WORKFLOW_PATH`，并补充 `uv --refresh` 的同步口径。
+- 官网版本与静态资源版本同步到 `0.5.22`。
+
 ## v0.5.21 - 2026-05-07
 
 ### Added
