@@ -301,7 +301,7 @@ def main():
     p_search.add_argument("--site", default="",
                           help="Restrict search to a domain, e.g. zhihu.com")
     p_search.add_argument("--scope", default="",
-                          help="Curated China source scope, e.g. party_central, local_official, ecommerce")
+                          help="Curated China source scope, e.g. party_central, local_official, ecommerce, wps_office")
     p_search.add_argument("--strict-scope", action="store_true",
                           help="Keep --scope narrow; skip automatic open-web mixing")
     p_search.add_argument("--list-scopes", action="store_true",
@@ -350,7 +350,7 @@ def main():
     p_research = sub.add_parser("research", help="Build an agent-ready research evidence packet")
     p_research.add_argument("query", nargs="?", default="", help="Research query")
     p_research.add_argument("--preset", default="general",
-                            help="Research preset: general, policy, official, industry, ecommerce, reputation, entertainment, global_entertainment, jp_kr_entertainment, cybersecurity, sports, weather_disaster, science, career, podcast, test_prep, tech, academic, finance, local, company, global_policy, global_reputation, global_industry")
+                            help="Research preset: general, policy, official, industry, ecommerce, reputation, entertainment, global_entertainment, jp_kr_entertainment, cybersecurity, sports, weather_disaster, science, career, podcast, test_prep, tech, wps_office, academic, finance, local, company, global_policy, global_reputation, global_industry")
     p_research.add_argument("--list-presets", action="store_true",
                             help="List research presets and exit")
     p_research.add_argument("--limit", type=int, default=None,
@@ -360,7 +360,7 @@ def main():
     p_research.add_argument("--sites", default="",
                             help="Comma-separated domains for site-directed research, e.g. zhihu.com,weibo.com")
     p_research.add_argument("--scope", default="",
-                            help="Curated China source scope, e.g. party_central, local_official, ecommerce")
+                            help="Curated China source scope, e.g. party_central, local_official, ecommerce, wps_office")
     p_research.add_argument("--search-backend", default="auto",
                             help="Search backend: auto, duckduckgo, bing, baidu, wechat-sogou, or plugin:name")
     p_research.add_argument("--read-backend", choices=["auto", "jina", "direct"],
@@ -498,7 +498,7 @@ def main():
     )
     p_prompt.add_argument("query", nargs="?", default="", help="Question or research topic")
     p_prompt.add_argument("--preset", default="general",
-                          help="Research preset: general, policy, official, industry, ecommerce, reputation, cybersecurity, sports, weather_disaster, science, career, podcast, test_prep, tech, academic, finance, local, company, global_policy, global_reputation, global_industry")
+                          help="Research preset: general, policy, official, industry, ecommerce, reputation, cybersecurity, sports, weather_disaster, science, career, podcast, test_prep, tech, wps_office, academic, finance, local, company, global_policy, global_reputation, global_industry")
     p_prompt.add_argument("--limit", type=int, default=80,
                           help="Broad search pool size for local model context")
     p_prompt.add_argument("--site", default="", help="Restrict search to a domain")

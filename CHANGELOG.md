@@ -6,6 +6,19 @@
 
 ## Unreleased
 
+## v0.5.21 - 2026-05-07
+
+### Added
+
+- 新增 `scripts/post_release_sync.sh`：发布后自动轮询 GitHub release workflow、PyPI 和 Homebrew tap，确认目标版本已经就绪后再继续后续同步。
+- 发布后同步默认覆盖本机多入口安装：自动刷新 `uv`、`brew`、`pipx`，并核验 `which -a guanlan` 下所有可执行入口的版本一致性。
+
+### Changed
+
+- `scripts/publish_release.sh` 默认在推送 `main` 和同版本 tag 后执行发布后全渠道同步；可通过 `GUANLAN_RELEASE_SKIP_SYNC=1` 显式跳过。
+- 发布自动化文档新增同步开关说明（分发等待、官网部署、站点校验地址和本机入口同步控制）。
+- 官网版本与静态资源版本同步到 `0.5.21`。
+
 ## v0.5.20 - 2026-05-06
 
 ### Added

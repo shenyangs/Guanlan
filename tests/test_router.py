@@ -282,6 +282,44 @@ def test_route_plan_recommends_rss_sources_by_need():
     assert any(command.startswith("guanlan feeds curated") for command in reading.recommended_commands)
 
 
+def test_route_plan_detects_wps_office_market_radar():
+    plan = build_route_plan("WPS AI PPT Agent 办公选题 最近热点", profile="china")
+    intents = plan.primary_intents + plan.secondary_intents
+
+    assert "wps_office" in intents
+    assert "wps_office" in plan.preferred_scopes
+    assert "business" in plan.preferred_scopes
+    assert "tech_dev" in plan.preferred_scopes
+    assert "wps.cn" in plan.target_sites
+    assert "36kr.com" in plan.target_sites
+    assert "company_primary" in plan.evidence_roles
+    assert "industry_report" in plan.evidence_roles
+    assert "user_sample" in plan.evidence_roles
+    assert "curated" in plan.recommended_feeds
+    assert "wechat-rss" in plan.recommended_feeds
+    assert plan.read_top >= 5
+    assert plan.advisor_recommended is True
+    assert "品牌通稿单源" in plan.avoid_as_primary
+    assert "institution_rollout" in plan.evidence_roles
+    assert any("职场效率" in query for query in plan.query_variants)
+    assert any("Gamma Canva" in query for query in plan.query_variants)
+    assert any("国产 AI PPT 工具 横评" in query for query in plan.query_variants)
+    assert any("--preset wps_office" in command for command in plan.recommended_commands)
+    assert any("--scope wps_office" in command for command in plan.recommended_commands)
+    assert any("feeds curated" in command for command in plan.recommended_commands)
+    assert any("hotboard:catalog:tech" in command for command in plan.recommended_commands)
+
+
+def test_route_plan_separates_wps_subroute_query_variants():
+    lingxi = build_route_plan("WPS 灵犀", profile="china")
+    wps365 = build_route_plan("WPS 365", profile="china")
+
+    assert any("原生 Office 智能体" in query for query in lingxi.query_variants)
+    assert any("Microsoft Copilot" in query for query in lingxi.query_variants)
+    assert any("企业大脑" in query for query in wps365.query_variants)
+    assert any("Microsoft 365 Copilot" in query for query in wps365.query_variants)
+
+
 def test_route_plan_detects_embodied_ai_industry_need():
     plan = build_route_plan("人形机器人 智元 宇树 傅利叶", profile="china")
 
@@ -342,6 +380,18 @@ def test_source_card_marks_finance_layers():
     assert "market_quote" in quote.content_roles
     assert "sentiment_sample" in xueqiu.content_roles
     assert "sample_bias" in xueqiu.risk_tags
+
+
+def test_source_card_marks_wps_office_layers():
+    wps365 = source_card_for_domain("365.wps.cn")
+    community = source_card_for_domain("bbs.wps.cn")
+
+    assert wps365.scope_id == "wps_office"
+    assert "official_specs" in wps365.content_roles
+    assert "product_update" in wps365.content_roles
+    assert community.scope_id == "wps_office"
+    assert community.sample_value > community.authority_score
+    assert "sample_bias" in community.risk_tags
 
 
 def test_route_cli_outputs_json(capsys):

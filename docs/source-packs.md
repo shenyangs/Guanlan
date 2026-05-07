@@ -18,6 +18,7 @@
 | --- | --- | --- |
 | `policy_research` | 政策、官方口径、党央媒解释 | 中国政府网、人民网、新华网、央视新闻、求是网、半月谈 |
 | `tech_research` | 科技、AI、产业与产品观察 | IT之家、少数派、36氪、虎嗅、钛媒体、亿邦动力、机器之心、量子位、晚点、InfoQ |
+| `wps_office_research` | 金山办公/WPS、办公 AI、PPT、文档协作、SaaS、信创、安全和竞品选题 | WPS、WPS 365、金山文档、WPS 官方社区、安全中心、Microsoft 365、Google Workspace、Canva、Gamma、飞书、少数派、36氪、V2EX |
 | `finance_research` | 财经新闻、行情、研报与投资者情绪 | 财联社、证券时报、上海证券报、第一财经、21财经、华尔街见闻、东方财富、雪球 |
 | `entertainment_research` | 影视、游戏、评分、票房和平台热度 | 豆瓣电影、猫眼、灯塔、1905、B站、微博、TapTap、游民星空、机核、游研社 |
 | `developer_research` | 开发者、开源、工程实践与安全社区 | GitHub、V2EX、掘金、SegmentFault、开源中国、博客园、HelloGitHub、TesterHome、看雪 |

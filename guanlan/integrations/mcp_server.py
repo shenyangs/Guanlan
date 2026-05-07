@@ -255,7 +255,7 @@ def _tool_definitions() -> list[dict]:
             "name": "guanlan_recipe",
             "description": (
                 "List or render reusable Guanlan research recipes, such as university advisor lookup, "
-                "finance risk, product reputation, entertainment pulse, security advisory, and tech radar. "
+                "finance risk, product reputation, entertainment pulse, security advisory, tech radar, and WPS/AI Office radar. "
                 "Use recipes when the agent needs a stable multi-step workflow instead of one generic search."
             ),
             "inputSchema": {

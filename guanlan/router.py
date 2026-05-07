@@ -43,6 +43,71 @@ _ROBOTICS_AI_TERMS = (
     "robotics",
 )
 
+_WPS_OFFICE_TERMS = (
+    "金山办公",
+    "金山文档",
+    "金山协作",
+    "wps",
+    "wps ai",
+    "wpsai",
+    "wps365",
+    "wps 365",
+    "wps office",
+    "kingsoft office",
+    "kdocs",
+    "wps灵犀",
+    "wps 灵犀",
+    "办公ai",
+    "ai办公",
+    "智能办公",
+    "ai office",
+    "office ai",
+    "office suite",
+    "productivity suite",
+    "办公套件",
+    "办公软件",
+    "协同办公",
+    "文档协作",
+    "内容协作",
+    "云文档",
+    "智能文档",
+    "智能表格",
+    "智能表单",
+    "多维表格",
+    "ppt生成",
+    "生成ppt",
+    "ai ppt",
+    "ppt ai",
+    "演示文稿",
+    "presentation ai",
+    "文字处理",
+    "电子表格",
+    "pdf编辑",
+    "企业云盘",
+    "数字资产管理",
+    "国产化办公",
+    "国产办公",
+    "信创办公",
+    "政企办公",
+    "办公安全",
+    "办公agent",
+    "office agent",
+    "文档agent",
+    "ppt agent",
+)
+
+
+def _wps_office_subroute(query: str) -> str:
+    """Classify WPS market queries into distinct topic lanes."""
+    text = query.lower().replace(" ", "")
+    if "灵犀" in query or "lingxi" in text or "claw" in text:
+        return "lingxi"
+    if "wps365" in text or "wps365" in query.lower() or "wps 365" in query.lower() or "365.wps" in text:
+        return "wps365"
+    if "wpsai" in text or "wps ai" in query.lower() or "aippt" in text or "ai ppt" in query.lower():
+        return "wps_ai"
+    return "general"
+
 
 @dataclass
 class RoutePlan:
@@ -544,6 +609,37 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
         "warning": "社交和社区材料适合发现样本线索，不代表总体比例。",
     },
     {
+        "intent": "wps_office",
+        "terms": _WPS_OFFICE_TERMS,
+        "scopes": ("wps_office", "business", "tech_dev", "company_primary", "cybersecurity"),
+        "fallback": ("social_web", "finance_news", "industry_analysis", "community_sample", "market_review"),
+        "sites": (
+            "wps.cn",
+            "365.wps.cn",
+            "bbs.wps.cn",
+            "security.wps.cn",
+            "ithome.com",
+            "36kr.com",
+            "sspai.com",
+            "leiphone.com",
+            "jiqizhixin.com",
+            "qbitai.com",
+            "microsoft.com",
+            "canva.com",
+        ),
+        "roles": (
+            "company_primary",
+            "official_specs",
+            "industry_report",
+            "institution_rollout",
+            "user_sample",
+            "developer_discussion",
+            "fresh_news",
+            "security_advisory",
+        ),
+        "warning": "WPS/AI Office 选题不能只看品牌通稿；应分开核验官方产品、竞品/办公 SaaS、AI/科技媒体、用户/社区样本、信创与安全约束。",
+    },
+    {
         "intent": "purchase_advice",
         "terms": (
             "值不值得买",
@@ -978,6 +1074,7 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
 _DOMAIN_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("auto", ("汽车", "车", "新能源车", "智驾", "小米yu7", "蔚来", "理想", "小鹏", "特斯拉", "比亚迪")),
     ("ai", ("ai", "人工智能", "大模型", "agent", "智能体", "llm", "算力", *_ROBOTICS_AI_TERMS)),
+    ("wps_office", _WPS_OFFICE_TERMS),
     ("consumer", ("手机", "电脑", "家电", "相机", "耳机", "消费", "购买", "值不值得买")),
     ("career", ("招聘", "求职", "岗位", "薪资", "面试", "简历", "校招", "面经", "salary", "interview")),
     ("education", ("高校", "大学", "研究生", "招生", "导师", "院系", "推免", "考研", "雅思", "托福", "机经")),
@@ -1174,6 +1271,7 @@ def build_route_plan(
             "entertainment",
             "global_entertainment",
             "jp_kr_entertainment",
+            "wps_office",
             "university_admissions",
         }
         & set(primary + secondary)
@@ -1195,6 +1293,11 @@ def build_route_plan(
         recommended_feeds.append("baidu-rss")
     if "tech" in primary + secondary and "curated" not in recommended_feeds:
         recommended_feeds.append("curated")
+    if "wps_office" in primary + secondary:
+        if "curated" not in recommended_feeds:
+            recommended_feeds.append("curated")
+        if profile == "china" and "wechat-rss" not in recommended_feeds:
+            recommended_feeds.append("wechat-rss")
     recommended_feeds = _unique(recommended_feeds)
     recommended_commands = _recommended_commands(
         clean_query,
@@ -1206,7 +1309,7 @@ def build_route_plan(
         profile=profile,
         read_top=read_top,
     )
-    read_default = 5 if {"policy", "official_position", "tech", "industry", "global_entertainment", "jp_kr_entertainment", "cybersecurity", "weather_disaster", "science", "sports", "career", "podcast", "test_prep", *finance_intents} & set(primary + secondary) else 3
+    read_default = 5 if {"policy", "official_position", "tech", "wps_office", "industry", "global_entertainment", "jp_kr_entertainment", "cybersecurity", "weather_disaster", "science", "sports", "career", "podcast", "test_prep", *finance_intents} & set(primary + secondary) else 3
     if {"standards_compliance", "medical_health", "legal_judicial", "cybersecurity", "weather_disaster"} & set(primary + secondary):
         read_default = 5
     if "reputation" in primary + secondary and not high_risk:
@@ -1369,6 +1472,21 @@ def _preset_rule(preset: str) -> dict[str, Any] | None:
         "graduate": "university_admissions",
         "faculty": "university_admissions",
         "advisor": "university_admissions",
+        "wps_office": "wps_office",
+        "wps": "wps_office",
+        "wps365": "wps_office",
+        "wps_365": "wps_office",
+        "wps-ai": "wps_office",
+        "wps_ai": "wps_office",
+        "office_ai": "wps_office",
+        "ai_office": "wps_office",
+        "office-ai": "wps_office",
+        "ai-office": "wps_office",
+        "kingsoft_office": "wps_office",
+        "kingsoft-office": "wps_office",
+        "ppt": "wps_office",
+        "presentation": "wps_office",
+        "xinchuang": "wps_office",
         "tech": "tech",
         "academic": "academic",
         "scholar": "academic",
@@ -1453,6 +1571,29 @@ def _query_variants(query: str, intents: list[str], domains: list[str]) -> list[
             variants.append(f"{query} mangapedia manba 豆瓣 条目")
     if "company_primary" in intents:
         variants.append(f"{query} official docs pricing release notes")
+    if "wps_office" in intents:
+        subroute = _wps_office_subroute(query)
+        if subroute == "wps_ai":
+            variants.append(f"{query} AI PPT 职场效率 文档写作 表格分析 个人办公 选题")
+            variants.append(f"{query} Gamma Canva Tome Beautiful.ai Adobe Express PPT 生成 对比")
+            variants.append(f"{query} 国产 AI PPT 工具 横评 实测 榜单 效率场景")
+            variants.append(f"{query} 打工人 汇报 总结 简历 论文 职场内容 热点")
+        elif subroute == "lingxi":
+            variants.append(f"{query} 原生 Office 智能体 对话式办公 灵犀 Claw 同屏交互")
+            variants.append(f"{query} AI Agent 多智能体 自动化 文档协作 电脑操作")
+            variants.append(f"{query} Microsoft Copilot 飞书 钉钉 企业微信 Agent 对比")
+        elif subroute == "wps365":
+            variants.append(f"{query} 企业大脑 组织协同 AI Office 政企 金融 行业落地")
+            variants.append(f"{query} 办公智能体 知识库 数字资产管理 协同平台 选题")
+            variants.append(f"{query} Microsoft 365 Copilot Google Workspace 飞书 钉钉 企业微信")
+        else:
+            variants.append(f"{query} 行业热点 选题 办公智能体 AI Agent AI PPT 文档协作")
+            variants.append(f"{query} Adobe Acrobat PDF Spaces Microsoft Copilot Google Workspace Notion Canva Gamma 飞书 企业微信")
+            variants.append(f"{query} 企业 AI 上下文 知识库 多维表格 移动办公 自动化")
+        variants.append(f"{query} 金山办公 WPS AI WPS 365 官方 发布")
+        variants.append(f"{query} 办公 AI PPT 文档协作 SaaS 信创 行业 趋势")
+        variants.append(f"{query} 用户评价 体验 吐槽 知乎 小红书 B站")
+        variants.append(f"{query} Agent API 文档 协同 安全 国产化")
     if "tech" in intents:
         variants.append(f"{query} github issue 文档 实践")
     if "cybersecurity" in intents:
@@ -1537,6 +1678,8 @@ def _avoid_as_primary(intents: list[str]) -> list[str]:
         avoid.extend(["夸大科普标题", "无论文/机构来源报道", "阴谋论内容"])
     if "career" in intents:
         avoid.extend(["单个候选人样本", "过期薪资贴", "招聘广告软文"])
+    if "wps_office" in intents:
+        avoid.extend(["品牌通稿单源", "单条社媒吐槽", "无原文的 AI 工具榜单", "过期产品截图", "竞品软文"])
     if "podcast" in intents:
         avoid.extend(["无节目链接推荐", "营销榜单", "未核验转写"])
     if "test_prep" in intents:
@@ -1646,6 +1789,15 @@ def _recommended_commands(
     elif "reputation" in intents or "purchase_advice" in intents:
         commands.append(f"guanlan pulse {quoted}{profile_part} --limit {pulse_limit} --format context")
         commands.append(f"guanlan research {quoted} --preset reputation{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 3)}")
+    elif "wps_office" in intents:
+        commands.extend(direct_reads[:2])
+        commands.append(f"guanlan research {quoted} --preset wps_office{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)} --advisor")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope wps_office --limit {search_limit} --trace")
+        if profile != "english":
+            commands.append(f"guanlan pulse {quoted}{profile_part} --limit {pulse_limit} --format context")
+            commands.append("guanlan feeds curated --category ai --limit 80")
+            commands.append("guanlan feeds wechat-rss --limit 80")
+            commands.append("guanlan hotnews hotboard:catalog:tech --limit 30")
     elif "company_primary" in intents:
         commands.append(f"guanlan research {quoted} --preset company{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "career" in intents:
@@ -1768,6 +1920,7 @@ def _needs_hotboard_route(intents: list[str]) -> bool:
             "finance_macro",
             "finance_sentiment",
             "finance_research",
+            "wps_office",
         }
         & set(intents)
     )
@@ -1835,6 +1988,8 @@ def _route_explanations(intents: list[str], scopes: list[str], sites: list[str])
         output.append("日韩娱乐内容需要分清本地媒体/榜单、经纪公司口径、英文翻译站和粉丝讨论，并标注跨语言转述风险。")
     if "tech" in intents:
         output.append("科技/技术内容除开发者社区和代码仓库外，必须额外补一轮 RSS/精品内容流作为阅读发现视角。")
+    if "wps_office" in intents:
+        output.append("WPS/AI Office 选题要以金山办公/WPS 为锚点，同时主动外扩到办公 AI、PPT/文档协作、SaaS、信创、安全、竞品和社区样本；必须补 RSS/精品内容流，避免只看品牌稿。")
     if "standards_compliance" in intents:
         output.append("标准/合规问题需要标准原文、监管解释、实施材料和厂商声明分层引用。")
     if "medical_health" in intents:
@@ -1900,6 +2055,7 @@ def _english_scope_equivalents(scopes: list[str]) -> list[str]:
         "business": ["industry_analysis", "global_news"],
         "ecommerce": ["industry_analysis", "market_review"],
         "tech_dev": ["developer", "community_sample"],
+        "wps_office": ["company_primary", "developer", "industry_analysis", "community_sample", "market_review"],
         "finance": ["global_official", "global_news", "company_primary"],
         "finance_quote": ["global_news", "company_primary"],
         "finance_disclosure": ["global_official", "company_primary"],

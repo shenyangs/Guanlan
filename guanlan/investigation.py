@@ -223,10 +223,10 @@ def _execution_plan(decision: dict[str, Any], *, budget: str, read_top: int) -> 
         path.append("hotnews")
     elif "hot_trend" in intents:
         skipped.append("hotnews unless freshness remains unclear")
-    if budget == "deep" and "tech" in intents:
+    if budget == "deep" and {"tech", "wps_office"} & intents:
         path.append("feeds")
-    elif "tech" in intents:
-        skipped.append("feeds unless tech evidence is too thin")
+    elif {"tech", "wps_office"} & intents:
+        skipped.append("feeds unless tech/WPS evidence is too thin")
     entrypoint = str(decision.get("recommended_entrypoint") or "")
     if budget == "deep" and entrypoint in {"compare", "timeline", "dossier"}:
         path.append(entrypoint)

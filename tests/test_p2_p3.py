@@ -274,6 +274,7 @@ def test_eval_benchmark_covers_academic_and_agent_pool():
 
     ids = {case["id"] for case in report["cases"]}
     assert "academic_indexing" in ids
+    assert "wps_office_market_radar" in ids
     assert report["summary"]["fail"] == 0
     assert report["summary"]["score"] >= 80
 

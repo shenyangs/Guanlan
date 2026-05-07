@@ -112,6 +112,7 @@ ROUTE_CATEGORY_BY_INTENT: dict[str, str] = {
     "industry": "finance",
     "ecommerce": "ecommerce",
     "tech": "tech",
+    "wps_office": "tech",
     "science": "tech",
     "entertainment": "entertainment",
     "reputation": "community",

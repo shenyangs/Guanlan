@@ -93,7 +93,7 @@ guanlan hotnews today --brief
 这些是当前最敢承诺、最适合作为默认工作流的能力：
 
 - **公开网页搜索**：`guanlan search "关键词" --profile china`
-- **中文信源白名单**：`--scope party_central/gov/local_official/ecommerce/university/entertainment`
+- **中文信源白名单**：`--scope party_central/gov/local_official/ecommerce/wps_office/university/entertainment`
 - **英文互联网信源路由**：`guanlan search "OpenAI API pricing" --profile english --scope company_primary`
 - **网页阅读与降级**：`guanlan read "URL"`，Jina Reader、直连 HTML、搜索兜底组合使用。
 - **热榜观察**：原生多源入口 `guanlan hotnews today`，覆盖百度、微博、B站、IT之家、V2EX；NewsNow 可选增强源 `guanlan hotnews newsnow:36kr-quick`
@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.5.20`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.21`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -434,6 +434,7 @@ guanlan configure --from-browser chrome
 | `guanlan search "关键词" --backend plugin:my_company_api` | 显式调用本地自定义只读搜索 backend。 |
 | `guanlan search "关键词" --scope party_central` | 在党央媒与中央重点媒体白名单内搜索。 |
 | `guanlan search "关键词" --scope ecommerce` | 在电商/零售垂类媒体白名单内搜索。 |
+| `guanlan search "WPS AI PPT Agent 办公选题 最近热点" --scope wps_office --limit 80 --trace` | 在 WPS/AI Office 赛道信源内搜索，覆盖品牌、竞品、办公 AI、PPT、SaaS、信创、安全、科技媒体和社区样本。 |
 | `guanlan search "电影 票房 评分" --scope entertainment` | 在文娱/内容平台信源内搜索，覆盖影视、综艺、明星、游戏、票房和口碑。 |
 | `guanlan search "Taylor Swift latest" --profile english --scope global_entertainment` | 在欧美娱乐、音乐产业、榜单/奖项和英文行业媒体内搜索。 |
 | `guanlan search "BLACKPINK K-pop comeback" --profile hybrid --scope jp_kr_entertainment` | 在日韩娱乐、K-pop/J-pop、Soompi、Oricon、Natalie、Naver 等来源内搜索。 |
@@ -652,9 +653,21 @@ guanlan search "LangGraph AutoGen CrewAI 对比" --profile china --scope tech_de
 guanlan feeds curated --category ai --limit 80
 ```
 
-科技、AI、开发者、工程实践类问题有一条硬规则：必须额外补一轮 RSS/精品内容流。`research --preset tech` 会自动把 `feeds curated` 纳入候选池和 `result_groups`；如果 Agent 只使用 `route` 或 `search`，则需要再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。RSS 只作为阅读发现和新鲜线索，不替代官方文档、代码仓库、issue、benchmark 原文。
+科技、AI、WPS/AI Office、开发者、工程实践类问题有一条硬规则：必须额外补一轮 RSS/精品内容流。`research --preset tech` 和 `research --preset wps_office` 会自动把 `feeds curated` 纳入候选池和 `result_groups`；如果 Agent 只使用 `route` 或 `search`，则需要再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。RSS 只作为阅读发现和新鲜线索，不替代官方文档、代码仓库、issue、benchmark 原文。
 
-### 9. 查学术会议、投稿和检索要求
+### 9. 查 WPS/AI Office 选题雷达
+
+适合金山办公、WPS、WPS AI、WPS 365 相关选题，也适合外扩到办公 AI、PPT 生成、办公 Agent、文档协作、SaaS、信创、安全、竞品和科技热点。
+
+```bash
+guanlan research "WPS AI PPT Agent 办公选题 最近热点" --preset wps_office --limit 80 --read-top 5 --advisor
+guanlan search "办公 AI PPT 文档协作 SaaS 信创" --profile china --scope wps_office --limit 80 --trace
+guanlan recipe run wps-office-radar "WPS AI 选题线索"
+```
+
+这条路由不是品牌白名单搜索。它会把 WPS/金山办公官方入口、办公 SaaS/AI 竞品、科技/AI 媒体、RSS/公众号/热榜、开发者与用户样本、安全/信创线索分层，帮助品牌市场部找到更宽的行业选题。
+
+### 10. 查学术会议、投稿和检索要求
 
 适合 EI/SCI/Scopus、学术会议、论文投稿、数据库检索、会议 CFP 和学校/单位认定口径。
 
@@ -663,7 +676,7 @@ guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
 guanlan search "EI会议 投稿 检索" --profile china --scope academic --format context
 ```
 
-### 10. 查高校招生、导师和院系官网
+### 11. 查高校招生、导师和院系官网
 
 适合研究生招生、导师名单、院系介绍、招生目录、招生简章、推免复试和培养方案。它和 `academic` 不同：`academic` 主要查论文数据库/出版商/会议检索，`university` 主要查高校与院系官方页面。
 
@@ -997,7 +1010,7 @@ guanlan quality run --mode live --limit 5
 
 `quality robustness` 是更深一层的稳健性闸门：它检查 Archive 入库前是否会审计噪声和漂移，检查本地库 `search --trace` / `inspect` / `rag-jsonl` 是否保留 Agent 需要的字段，检查空结果是否解释下一步，也检查发布脚本是否覆盖完整验收链路。
 
-`eval benchmark` 是更偏“观澜契约”的离线评测：不依赖外网，固定检查政策、口碑、热点、技术、学术、地方、电商和本地模型场景是否被路由到合适的意图、scope、证据角色和足够大的候选池。
+`eval benchmark` 是更偏“观澜契约”的离线评测：不依赖外网，固定检查政策、口碑、热点、技术、WPS/AI Office、学术、地方、电商和本地模型场景是否被路由到合适的意图、scope、证据角色和足够大的候选池。
 
 `eval tasks` 是真实中文研究任务池骨架，覆盖政策、地方、电商、技术、口碑、热点、学术和本地模型联网。它先用于人工/半自动评测，不替代 `eval benchmark` 的离线发布闸门。
 
@@ -1046,7 +1059,7 @@ guanlan research "某产品 用户评价" --preset reputation --read-top 0 --adv
 
 如果用户需要建议、下一步、风险提醒，或希望你判断“他为什么搜这个”，加 `--advisor`。助理视角规则会告诉 Agent 当前证据能支持什么、不能支持什么，以及回答时必须守住哪些边界；最终建议应由 Agent 结合用户问题自然生成，不能机械复述模板，也不能当作用户真实目的或高风险专业结论。
 
-Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会查 `gov + party_central`，`reputation` 会查 `social_web + tech_dev + business`，`entertainment` 会查 `entertainment + social_web + business` 并补充豆瓣、猫眼/灯塔、B站、微博、TapTap 等公开页证据块；`global_entertainment` 会查 Variety、Deadline、Hollywood Reporter、Billboard 等欧美文娱源；`jp_kr_entertainment` 会查 Soompi、Oricon、Natalie、Naver 娱乐等日韩源；`cybersecurity`、`weather_disaster`、`sports`、`science`、`career`、`podcast`、`test_prep` 会分别路由到漏洞/反诈、天气灾害、体育、科学、职场、播客和考试备考信源。用户显式传入 `--scope` 时，以该信源类型优先；用户显式传入 `--site`、`--sites` 或 `--strict-scope` 时，才按窄范围处理。
+Preset 会自动选择多组 scope 和平台定向站点。例如 `policy` 会查 `gov + party_central`，`reputation` 会查 `social_web + tech_dev + business`，`wps_office` 会查 `wps_office + business + tech_dev + social_web + company_primary + cybersecurity` 并补 WPS/金山办公官方、办公 SaaS/AI 竞品、科技媒体、RSS/公众号/热榜、社区样本和安全/信创线索；`entertainment` 会查 `entertainment + social_web + business` 并补充豆瓣、猫眼/灯塔、B站、微博、TapTap 等公开页证据块；`global_entertainment` 会查 Variety、Deadline、Hollywood Reporter、Billboard 等欧美文娱源；`jp_kr_entertainment` 会查 Soompi、Oricon、Natalie、Naver 娱乐等日韩源；`cybersecurity`、`weather_disaster`、`sports`、`science`、`career`、`podcast`、`test_prep` 会分别路由到漏洞/反诈、天气灾害、体育、科学、职场、播客和考试备考信源。用户显式传入 `--scope` 时，以该信源类型优先；用户显式传入 `--site`、`--sites` 或 `--strict-scope` 时，才按窄范围处理。
 
 ## 中文语境
 

@@ -25,6 +25,7 @@ triggers:
   - web: 网页/链接/文章/公众号/微信文章/rss/读一下/打开这个
   - video: youtube/视频/播客/字幕/小宇宙/转录/yt
   - finance: 雪球/股票/stock/xueqiu/行情/基金
+  - wps_office: 金山办公/WPS/WPS AI/WPS365/办公AI/PPT/Agent/信创办公
   - entertainment: 文娱/娱乐/影视/电影/电视剧/综艺/明星/票房/豆瓣/猫眼/游戏/欧美娱乐/日韩娱乐/K-pop/J-pop
   - archive/wiki/rag: 本地知识库/archive/RAG/向量库/Agent Wiki/知识底座
   - diagnose/recipe: 页面读不到/动态页/登录墙/WAF/研究模板/固定流程/recipe
@@ -47,21 +48,22 @@ metadata:
 - `--site` 是硬过滤：`--site gov.cn` 不允许返回知乎、SEO 页或其他域名当作结果；为空时按 `external_fetch_strategy` 或站内入口补证。
 - 显式年份/年份范围是强时间窗，窗口外材料只作背景，不应进入主时间线或写成最新证据。
 - 强路由命中时直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮；只有意图混合、拿不准信源角色、或需要解释路由时，才先跑 `guanlan route "query" --json`。
-- 强路由包括：欧美娱乐 `global_entertainment`、日韩娱乐 `jp_kr_entertainment`、CVE/反诈 `cybersecurity`、天气灾害 `weather_disaster`、体育 `sports`、财经/股票/宏观金融 `finance`、科学新闻 `science`、职场薪资面经 `career`、播客 `podcast`、考试备考 `test_prep`、高校招生导师 `university`、学术投稿检索 `academic`、产品/公司口碑 `reputation`。
+- 强路由包括：WPS/AI Office `wps_office`、欧美娱乐 `global_entertainment`、日韩娱乐 `jp_kr_entertainment`、CVE/反诈 `cybersecurity`、天气灾害 `weather_disaster`、体育 `sports`、财经/股票/宏观金融 `finance`、科学新闻 `science`、职场薪资面经 `career`、播客 `podcast`、考试备考 `test_prep`、高校招生导师 `university`、学术投稿检索 `academic`、产品/公司口碑 `reputation`。
 - 信源解释：当需要说明“为什么该看这些来源/某来源能不能当主证据”时，先用 `guanlan sources explain "query"` 或 `guanlan sources show gov.cn`；需要治理口径漂移时用 `guanlan sources audit`。这些都是只读信源元数据，不是实际搜索结果。
 - 轻重分流：不确定任务该轻搜还是深查时，先跑 `guanlan workflow "query" --json`；simple/direct 任务不要过度规划，复杂/高风险/对比/时间线/档案任务才用 `guanlan investigate "query" --limit 80 --format context`。
 - 页面诊断：当 `read` 读到动态页壳、登录墙、WAF、安全验证、搜索兜底或弱正文时，先跑 `guanlan diagnose page "URL"`；诊断只解释页面是否能当证据，不读取 Cookie，不执行浏览器动作。
 - 浏览器辅助补证：如果 `diagnose page` 输出 `browser_assist.recommended=true`，必须先询问用户授权；如需登录、验证或切换账号，让用户自己在浏览器里完成；Agent 只读取目标页面的浏览器可见内容，本次可见页补证不读取 Cookie、Token、钥匙串、私信、订单、后台或无关个人信息；如果仍需 Cookie，必须另行说明平台、用途和风险并获得用户明确同意，也不点赞、评论、关注、发帖、私信、下单或提交表单。用户授权后可先用 `guanlan browser-assist adapters --check` 查看只读适配器自检，再用 `guanlan browser-assist run "URL" --adapter host-browser --json` 取得宿主浏览器执行契约；可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库。`open-cli` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
-- 研究模板：高频垂直任务先用 `guanlan recipe list` / `guanlan recipe run <recipe> "query"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`、`trajectory-map`。
-- 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究至少走 `route -> research -> scoped search`；热点题再补 `hotnews`；技术/AI 题再补 `feeds`；来源过窄时再补 `dossier/compare/timeline`。
+- 研究模板：高频垂直任务先用 `guanlan recipe list` / `guanlan recipe run <recipe> "query"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`、`wps-office-radar`、`trajectory-map`。
+- 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究至少走 `route -> research -> scoped search`；热点题再补 `hotnews`；技术/AI/WPS/AI Office 题再补 `feeds`；来源过窄时再补 `dossier/compare/timeline`。
 - 体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE、安全公告、科学机构声明、文娱榜单/票房、考试官方信息等高确定性垂直题，优先执行 `route` 推荐的 direct `guanlan read` 命令，再用匹配的 `preset/scope` 扩大证据面；不要只看搜索引擎是否返回。
 - 在完成当前档位要求的 Guanlan 工具前，不要立刻切 `web_search/web_fetch`。`quality_summary=warn` 通常表示证据包还不完整，不等于 Guanlan 搜索失败。
 - `quality_gate.reason=partial_salvage` 表示观澜保留了强官方/垂直信源线索但仍有覆盖缺口；先读代表原文，不要写成失败。`read` 出现 `兜底状态: unusable` 时，不要引用搜索兜底，改用页面诊断、结构化入口、scope 搜索或 WebFetch 定点补证。
 - 如果 Guanlan 输出 `external_fetch_strategy`，可以调用宿主 Agent 的 WebFetch/WebRead 读取候选 URL；外显时说明这是“Guanlan 规划信源 + WebFetch 定点补证”的搜索策略，不是 Guanlan 脆弱。
-- 做 benchmark 时不要误用：实时题必须带 `hotnews`，技术/AI 题必须带 `feeds` 或 `research --preset tech`，政策题不要只测单次泛搜。
+- 做 benchmark 时不要误用：实时题必须带 `hotnews`，技术/AI/WPS/AI Office 题必须带 `feeds` 或 `research --preset tech|wps_office`，政策题不要只测单次泛搜。
 - 如果 Agent/MCP/自动化平台能设置工具 timeout：`search/read/status/doctor` 用 60-90 秒；`hotnews/feeds/pulse/read batch` 和默认 `archive ingest-research` 用 120 秒；`research/compare/timeline/dossier/archive ingest-research --read-top N` 用 180-300 秒；安装/升级/发布 smoke 用 300-600 秒。单位要按宿主字段名换算：`timeout_budget_seconds` 传秒，`timeout_ms` / `timeout_milliseconds` 传毫秒，例如 120 秒 = 120000 ms、300 秒 = 300000 ms；不要把 `timeout=120` 这种裸数字交给下游。
 - 超时只代表网络或上游源未完成，不代表没有证据；优先重试一次、加 `--cache-ttl 3600`，或把 `--read-top` 降到 0/1，不要为了速度把 80 条候选池砍成小样本。
-- 科技/AI/开发者/工程实践类问题必须额外补一轮 RSS/精品内容流；`research --preset tech` 会自动补，若只跑 `route` 或 `search`，再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。
+- 科技/AI/WPS/AI Office/开发者/工程实践类问题必须额外补一轮 RSS/精品内容流；`research --preset tech` 和 `research --preset wps_office` 会自动补，若只跑 `route` 或 `search`，再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。
+- 金山办公/WPS/WPS AI/WPS 365/AI Office/PPT/办公 Agent/文档协作/SaaS/信创/办公安全等选题任务用 `research --preset wps_office` 或 `search --scope wps_office --trace`；它不是品牌白名单搜索，应主动外扩到竞品、科技/AI 媒体、RSS/公众号/热榜、开发者/用户样本和安全/信创线索。
 - 文娱/影视/综艺/明星/游戏/票房/评分/口碑类问题优先用 `route` 或 `research --preset entertainment`；把平台热度、用户评分、产业报道、宣发通稿和粉圈讨论分层看。
 - 欧美娱乐、Hollywood、Taylor Swift、Billboard、Grammy、巡演、新歌专辑等问题优先用 `research --preset global_entertainment --profile english`；英文行业媒体、榜单/奖项和艺人/厂牌一手信息优先于粉丝账号和八卦站。
 - 日韩娱乐、K-pop/J-pop、韩剧日剧、Soompi、Oricon、Naver 等问题优先用 `research --preset jp_kr_entertainment --profile hybrid`；区分本地媒体/榜单、经纪公司口径、英文翻译站和粉丝讨论。
@@ -92,6 +94,7 @@ metadata:
 | 欧美娱乐/音乐产业/明星动态 | global_entertainment | `guanlan research "关键词" --preset global_entertainment --profile english` |
 | 日韩娱乐/K-pop/J-pop/韩剧日剧 | jp_kr_entertainment | `guanlan research "关键词" --preset jp_kr_entertainment --profile hybrid` |
 | 财经/股票/行情/财报公告/宏观金融 | finance | `guanlan research "关键词" --preset finance --advisor` |
+| 金山办公/WPS/WPS AI/WPS365/办公AI/PPT/Agent/信创办公 | wps_office | `guanlan research "关键词" --preset wps_office --advisor` |
 | 行情/指数/股价/ETF | finance_quote | `guanlan search "关键词" --scope finance_quote --trace` |
 | 公告/财报/监管/问询函 | finance_disclosure | `guanlan search "关键词" --scope finance_disclosure --trace` |
 | 宏观/央行/统计局/利率 | finance_macro | `guanlan search "关键词" --scope finance_macro --trace` |
@@ -116,6 +119,7 @@ guanlan search "query" --limit 80
 guanlan search "EI会议 投稿 检索" --profile china --scope academic
 guanlan search "清华大学计算机系研究生招生 导师" --profile china --scope university
 guanlan search "电影 票房 评分" --profile china --scope entertainment
+guanlan search "WPS AI PPT Agent 办公选题 最近热点" --profile china --scope wps_office --limit 80 --trace
 guanlan search "贵州茅台 公告 财报" --profile china --scope finance_disclosure --limit 80 --trace
 guanlan search "上证指数 今日 行情" --profile china --scope finance_quote --limit 80 --trace
 guanlan search "社融 CPI 降息 央行" --profile china --scope finance_macro --limit 80 --trace
@@ -139,6 +143,7 @@ guanlan browser-assist adapters --check
 guanlan browser-assist run "https://example.com/article" --adapter host-browser --json
 guanlan recipe list
 guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"
+guanlan recipe run wps-office-radar "WPS AI PPT Agent 办公选题 最近热点"
 guanlan recipe run trajectory-map "Cursor 发展历程 竞品格局"
 guanlan search "query" --site zhihu.com --limit 80
 guanlan search "query" --site gov.cn --limit 80 --trace  # 硬过滤，空结果不放宽到域外
@@ -160,6 +165,7 @@ guanlan research "query" --profile china --format prompt
 guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
 guanlan research "清华大学计算机系研究生招生 导师" --preset university --read-top 0
 guanlan research "电影/综艺/游戏/明星 票房口碑" --preset entertainment --read-top 0
+guanlan research "WPS AI PPT Agent 办公选题 最近热点" --preset wps_office --read-top 5 --advisor
 guanlan research "宁德时代 股价 财报 公告 最近风险" --preset finance --read-top 5 --advisor
 guanlan research "Taylor Swift 最新动态 新专辑 巡演" --preset global_entertainment --profile english
 guanlan research "BLACKPINK K-pop 最新回归" --preset jp_kr_entertainment --profile hybrid

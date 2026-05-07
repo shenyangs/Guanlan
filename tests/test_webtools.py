@@ -10,7 +10,7 @@ import pytest
 
 from guanlan import webtools
 from guanlan.limits import DEFAULT_READ_FALLBACK_LIMIT, DEFAULT_RESEARCH_LIMIT, DEFAULT_SEARCH_LIMIT
-from guanlan.source_seeds import direct_source_seeds, is_finance_lookup, is_live_sports_lookup
+from guanlan.source_seeds import direct_source_seeds, is_finance_lookup, is_live_sports_lookup, is_wps_office_lookup
 
 
 class _FakeResponse:
@@ -151,12 +151,29 @@ def test_search_quality_profile_detects_new_route_intents():
         ("最近 有哪些讲 AI 创业 的中文播客 小宇宙", "podcast", "播客/音频/RSS"),
         ("雅思 口语 2026 题库 机经 靠谱吗", "test_prep", "考试/培训/备考"),
         ("宁德时代 股价 财报 公告 最近风险", "finance", "财经/公告披露"),
+        ("WPS AI PPT Agent 办公选题 最近热点", "wps_office", "办公软件/AI Office/SaaS"),
     ]
 
     for query, intent, source_type in cases:
         quality = webtools.detect_search_quality_profile(query, profile="china")
         assert quality["intent"] == intent
         assert source_type in quality["preferred_source_types"]
+
+
+def test_short_wps_brand_query_expands_to_market_radar_terms():
+    route_plan = webtools.build_route_plan("WPS AI", scope="wps_office").to_dict()
+    quality = webtools.detect_search_quality_profile("WPS AI", scope="wps_office", profile="china")
+    shape = webtools._analyze_search_query_shape(
+        "WPS AI",
+        effective_scope="wps_office",
+        quality=quality,
+        route_plan=route_plan,
+    )
+
+    assert shape["rewritten"]
+    assert "AI PPT" in shape["backend_query"]
+    assert "职场效率" in shape["backend_query"]
+    assert "表格分析" in shape["backend_query"]
 
 
 def test_direct_source_seeds_cover_vertical_lookups_without_treating_dev_tasks_as_scores():
@@ -167,12 +184,16 @@ def test_direct_source_seeds_cover_vertical_lookups_without_treating_dev_tasks_a
     )
     weather_seeds = direct_source_seeds("台风 路径 最新 中央气象台 日本气象厅", intents=["weather_disaster"])
     security_seeds = direct_source_seeds("CVE-2026-12345 OpenSSL 漏洞 影响版本", intents=["cybersecurity"])
+    wps_seeds = direct_source_seeds("WPS AI PPT Agent 办公选题", intents=["wps_office"], scopes=["wps_office"])
 
     assert any("espn.com/nba/story" in item["url"] for item in nba_seeds)
     assert any("nmc.cn" in item["url"] for item in weather_seeds)
     assert any("CVE-2026-12345" in item["url"] for item in security_seeds)
+    assert any("wps.cn" in item["url"] for item in wps_seeds)
+    assert any("365.wps.cn" in item["url"] for item in wps_seeds)
     assert is_live_sports_lookup("NBA季后赛2026年首轮战绩比分", intents=["sports"])
     assert not is_live_sports_lookup("NBA API 开源项目 教程", intents=["tech", "sports"])
+    assert is_wps_office_lookup("WPS AI PPT Agent 办公选题", intents=["wps_office"])
 
 
 def test_direct_source_seeds_cover_acg_entrypoints():
@@ -809,6 +830,11 @@ def test_query_strategy_distinguishes_vertical_scopes():
         route_plan=webtools.build_route_plan("某公司 业绩 风险", scope="finance").to_dict(),
         quality={"requested_scope": "finance"},
     )
+    wps = webtools.build_query_strategy(
+        "WPS AI PPT Agent 办公选题",
+        route_plan=webtools.build_route_plan("WPS AI PPT Agent 办公选题", scope="wps_office").to_dict(),
+        quality={"requested_scope": "wps_office"},
+    )
 
     assert "technical_primary" in {item["role"] for item in tech["variants"]}
     assert "review" in {item["role"] for item in ecommerce["variants"]}
@@ -816,6 +842,107 @@ def test_query_strategy_distinguishes_vertical_scopes():
     assert "company_filing" in finance_roles
     assert "regulatory_notice" in finance_roles
     assert "market_news" in finance_roles
+    wps_roles = {item["role"] for item in wps["variants"]}
+    assert "topic_radar" in wps_roles
+    assert "competitive_context" in wps_roles
+    assert "scenario_signal" in wps_roles
+    assert "company_primary" in wps_roles
+    assert "industry_report" in wps_roles
+    assert "user_sample" in wps_roles
+    assert "developer_discussion" in wps_roles
+
+
+def test_wps_subroute_query_strategy_separates_market_lanes():
+    wps_ai = webtools.build_query_strategy(
+        "WPS AI",
+        route_plan=webtools.build_route_plan("WPS AI", scope="wps_office").to_dict(),
+        quality={"requested_scope": "wps_office"},
+    )
+    lingxi = webtools.build_query_strategy(
+        "WPS 灵犀",
+        route_plan=webtools.build_route_plan("WPS 灵犀", scope="wps_office").to_dict(),
+        quality={"requested_scope": "wps_office"},
+    )
+    wps365 = webtools.build_query_strategy(
+        "WPS 365",
+        route_plan=webtools.build_route_plan("WPS 365", scope="wps_office").to_dict(),
+        quality={"requested_scope": "wps_office"},
+    )
+
+    assert any("职场效率" in item["query"] for item in wps_ai["variants"])
+    assert any("Gamma Canva" in item["query"] for item in wps_ai["variants"])
+    assert any("国产 AI PPT 工具 横评" in item["query"] for item in wps_ai["variants"])
+    assert any("原生 Office 智能体" in item["query"] for item in lingxi["variants"])
+    assert any("Microsoft Copilot" in item["query"] for item in lingxi["variants"])
+    assert any("企业大脑" in item["query"] for item in wps365["variants"])
+    assert any("Microsoft 365 Copilot" in item["query"] for item in wps365["variants"])
+
+
+def test_wps_ranker_marks_institution_rollout_and_downranks_download_noise():
+    quality = {
+        "intent": "wps_office",
+        "route_intents": ["wps_office"],
+        "preferred_scopes": ["wps_office", "university"],
+        "preferred_source_types": ["办公软件/AI Office/SaaS", "高校/院系官网", "商业/产业媒体"],
+        "route_evidence_roles": ["company_primary", "institution_rollout", "industry_report"],
+    }
+    ranked = webtools.rank_results(
+        [
+            webtools.SearchResult(
+                title="WPS灵犀 使用说明-西南财经大学-信息化与数据管理处",
+                url="https://info.swufe.edu.cn/info/1024/2861.htm",
+                snippet="WPS灵犀上线，面向师生提供使用说明。",
+                source="fixture",
+                rank=1,
+            ),
+            webtools.SearchResult(
+                title="WPS AI 正式版下载 WPS AI V12.1 for Windows 官方最新安装版",
+                url="https://www.jb51.net/softs/887904.html",
+                snippet="软件下载、安装包、最新版下载。",
+                source="fixture",
+                rank=2,
+            ),
+            webtools.SearchResult(
+                title="从工具到智能体 WPS 365 公布 AI 协同平台路线图",
+                url="https://news.qq.com/rain/a/demo",
+                snippet="WPS 365 企业大脑、办公智能体和组织协同平台。",
+                source="fixture",
+                rank=3,
+            ),
+            webtools.SearchResult(
+                title="2026实测 6款主流 AI 自动生成 PPT 工具横评 职场效率拉满",
+                url="https://www.example.com/ai-ppt-roundup",
+                snippet="对比 Gamma、Canva、Tome、WPS 等 AI PPT 工具，覆盖汇报和职场效率场景。",
+                source="fixture",
+                rank=4,
+            ),
+            webtools.SearchResult(
+                title="WPS AI 怎么领取？3步开启智能写作与PDF处理超省力",
+                url="https://jianghu.taobao.com/guanglocal/demo",
+                snippet="入口打开、怎么领取、怎么设置。",
+                source="fixture",
+                rank=5,
+            ),
+        ],
+        query="WPS AI",
+        backend_order=["fixture"],
+        preferred_scope="wps_office",
+        quality=quality,
+    )
+
+    institution = next(item for item in ranked if "swufe" in item.url)
+    download = next(item for item in ranked if "jb51" in item.url)
+    industry = next(item for item in ranked if "news.qq.com" in item.url)
+    ai_ppt_roundup = next(item for item in ranked if "ai-ppt-roundup" in item.url)
+    light_tutorial = next(item for item in ranked if "jianghu.taobao.com" in item.url)
+    assert institution.evidence_role == "institution_rollout"
+    assert download.evidence_role == "low_value_seo"
+    assert industry.evidence_role == "industry_report"
+    assert ai_ppt_roundup.evidence_role == "industry_report"
+    assert light_tutorial.evidence_role == "low_value_seo"
+    assert institution.score > download.score
+    assert download.score_parts["semantic_noise_penalty"] <= -1.15
+    assert ai_ppt_roundup.score > light_tutorial.score
 
 
 def test_query_strategy_builds_university_admissions_variants():

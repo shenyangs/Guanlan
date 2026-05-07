@@ -117,6 +117,16 @@ _RECIPES: tuple[ResearchRecipe, ...] = (
         boundaries=["技术结论要说明版本、发布时间和适用环境。", "营销稿不能替代文档或真实使用反馈。"],
     ),
     ResearchRecipe(
+        id="wps-office-radar",
+        name="WPS/AI Office 选题雷达",
+        description="以金山办公/WPS 为锚点，外扩办公 AI、PPT、Agent、文档协作、SaaS、信创、安全和竞品热点。",
+        when_to_use="用户问金山办公、WPS、WPS AI、WPS 365、AI Office、办公 Agent、PPT 生成、文档协作、信创办公或办公安全选题时。",
+        preset="wps_office",
+        scopes=["wps_office", "business", "tech_dev", "social_web", "cybersecurity"],
+        evidence_layers=["金山办公/WPS 官方", "办公 AI/PPT/文档协作/SaaS 竞品", "AI/科技媒体和 RSS", "信创/安全/政企约束", "用户/社区样本", "热点/公众号/热榜线索"],
+        boundaries=["不要把任务缩成品牌稿检索；垂直赛道和竞品线索同样重要。", "社区和热榜只作选题/情绪样本，关键事实要回到官方、行业媒体或原文。"],
+    ),
+    ResearchRecipe(
         id="trajectory-map",
         name="对象脉络/同类格局",
         description="把一个产品、公司、技术概念或人物拆成发展脉络、同类格局和交叉判断，形成可继续核验的研究骨架。",
@@ -173,6 +183,25 @@ def suggest_recipe(query: str, *, route_plan: dict[str, Any] | None = None) -> R
         term in text for term in ("电影", "综艺", "明星", "票房", "k-pop", "演唱会")
     ):
         return get_recipe("entertainment-pulse")
+    if "wps_office" in intents or any(
+        term in text
+        for term in (
+            "金山办公",
+            "金山文档",
+            "wps",
+            "wps ai",
+            "wps365",
+            "wps 365",
+            "ai office",
+            "office ai",
+            "办公ai",
+            "ai办公",
+            "ppt生成",
+            "协同办公",
+            "信创办公",
+        )
+    ):
+        return get_recipe("wps-office-radar")
     if "cybersecurity" in intents or any(term in text for term in ("cve", "漏洞", "诈骗", "钓鱼")):
         return get_recipe("security-advisory")
     if any(
@@ -323,6 +352,17 @@ def _commands_for_recipe(recipe: ResearchRecipe, query: str, *, profile: str, li
                 "guanlan feeds curated --limit 80",
             ]
         )
+    elif recipe.id == "wps-office-radar":
+        commands.extend(
+            [
+                f"guanlan research {q} --preset wps_office --profile {profile} --limit {limit} --read-top {max(read_top, 5)} --advisor",
+                f"guanlan search {q} --profile {profile} --scope wps_office --limit {limit} --trace",
+                "guanlan feeds curated --category ai --limit 80",
+                "guanlan feeds wechat-rss --limit 80",
+                "guanlan hotnews today --limit 80 --trends",
+                f"guanlan pulse {q} --profile {profile} --limit {limit} --format context",
+            ]
+        )
     elif recipe.id == "trajectory-map":
         commands.extend(
             [
@@ -350,7 +390,7 @@ def _default_read_top(recipe: ResearchRecipe, requested: int | None) -> int:
         return max(int(requested), 0)
     if recipe.id in {"university-advisor", "academic-indexing"}:
         return 0
-    if recipe.id in {"finance-risk", "security-advisory"}:
+    if recipe.id in {"finance-risk", "security-advisory", "wps-office-radar"}:
         return 5
     return 3
 
@@ -358,7 +398,7 @@ def _default_read_top(recipe: ResearchRecipe, requested: int | None) -> int:
 def _default_timeout_budget_seconds(recipe: ResearchRecipe) -> int:
     if recipe.id == "trajectory-map":
         return 300
-    if recipe.id in {"finance-risk", "entertainment-pulse", "security-advisory", "tech-radar"}:
+    if recipe.id in {"finance-risk", "entertainment-pulse", "security-advisory", "tech-radar", "wps-office-radar"}:
         return 240
     return 180
 

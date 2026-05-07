@@ -52,6 +52,11 @@ def test_search_scopes_include_requested_china_sources():
     assert "stats.gov.cn" in scopes["finance_macro"]["domains"]
     assert "xueqiu.com" in scopes["finance_sentiment"]["domains"]
     assert "data.eastmoney.com" in scopes["finance_research"]["domains"]
+    assert "wps.cn" in scopes["wps_office"]["domains"]
+    assert "365.wps.cn" in scopes["wps_office"]["domains"]
+    assert "canva.com" in scopes["wps_office"]["domains"]
+    assert "v2ex.com" in scopes["wps_office"]["domains"]
+    assert scopes["wps_office"]["source_type"] == "办公软件/AI Office/SaaS"
 
 
 def test_resolve_scope_aliases():
@@ -85,6 +90,10 @@ def test_resolve_scope_aliases():
     assert resolve_scope("macro").id == "finance_macro"
     assert resolve_scope("xueqiu").id == "finance_sentiment"
     assert resolve_scope("brokerage").id == "finance_research"
+    assert resolve_scope("wps").id == "wps_office"
+    assert resolve_scope("wps365").id == "wps_office"
+    assert resolve_scope("office-ai").id == "wps_office"
+    assert resolve_scope("ppt").id == "wps_office"
 
 
 def test_resolve_scope_rejects_unknown():
@@ -175,3 +184,16 @@ def test_classify_domain_detects_finance_layers():
     assert quote["matched_scope"] == "finance_quote"
     assert macro["matched_scope"] == "finance_macro"
     assert sentiment["matched_scope"] == "finance_sentiment"
+
+
+def test_classify_domain_detects_wps_office_sources():
+    official = classify_domain("www.wps.cn")
+    wps365 = classify_domain("365.wps.cn")
+    community = classify_domain("bbs.wps.cn")
+    security = classify_domain("security.wps.cn")
+
+    assert official["source_type"] == "办公软件/AI Office/SaaS"
+    assert official["matched_scope"] == "wps_office"
+    assert wps365["matched_scope"] == "wps_office"
+    assert community["matched_scope"] == "wps_office"
+    assert security["matched_scope"] == "wps_office"

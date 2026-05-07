@@ -7,6 +7,7 @@ cd "$ROOT"
 REMOTE="${GUANLAN_RELEASE_REMOTE:-origin}"
 BRANCH="${GUANLAN_RELEASE_BRANCH:-main}"
 SKIP_GATE="${GUANLAN_RELEASE_SKIP_GATE:-0}"
+SKIP_SYNC="${GUANLAN_RELEASE_SKIP_SYNC:-0}"
 VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -1)"
 
 fail() {
@@ -39,6 +40,12 @@ fi
 git push "$REMOTE" "HEAD:$BRANCH"
 git tag -a "$tag" -m "发布 Guanlan $tag"
 git push "$REMOTE" "$tag"
+
+if [ "$SKIP_SYNC" = "1" ]; then
+  echo "publish-release note: skipped post-release sync (GUANLAN_RELEASE_SKIP_SYNC=1)"
+else
+  scripts/post_release_sync.sh "$VERSION"
+fi
 
 cat <<EOF
 publish-release ok

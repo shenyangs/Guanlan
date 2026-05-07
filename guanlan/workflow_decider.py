@@ -55,6 +55,7 @@ _VERTICAL_INTENTS = {
     "reputation",
     "purchase_advice",
     "tech",
+    "wps_office",
     "company_primary",
 }
 
@@ -212,7 +213,7 @@ def decide_workflow(
         path = ["route", "research", "scoped search"]
         if freshness:
             path.append("hotnews")
-        if "tech" in intents:
+        if {"tech", "wps_office"} & set(intents):
             path.append("feeds")
         return _decision(
             clean_query,
@@ -233,7 +234,7 @@ def decide_workflow(
         path = ["route", "research", "scoped search"]
         if freshness:
             path.append("hotnews")
-        if "tech" in intents:
+        if {"tech", "wps_office"} & set(intents):
             path.append("feeds")
         return _decision(
             clean_query,
@@ -396,7 +397,7 @@ def _workflow_contract(tier: str) -> list[str]:
         return [
             "先 route 或使用匹配 preset/scope，再 research/scoped search。",
             "保留官方、媒体、社区、用户样本等证据角色差异。",
-            "近期/热点任务必须检查时间窗，科技任务必须补 RSS discovery。",
+            "近期/热点任务必须检查时间窗，科技和 WPS/AI Office 任务必须补 RSS discovery。",
         ]
     return [
         "显式进入上层工作流，但不改变 search/read/hotnews 的轻路径默认行为。",
@@ -414,6 +415,8 @@ def _fallback_policy(tier: str, intents: list[str]) -> list[str]:
         policy.append("观澜工作流仍缺关键原文时，可让宿主 Agent 用 WebFetch 定点补读，并外显说明这是补证策略。")
     if "tech" in intents:
         policy.append("科技/AI/开发者任务要额外跑 feeds curated 或 research --preset tech 的 RSS 发现。")
+    if "wps_office" in intents:
+        policy.append("WPS/AI Office 选题任务要额外跑 feeds curated、research --preset wps_office 和 hotnews/pulse，避免只看品牌或单一垂类。")
     if "hot_trend" in intents:
         policy.append("热点任务要补 hotnews/pulse，看水势后再写判断。")
     return policy

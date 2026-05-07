@@ -51,6 +51,22 @@ def test_recipe_plan_builds_trajectory_map_workflow():
     assert suggest_recipe("帮我搞懂 Manus Agent 的来龙去脉和竞品格局").id == "trajectory-map"
 
 
+def test_recipe_plan_builds_wps_office_radar_workflow():
+    plan = build_recipe_plan("wps-office-radar", "WPS AI PPT Agent 办公选题 最近热点")
+    rendered = format_recipe_plan_markdown(plan)
+
+    assert plan["recipe"]["id"] == "wps-office-radar"
+    assert plan["read_top"] == 5
+    assert plan["timeout_budget_seconds"] == 240
+    assert "AI/科技媒体和 RSS" in plan["recipe"]["evidence_layers"]
+    assert any("--preset wps_office" in command for command in plan["commands"])
+    assert any("--scope wps_office" in command for command in plan["commands"])
+    assert any("feeds curated" in command for command in plan["commands"])
+    assert any("hotnews today" in command for command in plan["commands"])
+    assert "不要把任务缩成品牌稿检索" in rendered
+    assert suggest_recipe("WPS AI PPT Agent 办公选题 最近热点").id == "wps-office-radar"
+
+
 def test_page_diagnosis_marks_dynamic_shell_without_network():
     payload = diagnose_page(
         "https://xueqiu.com/snowman/provider/zz/gp_detail?symbol=SH600519",

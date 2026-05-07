@@ -31,7 +31,7 @@
 - 页面读不出来时，先用 `guanlan diagnose page "URL"` 判断是可读正文、动态页壳、访问门槛、搜索兜底还是弱正文；不要把搜索兜底当原文，也不要反复重试登录/WAF 页面。
 - 如果 `diagnose page` 输出 `browser_assist.recommended=true`，先请求用户授权，再使用宿主浏览器打开目标 URL 并只读取目标页面的浏览器可见内容作为补证；如需登录、验证或切换账号，让用户自己在浏览器里完成；本次可见页补证不要读取 Cookie、Token、钥匙串、私信、订单、后台或无关个人资料；如果仍需 Cookie，必须另行说明平台、用途和风险并获得用户明确同意，也不要执行任何写操作。授权后先用 `guanlan browser-assist adapters --check` 查看当前适配器的只读自检结果，再用 `guanlan browser-assist run "URL" --adapter host-browser --json` 取得宿主浏览器执行契约；可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库。`open-cli` / `browser-use` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
 - 浏览器补证适配器分为 `extractor` 和 `opener`：`extractor` 能产出可入库的可见页 JSON/JSONL，`opener` 只负责打开 URL。`guanlan browser-assist adapters --check` 会返回 `can_open`、`can_extract_visible_text`、`can_reuse_existing_session`、`cookie_flow_available`、`capability_score`、`risk_score`；如果只有 opener 可用，仍需宿主 Agent 浏览器提取可见正文。小红书、知乎、公众号会带平台专项字段模板，入库保留 `browser_visible_v2` 与 `session_dependent` 边界。
-- 高频垂直任务用 `guanlan recipe list` / `guanlan recipe run <recipe> "问题"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`。
+- 高频垂直任务用 `guanlan recipe list` / `guanlan recipe run <recipe> "问题"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`、`wps-office-radar`。
 
 ## 信源矩阵与公开基准
 
@@ -46,9 +46,9 @@
 
 - 不确定该轻搜还是深查时，先跑 `guanlan workflow "关键词" --json`。它只做本地判断，不联网，不会改变基础搜索行为。
 - `direct`：简单官网、链接、事实入口和轻量资料，直接 `search -> read optional`，不要过度规划。
-- `guided`：政策、财经、安全、技术、热点、口碑等需要信源分层的问题，走 `route -> research -> scoped search`，科技题补 RSS，热点题补 hotnews。
+- `guided`：政策、财经、安全、技术、WPS/AI Office、热点、口碑等需要信源分层的问题，走 `route -> research -> scoped search`，科技和 WPS/AI Office 题补 RSS，热点题补 hotnews。
 - `investigate`：用户明确要深度研究、对比、时间线、档案、高影响核验或可复用证据包时，使用 `guanlan investigate "关键词" --limit 80 --format context`；不确定开销时先 `--dry-run`。
-- 明确命中专门分类时，直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮。欧美娱乐、日韩娱乐、CVE/反诈、天气灾害、体育、财经/股票/宏观金融、科学新闻、职场薪资面经、播客、考试备考、高校招生导师、学术投稿检索、产品/公司口碑都属于强路由。
+- 明确命中专门分类时，直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮。WPS/AI Office、欧美娱乐、日韩娱乐、CVE/反诈、天气灾害、体育、财经/股票/宏观金融、科学新闻、职场薪资面经、播客、考试备考、高校招生导师、学术投稿检索、产品/公司口碑都属于强路由。
 - 重复出现的垂直研究模式先用 `recipe run` 输出计划，再执行对应 `search/read/research/stock/archive`，避免 Agent 临场拼错路由。
 - `research` 会附带证据审计提示：如果同一模型、版本号、价格、参数量或发布时间出现不同说法，先把冲突和来源日期讲清楚，再给取舍依据；不要把观澜的冲突提示当成最终裁决。
 
@@ -58,14 +58,14 @@
 
 - `2-step`：`search -> read`。适合结果已经明显可用，只需要核代表原文。
 - `3-step`：`route -> research -> scoped search`。适合普通研究题，或质量画像未过。
-- `4-step`：在 `3-step` 基础上，热点/时效题补 `hotnews`，技术/AI 题补 `feeds`，证据面过窄时补 `dossier`、`compare` 或 `timeline`。
+- `4-step`：在 `3-step` 基础上，热点/时效题补 `hotnews`，技术/AI/WPS/AI Office 题补 `feeds`，证据面过窄时补 `dossier`、`compare` 或 `timeline`。
 
 只有完成当前档位要求的 Guanlan 工具后，仍缺关键证据，才切到通用 `web_search` / `web_fetch`。
 如果 trace 或 context 中出现 `external_fetch_strategy`，可以临时调用宿主平台的 WebFetch/WebRead 读取 Guanlan 推荐 URL。外显时要说清楚：这是 Guanlan 主动规划的“定点补证”策略，不是 Guanlan 搜索失败。
 
 如果 trace 中出现 `quality_gate.reason=partial_salvage`，说明 Guanlan 已从低覆盖批次里保留强官方/垂直信源线索；它可作为继续读取和核验的入口，不应汇报成失败。如果 `read` 输出 `兜底状态: unusable`，说明搜索兜底无法确认同一页面，不能引用兜底内容，应改用 `diagnose page`、结构化入口、scope 搜索或 WebFetch 定点补证。
 
-对于体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE/安全公告、科学机构声明、文娱榜单/票房、考试官方信息这类高确定性垂直题，先看 `guanlan route` 给出的 direct `guanlan read` 命令。这些是权威入口候选，应该先读取核验，再用 `research/search` 扩大信源面。
+对于体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE/安全公告、科学机构声明、文娱榜单/票房、考试官方信息、WPS/AI Office 官方入口这类高确定性垂直题，先看 `guanlan route` 给出的 direct `guanlan read` 命令。这些是权威入口候选，应该先读取核验，再用 `research/search` 扩大信源面。
 
 ## Benchmark 纪律
 
@@ -75,7 +75,7 @@
 - 不要把 `quality_summary=warn` 直接写成 “Guanlan 搜索失败”。
 - 实时/热点题必须补 `hotnews`。
 - 实时体育、灾害预警、安全漏洞等垂直题必须读取 Guanlan 推荐的 direct source seeds。
-- 技术/AI 题必须补 `feeds` 或直接走 `research --preset tech`。
+- 技术/AI/WPS/AI Office 题必须补 `feeds`，或直接走 `research --preset tech` / `research --preset wps_office`。
 - 政策/办事题优先 `search + read` 或 `research`，不要只测单次泛搜。
 
 ## Agent 外层超时建议
@@ -115,6 +115,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “查官方/央媒表述” | `guanlan search "关键词" --profile china --scope party_central` |
 | “查地方官媒/区域政策” | `guanlan search "关键词" --profile china --scope local_official` |
 | “查电商/零售/产业带” | `guanlan search "关键词" --profile china --scope ecommerce` |
+| “查金山办公/WPS/WPS AI/WPS 365/办公 AI 选题” | `guanlan research "WPS AI PPT Agent 办公选题 最近热点" --preset wps_office --limit 80 --read-top 5 --advisor` |
 | “查高校招生/导师/院系官网” | `guanlan research "关键词" --preset university --read-top 0` |
 | “查影视/综艺/明星/游戏/票房口碑” | `guanlan research "关键词" --preset entertainment --read-top 0` |
 | “查股票/公司财报公告/风险” | 先 `guanlan stock detail "宁德时代"`，再 `guanlan research "宁德时代 股价 财报 公告 最近风险" --preset finance --read-top 5 --advisor` |
@@ -125,7 +126,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “查看浏览器补证适配器” | `guanlan browser-assist adapters --check` |
 | “生成宿主浏览器执行契约” | `guanlan browser-assist run "URL" --adapter host-browser --json` |
 | “用户授权后把浏览器可见页补证入库” | `guanlan archive add-browser-note --from-json browser-notes.jsonl` |
-| “按固定流程查高校/财经/口碑/安全/技术” | `guanlan recipe list`，再 `guanlan recipe run finance-risk "问题"` |
+| “按固定流程查高校/财经/口碑/安全/技术/WPS 选题” | `guanlan recipe list`，再 `guanlan recipe run wps-office-radar "WPS AI 选题线索"` |
 | “查公告/财报/监管/问询函” | `guanlan search "贵州茅台 公告 财报" --scope finance_disclosure --limit 80 --trace` |
 | “查宏观金融/央行/统计局数据” | `guanlan search "社融 CPI 降息 央行" --scope finance_macro --limit 80 --trace` |
 | “查雪球/股吧/投资者情绪” | `guanlan search "某股票 雪球 股吧 情绪" --scope finance_sentiment --limit 80 --trace` |
@@ -160,6 +161,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “指定多个平台查口碑” | `guanlan research "关键词" --preset reputation --sites zhihu.com,weibo.com,xiaohongshu.com` |
 | “看话题是被夸还是被骂” | `guanlan pulse "关键词" --format context` |
 | “查技术选型/开发者反馈” | `guanlan research "关键词" --preset tech` |
+| “查 WPS/AI Office 选题雷达” | `guanlan research "关键词" --preset wps_office --read-top 5 --advisor` |
 | “只要证据包，不读原文” | `guanlan research "关键词" --read-top 0` |
 | “读这个链接” | `guanlan read "URL"` |
 | “Jina 读不了/读取不完整” | `guanlan read "URL" --backend direct` |
@@ -283,6 +285,9 @@ guanlan search "低空经济 广东" --profile china --scope local_official
 # 电商与零售垂类，包含亿邦动力等
 guanlan search "跨境电商 AI" --profile china --scope ecommerce
 
+# WPS/AI Office 选题雷达，包含品牌、竞品、办公 AI、PPT、信创、安全和热点线索
+guanlan search "WPS AI PPT Agent 办公选题 最近热点" --profile china --scope wps_office --limit 80 --trace
+
 # 文娱与内容消费，包含豆瓣、猫眼、B站、微博、TapTap 等
 guanlan search "某电影 票房 豆瓣评分" --profile china --scope entertainment
 ```
@@ -313,6 +318,7 @@ guanlan diagnose page "https://example.com/article"
 guanlan recipe list
 guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"
 guanlan recipe run university-advisor "南京师范大学中北学院 计算机 导师 招生"
+guanlan recipe run wps-office-radar "WPS AI PPT Agent 办公选题 最近热点"
 ```
 
 ```bash
@@ -400,7 +406,7 @@ guanlan research "某主题" --profile china --limit 80 --read-top 5
 
 `route` 会输出主要意图、证据角色、优先 scope、推荐站点、兜底 scope、查询改写和边界提醒。不要把 route 当成硬过滤：除非用户显式指定 `--scope` 或 `--site`，否则 `research` 会同时保留开放网页兜底，避免只在白名单里打转。
 
-科技、AI、开发者、工程实践类问题必须额外补一轮 RSS/精品内容流。`guanlan research "问题" --preset tech` 会自动把 `feeds curated` 作为 forced feed group 纳入候选池；如果 Agent 只跑了 `route` 或 `search`，还需要再跑：
+科技、AI、WPS/AI Office、开发者、工程实践类问题必须额外补一轮 RSS/精品内容流。`guanlan research "问题" --preset tech` 和 `guanlan research "问题" --preset wps_office` 会自动把 `feeds curated` 作为 forced feed group 纳入候选池；如果 Agent 只跑了 `route` 或 `search`，还需要再跑：
 
 ```bash
 guanlan feeds curated --category ai --limit 80
@@ -442,6 +448,7 @@ Preset 会自动选择一个或多个 scope，并可包含平台定向站点。�
 | `podcast` | `podcast` + `social_web` + `tech_dev`；小宇宙、Apple Podcasts、Spotify、Listen Notes | 播客节目、单集、主播、RSS 和听众样本。 |
 | `test_prep` | `test_prep` + `social_web` + `company_primary`；IELTS/ETS/NEEA、培训资料、考生经验 | 雅思、托福、题库、机经和考试政策。 |
 | `tech` | `tech_dev` + `social_web`；V2EX、掘金、SegmentFault、GitHub | 技术选型、开发者社区、工程实践。 |
+| `wps_office` | `wps_office` + `business` + `tech_dev` + `social_web` + `company_primary` + `cybersecurity`；WPS/WPS 365/金山文档、竞品 SaaS、科技媒体、社区样本和安全/信创入口 | 金山办公/WPS/WPS AI/WPS 365、办公 AI、PPT/Agent、文档协作、SaaS、信创、安全和品牌市场选题。 |
 | `academic` | `academic` + `tech_dev` + `business`；Elsevier、Engineering Village、IEEE、CNKI、百度学术 | EI/SCI/Scopus、学术会议、论文投稿、数据库检索和高校认定口径。 |
 | `university` | `university` + `academic` + `tech_dev`；高校、研究生招生网和院系官网 | 研究生招生、导师名单、院系介绍、招生目录、招生简章、推免复试和培养方案。 |
 | `finance` | `finance_disclosure` + `finance_quote` + `finance_news` + `finance_macro` + `finance_research` + `finance_sentiment`；巨潮、交易所、东方财富、财联社、央行/统计局、雪球 | 股票/基金/ETF、行情、公告财报、监管风险、宏观金融、研报观点和投资者情绪；必须分层，不输出投资建议。 |

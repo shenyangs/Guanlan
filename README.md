@@ -65,6 +65,9 @@ guanlan search "新质生产力 政策 原文" --profile china --limit 80 --trac
 # scope 默认是软收敛：优先看这类信源，质量不足时自动混入开放网页
 guanlan search "AI Agent 发展趋势 2025" --profile china --scope tech_dev --limit 80 --trace
 
+# 为 WPS/AI Office 赛道找选题线索，品牌、竞品、技术、信创、安全和热点一起看
+guanlan research "WPS AI PPT Agent 办公选题 最近热点" --preset wps_office --limit 80 --read-top 5 --advisor
+
 # 2. 读取网页正文，检查是否干净
 guanlan read "https://example.com/article" --quality-report --trace
 
@@ -115,7 +118,7 @@ guanlan doctor --install-check
 guanlan status
 ```
 
-看到 `观澜 / Guanlan v0.5.20`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.21`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
 
 ## 给 Agent 复制的安装指令
 

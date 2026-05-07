@@ -210,6 +210,49 @@ _US_TICKER_STOPWORDS = {
     "USD",
     "XML",
 }
+_WPS_OFFICE_BRAND_TERMS = (
+    "金山办公",
+    "金山文档",
+    "wps",
+    "wps ai",
+    "wpsai",
+    "wps365",
+    "wps 365",
+    "wps office",
+    "kingsoft office",
+    "kdocs",
+    "wps灵犀",
+    "wps 灵犀",
+)
+_WPS_OFFICE_VERTICAL_TERMS = (
+    "办公ai",
+    "ai办公",
+    "智能办公",
+    "ai office",
+    "office ai",
+    "办公套件",
+    "办公软件",
+    "协同办公",
+    "文档协作",
+    "云文档",
+    "智能文档",
+    "智能表格",
+    "多维表格",
+    "ppt生成",
+    "生成ppt",
+    "ai ppt",
+    "ppt ai",
+    "演示文稿",
+    "presentation ai",
+    "企业云盘",
+    "信创办公",
+    "政企办公",
+    "办公安全",
+    "办公agent",
+    "office agent",
+    "文档agent",
+    "ppt agent",
+)
 
 
 def direct_source_seeds(
@@ -227,9 +270,12 @@ def direct_source_seeds(
 
     if is_live_sports_lookup(query, intents=intents, scopes=scopes):
         seeds.extend(_sports_seeds(query))
+    if is_wps_office_lookup(query, intents=intents, scopes=scopes):
+        seeds.extend(_wps_office_seeds(query))
     if _matches_vertical(intent_set, scope_set, "weather_disaster") or _contains_any(text, ("台风", "地震", "气象", "预警", "weather", "typhoon", "earthquake")):
         seeds.extend(_weather_seeds(query))
-    if _matches_vertical(intent_set, scope_set, "cybersecurity") or _contains_any(text, ("cve", "漏洞", "补丁", "安全公告", "phishing", "ransomware")):
+    security_terms = ("cve", "漏洞", "补丁", "安全公告", "phishing", "ransomware")
+    if "cybersecurity" in intent_set or ("cybersecurity" in scope_set and _contains_any(text, security_terms)) or _contains_any(text, security_terms):
         seeds.extend(_security_seeds(query))
     if _matches_vertical(intent_set, scope_set, "science") and _contains_any(text, ("nasa", "esa", "jwst", "韦伯", "天文", "外星生命", "science", "nature")):
         seeds.extend(_science_seeds(query))
@@ -330,6 +376,25 @@ def is_finance_lookup(
     return False
 
 
+def is_wps_office_lookup(
+    query: str,
+    *,
+    intents: list[str] | None = None,
+    scopes: list[str] | None = None,
+) -> bool:
+    """Detect WPS/AI Office research tasks that benefit from official entry seeds."""
+    text = _norm(query)
+    intent_set = {str(item) for item in intents or [] if str(item)}
+    scope_set = {str(item) for item in scopes or [] if str(item)}
+    if _matches_vertical(intent_set, scope_set, "wps_office"):
+        return True
+    if _contains_any(text, _WPS_OFFICE_BRAND_TERMS):
+        return True
+    if _contains_any(text, _WPS_OFFICE_VERTICAL_TERMS) and _contains_any(text, ("办公", "office", "文档", "ppt", "agent", "信创", "saas")):
+        return True
+    return False
+
+
 def dominant_vertical_preset(
     query: str,
     *,
@@ -357,6 +422,7 @@ def dominant_vertical_preset(
         ("finance_research", "finance"),
         ("finance", "finance"),
         ("university_admissions", "university"),
+        ("wps_office", "wps_office"),
         ("weather_disaster", "weather_disaster"),
         ("cybersecurity", "cybersecurity"),
         ("global_entertainment", "global_entertainment"),
@@ -434,6 +500,62 @@ def _sports_seeds(query: str) -> list[dict[str, Any]]:
             ]
         )
     return seeds
+
+
+def _wps_office_seeds(query: str) -> list[dict[str, Any]]:
+    return [
+        _seed(
+            "wps:official",
+            "WPS 官网",
+            "https://www.wps.cn/",
+            "WPS 官方入口，适合核验产品发布、功能入口、下载和品牌一手表述。",
+            scope="wps_office",
+            source_type="办公软件/AI Office/SaaS",
+            role="company_primary",
+            trust=5,
+        ),
+        _seed(
+            "wps:wps365",
+            "WPS 365",
+            "https://365.wps.cn/",
+            "WPS 365 官方入口，适合核验政企协作、AI Office、文档协作和企业办公套件定位。",
+            scope="wps_office",
+            source_type="办公软件/AI Office/SaaS",
+            role="product_primary",
+            trust=5,
+        ),
+        _seed(
+            "wps:community",
+            "WPS 官方社区",
+            "https://bbs.wps.cn/",
+            "WPS 官方社区入口，适合发现公开用户反馈、功能讨论和产品使用样本；样本不代表总体。",
+            scope="wps_office",
+            source_type="办公软件/AI Office/SaaS",
+            role="user_sample",
+            trust=3,
+            read_ready=False,
+        ),
+        _seed(
+            "wps:security",
+            "金山办公安全中心",
+            "https://security.wps.cn/",
+            "金山办公安全与合规入口，适合核验办公安全、数据保护和企业信任相关线索。",
+            scope="wps_office",
+            source_type="办公软件/AI Office/SaaS",
+            role="security_advisory",
+            trust=4,
+        ),
+        _seed(
+            "wps:kdocs",
+            "金山文档",
+            "https://www.kdocs.cn/",
+            "金山文档产品入口，适合核验在线文档、协作、云文档和公开模板/协作场景线索。",
+            scope="wps_office",
+            source_type="办公软件/AI Office/SaaS",
+            role="collaboration_product",
+            trust=4,
+        ),
+    ]
 
 
 def _weather_seeds(query: str) -> list[dict[str, Any]]:

@@ -118,6 +118,7 @@ guanlan archive add-browser-note --from-json browser-notes.jsonl
 guanlan recipe list
 guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"
 guanlan recipe run university-advisor "南京师范大学中北学院 计算机 导师 招生"
+guanlan recipe run wps-office-radar "WPS AI PPT Agent 办公选题 最近热点"
 ```
 
 Recipe 输出的是计划、证据层和边界，不是最终答案。执行时仍要按 `route/search/read/research` 的质量信号补证。
@@ -133,7 +134,7 @@ Recipe 输出的是计划、证据层和边界，不是最终答案。执行时�
 3. `search --scope ...`
 4. `hotnews`
 
-技术/AI：
+技术/AI/WPS/AI Office：
 
 1. `route`
 2. `research`
@@ -160,7 +161,7 @@ Guanlan 输出给 Agent 的外层预算默认是秒：`status`、`doctor`、`sea
 
 ## 垂直权威入口
 
-有些问题不该只赌搜索引擎发现。例如体育比分、财经行情/公告披露/宏观数据、天气灾害、CVE 漏洞、科学机构声明、文娱榜单/票房、考试官方信息，用户真正需要的是“先去哪个权威入口核验”。Guanlan 会在这些高确定性场景里自动加入少量 direct source seeds，并在 `route` 里给出 `guanlan read` 命令。
+有些问题不该只赌搜索引擎发现。例如体育比分、财经行情/公告披露/宏观数据、天气灾害、CVE 漏洞、科学机构声明、文娱榜单/票房、考试官方信息、WPS/AI Office 官方入口，用户真正需要的是“先去哪个权威入口核验”。Guanlan 会在这些高确定性场景里自动加入少量 direct source seeds，并在 `route` 里给出 `guanlan read` 命令。
 
 Agent 应该把这些入口当作下一步要读的权威候选，而不是把它们当最终答案。正确做法是先读这些入口，再用 `search/research` 扩大信源面；不要在 Baidu/Bing/DuckDuckGo 低相关或被验证码拦截后直接宣布 Guanlan 失败。
 
@@ -173,7 +174,7 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 只跑一次 `search`，然后把结果当成 Guanlan 最终能力
 - 把“质量画像 warn”直接写成“Guanlan 搜索失败”
 - 用 `search` 测“今天热搜”“刚刚地震”“最新发布”却不跑 `hotnews`
-- 用 `search` 测技术/AI，却不补 `feeds`
+- 用 `search` 测技术/AI/WPS/AI Office，却不补 `feeds`
 - 把实时数据题、专用行情题当作普通网页搜索题
 - 把股票/财经题只当泛搜题，不区分结构化行情、公告披露、监管/宏观数据、研报观点和投资者情绪
 - 用超长 query 一次性塞进全部约束，不做拆解
@@ -183,7 +184,7 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 
 - 先判断是否强路由命中，再决定 `preset` / `scope`
 - 热点题必须带 `hotnews`
-- 技术/AI 题必须带 `feeds`
+- 技术/AI/WPS/AI Office 题必须带 `feeds`
 - 财经题必须先选 `finance` preset 或对应 scope；行情、榜单、资金流优先用 `guanlan stock ...` / `guanlan-stock ...`，公告/财报/监管用 `finance_disclosure`，宏观用 `finance_macro`，情绪样本用 `finance_sentiment`
 - 政策/办事题至少 `search + read`，复杂时直接 `research`
 - 评价 Guanlan 时区分三件事：
@@ -220,7 +221,7 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 财经题不要只看一个搜索结果：行情要先走结构化股票数据并看时间戳，公告/财报要回到披露源，宏观数据要核发布机构，雪球/股吧只作情绪样本。动态财经页或雪球 WAF 读不出正文时，不要反复 `read`，改用 `guanlan stock detail|fundflow|rank|index` 和披露源补证。
 - 页面读不出来时，先 `diagnose page`，再按诊断建议切结构化源、scope 搜索、metadata 读取或 archive 流程；不要把搜索兜底内容当原文正文。
 - 高频垂直任务先 `recipe run`，把流程讲清楚，再执行对应命令；不要让 Agent 临场发明一套不稳定搜索路径。
-- 技术题优先 `research --preset tech` 或 `search + feeds`，不要只看社区搜索结果。
+- 技术题优先 `research --preset tech` 或 `search + feeds`；WPS/AI Office 选题优先 `research --preset wps_office` 或 `recipe run wps-office-radar`，不要只看品牌稿或社区搜索结果。
 - `source_type` 只作辅助，不要把它当唯一真相；结合 domain、authority_score、evidence_role 一起判断。
 - `compare` 若提示 `source_diversity_guard=warn`，先补公司一手、垂直媒体或社区样本，不要拿单站结果做横向结论。
 - `timeline` 若提示 `timeline_quality=warn`，说明主时间窗证据不足；窗口外事件只能当背景。

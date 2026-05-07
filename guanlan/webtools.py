@@ -211,6 +211,64 @@ _ROBOTICS_AI_TERMS = (
     "humanoid",
     "robotics",
 )
+_WPS_OFFICE_TERMS = (
+    "金山办公",
+    "金山文档",
+    "wps",
+    "wps ai",
+    "wpsai",
+    "wps365",
+    "wps 365",
+    "wps office",
+    "kingsoft office",
+    "kdocs",
+    "wps灵犀",
+    "wps 灵犀",
+    "办公ai",
+    "ai办公",
+    "智能办公",
+    "ai office",
+    "office ai",
+    "办公套件",
+    "办公软件",
+    "协同办公",
+    "文档协作",
+    "云文档",
+    "智能文档",
+    "智能表格",
+    "多维表格",
+    "ppt生成",
+    "生成ppt",
+    "ai ppt",
+    "ppt ai",
+    "演示文稿",
+    "presentation ai",
+    "pdf编辑",
+    "企业云盘",
+    "国产化办公",
+    "国产办公",
+    "信创办公",
+    "政企办公",
+    "办公安全",
+    "办公agent",
+    "office agent",
+    "文档agent",
+    "ppt agent",
+)
+
+
+def _wps_office_subroute(query: str) -> str:
+    """Classify WPS market queries into distinct topic lanes."""
+    text = _collapse_ws(query).lower()
+    compact = text.replace(" ", "")
+    if "灵犀" in query or "lingxi" in compact or "claw" in compact:
+        return "lingxi"
+    if "wps365" in compact or "wps 365" in text or "365.wps" in compact:
+        return "wps365"
+    if "wpsai" in compact or "wps ai" in text or "aippt" in compact or "ai ppt" in text:
+        return "wps_ai"
+    return "general"
+
 
 _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
     "policy": {
@@ -337,6 +395,14 @@ _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
         "preferred_source_types": ("公司一手资料", "英文开发者/开源"),
         "caution_source_types": ("英文社区样本", "评价/消费样本"),
         "guidance": "优先公司官网、文档、发布说明、状态页和投资者关系材料，再补社区/媒体样本。",
+    },
+    "wps_office": {
+        "name": "金山办公/WPS 与 AI Office",
+        "terms": _WPS_OFFICE_TERMS,
+        "preferred_scopes": ("wps_office", "business", "tech_dev", "company_primary", "cybersecurity", "social_web"),
+        "preferred_source_types": ("办公软件/AI Office/SaaS", "商业/产业媒体", "科技/开发者社区", "公司一手资料", "网络安全/漏洞/反诈", "社交/内容平台"),
+        "caution_source_types": ("通用网页",),
+        "guidance": "以 WPS/金山办公为锚点，放大到办公 AI、PPT/文档协作、SaaS、信创、安全、竞品和用户样本；品牌通稿、单条社媒和工具榜单不能作主证据。",
     },
     "local": {
         "name": "地方政策/区域研究",
@@ -790,6 +856,22 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "max_read_chars": 2800,
         "guidance": ["优先提取版本、限制、真实使用反馈和可复现依据。"],
     },
+    "wps_office": {
+        "name": "WPS/AI Office 选题雷达",
+        "description": "以金山办公、WPS AI、WPS 365 为锚点，外扩办公 AI、PPT、Agent、文档协作、SaaS、信创、安全和竞品热点。",
+        "profile": "china",
+        "scope": "wps_office",
+        "scopes": ["wps_office", "business", "tech_dev", "social_web", "company_primary", "cybersecurity"],
+        "sites": ["wps.cn", "365.wps.cn", "bbs.wps.cn", "security.wps.cn", "ithome.com", "36kr.com", "sspai.com", "leiphone.com"],
+        "limit": DEFAULT_RESEARCH_LIMIT,
+        "read_top": 5,
+        "max_read_chars": 3200,
+        "guidance": [
+            "不要把查询局限成金山办公品牌稿；把官方发布、竞品 SaaS/AI Office、AI/科技媒体、信创/安全、社区反馈和热点内容流分层。",
+            "PPT 生成、文档协作、办公 Agent、企业知识库、PDF/表格/多维表、国产化办公、安全合规都可作为选题线索。",
+            "RSS/精品内容流和热榜只作发现层；关键判断要回到官方、行业媒体、开发者/用户样本或安全/信创原文核验。",
+        ],
+    },
     "cybersecurity": {
         "name": "网络安全/CVE/反诈",
         "description": "优先漏洞库、厂商安全公告、监管/反诈来源，适合 CVE、补丁和诈骗风险核验。",
@@ -1083,6 +1165,7 @@ class _DuckDuckGoHTMLParser(HTMLParser):
 
 _WECHAT_SOGOU_BACKENDS = {"wechat-sogou", "wechat_sogou", "sogou-wechat", "sogou_wechat"}
 _SHORT_SCOPED_QUERY_MAX_SITES = {
+    "wps_office": 18,
     "global_entertainment": 4,
     "jp_kr_entertainment": 4,
     "cybersecurity": 4,
@@ -5103,6 +5186,12 @@ def _research_preset_for_profile(preset_config: dict[str, Any], profile: str | N
             "sites": ["github.com", "stackoverflow.com", "docs.github.com"],
             "guidance": ["优先官方文档、代码仓库、release notes、issue 和可复现开发者反馈。"],
         },
+        "wps_office": {
+            "scope": "company_primary",
+            "scopes": ["company_primary", "developer", "industry_analysis", "community_sample", "market_review"],
+            "sites": ["wps.com", "microsoft.com", "canva.com", "g2.com", "producthunt.com"],
+            "guidance": ["英文 WPS/AI Office 研究应区分公司一手资料、办公 SaaS/AI 竞品、英文评价站、开发者社区和行业报道。"],
+        },
         "finance": {
             "scope": "global_official",
             "scopes": ["global_official", "global_news", "company_primary", "industry_analysis"],
@@ -5137,6 +5226,7 @@ def _route_preset_for_profile(preset_id: str, profile: str | None) -> str:
         "entertainment": "global_entertainment",
         "finance": "global_policy",
         "company": "company",
+        "wps_office": "wps_office",
     }
     return mapping.get(preset_id, preset_id)
 
@@ -5229,7 +5319,11 @@ def _research_feed_discovery(
         return [], [], []
     feed_limit = max(1, min(DEFAULT_FEEDS_LIMIT, max(limit, 20)))
     language = "en" if profile == "english" else "zh"
-    category = "ai" if "ai" in set(route_plan.get("domains") or []) else "programming"
+    domains = set(route_plan.get("domains") or [])
+    primary = set(route_plan.get("primary_intents") or [])
+    is_wps_route = preset_id == "wps_office" or "wps_office" in primary
+    category = "ai" if "ai" in domains else ("product" if is_wps_route else "programming")
+    reason = "office_ai_route_requires_rss_discovery" if is_wps_route else "tech_route_requires_rss_discovery"
     errors: list[str] = []
     groups: list[dict[str, Any]] = []
     try:
@@ -5261,7 +5355,7 @@ def _research_feed_discovery(
                 "result_count": len(results),
                 "results": results,
                 "forced": True,
-                "reason": "tech_route_requires_rss_discovery",
+                "reason": reason,
                 "source": "guanlan feeds curated",
                 "category": category,
                 "language": language,
@@ -5280,7 +5374,7 @@ def _research_feed_discovery(
                 "result_count": 0,
                 "results": [],
                 "forced": True,
-                "reason": "tech_route_requires_rss_discovery",
+                "reason": reason,
                 "source": "guanlan feeds curated",
                 "category": category,
                 "language": language,
@@ -5292,7 +5386,7 @@ def _research_feed_discovery(
 
 def _requires_tech_rss_discovery(route_plan: dict[str, Any], preset_id: str) -> bool:
     primary = set(route_plan.get("primary_intents") or [])
-    return preset_id == "tech" or "tech" in primary
+    return preset_id in {"tech", "wps_office"} or bool({"tech", "wps_office"} & primary)
 
 
 def _feed_item_to_search_result(item: dict[str, Any], *, rank: int) -> dict[str, Any] | None:
@@ -5361,6 +5455,20 @@ def _query_for_research_job(
             role_preferences = ["user_sample", "review", "fresh_news"]
         elif target == "tech_dev":
             role_preferences = ["technical_primary", "developer_discussion", "base"]
+        elif target == "wps_office":
+            role_preferences = [
+                "topic_radar",
+                "competitive_context",
+                "scenario_signal",
+                "industry_report",
+                "fresh_news",
+                "company_primary",
+                "official_specs",
+                "developer_discussion",
+                "user_sample",
+                "security_advisory",
+                "base",
+            ]
         elif target == "ecommerce":
             role_preferences = ["review", "user_sample", "industry_report", "fresh_news", "base"]
         elif target == "finance":
@@ -5402,6 +5510,12 @@ def _query_for_research_job(
             role_preferences = ["user_sample", "review", "fresh_news"]
         elif any(site in target for site in ("github", "stackoverflow", "docs.")):
             role_preferences = ["technical_primary", "developer_discussion", "base"]
+        elif any(site in target for site in ("wps.cn", "365.wps.cn", "kingsoft", "kdocs.cn")):
+            role_preferences = ["company_primary", "official_specs", "fresh_news", "base"]
+        elif any(site in target for site in ("canva", "gamma.app", "beautiful.ai", "notion", "feishu", "larkoffice", "yuque", "shimo", "office.com", "microsoft365")):
+            role_preferences = ["company_primary", "industry_report", "user_sample", "fresh_news", "base"]
+        elif any(site in target for site in ("ithome", "36kr", "sspai", "leiphone", "jiqizhixin", "qbitai", "infoq")):
+            role_preferences = ["industry_report", "fresh_news", "base"]
         elif any(site in target for site in ("openai", "anthropic", "microsoft", "google", "amazon", "meta")):
             role_preferences = ["company_primary", "technical_primary", "fresh_news"]
         elif any(site in target for site in ("espn", "nba.com", "fifa", "uefa", "skysports", "theathletic")):
@@ -6134,6 +6248,8 @@ def _advisor_primary_angle(preset: str, query: str) -> str:
         return "口碑线索与行动建议"
     if preset in {"industry", "finance"} or _contains_any(text, ["行业", "融资", "财报", "股价", "商业化"]):
         return "行业趋势与风险识别"
+    if preset == "wps_office" or _contains_any(text, ["金山办公", "wps", "wps ai", "wps365", "办公ai", "ai办公", "ai office", "ppt生成", "协同办公", "信创办公"]):
+        return "办公 AI 赛道选题与市场线索"
     if preset == "tech" or _contains_any(text, ["框架", "开源", "github", "技术", "选型"]):
         return "技术选型与真实限制"
     if _contains_any(text, ["热点", "最近", "今天", "近期"]):
@@ -6157,6 +6273,8 @@ def _advisor_synthesis_rules(
         rules.append("涉及文娱时，分清平台数据/榜单、用户评分、行业报道、宣发通稿和粉丝讨论")
     if preset in {"reputation", "ecommerce"} or _contains_any(query, ["口碑", "评价", "购买", "产品"]):
         rules.append("涉及口碑时，提炼高频场景和用户原话，不把样本热度写成总体比例")
+    if preset == "wps_office" or _contains_any(query.lower(), ["金山办公", "wps", "wps ai", "wps365", "办公ai", "ai办公", "ai office", "ppt生成", "协同办公", "信创办公"]):
+        rules.append("涉及 WPS/AI Office 选题时，把官方、竞品、产业媒体、开发者/用户样本、RSS/热榜发现层分开写")
     if any(_source_has(key, ["社交", "内容平台"]) for key in source_mix):
         rules.append("社交材料只能支持线索和表达，不直接支持总体判断")
     if _high_stakes_query(query):
@@ -6185,6 +6303,8 @@ def _advisor_intents(
         intents.extend(["判断产品、品牌或服务的真实口碑线索", "为购买、选型、运营或竞品分析寻找用户语言"])
     if preset in {"industry", "finance"} or _contains_any(haystack, ["融资", "裁员", "财报", "股价", "行业", "商业化", "公司"]):
         intents.extend(["评估公司、行业或商业趋势是否值得继续关注", "识别合作、求职、投资或供应链相关风险"])
+    if preset == "wps_office" or _contains_any(haystack, ["金山办公", "wps", "wps ai", "wps365", "办公ai", "ai办公", "ai office", "ppt生成", "协同办公", "信创办公"]):
+        intents.extend(["为办公 AI、PPT、文档协作、SaaS、信创或安全议题寻找选题线索", "区分 WPS 官方口径、竞品动态、行业趋势和用户语言"])
     if preset == "tech" or _contains_any(haystack, ["框架", "开源", "github", "技术", "开发者", "选型", "api"]):
         intents.extend(["做技术选型或工程调研", "寻找真实使用反馈、限制和可复现线索"])
     if any("社交" in key or "内容平台" in key for key in source_mix):
@@ -6206,6 +6326,8 @@ def _advisor_supports(
         supports.append("判断官方口径、政策表述或权威报道中的主要说法")
     if any(_source_has(key, ["商业", "产业", "财经", "电商"]) for key in source_keys):
         supports.append("梳理商业媒体、产业媒体或财经来源中的趋势线索")
+    if any(_source_has(key, ["办公软件", "AI Office", "SaaS"]) for key in source_keys):
+        supports.append("把办公 AI、文档协作、PPT/Agent、信创或安全线索放进可继续打磨的选题池")
     if any(_source_has(key, ["文娱", "内容平台", "欧美文娱", "日韩文娱", "音乐产业", "K-pop", "J-pop"]) for key in source_keys):
         supports.append("区分平台热度、用户评分/评论和公开讨论中的文娱口碑线索")
     if any(_source_has(key, ["社交", "内容平台", "开发者", "社区"]) for key in source_keys):
@@ -7471,6 +7593,7 @@ def detect_search_quality_profile(
         "podcast",
         "test_prep",
         "career",
+        "wps_office",
         "global_entertainment",
         "jp_kr_entertainment",
     )
@@ -7821,6 +7944,7 @@ def _quality_has_strong_primary_evidence(
         "财经/行情数据",
         "财经/宏观数据",
         "财经/新闻报道",
+        "办公软件/AI Office/SaaS",
         "文娱/内容平台",
         "欧美文娱/音乐产业",
         "日韩文娱/K-pop/J-pop",
@@ -7977,7 +8101,7 @@ def _quality_workflow_plan(
         any(role in missing_roles for role in ("fresh_news", "public_discussion"))
         or "hot_trend" in route_intents
     )
-    requires_feeds = "tech" in route_intents or intent == "tech"
+    requires_feeds = bool({"tech", "wps_office"} & route_intents) or intent in {"tech", "wps_office"}
     requires_breadth = any("域名集中" in warning or "来源类型" in warning for warning in warnings)
     if quality_status in {"ok", "usable_with_gaps"}:
         return {
@@ -8181,6 +8305,12 @@ def _expand_search_query(
     lowered = normalized.lower()
     additions: list[str] = []
     intent = str(quality.get("intent") or "")
+    is_wps_scope = effective_scope == "wps_office" or intent == "wps_office"
+    wps_subroute = _wps_office_subroute(normalized) if is_wps_scope else "general"
+    is_short_wps_brand_query = is_wps_scope and (
+        len(normalized) <= 16
+        or normalized.replace(" ", "").lower() in {"wpsai", "wps灵犀", "wps365"}
+    )
     if normalized == "苹果" and effective_scope in {"ecommerce", "tech_dev", "social_web"}:
         if effective_scope == "ecommerce":
             additions.extend(["iPhone", "手机", "价格", "用户评价"])
@@ -8205,12 +8335,22 @@ def _expand_search_query(
             additions.extend(["财报", "公告", "市场"])
         elif intent == "tech":
             additions.extend(["官方", "文档", "benchmark"])
+    if is_short_wps_brand_query:
+        if wps_subroute == "wps_ai":
+            additions.extend(["AI PPT", "职场效率", "文档写作", "表格分析", "选题", "横评", "工具对比"])
+        elif wps_subroute == "lingxi":
+            additions.extend(["办公智能体", "AI Agent", "对话式办公", "同屏交互", "选题"])
+        elif wps_subroute == "wps365":
+            additions.extend(["企业大脑", "组织协同", "AI Office", "行业落地", "办公智能体"])
+        else:
+            additions.extend(["行业热点", "选题", "办公智能体", "AI PPT", "文档协作"])
     if len(normalized) <= 40 and len(entities) >= 4 and not any(term in lowered for term in ("对比", "比较", "排名")):
         additions.extend(["对比", "数据"])
     additions = [item for item in _unique_keep_order(additions) if item and item not in normalized]
     if not additions:
         return normalized
-    return f"{normalized} {' '.join(additions[:4])}".strip()
+    max_additions = 5 if is_short_wps_brand_query else 4
+    return f"{normalized} {' '.join(additions[:max_additions])}".strip()
 
 
 def _query_shape_entities(query: str) -> list[str]:
@@ -8265,6 +8405,7 @@ def _quality_followup_preset(intent: str, route_intents: list[str]) -> str:
         "finance_sentiment": "finance",
         "finance_research": "finance",
         "tech": "tech",
+        "wps_office": "wps_office",
         "academic": "academic",
         "university_admissions": "university",
         "reputation": "reputation",
@@ -8543,6 +8684,30 @@ def build_query_strategy(
         add("market_news", f"{clean_query} 财经 快讯 新闻 事件", "补财经新闻时间线和事件背景")
     elif {"industry"} & set(intents):
         add("industry_report", f"{clean_query} 行业 趋势 公司 案例", "产业/商业问题补行业材料")
+    if "wps_office" in intents or requested_scope == "wps_office":
+        wps_subroute = _wps_office_subroute(clean_query)
+        if wps_subroute == "wps_ai":
+            add("topic_radar", f"{clean_query} AI PPT 职场效率 文档写作 表格分析 个人办公 选题", "WPS AI 更适合先接个人效率、AI PPT 和职场内容选题")
+            add("competitive_context", f"{clean_query} Gamma Canva Tome Beautiful.ai Adobe Express PPT 生成 对比", "补 AI PPT/演示生成竞品和替代工作流")
+            add("tool_roundup", f"{clean_query} 国产 AI PPT 工具 横评 实测 榜单 效率场景", "补非品牌的 AI PPT 工具横评和可借势热点")
+            add("scenario_signal", f"{clean_query} 打工人 汇报 总结 简历 论文 课程 职场内容 热点", "补个人办公和职场内容使用场景")
+        elif wps_subroute == "lingxi":
+            add("topic_radar", f"{clean_query} 原生 Office 智能体 对话式办公 灵犀 Claw 同屏交互", "WPS 灵犀更适合先接办公智能体和 Agent 交互形态")
+            add("competitive_context", f"{clean_query} Microsoft Copilot 飞书 钉钉 企业微信 AI Agent 对比", "补办公 Agent、协同平台和竞品叙事")
+            add("scenario_signal", f"{clean_query} 多智能体 自动化 电脑操作 文档协作 工作流 办公入口", "补 Agent 工作流和可包装的用户任务")
+        elif wps_subroute == "wps365":
+            add("topic_radar", f"{clean_query} 企业大脑 组织协同 AI Office 政企 金融 行业落地", "WPS 365 更适合先接企业大脑、组织协同和行业落地选题")
+            add("competitive_context", f"{clean_query} Microsoft 365 Copilot Google Workspace 飞书 钉钉 企业微信", "补企业协同和 AI Office 平台竞争")
+            add("scenario_signal", f"{clean_query} 办公智能体 知识库 数字资产管理 多维表格 协同平台", "补 ToB 办公平台和组织工作流场景")
+        else:
+            add("topic_radar", f"{clean_query} 行业热点 选题 办公智能体 AI Agent AI PPT 文档协作", "品牌市场选题要先把 WPS 锚点接到 AI/科技/办公行业热点")
+            add("competitive_context", f"{clean_query} Adobe Acrobat PDF Spaces Microsoft Copilot Google Workspace Notion Canva Gamma 飞书 企业微信", "补竞品、替代工作流和横向产品热点，避免只看自身官宣")
+            add("scenario_signal", f"{clean_query} 企业 AI 上下文 知识库 多维表格 移动办公 自动化", "补企业办公落地场景和可包装的用户问题")
+        add("company_primary", f"{clean_query} 金山办公 WPS AI WPS 365 官方 发布 产品 文档", "WPS/AI Office 选题先锚定金山办公和 WPS 一手材料")
+        add("industry_report", f"{clean_query} 办公 AI PPT 文档协作 SaaS 信创 行业 趋势 案例", "外扩办公 AI、PPT、文档协作、SaaS、信创和行业趋势")
+        add("user_sample", f"{clean_query} 用户评价 体验 吐槽 知乎 小红书 B站 V2EX", "补公开用户与社区样本，避免只有品牌口径")
+        add("developer_discussion", f"{clean_query} Agent API 插件 自动化 文档协作 开发者", "补 Agent、API、插件和自动化开发者视角")
+        add("security_advisory", f"{clean_query} 安全 权限 数据合规 信创 等保 国产化", "补政企办公、安全合规和信创约束")
     if "global_industry" in intents:
         add("industry_report", f"{clean_query} market analysis competitive landscape analyst report", "英文产业问题补分析和市场结构材料")
         add("company_context", f"{clean_query} investor relations annual report official", "补公司一手资料和投资者关系材料")
@@ -8588,7 +8753,7 @@ def build_query_strategy(
         "time_window": time_window,
         "intent": quality.get("intent") or (intents[0] if intents else "general"),
         "roles": roles,
-        "variants": variants[:8],
+        "variants": variants[:10],
         "search_quality_v2": {
             "prefer_broad_pool": True,
             "minimum_recommended_limit": DEFAULT_RESEARCH_LIMIT,
@@ -8775,6 +8940,21 @@ def _infer_evidence_role(
     role_hint = str((item.trace or {}).get("evidence_role_hint") or "")
     if role_hint:
         return role_hint
+    if "wps_office" in set((quality or {}).get("route_intents") or []) or str((quality or {}).get("intent") or "") == "wps_office":
+        if _looks_like_wps_institution_rollout(item, source_card):
+            return "institution_rollout"
+        if _looks_like_wps_office_seo_noise(item):
+            return "low_value_seo"
+        if "社交" in source_type:
+            return "user_sample"
+        if (
+            _looks_like_wps_office_market_signal(item)
+            or _looks_like_wps_ai_adjacent_market_signal(item)
+        ) and not (
+            scope == "wps_office"
+            and str(source_card.get("authority_role") or "") in {"company_primary", "product_primary", "official_community", "vendor_security_center"}
+        ):
+            return "industry_report"
     if scope == "university" or roles & {"faculty_profile", "admission_catalog", "department_page", "official_notice"}:
         if "faculty_profile" in roles:
             return "faculty_profile"
@@ -8863,6 +9043,149 @@ def _infer_evidence_role(
     if "公司一手" in source_type:
         return "company_primary"
     return "open_web_context"
+
+
+def _looks_like_wps_institution_rollout(item: SearchResult, source_card: dict[str, Any]) -> bool:
+    """Detect WPS/AI Office deployment notes from universities or public institutions."""
+    text = _collapse_ws(f"{item.title} {item.snippet}").lower()
+    has_wps = _contains_any(text, ("wps", "金山办公", "金山文档", "灵犀", "ai办公", "办公智能体"))
+    if not has_wps:
+        return False
+    source_type = str(item.source_type or source_card.get("source_type") or "")
+    authority_role = str(source_card.get("authority_role") or "")
+    domain = item.domain or _domain(item.url)
+    is_institution = (
+        "高校" in source_type
+        or authority_role in {"university_official", "public_institution"}
+        or domain.endswith(".edu.cn")
+        or domain.endswith(".edu")
+    )
+    if not is_institution:
+        return False
+    return _contains_any(text, ("上线", "使用说明", "培训", "推广", "部署", "接入", "信息化", "正版软件", "智慧校园", "师生"))
+
+
+def _looks_like_wps_office_seo_noise(item: SearchResult) -> bool:
+    """Detect low-value WPS SEO/download/tutorial pages for market-radar queries."""
+    text = _collapse_ws(f"{item.title} {item.snippet}").lower()
+    if not _contains_any(text, ("wps", "金山办公", "金山文档", "灵犀", "aippt", "ai ppt")):
+        return False
+    domain = item.domain or _domain(item.url)
+    official_domains = ("wps.cn", "kdocs.cn", "wps.com", "kingsoftoffice.com", "kingsoft.com")
+    if any(domain == official or domain.endswith("." + official) for official in official_domains):
+        return False
+    low_value_domains = (
+        "zhidao.baidu.com",
+        "jingyan.baidu.com",
+        "wenku.baidu.com",
+        "jb51.net",
+        "mydown.com",
+        "kxdw.com",
+        "962.net",
+        "book118.com",
+        "jianghu.taobao.com",
+    )
+    if any(domain == noisy or domain.endswith("." + noisy) for noisy in low_value_domains):
+        return True
+    return _contains_any(
+        text,
+        (
+            "官方版下载",
+            "最新版下载",
+            "免费下载",
+            "软件下载",
+            "安卓下载",
+            "安装包",
+            "破解版",
+            "入口打开",
+            "官网入口",
+            "怎么打开",
+            "怎么用",
+            "怎么领取",
+            "怎么设置",
+            "功能在哪",
+            "使用方法",
+            "3步",
+            "三步",
+            "超简单",
+            "超省力",
+            "教学大纲简案",
+        ),
+    )
+
+
+def _looks_like_wps_office_market_signal(item: SearchResult) -> bool:
+    """Detect WPS results that look like marketable industry/scene leads."""
+    text = _collapse_ws(f"{item.title} {item.snippet}").lower()
+    if not _contains_any(text, ("wps", "金山办公", "灵犀", "ai办公", "office ai", "办公智能体")):
+        return False
+    return _contains_any(
+        text,
+        (
+            "企业大脑",
+            "办公智能体",
+            "ai 协同",
+            "ai协同",
+            "协同平台",
+            "行业",
+            "政务",
+            "金融",
+            "案例",
+            "路线图",
+            "组织",
+            "企业",
+            "知识库",
+            "数字资产",
+            "工作流",
+            "对话式",
+            "同屏交互",
+            "ai ppt",
+            "aippt",
+            "职场效率",
+        ),
+    )
+
+
+def _looks_like_wps_ai_adjacent_market_signal(item: SearchResult) -> bool:
+    """Detect non-brand AI PPT / office productivity leads useful for WPS AI topics."""
+    text = _collapse_ws(f"{item.title} {item.snippet}").lower()
+    has_ai_ppt_context = _contains_any(
+        text,
+        (
+            "ai ppt",
+            "aippt",
+            "ai 自动生成 ppt",
+            "ai生成ppt",
+            "ai 生成 ppt",
+            "ppt 生成",
+            "生成 ppt",
+            "演示生成",
+            "presentation ai",
+            "文档写作",
+            "表格分析",
+            "办公效率",
+            "职场效率",
+        ),
+    )
+    if not has_ai_ppt_context:
+        return False
+    return _contains_any(
+        text,
+        (
+            "横评",
+            "实测",
+            "测评",
+            "对比",
+            "榜单",
+            "主流",
+            "工具",
+            "竞品",
+            "替代",
+            "效率场景",
+            "职场人",
+            "告别加班",
+        ),
+    )
 
 
 def _result_recency_metrics(item: SearchResult, recency: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -9082,6 +9405,15 @@ def _score_result_parts(
         parts["source_risk_penalty"] -= 0.18
     if risk_tags & {"sample_bias", "not_representative"} and route_intents & {"policy", "global_policy", *finance_intents}:
         parts["source_risk_penalty"] -= 0.22
+    if "wps_office" in route_intents:
+        if item.evidence_role == "institution_rollout":
+            parts["intent_fit"] += 0.42
+            parts["sample_fit"] = max(parts["sample_fit"], sample_value * 0.25)
+        if _looks_like_wps_office_market_signal(item):
+            parts["intent_fit"] += 0.28
+        if _looks_like_wps_office_seo_noise(item):
+            parts["semantic_noise_penalty"] = min(parts["semantic_noise_penalty"], -1.15)
+            parts["source_risk_penalty"] -= 0.25
     title_text = (item.title + " " + item.snippet).lower()
     terms = [t.lower() for t in re.split(r"\s+", query) if t and not t.startswith("site:")]
     if terms:
@@ -9099,7 +9431,7 @@ def _score_result_parts(
         parts["intent_fit"] += 0.48
     if item.source_type and item.source_type in caution_source_types:
         parts["intent_mismatch_penalty"] = -0.35
-    if route_intents & {"tech", "cybersecurity"} and source_card.get("authority_role") in {"company_primary", "developer_source", "code_host"}:
+    if route_intents & {"tech", "cybersecurity", "wps_office"} and source_card.get("authority_role") in {"company_primary", "developer_source", "code_host"}:
         parts["intent_fit"] += 0.18
     if _is_chinese_context_query(query, quality) and _result_lacks_chinese_context(item):
         parts["language_mismatch_penalty"] = -0.75
