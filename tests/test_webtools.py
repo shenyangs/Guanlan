@@ -10,7 +10,12 @@ import pytest
 
 from guanlan import webtools
 from guanlan.limits import DEFAULT_READ_FALLBACK_LIMIT, DEFAULT_RESEARCH_LIMIT, DEFAULT_SEARCH_LIMIT
-from guanlan.source_seeds import direct_source_seeds, is_finance_lookup, is_live_sports_lookup, is_wps_office_lookup
+from guanlan.source_seeds import (
+    direct_source_seeds,
+    is_finance_lookup,
+    is_live_sports_lookup,
+    is_wps_office_lookup,
+)
 
 
 class _FakeResponse:
