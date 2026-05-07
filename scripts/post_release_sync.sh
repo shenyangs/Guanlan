@@ -175,20 +175,21 @@ sync_local_installs() {
 verify_local_entrypoints() {
   local paths unique_paths path version
   hash -r || true
-  mapfile -t paths < <(which -a guanlan 2>/dev/null || true)
-  if [ "${#paths[@]}" -eq 0 ]; then
+  paths="$(which -a guanlan 2>/dev/null || true)"
+  if [ -z "$paths" ]; then
     fail "no guanlan executable found in PATH"
   fi
-  mapfile -t unique_paths < <(printf '%s\n' "${paths[@]}" | awk '!seen[$0]++')
+  unique_paths="$(printf '%s\n' "$paths" | awk 'NF && !seen[$0]++')"
 
   echo "[sync] local guanlan entrypoints:"
-  for path in "${unique_paths[@]}"; do
+  while IFS= read -r path; do
+    [ -z "$path" ] && continue
     version="$(extract_version "$path")"
     echo "  - $path => v${version:-unknown}"
     if [ -n "$version" ] && [ "$version" != "$VERSION" ]; then
       fail "entrypoint $path version $version != expected $VERSION"
     fi
-  done
+  done <<< "$unique_paths"
 
   if command -v guanlan >/dev/null 2>&1; then
     echo "[sync] running install-check..."

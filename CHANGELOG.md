@@ -6,6 +6,16 @@
 
 ## Unreleased
 
+## v0.5.24 - 2026-05-07
+
+### Fixed
+
+- `scripts/post_release_sync.sh` 移除对 `mapfile` 的依赖，改为兼容 macOS Bash 3.2 的入口遍历逻辑，修复发布后同步在本机版本核验阶段报错退出的问题。
+
+### Changed
+
+- 官网版本与静态资源版本同步到 `0.5.24`。
+
 ## v0.5.23 - 2026-05-07
 
 ### Fixed
