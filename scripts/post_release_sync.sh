@@ -7,7 +7,7 @@ cd "$ROOT"
 VERSION="${1:-$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -1)}"
 TAG="v$VERSION"
 REPO="${GUANLAN_GITHUB_REPO:-shenyangs/Guanlan}"
-RELEASE_WORKFLOW_PATH="${GUANLAN_RELEASE_WORKFLOW_PATH:-.github/workflows/release-pypi.yml}"
+RELEASE_WORKFLOW_PATH="${GUANLAN_RELEASE_WORKFLOW_PATH:-release-pypi.yml}"
 PYPI_PACKAGE="${GUANLAN_PYPI_PACKAGE:-guanlan}"
 TAP_REPO="${GUANLAN_HOMEBREW_TAP_REPO:-shenyangs/homebrew-tap}"
 TAP_FORMULA_PATH="${GUANLAN_HOMEBREW_FORMULA_PATH:-Formula/guanlan.rb}"
@@ -63,6 +63,8 @@ import subprocess
 repo = sys.argv[1]
 tag = sys.argv[2]
 workflow_path = sys.argv[3]
+if "/" in workflow_path:
+    workflow_path = workflow_path.rsplit("/", 1)[-1]
 url = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow_path}/runs?branch={tag}&per_page=5"
 headers = ["-H", "Accept: application/vnd.github+json"]
 token = ""

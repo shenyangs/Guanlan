@@ -72,7 +72,7 @@ scripts/publish_release.sh
 - `GUANLAN_SYNC_LOCAL_INSTALLS=0`：跳过本机 `uv/brew/pipx` 刷新，仅做分发就绪校验。
 - `GUANLAN_SYNC_SKIP_DISTRIBUTION_WAIT=1`：跳过 GitHub/PyPI/Homebrew 轮询等待。
 - `GUANLAN_RELEASE_SITE_URL=...`：自定义官网版本校验地址（默认 `http://101.37.70.222`）。
-- `GUANLAN_RELEASE_WORKFLOW_PATH=...`：自定义发布工作流路径（默认 `.github/workflows/release-pypi.yml`）。
+- `GUANLAN_RELEASE_WORKFLOW_PATH=...`：自定义发布工作流文件名（默认 `release-pypi.yml`，也兼容传完整路径）。
 
 ## 用户安装方式
 

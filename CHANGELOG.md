@@ -6,6 +6,17 @@
 
 ## Unreleased
 
+## v0.5.23 - 2026-05-07
+
+### Fixed
+
+- `post_release_sync` 的工作流定位默认值改为 `release-pypi.yml`，并兼容传完整路径，修复 GitHub API `404` 导致的发布后同步轮询失效。
+- 发布后同步在检测 GitHub release workflow 时继续支持 `GITHUB_TOKEN` 鉴权，避免限流或路径歧义造成的误判。
+
+### Changed
+
+- 官网版本与静态资源版本同步到 `0.5.23`。
+
 ## v0.5.22 - 2026-05-07
 
 ### Fixed
