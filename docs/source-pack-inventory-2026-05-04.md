@@ -1,8 +1,8 @@
 # 观澜精选信源包清单（v0.5.7）
 
-生成日期：2026-05-04
+生成日期：2026-05-04；AIHOT 公开面补充已融入科技/开发者信源：2026-05-07
 
-这份清单列出已经沉淀进观澜主路由、scope 和路由推荐逻辑的精选信源。它们不是热榜结果，也不是全量白名单，而是经过“精品渠道 + 稳健性”筛选后的中文互联网信源资产。
+这份清单列出已经沉淀进观澜主路由、scope 和路由推荐逻辑的精选信源。它们不是热榜结果，也不是全量白名单，而是经过“精品渠道 + 稳健性”筛选后的信源资产；主体仍是中文互联网，另补少量全球 AI/开发者一手入口。
 
 ## 分层原则
 
@@ -17,10 +17,10 @@
 | 指标 | 数量 |
 | --- | ---: |
 | Source Pack | 6 |
-| 信源总数 | 75 |
-| 主路由 / 高置信 | 59 |
-| 垂类增强 / 中高置信 | 11 |
-| 发现补充 / 样本 | 5 |
+| 信源总数 | 101 |
+| 主路由 / 高置信 | 70 |
+| 垂类增强 / 中高置信 | 21 |
+| 发现补充 / 样本 | 10 |
 
 ## 政策与党央媒信源包 `policy_research`
 
@@ -57,6 +57,23 @@
 | InfoQ 中国 | `infoq.cn` | 主路由 / 高置信 | `tech_dev` | `technical_context` | 0.56 | 0.42 | 0.68 |
 | ReadHub | `readhub.cn` | 垂类增强 / 中高置信 | `tech_dev` | `topic_discovery` | 0.42 | 0.50 | 0.82 |
 | Solidot | `solidot.org` | 垂类增强 / 中高置信 | `tech_dev` | `developer_news_signal` | 0.48 | 0.42 | 0.72 |
+| OpenAI | `openai.com` | 主路由 / 高置信 | `company_primary` | `company_primary` | 0.86 | 0.12 | 0.84 |
+| Anthropic | `anthropic.com` | 主路由 / 高置信 | `company_primary` | `company_primary` | 0.84 | 0.12 | 0.82 |
+| Google DeepMind | `deepmind.google` | 主路由 / 高置信 | `company_primary` | `company_primary` | 0.84 | 0.14 | 0.82 |
+| Google Research | `research.google` | 主路由 / 高置信 | `company_primary` | `research_primary` | 0.80 | 0.16 | 0.76 |
+| Mistral AI | `mistral.ai` | 主路由 / 高置信 | `company_primary` | `company_primary` | 0.78 | 0.14 | 0.78 |
+| xAI | `x.ai` | 主路由 / 高置信 | `company_primary` | `company_primary` | 0.78 | 0.14 | 0.80 |
+| Cursor | `cursor.com` | 主路由 / 高置信 | `company_primary` | `product_primary` | 0.72 | 0.22 | 0.80 |
+| OpenRouter | `openrouter.ai` | 主路由 / 高置信 | `company_primary` | `platform_primary` | 0.72 | 0.24 | 0.82 |
+| Runway | `runwayml.com` | 主路由 / 高置信 | `company_primary` | `product_primary` | 0.70 | 0.24 | 0.78 |
+| Midjourney | `midjourney.com` | 主路由 / 高置信 | `company_primary` | `product_primary` | 0.70 | 0.24 | 0.78 |
+| Apple Machine Learning Research | `machinelearning.apple.com` | 主路由 / 高置信 | `company_primary` | `research_primary` | 0.82 | 0.14 | 0.72 |
+| LMSYS | `lmsys.org` | 垂类增强 / 中高置信 | `science` | `ai_benchmark` | 0.66 | 0.36 | 0.72 |
+| Berkeley AI Research | `bair.berkeley.edu` | 垂类增强 / 中高置信 | `science` | `academic_lab_blog` | 0.70 | 0.32 | 0.66 |
+| CMU Machine Learning Blog | `ml.cmu.edu` | 垂类增强 / 中高置信 | `science` | `academic_lab_blog` | 0.70 | 0.32 | 0.66 |
+| EleutherAI | `eleuther.ai` | 垂类增强 / 中高置信 | `science` | `open_research` | 0.62 | 0.42 | 0.66 |
+| arXiv | `arxiv.org` | 垂类增强 / 中高置信 | `science` | `preprint` | 0.74 | 0.28 | 0.76 |
+| SemiAnalysis | `semianalysis.com` | 垂类增强 / 中高置信 | `industry_analysis` | `industry_analysis` | 0.58 | 0.34 | 0.74 |
 
 ## 财经与市场信源包 `finance_research`
 
@@ -101,6 +118,10 @@
 | 信源 | 域名 | 分层 | 进入 scope | 证据角色 | 权威 | 样本 | 时效 |
 | --- | --- | --- | --- | --- | ---: | ---: | ---: |
 | GitHub | `github.com` | 主路由 / 高置信 | `developer` | `code_host` | 0.82 | 0.42 | 0.82 |
+| Hugging Face | `huggingface.co` | 垂类增强 / 中高置信 | `developer` | `model_hub` | 0.70 | 0.58 | 0.86 |
+| GitHub Blog | `github.blog` | 垂类增强 / 中高置信 | `developer` | `developer_news` | 0.66 | 0.42 | 0.82 |
+| Cloudflare Blog | `blog.cloudflare.com` | 垂类增强 / 中高置信 | `developer` | `developer_news` | 0.68 | 0.36 | 0.84 |
+| NVIDIA Developer | `developer.nvidia.com` | 垂类增强 / 中高置信 | `developer` | `technical_primary` | 0.72 | 0.32 | 0.78 |
 | V2EX | `v2ex.com` | 发现补充 / 样本 | `tech_dev` | `developer_discussion` | 0.34 | 0.88 | 0.86 |
 | 掘金 | `juejin.cn` | 主路由 / 高置信 | `tech_dev` | `developer_article` | 0.46 | 0.68 | 0.78 |
 | SegmentFault | `segmentfault.com` | 主路由 / 高置信 | `tech_dev` | `developer_article` | 0.46 | 0.62 | 0.72 |
@@ -111,6 +132,11 @@
 | HelloGitHub | `hellogithub.com` | 主路由 / 高置信 | `developer` | `opensource_discovery` | 0.54 | 0.58 | 0.70 |
 | TesterHome | `testerhome.com` | 垂类增强 / 中高置信 | `tech_dev` | `qa_engineering_discussion` | 0.42 | 0.66 | 0.68 |
 | 看雪 | `bbs.kanxue.com` | 垂类增强 / 中高置信 | `cybersecurity` | `security_community_signal` | 0.50 | 0.62 | 0.72 |
+| Simon Willison | `simonwillison.net` | 发现补充 / 样本 | `community_sample` | `technical_commentary` | 0.48 | 0.70 | 0.78 |
+| Ethan Mollick | `oneusefulthing.org` | 发现补充 / 样本 | `community_sample` | `ai_commentary` | 0.46 | 0.68 | 0.72 |
+| Interconnects | `interconnects.ai` | 发现补充 / 样本 | `community_sample` | `ai_commentary` | 0.48 | 0.66 | 0.72 |
+| Andrej Karpathy | `karpathy.ai` | 发现补充 / 样本 | `community_sample` | `technical_commentary` | 0.52 | 0.62 | 0.58 |
+| Sam Altman Blog | `blog.samaltman.com` | 发现补充 / 样本 | `community_sample` | `founder_commentary` | 0.50 | 0.50 | 0.55 |
 
 ## 高校官方信源包 `university_official`
 
@@ -146,12 +172,17 @@
 | `entertainment` | entertainment_research | core/vertical/sample | entertainment |
 | `social_web` | entertainment_research, developer_research | sample, sample | entertainment, finance_sentiment, tech_dev |
 | `university` | university_official | core | university |
+| `company_primary` | tech_research | core | company_primary |
+| `science` | tech_research | vertical | science |
+| `industry_analysis` | tech_research | vertical | industry_analysis |
+| `community_sample` | developer_research | sample | community_sample |
 
 ## Intent 路由关系
 
 | Intent | 推荐 Source Pack |
 | --- | --- |
 | `career` | developer_research |
+| `company_primary` | tech_research |
 | `cybersecurity` | developer_research |
 | `ecommerce` | tech_research |
 | `entertainment` | entertainment_research |
@@ -162,11 +193,13 @@
 | `finance_quote` | finance_research |
 | `finance_research` | finance_research |
 | `finance_sentiment` | finance_research |
+| `global_industry` | tech_research |
 | `industry` | tech_research, finance_research |
 | `official_position` | policy_research |
 | `policy` | policy_research |
 | `purchase_advice` | entertainment_research, developer_research |
 | `reputation` | entertainment_research, developer_research |
+| `science` | tech_research |
 | `tech` | tech_research, developer_research |
 | `university_admissions` | university_official |
 

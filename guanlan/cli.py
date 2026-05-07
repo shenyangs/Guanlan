@@ -1528,9 +1528,10 @@ def _cmd_route(args):
     if not args.query:
         print("Error: query is required", file=sys.stderr)
         sys.exit(2)
+    preset_context = None if args.preset in {"", "general"} else args.preset
     plan = build_route_plan(
         args.query,
-        preset=args.preset,
+        preset=preset_context,
         scope=args.scope or None,
         site=args.site or None,
         sites=[s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
@@ -1541,7 +1542,7 @@ def _cmd_route(args):
     workflow_decision = decide_workflow(
         args.query,
         command="route",
-        preset=args.preset,
+        preset=preset_context,
         scope=args.scope or None,
         site=args.site or None,
         sites=[s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,

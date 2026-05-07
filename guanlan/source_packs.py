@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Curated source packs distilled from verified hotboard links and Guanlan judgement.
+"""Curated source packs distilled from verified public surfaces and Guanlan judgement.
 
 These packs are source-logic assets, not hotboard result lists. They encode a
-small set of stable, high-value Chinese-web sources that can strengthen routing
-and scoped search while keeping noisy catalogs, blogs, epapers, and shopping
-boards out of the main evidence path.
+small set of stable, high-value sources that can strengthen routing and scoped
+search while keeping noisy catalogs, epapers, shopping boards, and high-noise
+social feeds out of the main evidence path.
 """
 
 from __future__ import annotations
@@ -60,6 +60,23 @@ SOURCE_PACKS: dict[str, tuple[SourcePackEntry, ...]] = {
         SourcePackEntry("InfoQ 中国", "infoq.cn", "tech_dev", "technical_context", "core", 0.56, 0.42, 0.68, "3QeLXr9e7k"),
         SourcePackEntry("ReadHub", "readhub.cn", "tech_dev", "topic_discovery", "vertical", 0.42, 0.5, 0.82),
         SourcePackEntry("Solidot", "solidot.org", "tech_dev", "developer_news_signal", "vertical", 0.48, 0.42, 0.72),
+        SourcePackEntry("OpenAI", "openai.com", "company_primary", "company_primary", "core", 0.86, 0.12, 0.84, "wkvlPNYvz1"),
+        SourcePackEntry("Anthropic", "anthropic.com", "company_primary", "company_primary", "core", 0.84, 0.12, 0.82),
+        SourcePackEntry("Google DeepMind", "deepmind.google", "company_primary", "company_primary", "core", 0.84, 0.14, 0.82, "BwdGEJwoPx"),
+        SourcePackEntry("Google Research", "research.google", "company_primary", "research_primary", "core", 0.8, 0.16, 0.76),
+        SourcePackEntry("Mistral AI", "mistral.ai", "company_primary", "company_primary", "core", 0.78, 0.14, 0.78),
+        SourcePackEntry("xAI", "x.ai", "company_primary", "company_primary", "core", 0.78, 0.14, 0.8),
+        SourcePackEntry("Cursor", "cursor.com", "company_primary", "product_primary", "core", 0.72, 0.22, 0.8),
+        SourcePackEntry("OpenRouter", "openrouter.ai", "company_primary", "platform_primary", "core", 0.72, 0.24, 0.82),
+        SourcePackEntry("Runway", "runwayml.com", "company_primary", "product_primary", "core", 0.7, 0.24, 0.78),
+        SourcePackEntry("Midjourney", "midjourney.com", "company_primary", "product_primary", "core", 0.7, 0.24, 0.78),
+        SourcePackEntry("Apple Machine Learning Research", "machinelearning.apple.com", "company_primary", "research_primary", "core", 0.82, 0.14, 0.72),
+        SourcePackEntry("LMSYS", "lmsys.org", "science", "ai_benchmark", "vertical", 0.66, 0.36, 0.72),
+        SourcePackEntry("Berkeley AI Research", "bair.berkeley.edu", "science", "academic_lab_blog", "vertical", 0.7, 0.32, 0.66),
+        SourcePackEntry("CMU Machine Learning Blog", "ml.cmu.edu", "science", "academic_lab_blog", "vertical", 0.7, 0.32, 0.66),
+        SourcePackEntry("EleutherAI", "eleuther.ai", "science", "open_research", "vertical", 0.62, 0.42, 0.66),
+        SourcePackEntry("arXiv", "arxiv.org", "science", "preprint", "vertical", 0.74, 0.28, 0.76),
+        SourcePackEntry("SemiAnalysis", "semianalysis.com", "industry_analysis", "industry_analysis", "vertical", 0.58, 0.34, 0.74),
     ),
     "finance_research": (
         SourcePackEntry("财联社", "cls.cn", "finance_news", "market_news", "core", 0.62, 0.25, 0.92, "qndg5MpoLl"),
@@ -95,6 +112,10 @@ SOURCE_PACKS: dict[str, tuple[SourcePackEntry, ...]] = {
     ),
     "developer_research": (
         SourcePackEntry("GitHub", "github.com", "developer", "code_host", "core", 0.82, 0.42, 0.82, "3QeL4qBe7k"),
+        SourcePackEntry("Hugging Face", "huggingface.co", "developer", "model_hub", "vertical", 0.7, 0.58, 0.86, "MZd7LrperO"),
+        SourcePackEntry("GitHub Blog", "github.blog", "developer", "developer_news", "vertical", 0.66, 0.42, 0.82),
+        SourcePackEntry("Cloudflare Blog", "blog.cloudflare.com", "developer", "developer_news", "vertical", 0.68, 0.36, 0.84, "3adqz15eng"),
+        SourcePackEntry("NVIDIA Developer", "developer.nvidia.com", "developer", "technical_primary", "vertical", 0.72, 0.32, 0.78),
         SourcePackEntry("V2EX", "v2ex.com", "tech_dev", "developer_discussion", "sample", 0.34, 0.88, 0.86, "wWmoORe4EO"),
         SourcePackEntry("掘金", "juejin.cn", "tech_dev", "developer_article", "core", 0.46, 0.68, 0.78, "1Vd5xE5v85"),
         SourcePackEntry("SegmentFault", "segmentfault.com", "tech_dev", "developer_article", "core", 0.46, 0.62, 0.72, "W1VdJZdLQM"),
@@ -105,6 +126,11 @@ SOURCE_PACKS: dict[str, tuple[SourcePackEntry, ...]] = {
         SourcePackEntry("HelloGitHub", "hellogithub.com", "developer", "opensource_discovery", "core", 0.54, 0.58, 0.7, "wkvlB6Pez1"),
         SourcePackEntry("TesterHome", "testerhome.com", "tech_dev", "qa_engineering_discussion", "vertical", 0.42, 0.66, 0.68, "n4qv9poaKN"),
         SourcePackEntry("看雪", "bbs.kanxue.com", "cybersecurity", "security_community_signal", "vertical", 0.5, 0.62, 0.72, "Kqndg1xoLl"),
+        SourcePackEntry("Simon Willison", "simonwillison.net", "community_sample", "technical_commentary", "sample", 0.48, 0.7, 0.78),
+        SourcePackEntry("Ethan Mollick", "oneusefulthing.org", "community_sample", "ai_commentary", "sample", 0.46, 0.68, 0.72),
+        SourcePackEntry("Interconnects", "interconnects.ai", "community_sample", "ai_commentary", "sample", 0.48, 0.66, 0.72),
+        SourcePackEntry("Andrej Karpathy", "karpathy.ai", "community_sample", "technical_commentary", "sample", 0.52, 0.62, 0.58),
+        SourcePackEntry("Sam Altman Blog", "blog.samaltman.com", "community_sample", "founder_commentary", "sample", 0.5, 0.5, 0.55),
     ),
     "wps_office_research": (
         SourcePackEntry("WPS 官网", "wps.cn", "wps_office", "company_primary", "core", 0.82, 0.16, 0.78),
@@ -161,7 +187,6 @@ SCOPE_PACKS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     "ecommerce": (("tech_research", ("core",)),),
     "tech_dev": (("tech_research", ("core", "vertical")), ("developer_research", ("core", "vertical", "sample"))),
     "wps_office": (("wps_office_research", ("core", "vertical", "sample")),),
-    "developer": (("developer_research", ("core", "vertical")),),
     "cybersecurity": (("developer_research", ("vertical",)),),
     "finance": (("finance_research", ("core", "vertical")),),
     "finance_news": (("finance_research", ("core",)),),
@@ -171,6 +196,11 @@ SCOPE_PACKS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     "entertainment": (("entertainment_research", ("core", "vertical", "sample")),),
     "social_web": (("entertainment_research", ("sample",)), ("developer_research", ("sample",))),
     "university": (("university_official", ("core",)),),
+    "company_primary": (("tech_research", ("core",)),),
+    "developer": (("developer_research", ("core", "vertical")),),
+    "science": (("tech_research", ("vertical",)),),
+    "industry_analysis": (("tech_research", ("vertical",)),),
+    "community_sample": (("developer_research", ("sample",)),),
 }
 
 SCOPE_ENTRY_SCOPE_ALLOW: dict[str, set[str]] = {
@@ -184,6 +214,9 @@ INTENT_PACKS: dict[str, tuple[str, ...]] = {
     "industry": ("tech_research", "finance_research"),
     "ecommerce": ("tech_research",),
     "tech": ("tech_research", "developer_research"),
+    "company_primary": ("tech_research",),
+    "science": ("tech_research",),
+    "global_industry": ("tech_research",),
     "wps_office": ("wps_office_research", "tech_research", "developer_research"),
     "finance": ("finance_research",),
     "finance_news": ("finance_research",),
@@ -198,6 +231,15 @@ INTENT_PACKS: dict[str, tuple[str, ...]] = {
     "career": ("developer_research",),
     "cybersecurity": ("developer_research",),
     "university_admissions": ("university_official",),
+}
+
+INTENT_SCOPE_FILTERS: dict[str, set[str]] = {
+    "company_primary": {"company_primary"},
+    "ecommerce": {"ecommerce"},
+    "global_industry": {"company_primary", "industry_analysis", "business"},
+    "industry": {"business", "ecommerce", "finance_news", "finance_research"},
+    "science": {"science"},
+    "tech": {"tech_dev", "developer", "business"},
 }
 
 
@@ -230,17 +272,23 @@ def recommended_sites_for_intents(intents: Iterable[str], *, limit: int = 6) -> 
     sites: list[str] = []
     intent_list = [str(intent) for intent in intents]
     if "ecommerce" in intent_list:
-        sites.extend(
-            entry.domain
-            for pack_id in INTENT_PACKS.get("ecommerce", ())
-            for entry in sorted(pack_entries(pack_id, tiers=("core", "vertical")), key=lambda item: (-item.authority, -item.freshness))
-            if entry.scope_id == "ecommerce"
-        )
+        sites.extend(_recommended_sites_for_intent("ecommerce"))
     for intent in intent_list:
-        for pack_id in INTENT_PACKS.get(str(intent), ()):
-            entries = pack_entries(pack_id, tiers=("core", "vertical"))
-            sites.extend(entry.domain for entry in sorted(entries, key=lambda item: (-item.authority, -item.freshness)))
+        if intent == "ecommerce":
+            continue
+        sites.extend(_recommended_sites_for_intent(intent))
     return list(_unique_domains(sites))[:limit]
+
+
+def _recommended_sites_for_intent(intent: str) -> list[str]:
+    allowed_scopes = INTENT_SCOPE_FILTERS.get(str(intent))
+    sites: list[str] = []
+    for pack_id in INTENT_PACKS.get(str(intent), ()):
+        entries = pack_entries(pack_id, tiers=("core", "vertical"))
+        if allowed_scopes:
+            entries = tuple(entry for entry in entries if entry.scope_id in allowed_scopes)
+        sites.extend(entry.domain for entry in sorted(entries, key=lambda item: (-item.authority, -item.freshness)))
+    return sites
 
 
 def hotboard_nodes_for_intents(intents: Iterable[str], *, limit: int = 4) -> list[dict[str, str]]:

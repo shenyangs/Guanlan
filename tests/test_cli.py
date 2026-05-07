@@ -159,6 +159,16 @@ class TestCLI:
         assert "workflow_decision" in data
         assert data["workflow_decision"]["recommended_limit"] >= 80
 
+    def test_route_json_uses_source_pack_targets_without_explicit_preset(self, capsys):
+        with patch("sys.argv", ["guanlan", "route", "OpenAI Claude 模型价格 发布说明", "--json"]):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "company_primary" in data["primary_intents"]
+        assert "openai.com" in data["target_sites"]
+        assert "anthropic.com" in data["target_sites"]
+
     def test_investigate_command_uses_upper_workflow(self, capsys):
         packet = {
             "query": "某公司 风险 舆情 档案",
