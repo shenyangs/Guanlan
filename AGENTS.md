@@ -196,6 +196,8 @@ guanlan quality performance
 guanlan read "https://example.com/article" --max-chars 12000
 guanlan read "https://example.com/article" --quality-report
 guanlan read "https://example.com/article" --strict --trace
+guanlan feeds arxiv --keyword "AI Agent" --limit 80
+guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80
 guanlan research "query" --profile china --advisor
 guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
 guanlan research "清华大学计算机系研究生招生 导师" --preset university --read-top 0
@@ -259,6 +261,7 @@ Safety rules:
 - Use `guanlan search ... --trace` or `guanlan research ...` when you need query_strategy, source diagnostics, and evidence-role query rewrites; do not rely on one broad query for serious research.
 - Use `guanlan compare`, `guanlan timeline`, or `guanlan dossier` when the user asks for comparison, event chronology, or an entity dossier; these are structured views over evidence packets, not final truth.
 - Use `guanlan research ... --preset academic --read-top 0` for EI/SCI/Scopus, academic conference, paper submission, indexing, and university-recognition questions; read selected official URLs afterward if needed.
+- Use `guanlan feeds arxiv --keyword "query" --limit 80` when a task asks for arXiv, preprints, paper leads, recent academic work, or research discovery. Treat `preprint_record` as a paper lead, not a peer-reviewed conclusion. If arXiv API is rate-limited and the output contains `preprint_search_entrypoint` or `api_unavailable`, use the returned arXiv search entrypoint or a matching `research --preset academic` follow-up rather than reporting no academic evidence.
 - Use `guanlan research ... --preset university --read-top 0` or `guanlan search ... --scope university` for graduate admissions, advisor/faculty lists, department pages, program catalogs, and university official notices. Do not use academic databases as primary evidence for admissions/advisor lists.
 - Use `guanlan research ... --preset entertainment --read-top 0` for film, drama, variety show, music, celebrity, game, box-office, rating, and fandom/public-discussion questions; separate platform metrics, user ratings, industry reports, promotion copy, and fandom samples.
 - Use `guanlan research ... --preset global_entertainment --profile english` for Western entertainment, Hollywood, pop stars, tours, albums, Billboard/Grammy/award questions; prioritize English trade media, charts/awards, and official artist/label statements over fan or tabloid claims.
@@ -271,6 +274,8 @@ Safety rules:
 - Use `guanlan hotnews tophub:*`, `guanlan hotnews uapis:*`, `guanlan hotnews vvhan:*`, or `guanlan hotnews hotboard:*` only as optional external hotboard expansion. Keep the `external_backend`, cache/staleness, and cost metadata in mind; do not treat third-party aggregate lists as authoritative facts.
 - For technology/AI/developer routing, always include one RSS discovery pass. `guanlan research ... --preset tech` does this automatically; if you only run `route` or `search`, also run `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80` as a second pass.
 - Use `guanlan read ... --quality-report` when deciding whether a page body is clean enough for downstream reasoning; use `--strict` when noisy page chrome would be harmful; use `--extract metadata` or `--extract links` for source/date/link checks.
+- `guanlan read` has a native WeChat article extractor for `mp.weixin.qq.com` article URLs. For public WeChat article links, try normal `read` first; it should expose `selected_backend=wechat_article` in trace when the article body is directly readable. Only move to `diagnose page` or user-authorized browser-visible evidence when the WeChat extractor, Jina, and direct HTML path still return weak/blocked content.
+- Use `guanlan feeds watchlist --watchlist PATH --limit 80` when the Agent needs to observe a user-maintained RSS/Atom set, project/blog watchlist, or explicit long-term source pool. The watchlist file may be JSON, JSONL, or plain text with one feed URL per line. Treat `watchlist_update_signal` as source-update evidence with `user_watchlist` / `feed_dependent` boundaries, not as whole-web discovery.
 - Use `guanlan archive verify` before relying on archive as memory/RAG/Wiki; use `archive context` or `archive wiki context` when a local model needs evidence-bound context from stored materials.
 - Use `guanlan archive wiki build` only as a local sidecar export over existing archive records; it must not be treated as whole-web truth or cloud sync.
 - Use `guanlan report html ...` only as a sidecar renderer when the user asks for an HTML report; it reads existing JSON/stdin/demo data and must not replace the main search/read/research/hotnews flows.

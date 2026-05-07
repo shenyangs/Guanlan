@@ -29,6 +29,9 @@ def test_source_matrix_resolves_aliases_and_feed_sources():
     feeds = source_registry.list_feed_sources()
     assert feeds["curated"]["evidence_role"] == "reading_discovery_signal"
     assert feeds["wechat-rss"]["risk_tags"] == ["third_party_rss", "login_wall"]
+    assert feeds["arxiv"]["evidence_role"] == "preprint_record"
+    assert source_registry.resolve_source_id("preprint") == "arxiv"
+    assert source_registry.resolve_source_id("watch") == "watchlist"
 
 
 def test_source_matrix_has_stable_required_fields_and_status_values():

@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.5.25`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.26`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -468,6 +468,8 @@ guanlan configure --from-browser chrome
 | `guanlan pulse "关键词"` | 安全版话题回响分析，输出讨论倾向、关键词信号和明确边界。 |
 | `guanlan feeds curated --limit 80` | 读取公开精品 RSS，发现技术、AI、产品和商业科技内容；外部源超时时会优先返回最近成功缓存并标记 `stale_cache`。 |
 | `guanlan feeds curated --category ai --min-score 85` | 按分类和评分筛选高质量内容。 |
+| `guanlan feeds arxiv --keyword "AI Agent" --limit 80` | 读取 arXiv 公开 API，补充预印本和论文线索；预印本不等同于同行评议结论。 |
+| `guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80` | 读取本机显式 RSS/Atom 清单，适合长期观察指定博客、机构公告、项目更新和内容源。 |
 | `guanlan feeds baidu-rss --limit 80` | 读取动态百度实时热点 RSS，补充热榜词和热度信号。 |
 | `guanlan feeds wechat-rss --limit 80` | 读取动态微信热门文章 RSS，补充公众号热文线索。 |
 | `guanlan feeds curated-sources --keyword AI` | 从公开 OPML 中检索精品 RSS 源目录。 |

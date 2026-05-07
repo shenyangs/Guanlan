@@ -555,7 +555,7 @@ def main():
     # ── feeds ──
     p_feeds = sub.add_parser("feeds", help="Discover high-quality public RSS content and source catalogs")
     p_feeds.add_argument("source", nargs="?", default="curated",
-                         help="Source: curated, curated-sources, baidu-rss, wechat-rss, list, or a direct RSS/Atom URL")
+                         help="Source: curated, arxiv, watchlist, curated-sources, baidu-rss, wechat-rss, list, or a direct RSS/Atom URL")
     p_feeds.add_argument("--limit", type=int, default=DEFAULT_FEEDS_LIMIT,
                          help="Maximum number of items or sources")
     p_feeds.add_argument("--language", choices=["zh", "en"], default="zh",
@@ -570,7 +570,9 @@ def main():
     p_feeds.add_argument("--min-score", type=int, default=None,
                          help="Curated RSS minimum AI score, 0-100")
     p_feeds.add_argument("--keyword", default="",
-                         help="Curated RSS keyword filter, or source-catalog query for curated-sources")
+                         help="Curated RSS keyword filter, arXiv query, watchlist filter, or source-catalog query")
+    p_feeds.add_argument("--watchlist", default="",
+                         help="Path to a JSON/JSONL/plain-text RSS watchlist for feeds watchlist")
     p_feeds.add_argument("--time-filter", choices=["1d", "3d", "1w", "1m", "3m"], default="",
                          help="Curated RSS time window")
     p_feeds.add_argument("--format", choices=["markdown", "json", "context"], default="markdown",
@@ -2365,9 +2367,12 @@ def _cmd_feeds(args):
             min_score=args.min_score,
             keyword=args.keyword or None,
             time_filter=args.time_filter or None,
+            watchlist_path=args.watchlist or None,
         )
         source_titles = {
             "curated": "精品内容流",
+            "arxiv": "arXiv 预印本",
+            "watchlist": "订阅源观察",
             "baidu-rss": "百度实时热点 RSS",
             "wechat-rss": "微信热门文章 RSS",
         }

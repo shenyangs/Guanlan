@@ -285,7 +285,7 @@ def direct_source_seeds(
         seeds.extend(_jp_kr_entertainment_seeds(query))
     if _matches_vertical(intent_set, scope_set, "entertainment") and _contains_any(text, ("票房", "豆瓣", "评分", "电影", "综艺", "剧集", "游戏", "动漫", "漫画", "番剧", "轻小说", "二次元", "manga", "anime")):
         seeds.extend(_china_entertainment_seeds(query))
-    if _matches_vertical(intent_set, scope_set, "academic") and _contains_any(text, ("ei", "sci", "scopus", "compendex", "投稿", "收录", "会议", "期刊", "论文")):
+    if _matches_vertical(intent_set, scope_set, "academic") and _contains_any(text, ("ei", "sci", "scopus", "compendex", "投稿", "收录", "会议", "期刊", "论文", "paper", "preprint", "arxiv", "预印本")):
         seeds.extend(_academic_seeds(query))
     if _matches_vertical(intent_set, scope_set, "test_prep") or _contains_any(text, ("雅思", "托福", "gre", "ielts", "toefl", "考试", "题库")):
         seeds.extend(_test_prep_seeds(query))
@@ -627,11 +627,26 @@ def _china_entertainment_seeds(query: str) -> list[dict[str, Any]]:
 
 
 def _academic_seeds(query: str) -> list[dict[str, Any]]:
-    return [
+    seeds = [
         _seed("academic:engineering_village", "Engineering Village / Compendex", "https://www.elsevier.com/products/engineering-village", "Engineering Village 官方产品入口，适合核验 EI/Compendex 检索口径。", scope="academic", source_type="学术/论文检索", role="database_official", trust=5),
         _seed("academic:scopus", "Scopus", "https://www.scopus.com/", "Scopus 官方入口，适合核验期刊/会议索引，但具体收录需进一步检索。", scope="academic", source_type="学术/论文检索", role="database_official", trust=5),
         _seed("academic:elsevier_conferences", "Elsevier conferences", "https://www.elsevier.com/events/conferences", "Elsevier 会议入口，适合作会议/出版商背景核验。", scope="academic", source_type="学术/论文检索", role="publisher_guideline", trust=4),
     ]
+    if _contains_any(_norm(query), ("arxiv", "预印本", "preprint", "paper", "论文", "机器学习", "machine learning", "ai", "agent")):
+        seeds.insert(
+            0,
+            _seed(
+                "academic:arxiv_api",
+                "arXiv public API",
+                _search_url("https://arxiv.org/search/", query, param="query"),
+                "arXiv 公开检索入口，适合寻找预印本和论文线索；预印本不能直接等同于同行评议结论。",
+                scope="academic",
+                source_type="学术/论文检索",
+                role="preprint_record",
+                trust=4,
+            ),
+        )
+    return seeds
 
 
 def _test_prep_seeds(query: str) -> list[dict[str, Any]]:

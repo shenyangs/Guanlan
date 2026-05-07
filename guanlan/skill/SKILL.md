@@ -63,6 +63,9 @@ metadata:
 - 如果 Agent/MCP/自动化平台能设置工具 timeout：`search/read/status/doctor` 用 60-90 秒；`hotnews/feeds/pulse/read batch` 和默认 `archive ingest-research` 用 120 秒；`research/compare/timeline/dossier/archive ingest-research --read-top N` 用 180-300 秒；安装/升级/发布 smoke 用 300-600 秒。单位要按宿主字段名换算：`timeout_budget_seconds` 传秒，`timeout_ms` / `timeout_milliseconds` 传毫秒，例如 120 秒 = 120000 ms、300 秒 = 300000 ms；不要把 `timeout=120` 这种裸数字交给下游。
 - 超时只代表网络或上游源未完成，不代表没有证据；优先重试一次、加 `--cache-ttl 3600`，或把 `--read-top` 降到 0/1，不要为了速度把 80 条候选池砍成小样本。
 - 科技/AI/WPS/AI Office/开发者/工程实践类问题必须额外补一轮 RSS/精品内容流；`research --preset tech` 和 `research --preset wps_office` 会自动补，若只跑 `route` 或 `search`，再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。
+- arXiv、预印本、论文线索和近期研究发现任务补 `guanlan feeds arxiv --keyword "query" --limit 80`。`preprint_record` 是论文候选，不是同行评议结论；若输出 `preprint_search_entrypoint` / `api_unavailable`，使用返回入口或 `research --preset academic` 继续补证。
+- 长期观察指定博客、项目、机构公告或固定源池时用 `guanlan feeds watchlist --watchlist PATH --limit 80`；watchlist 支持 JSON、JSONL、每行一个 RSS/Atom URL。`watchlist_update_signal` 要保留 `user_watchlist` / `feed_dependent` 边界。
+- 公众号文章链接先跑普通 `guanlan read "https://mp.weixin.qq.com/s/..." --trace`。`selected_backend=wechat_article` 说明已成功走公开文章专项正文提取；不要再要求用户授权浏览器或 Cookie。只有专项提取、Jina 和 direct HTML 都弱/被挡时，才转 `diagnose page` 或浏览器可见页补证。
 - 金山办公/WPS/WPS AI/WPS 365/AI Office/PPT/办公 Agent/文档协作/SaaS/信创/办公安全等选题任务用 `research --preset wps_office` 或 `search --scope wps_office --trace`；它不是品牌白名单搜索，应主动外扩到竞品、科技/AI 媒体、RSS/公众号/热榜、开发者/用户样本和安全/信创线索。
 - 文娱/影视/综艺/明星/游戏/票房/评分/口碑类问题优先用 `route` 或 `research --preset entertainment`；把平台热度、用户评分、产业报道、宣发通稿和粉圈讨论分层看。
 - 欧美娱乐、Hollywood、Taylor Swift、Billboard、Grammy、巡演、新歌专辑等问题优先用 `research --preset global_entertainment --profile english`；英文行业媒体、榜单/奖项和艺人/厂牌一手信息优先于粉丝账号和八卦站。
@@ -89,6 +92,8 @@ metadata:
 | 招聘/职位/LinkedIn | career | [references/career.md](references/career.md) |
 | GitHub/代码 | dev | [references/dev.md](references/dev.md) |
 | 网页/文章/公众号/RSS | web | [references/web.md](references/web.md) |
+| arXiv/预印本/论文线索 | academic_feeds | `guanlan feeds arxiv --keyword "关键词" --limit 80` |
+| RSS watchlist/固定订阅源观察 | watchlist | `guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80` |
 | YouTube/B站/播客字幕 | video | [references/video.md](references/video.md) |
 | 文娱/影视/综艺/游戏/明星/票房口碑 | entertainment | `guanlan research "关键词" --preset entertainment` |
 | 欧美娱乐/音乐产业/明星动态 | global_entertainment | `guanlan research "关键词" --preset global_entertainment --profile english` |
@@ -190,6 +195,8 @@ guanlan read batch urls.txt --concurrency 4 --format context
 guanlan read "URL" --watch
 guanlan feeds curated --limit 80
 guanlan feeds curated --category ai --min-score 85 --limit 80
+guanlan feeds arxiv --keyword "AI Agent" --limit 80
+guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80
 guanlan feeds baidu-rss --limit 80
 guanlan feeds wechat-rss --limit 80
 guanlan feeds curated-sources --keyword AI --limit 80

@@ -222,12 +222,94 @@ def test_named_dynamic_sources_normalize_heat_and_wechat(monkeypatch):
     assert wechat[0]["evidence_role"] == "wechat_article_signal"
 
 
+def test_fetch_arxiv_normalizes_public_api_results(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    raw = b"""<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom">
+      <entry>
+        <id>http://arxiv.org/abs/2605.05191v1</id>
+        <updated>2026-05-06T12:00:00Z</updated>
+        <published>2026-05-06T12:00:00Z</published>
+        <title>LongSeeker: Elastic Context Orchestration</title>
+        <summary> A paper about search agents. </summary>
+        <author><name>Alice</name></author>
+        <author><name>Bob</name></author>
+        <link href="https://arxiv.org/abs/2605.05191" rel="alternate"/>
+      </entry>
+    </feed>"""
+    calls = []
+
+    def fake_read(url, **_kwargs):
+        calls.append(url)
+        return raw
+
+    monkeypatch.setattr(feeds, "_read_bytes", fake_read)
+
+    items = feeds.fetch_feed_source("arxiv", keyword="AI Agent browser assist", limit=3)
+
+    assert "search_query=all%3AAI+Agent+browser+assist" in calls[0]
+    assert items[0]["source_id"] == "arxiv"
+    assert items[0]["title"] == "LongSeeker: Elastic Context Orchestration"
+    assert items[0]["url"] == "https://arxiv.org/abs/2605.05191"
+    assert items[0]["author"] == "Alice, Bob"
+    assert items[0]["evidence_role"] == "preprint_record"
+    assert "preprint_not_peer_reviewed" in items[0]["risk_tags"]
+
+
+def test_fetch_arxiv_returns_search_entrypoint_when_api_is_limited(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    def fail_read(*_args, **_kwargs):
+        raise TimeoutError("rate limited")
+
+    monkeypatch.setattr(feeds, "_read_bytes", fail_read)
+
+    items = feeds.fetch_feed_source("arxiv", keyword="AI Agent browser assist", limit=3)
+
+    assert items[0]["evidence_role"] == "preprint_search_entrypoint"
+    assert "arxiv.org/search" in items[0]["url"]
+    assert items[0]["feed_status"]["status"] == "fallback_entrypoint"
+    assert items[1]["feed_status"]["status"] == "error"
+
+
+def test_fetch_watchlist_reads_explicit_feed_file(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    watchlist = tmp_path / "feeds.json"
+    watchlist.write_text(
+        '[{"title":"Simon","url":"https://simon.example/atom.xml","category":"tech"}]',
+        encoding="utf-8",
+    )
+    raw = b"""<?xml version="1.0"?>
+    <rss version="2.0"><channel><title>Simon Feed</title>
+      <item><title>Live blog</title><link>https://simon.example/live</link><pubDate>Thu, 07 May 2026 06:00:00 GMT</pubDate></item>
+    </channel></rss>"""
+    monkeypatch.setattr(feeds, "_read_bytes", lambda *_args, **_kwargs: raw)
+
+    items = feeds.fetch_feed_source("watchlist", watchlist_path=watchlist, limit=5)
+
+    assert items[0]["source_id"] == "watchlist"
+    assert items[0]["title"] == "Live blog"
+    assert items[0]["watchlist_source"]["title"] == "Simon"
+    assert items[0]["evidence_role"] == "watchlist_update_signal"
+    assert "user_watchlist" in items[0]["risk_tags"]
+
+
+def test_fetch_watchlist_reports_missing_file_without_external_binary(tmp_path):
+    items = feeds.fetch_watchlist(path=tmp_path / "missing.json", limit=5)
+
+    assert items[0]["source_id"] == "watchlist"
+    assert items[0]["feed_status"]["status"] == "error"
+    assert "订阅源清单" in items[0]["feed_status"]["error"]
+
+
 def test_feed_source_catalog_describes_routing():
     catalog = feeds.list_feed_sources()
 
-    assert {"curated", "curated-sources", "baidu-rss", "wechat-rss"} <= set(catalog)
+    assert {"curated", "curated-sources", "baidu-rss", "wechat-rss", "arxiv", "watchlist"} <= set(catalog)
     assert catalog["curated"]["backend"] == "native"
     assert catalog["wechat-rss"]["status"] == "best-effort"
+    assert catalog["arxiv"]["evidence_role"] == "preprint_record"
+    assert catalog["watchlist"]["evidence_role"] == "watchlist_update_signal"
     assert "路由" in feeds.format_feed_catalog_markdown(catalog)
 
 

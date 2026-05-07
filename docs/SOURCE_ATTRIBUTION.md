@@ -31,6 +31,17 @@ or source-routing model.
 - Source: <https://github.com/ourongxing/newsnow>
 - License: <https://github.com/ourongxing/newsnow/blob/main/LICENSE>
 
+## CyberTomato Skills
+
+- Project: cybertomato-skills
+- Role in Guanlan: design reference for read-only arXiv lookups, WeChat article
+  extraction fallbacks, and explicit RSS watchlist workflows.
+- Code copied into Guanlan: none; Guanlan implements these capabilities with
+  native public API/RSS/HTML readers and keeps the read-only boundary.
+- Source: <https://github.com/TomatoCodeBase/cybertomato-skills>
+- License note: repository documentation described MIT licensing at review time;
+  Guanlan does not vendor its skill text or code.
+
 ## Distribution
 
 Guanlan release artifacts should include:

@@ -4087,7 +4087,24 @@ def read_url_with_trace(
     weak_text = ""
     selected_backend = ""
     prefer_direct = extract in {"metadata", "links"}
-    if backend in ("auto", "jina") and not prefer_direct:
+    if backend in ("auto", "direct") and extract in {"article", "text"} and _is_wechat_article_url(url):
+        try:
+            candidate = _read_wechat_article(url)
+            candidate_quality = assess_read_quality(candidate)
+            if backend == "auto" and _read_should_fallback(candidate_quality, strict=strict):
+                errors.append("wechat_article: weak or blocked content")
+                weak_text = weak_text or candidate
+                attempts.append({"backend": "wechat_article", "status": "weak", "chars": len(candidate), "quality": candidate_quality})
+            else:
+                text = candidate
+                selected_backend = "wechat_article"
+                attempts.append({"backend": "wechat_article", "status": "ok", "chars": len(candidate), "quality": candidate_quality})
+        except Exception as e:
+            errors.append(f"wechat_article: {e}")
+            attempts.append({"backend": "wechat_article", "status": "error", "error": str(e)})
+            if backend == "direct":
+                raise
+    if not text and backend in ("auto", "jina") and not prefer_direct:
         try:
             candidate = _read_with_jina(url)
             candidate_quality = assess_read_quality(candidate)
@@ -9944,6 +9961,91 @@ def _read_with_jina(url: str) -> str:
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
         return resp.read().decode("utf-8", errors="replace")
+
+
+def _is_wechat_article_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.netloc.lower()
+    path = parsed.path.lower()
+    return host == "mp.weixin.qq.com" and (path.startswith("/s/") or path.startswith("/s") or path.startswith("/mp/appmsg"))
+
+
+def _read_wechat_article(url: str) -> str:
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": _UA,
+            "Accept": "text/html,application/xhtml+xml,text/plain",
+            "Referer": "https://mp.weixin.qq.com/",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        raw_bytes = resp.read()
+        content_type = resp.headers.get("content-type", "")
+    raw = _decode_response_body(raw_bytes, content_type)
+    title = (
+        _wechat_meta(raw, ("og:title", "twitter:title", "weixin:title"))
+        or _wechat_js_string(raw, "msg_title")
+        or _html_title(raw)
+    )
+    author = (
+        _wechat_meta(raw, ("author", "weixin:author", "article:author", "og:article:author"))
+        or _wechat_js_string(raw, "nickname")
+    )
+    published = _wechat_meta(raw, ("article:published_time", "pubdate", "publishdate", "date")) or _wechat_timestamp(raw)
+    text = _extract_article_text(raw)
+    if not text or len(_collapse_ws(text)) < 120:
+        raise RuntimeError("wechat article body is weak or unavailable")
+    lines: list[str] = []
+    if title:
+        lines.extend([f"Title: {title}", ""])
+    lines.extend([f"URL Source: {url}", ""])
+    if author:
+        lines.append(f"Author: {author}")
+    if published:
+        lines.append(f"Published: {published}")
+    if author or published:
+        lines.append("")
+    lines.append("Markdown Content:")
+    lines.append(text)
+    return "\n".join(lines)
+
+
+def _html_title(raw: str) -> str:
+    match = re.search(r"<title[^>]*>(.*?)</title>", raw or "", flags=re.S | re.I)
+    return _collapse_ws(_strip_tags(match.group(1))) if match else ""
+
+
+def _wechat_meta(raw: str, keys: tuple[str, ...]) -> str:
+    wanted = {key.lower() for key in keys}
+    for match in re.finditer(r"<meta\b([^>]+)>", raw or "", flags=re.I | re.S):
+        attrs = _html_attrs(match.group(1))
+        key = (attrs.get("property") or attrs.get("name") or attrs.get("itemprop") or "").lower().strip()
+        if key in wanted and attrs.get("content"):
+            return _collapse_ws(attrs["content"])[:300]
+    return ""
+
+
+def _wechat_js_string(raw: str, name: str) -> str:
+    match = re.search(rf"(?:var\s+)?{re.escape(name)}\s*=\s*(['\"])(.*?)\1", raw or "", flags=re.S)
+    if not match:
+        return ""
+    value = match.group(2).strip()
+    try:
+        value = json.loads('"' + value.replace('"', '\\"') + '"')
+    except Exception:
+        value = value.replace("\\x26", "&").replace("\\/", "/")
+    return _collapse_ws(html.unescape(value))[:300]
+
+
+def _wechat_timestamp(raw: str) -> str:
+    match = re.search(r"(?:var\s+)?ct\s*=\s*['\"]?(\d{10})['\"]?", raw or "")
+    if not match:
+        return ""
+    try:
+        return dt.datetime.fromtimestamp(int(match.group(1)), tz=dt.timezone.utc).isoformat()
+    except Exception:
+        return ""
 
 
 def _read_direct(url: str, extract: str = "article") -> str:

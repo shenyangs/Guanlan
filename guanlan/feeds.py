@@ -50,6 +50,8 @@ CURATED_OPML_URL = (
 CURATED_RSS_BASE = "https://www." + _CURATED_DOMAIN + "/{language}/feeds/rss"
 AISHORT_BAIDU_RSS_URL = "https://rss.aishort.top/?type=baidu"
 AISHORT_WECHAT_RSS_URL = "https://rss.aishort.top/?type=wasi"
+ARXIV_API_URL = "https://export.arxiv.org/api/query"
+DEFAULT_FEED_WATCHLIST_PATH = Path.home() / ".guanlan" / "feeds-watchlist.json"
 
 
 @dataclass
@@ -115,6 +117,10 @@ _SOURCE_ALIASES = {
     "wechat": "wechat-rss",
     "wechat-hot": "wechat-rss",
     "wasi": "wechat-rss",
+    "preprint": "arxiv",
+    "paper": "arxiv",
+    "watch": "watchlist",
+    "feeds-watch": "watchlist",
 }
 
 
@@ -139,6 +145,8 @@ def recommend_feed_sources(query: str) -> list[str]:
         recommendations.append("baidu-rss")
     if any(term in text for term in ("技术文章", "技术博客", "ai", "人工智能", "agent", "产品设计", "商业科技", "值得读", "好文章")):
         recommendations.append("curated")
+    if any(term in text for term in ("arxiv", "预印本", "preprint", "论文", "paper")):
+        recommendations.append("arxiv")
     if any(term in text for term in ("源", "订阅", "rss", "opml", "目录", "信源")):
         recommendations.append("curated-sources")
     return _unique(recommendations)
@@ -460,7 +468,146 @@ def _normalize_feed_entries(
 def _source_title(source_id: str, feed_title: str) -> str:
     if source_id == "curated":
         return "精品内容流"
+    if source_id == "arxiv":
+        return "arXiv"
+    if source_id == "watchlist":
+        return "订阅源观察"
     return feed_title
+
+
+def _first_xml_text(node: ElementTree.Element, names: tuple[str, ...]) -> str:
+    for child in list(node):
+        tag = child.tag.rsplit("}", 1)[-1].lower()
+        if tag in names:
+            return _clean_text(child.text)
+    return ""
+
+
+def _first_xml_link(node: ElementTree.Element) -> str:
+    for child in list(node):
+        tag = child.tag.rsplit("}", 1)[-1].lower()
+        if tag != "link":
+            continue
+        attrs = {key.lower(): value for key, value in child.attrib.items()}
+        rel = attrs.get("rel", "alternate")
+        href = attrs.get("href", "")
+        if href and rel in {"alternate", ""}:
+            return _clean_text(href)
+    return ""
+
+
+def fetch_arxiv(
+    query: str,
+    limit: int = DEFAULT_FEEDS_LIMIT,
+    sort_by: str = "submittedDate",
+    sort_order: str = "descending",
+) -> list[dict[str, Any]]:
+    """Fetch arXiv public API results as academic feed items."""
+    clean_query = (query or "").strip()
+    if not clean_query:
+        return [
+            _feed_failure_item(
+                url=ARXIV_API_URL,
+                source_id="arxiv",
+                category="academic",
+                content_direction=FEED_SOURCE_CATALOG["arxiv"]["content_direction"],
+                error="arXiv 查询需要通过 --keyword 提供关键词。",
+            )
+        ]
+    search_query = clean_query if ":" in clean_query else f"all:{clean_query}"
+    params = {
+        "search_query": search_query,
+        "start": "0",
+        "max_results": str(max(limit, 1)),
+        "sortBy": sort_by,
+        "sortOrder": sort_order,
+    }
+    url = ARXIV_API_URL + "?" + urllib.parse.urlencode(params)
+    cache_key = _feed_cache_key("arxiv", {"query": clean_query, "sort_by": sort_by, "sort_order": sort_order})
+    try:
+        raw = _read_bytes(url)
+        root = ElementTree.fromstring(raw)
+        items: list[dict[str, Any]] = []
+        for entry in [node for node in list(root) if node.tag.rsplit("}", 1)[-1].lower() == "entry"][: max(limit, 1)]:
+            title = _first_xml_text(entry, ("title",))
+            entry_url = _first_xml_link(entry) or _first_xml_text(entry, ("id",))
+            published_at = _first_xml_text(entry, ("published", "updated"))
+            authors = [
+                _first_xml_text(author, ("name",))
+                for author in list(entry)
+                if author.tag.rsplit("}", 1)[-1].lower() == "author"
+            ]
+            source_card = _source_card_for_feed(entry_url, "arxiv")
+            item = FeedItem(
+                title=title or entry_url or "Untitled arXiv result",
+                url=entry_url,
+                source_id="arxiv",
+                source_title="arXiv",
+                category="academic",
+                content_direction=FEED_SOURCE_CATALOG["arxiv"]["content_direction"],
+                published_at=published_at,
+                author=", ".join([author for author in authors if author][:4]),
+                summary=_first_xml_text(entry, ("summary",))[:1200],
+                tags=["preprint"],
+                metrics={},
+                rank=len(items) + 1,
+                source_confidence=str(FEED_SOURCE_CATALOG["arxiv"].get("confidence") or "medium"),
+                evidence_role=_feed_evidence_role("arxiv", "academic"),
+                source_card=source_card,
+                freshness=_feed_freshness("arxiv", published_at),
+                fetched_at=_now_iso(),
+                risk_tags=_feed_risk_tags("arxiv", source_card),
+                feed_status={"status": "fresh", "source_id": "arxiv", "stale": False, "error": ""},
+            )
+            items.append(item.to_dict())
+        items = _annotate_feed_status(items, "fresh", source_id="arxiv")
+        _feed_cache_set("arxiv", cache_key, {"items": items, "url": url, "source_id": "arxiv"})
+        return items[: max(limit, 1)]
+    except Exception as exc:
+        cached = _feed_cache_get_any("arxiv", cache_key)
+        if cached and isinstance(cached.get("items"), list):
+            return _annotate_feed_status(
+                [dict(item) for item in cached["items"][: max(limit, 1)]],
+                "stale_cache",
+                source_id="arxiv",
+                error=str(exc),
+                stale=True,
+            )
+        return [
+            _arxiv_search_entrypoint(clean_query, error=str(exc)),
+            _feed_failure_item(
+                url=url,
+                source_id="arxiv",
+                category="academic",
+                content_direction=FEED_SOURCE_CATALOG["arxiv"]["content_direction"],
+                error=str(exc),
+            ),
+        ]
+
+
+def _arxiv_search_entrypoint(query: str, *, error: str = "") -> dict[str, Any]:
+    url = "https://arxiv.org/search/?" + urllib.parse.urlencode(
+        {"query": query, "searchtype": "all", "abstracts": "show", "order": "-announced_date_first", "size": "50"}
+    )
+    source_card = _source_card_for_feed(url, "arxiv")
+    item = FeedItem(
+        title=f"arXiv 搜索入口：{query}",
+        url=url,
+        source_id="arxiv",
+        source_title="arXiv",
+        category="academic",
+        content_direction=FEED_SOURCE_CATALOG["arxiv"]["content_direction"],
+        summary="arXiv API 本次不可用时的公开网页检索入口；可继续用 read/search 定点补证。",
+        rank=1,
+        source_confidence=str(FEED_SOURCE_CATALOG["arxiv"].get("confidence") or "medium"),
+        evidence_role="preprint_search_entrypoint",
+        source_card=source_card,
+        freshness="entrypoint",
+        fetched_at=_now_iso(),
+        risk_tags=_unique(_feed_risk_tags("arxiv", source_card) + ["api_unavailable"]),
+        feed_status={"status": "fallback_entrypoint", "source_id": "arxiv", "stale": False, "error": error},
+    )
+    return item.to_dict()
 
 
 def fetch_rss_feed(
@@ -602,6 +749,111 @@ def fetch_wechat_rss(limit: int = DEFAULT_FEEDS_LIMIT) -> list[dict[str, Any]]:
     )
 
 
+def load_watchlist(path: str | Path | None = None) -> list[dict[str, str]]:
+    """Load explicit RSS/Atom watchlist entries from JSON, JSONL, or plain text."""
+    watchlist_path = Path(path).expanduser() if path else DEFAULT_FEED_WATCHLIST_PATH
+    if not watchlist_path.exists():
+        return []
+    raw = watchlist_path.read_text(encoding="utf-8")
+    entries: list[dict[str, str]] = []
+    try:
+        data = json.loads(raw)
+        rows = data.get("feeds") if isinstance(data, dict) else data
+        if isinstance(rows, list):
+            for row in rows:
+                if isinstance(row, str):
+                    entries.append({"url": row, "title": ""})
+                elif isinstance(row, dict):
+                    entries.append(
+                        {
+                            "url": str(row.get("url") or row.get("feed_url") or row.get("xmlUrl") or "").strip(),
+                            "title": str(row.get("title") or row.get("name") or "").strip(),
+                            "category": str(row.get("category") or "").strip(),
+                        }
+                    )
+            return [entry for entry in entries if entry.get("url")]
+    except Exception:
+        pass
+    for line in raw.splitlines():
+        clean = line.strip()
+        if not clean or clean.startswith("#"):
+            continue
+        if clean.startswith("{"):
+            try:
+                row = json.loads(clean)
+            except Exception:
+                row = {}
+            if isinstance(row, dict):
+                url = str(row.get("url") or row.get("feed_url") or "").strip()
+                if url:
+                    entries.append({"url": url, "title": str(row.get("title") or row.get("name") or "").strip()})
+            continue
+        parts = [part.strip() for part in clean.split("\t")]
+        if parts:
+            entries.append({"url": parts[0], "title": parts[1] if len(parts) > 1 else ""})
+    return [entry for entry in entries if entry.get("url")]
+
+
+def fetch_watchlist(
+    limit: int = DEFAULT_FEEDS_LIMIT,
+    path: str | Path | None = None,
+    keyword: str | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch a local explicit RSS watchlist.
+
+    This internalizes the reliable part of blogwatcher-style workflows: explicit
+    feed URLs first, cached/stale status visible, no external binary dependency.
+    """
+    entries = load_watchlist(path)
+    if keyword:
+        needle = keyword.strip().lower()
+        entries = [
+            entry
+            for entry in entries
+            if needle in f"{entry.get('title', '')} {entry.get('url', '')} {entry.get('category', '')}".lower()
+        ]
+    if not entries:
+        return [
+            _feed_failure_item(
+                url=str(Path(path).expanduser() if path else DEFAULT_FEED_WATCHLIST_PATH),
+                source_id="watchlist",
+                category="source_status",
+                content_direction=FEED_SOURCE_CATALOG["watchlist"]["content_direction"],
+                error="未找到本地订阅源清单；支持 JSON、JSONL 或每行一个 RSS/Atom URL。",
+            )
+        ]
+    per_source_limit = max(1, min(max(limit, 1), max(5, (max(limit, 1) + len(entries) - 1) // len(entries))))
+    items: list[dict[str, Any]] = []
+    for entry in entries:
+        source_items = fetch_rss_feed(
+            entry["url"],
+            limit=per_source_limit,
+            source_id="watchlist",
+            category=entry.get("category") or "reading",
+            content_direction=FEED_SOURCE_CATALOG["watchlist"]["content_direction"],
+        )
+        for item in source_items:
+            row = dict(item)
+            if entry.get("title") and row.get("source_title") in {"订阅源观察", "watchlist", ""}:
+                row["source_title"] = entry["title"]
+            row["watchlist_source"] = {
+                "title": entry.get("title", ""),
+                "url": entry.get("url", ""),
+                "path": str(Path(path).expanduser() if path else DEFAULT_FEED_WATCHLIST_PATH),
+            }
+            if row.get("evidence_role") == "reading_signal":
+                row["evidence_role"] = "watchlist_update_signal"
+            risk_tags = [str(tag) for tag in row.get("risk_tags", []) if tag]
+            if "user_watchlist" not in risk_tags:
+                risk_tags.append("user_watchlist")
+            row["risk_tags"] = risk_tags
+            items.append(row)
+    items.sort(key=lambda item: str(item.get("published_at") or ""), reverse=True)
+    for rank, item in enumerate(items[: max(limit, 1)], 1):
+        item["rank"] = rank
+    return items[: max(limit, 1)]
+
+
 def fetch_feed_source(
     source: str = "curated",
     limit: int = DEFAULT_FEEDS_LIMIT,
@@ -612,6 +864,7 @@ def fetch_feed_source(
     min_score: int | None = None,
     keyword: str | None = None,
     time_filter: str | None = None,
+    watchlist_path: str | Path | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch one named feed source."""
     resolved = resolve_feed_source(source)
@@ -630,9 +883,13 @@ def fetch_feed_source(
         return fetch_baidu_rss(limit=limit)
     if resolved == "wechat-rss":
         return fetch_wechat_rss(limit=limit)
+    if resolved == "arxiv":
+        return fetch_arxiv(keyword or "", limit=limit)
+    if resolved == "watchlist":
+        return fetch_watchlist(limit=limit, path=watchlist_path, keyword=keyword)
     if resolved.startswith(("http://", "https://")):
         return fetch_rss_feed(resolved, limit=limit, source_id="rss")
-    raise ValueError("feeds source must be curated, baidu-rss, wechat-rss, curated-sources, list, or an RSS/Atom URL")
+    raise ValueError("feeds source must be curated, arxiv, watchlist, baidu-rss, wechat-rss, curated-sources, list, or an RSS/Atom URL")
 
 
 def list_curated_sources(

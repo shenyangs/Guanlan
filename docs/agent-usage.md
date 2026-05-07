@@ -23,6 +23,9 @@
 - 输出结论时保留来源链接。
 - 失败时降级，不要硬撞平台风控。
 - 默认候选池按研究任务放大：搜索/研究/归档检索默认 80 条，热榜默认 80 条，读取失败后的搜索兜底默认 20 条。
+- 公众号文章链接先用普通 `guanlan read`；`--trace` 里看到 `selected_backend=wechat_article` 时，说明已走公众号专项公开正文提取。只有专项提取、Jina 和 direct HTML 都弱或被挡时，才转 `diagnose page` 或请求用户授权浏览器可见页补证。
+- 学术论文/预印本发现用 `guanlan feeds arxiv --keyword "..." --limit 80` 补线索；`preprint_record` 只是预印本/论文候选，不等同同行评议结论。遇到 `preprint_search_entrypoint`、`api_unavailable` 或 `feed_status=error` 时，使用返回的 arXiv 搜索入口或 `research --preset academic` 继续补证。
+- 长期观察指定博客、项目、机构公告或用户维护源池时，用 `guanlan feeds watchlist --watchlist PATH --limit 80`。watchlist 支持 JSON、JSONL 或每行一个 RSS/Atom URL；`watchlist_update_signal` 要标注为用户源池更新，不代表全网发现。
 - Agent 调用时应尽量多取结果再筛选：普通任务保持 80，复杂研究可设到 80-100；只有用户明确要求“小样本/快速看一下”时才降低 limit。
 - 当 `--limit` 小于 30 时，把它当 smoke sample：可以先返回线索，但要提醒后续 Agent/用户补跑 `--limit 80`，不要用 5-10 条结果直接写强结论。
 - Agent 平台外层 timeout 要宽松：不要用 10-30 秒去包住 `research`、`feeds` 或 `hotnews` 这种组合命令；超时只能说明网络/上游抖动，不代表没有证据。
@@ -165,6 +168,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “只要证据包，不读原文” | `guanlan research "关键词" --read-top 0` |
 | “读这个链接” | `guanlan read "URL"` |
 | “Jina 读不了/读取不完整” | `guanlan read "URL" --backend direct` |
+| “读公众号文章链接” | `guanlan read "https://mp.weixin.qq.com/s/..." --trace --max-chars 12000`，若 `selected_backend=wechat_article` 则优先使用该正文 |
 | “页面噪声太多，宁可少给” | `guanlan read "URL" --strict --trace` |
 | “只核验标题/发布时间/链接” | `guanlan read "URL" --backend direct --extract metadata` 或 `--extract links` |
 | “只读原文，不要兜底搜索” | `guanlan read "URL" --no-fallback-search` |
@@ -174,6 +178,8 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “技术社区在讨论什么” | `guanlan hotnews v2ex --limit 80` |
 | “今天有什么值得读的技术/AI 文章” | `guanlan feeds curated --limit 80` |
 | “今天微信/公众号有什么热文” | `guanlan feeds wechat-rss --limit 80` |
+| “查 arXiv 论文/预印本线索” | `guanlan feeds arxiv --keyword "AI Agent" --limit 80`，再读代表论文页面 |
+| “观察我维护的 RSS watchlist” | `guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80`，再读重要更新 |
 | “补一个百度热点 RSS 视角” | `guanlan feeds baidu-rss --limit 80` |
 | “找精品 RSS 源目录” | `guanlan feeds curated-sources --keyword AI --limit 80` |
 | “这些 RSS 源怎么路由” | `guanlan feeds list` |
@@ -417,6 +423,10 @@ RSS 适合作阅读发现、新鲜技术文章和趋势线索，不替代官方�
 
 `feeds` 依赖真实外部 RSS/OPML 源，默认会缓存最近一次成功结果。若源站超时，输出中可能出现 `feed_status=stale_cache` 和 `risk_tags=stale_cache`；这代表“用最近成功缓存保住线索”，不是实时状态，回答时要说明边界。
 
+`feeds arxiv` 是学术发现入口，适合查预印本、论文线索和近期研究方向。输出里的 `preprint_record` 是候选论文证据，不能直接写成同行评议结论；如果 arXiv API 限流，会返回 `preprint_search_entrypoint`，Agent 应使用这个入口或 `research --preset academic` 继续补证，不要把限流写成“没有论文”。
+
+`feeds watchlist` 读取用户维护的显式 RSS/Atom 清单，适合长期观察博客、项目更新、机构公告和固定内容源。清单可用 JSON、JSONL 或每行一个 URL；回答时保留 `watchlist_source`、`feed_status` 和 `user_watchlist` / `feed_dependent` 边界。
+
 如果用户需要你在证据包之外给一个谨慎的“助理视角”，加 `--advisor`：
 
 ```bash
@@ -469,7 +479,7 @@ guanlan read "https://example.com/article" --backend direct --max-chars 12000
 默认 `guanlan read` 在 `auto` 模式下会做三段降级：
 
 ```text
-Jina Reader -> Direct HTML -> Search-as-context
+WeChat article extractor（仅 mp.weixin.qq.com）-> Jina Reader -> Direct HTML -> Search-as-context
 ```
 
 最后一段会返回“观澜阅读兜底”上下文包，包括原始 URL、失败原因和同域公开搜索线索。它只用于继续核验，不能当作原文全文。用户如果明确要求只读原文，用：

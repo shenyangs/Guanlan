@@ -64,7 +64,7 @@ guanlan research --list-presets
 
 **本地模型联网**: 当用户使用 Ollama、LM Studio、Open WebUI 或其他没有联网能力的模型时，优先用 `guanlan context "问题"` 或 `guanlan prompt "问题"`，也可以给 `search/research/read` 加 `--format prompt`。这会输出“用户问题 + 观澜证据 + 回答规则”，可直接作为模型输入；HTTP 服务也提供只读 `/context` 和 `/prompt`。
 
-**RSS 兜底**: `feeds` 是公开 RSS/OPML 线索源，外部源站可能超时。若输出出现 `feed_status=stale_cache` 或 `risk_tags=stale_cache`，说明观澜使用最近成功缓存保住阅读线索，不能当作实时热度。
+**RSS 兜底**: `feeds` 是公开 RSS/OPML 线索源，外部源站可能超时。若输出出现 `feed_status=stale_cache` 或 `risk_tags=stale_cache`，说明观澜使用最近成功缓存保住阅读线索，不能当作实时热度。`feeds arxiv` 用于预印本/论文线索，`preprint_record` 不等同同行评议结论；`feeds watchlist` 用于用户维护的显式订阅源观察，`watchlist_update_signal` 只代表该清单内有公开更新。
 
 常用模板：`policy` 政策监管、`official` 官方表述、`industry` 产业研究、`ecommerce` 电商零售、`reputation` 产品口碑、`tech` 技术选型、`finance` 财经研究、`local` 地方研究。
 
@@ -73,8 +73,9 @@ guanlan research --list-presets
 ## 通用网页阅读 (Guanlan)
 
 ```bash
-# 默认：先 Jina Reader，失败后直连原网页
+# 默认：公众号文章先走专项提取；其他网页先 Jina Reader，失败后直连原网页
 guanlan read "https://example.com/article"
+guanlan read "https://mp.weixin.qq.com/s/ARTICLE_ID" --trace
 
 # Jina 不稳或正文不完整时，直接读原网页
 guanlan read "https://example.com/article" --backend direct
@@ -89,7 +90,7 @@ guanlan read batch urls.txt --format context
 guanlan read "https://example.com/article" --watch
 ```
 
-**适用场景**: 已经有 URL，需要给 Agent 上下文。中国大陆站点常见 JS 渲染、登录墙、验证码、地域访问差异和反爬策略；Jina Reader 只能作为第一读取入口，不要当成唯一依赖。默认 `auto` 会按 `Jina Reader -> Direct HTML -> Search-as-context` 降级，最后一段只提供公开搜索线索，不等同于原文全文。
+**适用场景**: 已经有 URL，需要给 Agent 上下文。中国大陆站点常见 JS 渲染、登录墙、验证码、地域访问差异和反爬策略；Jina Reader 只能作为第一读取入口，不要当成唯一依赖。默认 `auto` 对 `mp.weixin.qq.com` 文章会先尝试公众号专项正文提取，`--trace` 中 `selected_backend=wechat_article` 表示标题、作者、发布时间和正文来自公开文章 HTML；其他网页按 `Jina Reader -> Direct HTML -> Search-as-context` 降级。最后一段只提供公开搜索线索，不等同于原文全文。
 
 批量读取只适合普通网页、公开文章、文档和 RSS 链接。对小红书、微博、Twitter/X、LinkedIn、抖音等高风险或登录态平台，批量模式会拒绝读取；需要时应让用户明确授权，再使用对应平台工具或单条读取路径。
 
@@ -163,7 +164,15 @@ guanlan search "搜索关键词" --backend wechat-sogou --limit 80
 
 公众号能力口径必须诚实：`wechat-rss` 只是公开热文线索补丁；Exa、WechatSogou 或 Camoufox 安装成功也只代表 `backend-ready`，不代表端到端 `verified`。遇到搜狗验证码、反爬、登录墙、正文缺失或超时时应降级，不要自动打码、不要读取浏览器 Cookie。
 
-### 阅读公众号文章全文（通过 Exa）
+### 阅读公众号文章全文（优先 Guanlan read）
+
+```bash
+guanlan read "https://mp.weixin.qq.com/s/ARTICLE_ID" --trace --max-chars 12000
+```
+
+如果 trace 显示 `selected_backend=wechat_article`，优先使用该正文，不需要浏览器授权或 Cookie。只有公众号专项提取、Jina 和 direct HTML 都弱/被挡时，才使用 `guanlan diagnose page "URL"`，再按诊断决定是否请求用户授权浏览器可见页补证。
+
+### 可选：通过 Exa
 
 ```bash
 # 抓取文章全文
@@ -190,6 +199,10 @@ guanlan feeds curated --featured --type article --time-filter 1w
 guanlan feeds baidu-rss --limit 80
 guanlan feeds wechat-rss --limit 80
 
+# 学术与长期观察
+guanlan feeds arxiv --keyword "AI Agent" --limit 80
+guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80
+
 # 公开 OPML 源目录与路由说明
 guanlan feeds curated-sources --keyword AI --limit 80
 guanlan feeds list
@@ -203,7 +216,7 @@ for e in feedparser.parse('FEED_URL').entries[:5]:
 "
 ```
 
-**适用场景**: 订阅博客、新闻源、播客等 RSS feed。`curated` 适合做技术、AI、产品和商业科技的阅读发现；`baidu-rss` 适合补充实时热点词；`wechat-rss` 适合发现公众号热文线索；`curated-sources` 适合扩展长期信源池。
+**适用场景**: 订阅博客、新闻源、播客等 RSS feed。`curated` 适合做技术、AI、产品和商业科技的阅读发现；`baidu-rss` 适合补充实时热点词；`wechat-rss` 适合发现公众号热文线索；`arxiv` 适合预印本/论文线索；`watchlist` 适合观察用户显式维护的 RSS/Atom 清单；`curated-sources` 适合扩展长期信源池。
 
 ## 选择指南
 
@@ -216,7 +229,9 @@ for e in feedparser.parse('FEED_URL').entries[:5]:
 | 只读原 URL | `guanlan read --no-fallback-search` |
 | 快速验证 Jina 输出 | Jina Reader (`curl r.jina.ai`) |
 | 需要图片/格式控制 | web-reader MCP |
-| 微信公众号 | 搜索公开转载/同题信源，必要时 Exa/Camoufox 可选阅读 |
+| 微信公众号 | 先 `guanlan read "https://mp.weixin.qq.com/s/..." --trace`，若 `wechat_article` 失败再诊断/补证 |
 | 精品 RSS 发现 | `guanlan feeds curated` / `guanlan feeds curated-sources` |
+| arXiv 论文线索 | `guanlan feeds arxiv --keyword "query" --limit 80` |
+| 固定订阅源观察 | `guanlan feeds watchlist --watchlist PATH --limit 80` |
 | 通用 RSS 订阅 | feedparser |
 | 微博/知乎等 | 先搜索公开页，再尝试 `guanlan read`，不要硬撞登录墙 |

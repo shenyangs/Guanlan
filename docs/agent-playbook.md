@@ -88,6 +88,8 @@ guanlan diagnose page "URL"
 
 页面诊断会说明它是可读正文、动态壳、访问门槛、搜索兜底还是弱正文，并给出下一步命令。诊断不是浏览器接管，也不会读取 Cookie；它只是帮 Agent 判断“这个页面还能不能当证据”。
 
+公众号文章先用普通 `read`。`mp.weixin.qq.com` 文章链接在 `auto` 模式下会优先尝试公众号专项提取；`--trace` 中出现 `selected_backend=wechat_article` 时，表示正文来自公开文章 HTML 的标题、作者、发布时间和正文块。只有这条路径、Jina 和 direct HTML 都失败或正文弱时，才进入页面诊断或请求用户授权浏览器可见页补证。
+
 如果诊断输出 `browser_assist.recommended=true`，说明公开读取不足但目标页可能仍有样本价值。Agent 必须先问用户是否允许使用宿主浏览器读取目标页可见内容；如页面需要登录、验证或切换账号，应让用户自己在浏览器里完成。允许后，Agent 只能读取目标页可见文本、标题、URL、作者和时间，本次可见页补证不读取 Cookie、Token、钥匙串、浏览器数据库、私信、订单、后台或无关个人资料；如果仍需 Cookie，必须另行说明平台、用途和风险并获得用户明确同意，不执行点赞、评论、关注、发帖、私信、下单或提交表单。
 
 推荐外显说法：
@@ -141,6 +143,23 @@ Recipe 输出的是计划、证据层和边界，不是最终答案。执行时�
 3. `search --scope ...`
 4. `feeds`
 
+学术发现：
+
+1. `route`
+2. `research --preset academic`
+3. `feeds arxiv --keyword "..."`
+4. 读取代表论文/出版商/数据库页面
+
+`feeds arxiv` 返回的是预印本或论文线索。`preprint_record` 不等于同行评议结论；如果 arXiv API 被限流，输出会给 `preprint_search_entrypoint` 和 `api_unavailable`，Agent 应继续用返回的 arXiv 搜索入口或 `research --preset academic` 补证。
+
+长期订阅源观察：
+
+1. 准备显式 RSS/Atom 清单
+2. `guanlan feeds watchlist --watchlist PATH --limit 80`
+3. 对重要更新再 `read`
+
+watchlist 支持 JSON、JSONL 或每行一个 feed URL。`watchlist_update_signal` 只说明用户维护清单里的公开源有更新，带 `user_watchlist` / `feed_dependent` 边界，不代表全网发现。
+
 证据面过窄：
 
 1. `route`
@@ -185,6 +204,8 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 先判断是否强路由命中，再决定 `preset` / `scope`
 - 热点题必须带 `hotnews`
 - 技术/AI/WPS/AI Office 题必须带 `feeds`
+- 学术预印本/论文线索题应补 `feeds arxiv --keyword ...`
+- 长期关注指定博客、项目或机构更新的题应补 `feeds watchlist --watchlist ...`
 - 财经题必须先选 `finance` preset 或对应 scope；行情、榜单、资金流优先用 `guanlan stock ...` / `guanlan-stock ...`，公告/财报/监管用 `finance_disclosure`，宏观用 `finance_macro`，情绪样本用 `finance_sentiment`
 - 政策/办事题至少 `search + read`，复杂时直接 `research`
 - 评价 Guanlan 时区分三件事：
@@ -220,6 +241,7 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 实时体育、灾害预警、安全漏洞等垂直题优先读取 Guanlan 推荐的 direct source seeds，再扩大搜索。
 - 财经题不要只看一个搜索结果：行情要先走结构化股票数据并看时间戳，公告/财报要回到披露源，宏观数据要核发布机构，雪球/股吧只作情绪样本。动态财经页或雪球 WAF 读不出正文时，不要反复 `read`，改用 `guanlan stock detail|fundflow|rank|index` 和披露源补证。
 - 页面读不出来时，先 `diagnose page`，再按诊断建议切结构化源、scope 搜索、metadata 读取或 archive 流程；不要把搜索兜底内容当原文正文。
+- 公众号链接先看 `read --trace` 是否走到 `wechat_article`；如果已经拿到正文，不要再要求用户授权浏览器或 Cookie。
 - 高频垂直任务先 `recipe run`，把流程讲清楚，再执行对应命令；不要让 Agent 临场发明一套不稳定搜索路径。
 - 技术题优先 `research --preset tech` 或 `search + feeds`；WPS/AI Office 选题优先 `research --preset wps_office` 或 `recipe run wps-office-radar`，不要只看品牌稿或社区搜索结果。
 - `source_type` 只作辅助，不要把它当唯一真相；结合 domain、authority_score、evidence_role 一起判断。

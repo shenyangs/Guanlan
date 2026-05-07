@@ -201,6 +201,13 @@ def test_direct_source_seeds_cover_vertical_lookups_without_treating_dev_tasks_a
     assert is_wps_office_lookup("WPS AI PPT Agent 办公选题", intents=["wps_office"])
 
 
+def test_direct_source_seeds_include_arxiv_for_academic_preprint_queries():
+    seeds = direct_source_seeds("AI Agent browser assist arxiv 论文", intents=["academic"], scopes=["academic"])
+
+    assert seeds[0]["seed_id"] == "academic:arxiv_api"
+    assert seeds[0]["evidence_role"] == "preprint_record"
+
+
 def test_direct_source_seeds_cover_acg_entrypoints():
     seeds = direct_source_seeds(
         "魔法学院日常漫画 治愈系 魔女",
@@ -2795,6 +2802,40 @@ def test_read_url_treats_mojibake_jina_as_weak_and_falls_back(monkeypatch):
     ]
     assert "这是干净的中文正文" in text
     assert "����" not in text
+
+
+def test_read_url_uses_wechat_article_extractor_before_jina(monkeypatch):
+    html = """
+    <html>
+      <head>
+        <meta property="og:title" content="我用 OpenClaw 做后端开发"/>
+        <meta name="author" content="孟健"/>
+      </head>
+      <body>
+        <div id="js_content" class="rich_media_content">
+          <p>第一段公众号正文，说明 Agent 后端开发、支付集成和上线过程，保留足够多的可读信息。</p>
+          <p>第二段继续说明 Stripe、数据库、部署、错误处理和调试过程，避免被当成登录壳。</p>
+          <p>第三段补充复盘、公开经验和可验证的操作边界，确保正文长度足够稳定。</p>
+        </div>
+      </body>
+    </html>
+    """
+    requested = []
+
+    def fake_urlopen(req, timeout=None):
+        requested.append(req.full_url)
+        return _FakeResponse(html)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    packet = webtools.read_url_with_trace("https://mp.weixin.qq.com/s/example", backend="auto")
+
+    assert requested == ["https://mp.weixin.qq.com/s/example"]
+    assert packet["trace"]["selected_backend"] == "wechat_article"
+    assert "Title: 我用 OpenClaw 做后端开发" in packet["content"]
+    assert "Author: 孟健" in packet["content"]
+    assert "第一段公众号正文" in packet["content"]
+    assert "html(false" not in packet["content"]
 
 
 def test_read_url_uses_search_context_when_reading_is_blocked(monkeypatch):

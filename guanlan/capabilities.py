@@ -321,11 +321,13 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="feeds",
         name="精品内容发现",
-        description="读取公开 RSS/Atom、动态热点 RSS 和精品源目录，发现高质量技术、AI、产品、商业科技与微信热门文章线索。",
-        when_to_use="用户想看值得读的技术文章、AI 高分内容、公众号热文、实时热点 RSS，或需要 RSS 内容池/源目录。",
+        description="读取公开 RSS/Atom、arXiv 预印本、动态热点 RSS、本地 watchlist 和精品源目录，发现高质量技术、AI、产品、商业科技与微信热门文章线索。",
+        when_to_use="用户想看值得读的技术文章、AI 高分内容、公众号热文、arXiv 论文线索、实时热点 RSS、本地订阅源观察，或需要 RSS 内容池/源目录。",
         cli=[
             "guanlan feeds curated --limit 80",
             "guanlan feeds curated --category ai --min-score 85 --limit 80",
+            "guanlan feeds arxiv --keyword \"AI Agent\" --limit 80",
+            "guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80",
             "guanlan feeds baidu-rss --limit 80",
             "guanlan feeds wechat-rss --limit 80",
             "guanlan feeds curated-sources --keyword AI --limit 80",
