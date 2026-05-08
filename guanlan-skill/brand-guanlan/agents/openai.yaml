@@ -1,0 +1,4 @@
+interface:
+  display_name: "品牌观澜"
+  short_description: "Use Guanlan for brand comms research."
+  default_prompt: "安装或更新 Guanlan，核验 CLI 路径和版本，然后用 Guanlan 为品牌公关、市场传播、活动、外联或舆情任务规划并执行中文互联网研究。"

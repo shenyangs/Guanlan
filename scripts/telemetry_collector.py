@@ -18,6 +18,7 @@ import json
 import os
 import sqlite3
 import sys
+import threading
 import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -42,6 +43,10 @@ SITE_VISIT_ALLOWED_HOSTS = set(
     ).split(",")
     if host.strip()
 )
+DASHBOARD_CACHE_TTL_SECONDS = max(
+    1,
+    int(os.environ.get("GUANLAN_DASHBOARD_CACHE_TTL_SECONDS", "8")),
+)
 SYNTHETIC_QUERY_EXACT = set(
     [
         "query",
@@ -56,6 +61,8 @@ SYNTHETIC_QUERY_EXACT = set(
         "na",
     ]
 )
+_DASHBOARD_CACHE_LOCK = threading.Lock()
+_DASHBOARD_CACHE = {"built_ms": 0, "html": ""}
 
 
 def now_ms():
@@ -1188,14 +1195,29 @@ def format_time(ms):
 
 
 def render_group(title, rows):
+    compact = "Platform Unique Devices (All-time)" in title or "Platform Unique Agents (All-time)" in title
     items = []
     for row in rows:
         key = html.escape(str(row["key"] or "unknown"))
         count = int(row["count"])
-        items.append("<tr><td>{}</td><td>{}</td></tr>".format(key, count))
+        if compact:
+            items.append(
+                "<li><span>{}</span><strong>{}</strong></li>".format(
+                    key, count
+                )
+            )
+        else:
+            items.append("<tr><td>{}</td><td>{}</td></tr>".format(key, count))
     if not items:
-        items.append("<tr><td colspan='2'>暂无数据 / No data yet</td></tr>")
-    return "<section><h2>{}</h2><table><tbody>{}</tbody></table></section>".format(
+        if compact:
+            items.append("<li><span>暂无数据 / No data yet</span><strong>0</strong></li>")
+        else:
+            items.append("<tr><td colspan='2'>暂无数据 / No data yet</td></tr>")
+    if compact:
+        return "<section class='panel core-sidecard'><h2>{}</h2><ul>{}</ul></section>".format(
+            html.escape(title), "\n".join(items)
+        )
+    return "<section class='panel data-panel'><h2>{}</h2><table><tbody>{}</tbody></table></section>".format(
         html.escape(title), "\n".join(items)
     )
 
@@ -1208,7 +1230,7 @@ def render_key_values(title, rows):
                 html.escape(str(label)), html.escape(str(value))
             )
         )
-    return "<section><h2>{}</h2><table><tbody>{}</tbody></table></section>".format(
+    return "<section class='panel data-panel'><h2>{}</h2><table><tbody>{}</tbody></table></section>".format(
         html.escape(title), "\n".join(items)
     )
 
@@ -1236,7 +1258,7 @@ def render_retention_panel(device_rows, agent_rows):
         return "\n".join(items)
 
     return """
-<section class="retention-panel">
+<section class="panel retention-panel">
   <div class="retention-heading">
     <div>
       <h2>留存分析 / Retention</h2>
@@ -1271,7 +1293,7 @@ def render_orphan_sources_panel(rows):
     if not items:
         items.append("<tr><td colspan='7'>暂无异常来源 / No orphan sources</td></tr>")
     return """
-<section>
+<section class="panel data-panel">
   <h2>异常来源 Top / Top Orphan Sources (24h)</h2>
   <table>
     <thead>
@@ -1337,7 +1359,7 @@ def render_feedback_inbox(rows):
         )
     if not items:
         items.append("<p class='feedback-empty'>暂无反馈 / No feedback yet</p>")
-    return "<section id='feedback-inbox' class='recent'><h2>反馈明细面板 / Feedback Inbox <a class='section-link' href='./feedback-archive'>全量归档 / Archive</a></h2>{}</section>".format(
+    return "<section id='feedback-inbox' class='panel recent feedback-inbox'><h2>反馈明细面板 / Feedback Inbox <a class='section-link' href='./feedback-archive'>全量归档 / Archive</a></h2>{}</section>".format(
         "\n".join(items)
     )
 
@@ -2090,6 +2112,7 @@ def render_dashboard():
     data = summary()
     task_24h = data["task_duration_24h"]
     session_24h = data["session_24h"]
+    generated_at = format_time(data["generated_ms"])
 
     core_cards = [
         {"label": "全部独立设备 / All-time Unique Devices", "value": data["all_time_unique_installs"]},
@@ -2113,7 +2136,7 @@ def render_dashboard():
     ]
     error_rate_value = parse_rate_value(data["error_rate_24h"])
     orphan_rate_value = parse_rate_value(data["orphan_rate_24h"])
-    secondary_cards = [
+    operational_cards = [
         {"label": "当前并发 / Active Concurrency", "value": metric_text(data["active_now"]), "tone": "neutral"},
         {"label": "最近事件 / Last Event", "value": fmt_ms(data["last_event_age_ms"]) + " 前", "tone": "neutral"},
         {"label": "24h 调用 / 24h Calls", "value": data["calls_24h"], "tone": "neutral"},
@@ -2122,6 +2145,8 @@ def render_dashboard():
         {"label": "24h 官网访问 / 24h Website Visits", "value": data["site_visits_24h"], "tone": "neutral"},
         {"label": "7d 官网访问 / 7d Website Visits", "value": data["site_visits_7d"], "tone": "neutral"},
         {"label": "7d 反馈 / 7d Feedback", "value": data["feedback_7d"], "tone": "good"},
+    ]
+    growth_cards = [
         {"label": "24h 反馈总量 / 24h Feedback Total", "value": data["feedback_24h_total"], "tone": "good"},
         {"label": "24h 测试反馈 / 24h Synthetic Feedback", "value": metric_text(data["feedback_24h_synthetic"]), "tone": "neutral"},
         {"label": "7d 测试反馈 / 7d Synthetic Feedback", "value": data["feedback_7d_synthetic"], "tone": "neutral"},
@@ -2130,6 +2155,8 @@ def render_dashboard():
         {"label": "7d 独立 Agent / 7d Unique Agents", "value": data["unique_agents_7d"], "tone": "neutral"},
         {"label": "7d 独立设备 / 7d Unique Devices", "value": data["active_installs_7d"], "tone": "neutral"},
         {"label": "24h 回访设备 / 24h Returning Devices", "value": data["returning_installs_24h"], "tone": "good"},
+    ]
+    performance_cards = [
         {"label": "Agent 日均调用 / Daily Calls per Agent", "value": data["calls_per_agent_24h"], "tone": "neutral"},
         {"label": "设备日均调用 / Daily Calls per Device", "value": data["calls_per_device_24h"], "tone": "neutral"},
         {"label": "任务平均时长 / Avg Task Duration", "value": fmt_ms(task_24h["avg_ms"]), "tone": "neutral"},
@@ -2163,14 +2190,19 @@ def render_dashboard():
         )
         for card in core_cards
     )
-    secondary_card_html = "\n".join(
-        "<div class='card card-{tone}'><span>{label}</span><strong>{value}</strong></div>".format(
-            tone=html.escape(str(card.get("tone") or "neutral")),
-            label=html.escape(str(card.get("label") or "")),
-            value=html.escape(str(card.get("value") or "")),
+    def render_stat_cards(cards):
+        return "\n".join(
+            "<div class='card card-{tone}'><span>{label}</span><strong>{value}</strong></div>".format(
+                tone=html.escape(str(card.get("tone") or "neutral")),
+                label=html.escape(str(card.get("label") or "")),
+                value=html.escape(str(card.get("value") or "")),
+            )
+            for card in cards
         )
-        for card in secondary_cards
-    )
+
+    operational_card_html = render_stat_cards(operational_cards)
+    growth_card_html = render_stat_cards(growth_cards)
+    performance_card_html = render_stat_cards(performance_cards)
     recent_rows = []
     for row in data["recent"]:
         recent_rows.append(
@@ -2215,69 +2247,97 @@ def render_dashboard():
     retention_panel = render_retention_panel(data["retention_devices"], data["retention_agents"])
     orphan_sources_panel = render_orphan_sources_panel(data["orphan_sources_24h"])
 
+    countdown_seconds = 30
     return """<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="30">
   <title>Guanlan Telemetry</title>
   <link rel="icon" href="/assets/guanlan-logo.svg" type="image/svg+xml">
   <style>
     :root {{
-      --bg: #f5f5f7;
+      --bg: #f3f4f6;
       --card: #ffffff;
-      --card-border: #e7e7ec;
+      --card-border: #e5e7eb;
       --text: #1d1d1f;
       --muted: #6e6e73;
-      --shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+      --panel-bg: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(255,255,255,0.88));
+      --shadow: 0 14px 40px rgba(15, 23, 42, 0.06);
+      --blue: #2563eb;
+      --green: #10b981;
+      --amber: #f59e0b;
+      --red: #ef4444;
     }}
-    body {{ margin:0; font:14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }}
-    header {{ background:rgba(255,255,255,0.86); border-bottom:1px solid #e8e8ee; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding:14px 24px; position:sticky; top:0; z-index:10; }}
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; font:14px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; background:radial-gradient(circle at top, rgba(37,99,235,0.06), transparent 28%), var(--bg); color:var(--text); }}
+    header {{ background:rgba(255,255,255,0.82); border-bottom:1px solid #e8e8ee; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); padding:18px 28px; position:sticky; top:0; z-index:10; }}
     .brand {{ display:flex; align-items:center; gap:12px; }}
-    .brand img {{ width:38px; height:38px; border-radius:8px; }}
+    .brand img {{ width:42px; height:42px; border-radius:10px; box-shadow:0 8px 18px rgba(185,28,28,0.08); }}
     .brand-title {{ display:flex; flex-direction:column; }}
-    .brand-title strong {{ font-size:20px; letter-spacing:0; }}
+    .brand-title strong {{ font-size:22px; letter-spacing:0; }}
     .brand-title span {{ color:var(--muted); font-size:12px; }}
-    main {{ padding:20px 24px 36px; max-width:1240px; margin:0 auto; }}
-    .hero-cards {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }}
-    .hero-grid {{ display:grid; grid-template-columns:2fr 1fr 1fr; gap:12px; align-items:stretch; margin-top:10px; }}
-    .stats-cards {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-top:14px; }}
-    .core-card, .card, section {{ background:var(--card); border:1px solid var(--card-border); border-radius:8px; box-shadow:var(--shadow); }}
-    .core-card {{ padding:14px 16px; min-height:96px; }}
-    .core-card span {{ display:block; color:var(--muted); font-size:12px; }}
-    .core-card strong {{ display:block; margin-top:8px; font-size:36px; line-height:1; color:#10b981; }}
-    .core-card-link {{ text-decoration:none; color:inherit; position:relative; }}
-    .core-card-link:hover {{ border-color:#c8c9d4; box-shadow:0 8px 24px rgba(15,23,42,0.1); }}
-    .core-card-link em {{ position:absolute; right:14px; bottom:12px; color:#2563eb; font-style:normal; font-size:12px; }}
-    .card {{ padding:14px 16px; }}
-    .card span {{ display:block; color:var(--muted); font-size:12px; }}
-    .card strong {{ display:block; margin-top:6px; font-size:26px; line-height:1.1; color:#1d1d1f; }}
+    main {{ padding:28px 28px 48px; max-width:1480px; margin:0 auto; }}
+    .dashboard-block {{ margin-top:22px; }}
+    .dashboard-block:first-child {{ margin-top:0; }}
+    .block-heading {{ display:flex; justify-content:space-between; gap:18px; align-items:flex-start; margin-bottom:16px; }}
+    .block-heading h1, .block-heading h2 {{ margin:0; }}
+    .block-heading h1 {{ font-size:30px; line-height:1.05; }}
+    .block-heading h2 {{ font-size:22px; line-height:1.1; }}
+    .block-heading p {{ margin:8px 0 0; color:var(--muted); max-width:760px; }}
+    .eyebrow {{ margin:0 0 6px; color:#475569; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; }}
+    .block-meta {{ display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; min-width:280px; }}
+    .meta-pill {{ padding:10px 14px; border:1px solid var(--card-border); border-radius:999px; background:rgba(255,255,255,0.7); color:#475569; font-size:12px; white-space:nowrap; }}
+    .hero-cards {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }}
+    .hero-grid {{ display:grid; grid-template-columns:minmax(0,2.1fr) minmax(260px,1fr) minmax(260px,1fr); gap:16px; align-items:stretch; }}
+    .stats-cards {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }}
+    .triple-stack {{ display:grid; gap:14px; }}
+    .panel {{ background:var(--panel-bg); border:1px solid var(--card-border); border-radius:18px; box-shadow:var(--shadow); }}
+    .core-card, .card {{ background:var(--panel-bg); border:1px solid var(--card-border); border-radius:18px; box-shadow:var(--shadow); }}
+    .overview-shell {{ padding:18px; }}
+    .core-card {{ padding:18px 18px 20px; min-height:122px; }}
+    .core-card span {{ display:block; color:var(--muted); font-size:12px; line-height:1.45; }}
+    .core-card strong {{ display:block; margin-top:10px; font-size:40px; line-height:1; color:var(--green); }}
+    .core-card-link {{ display:flex; flex-direction:column; align-items:flex-start; text-decoration:none; color:inherit; }}
+    .core-card-link:hover {{ border-color:#c8c9d4; box-shadow:0 18px 44px rgba(15,23,42,0.1); transform:translateY(-1px); }}
+    .core-card-link em {{ margin-top:auto; padding-top:10px; color:var(--blue); font-style:normal; font-size:12px; line-height:1.35; white-space:normal; word-break:break-word; }}
+    .core-sidecard {{ padding:18px 20px; display:flex; flex-direction:column; }}
+    .core-sidecard h2 {{ margin:0 0 18px; font-size:16px; line-height:1.35; }}
+    .core-sidecard ul {{ list-style:none; margin:0; padding:0; display:grid; gap:0; }}
+    .core-sidecard li {{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 0; border-bottom:1px solid #eef0f3; }}
+    .core-sidecard li:last-child {{ border-bottom:0; }}
+    .core-sidecard li span {{ color:#475569; font-size:18px; line-height:1.35; }}
+    .core-sidecard li strong {{ color:#1d1d1f; font-size:20px; line-height:1; font-weight:700; }}
+    .card {{ padding:16px 18px; min-height:106px; }}
+    .card span {{ display:block; color:var(--muted); font-size:12px; line-height:1.45; }}
+    .card strong {{ display:block; margin-top:10px; font-size:30px; line-height:1.05; color:#1d1d1f; }}
     .card strong:empty::before {{ content:"0"; color:#1d1d1f; }}
-    .card.card-good strong {{ color:#10b981; }}
-    .card.card-warn strong {{ color:#f59e0b; }}
-    .card.card-bad strong {{ color:#ef4444; }}
-    .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px; margin-top:16px; }}
-    section {{ padding:14px 16px; overflow:auto; }}
-    h2 {{ margin:0 0 10px; font-size:15px; }}
-    .retention-panel {{ margin-top:16px; }}
-    .retention-heading {{ display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }}
-    .retention-heading p {{ margin:0 0 12px; color:var(--muted); }}
-    .retention-panel h3 {{ margin:12px 0 8px; font-size:13px; color:#3f3f46; }}
-    .retention-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; }}
-    .retention-card {{ border:1px solid #ececf2; border-radius:8px; padding:14px; background:#fff; text-align:center; }}
-    .retention-card strong {{ display:block; color:#10b981; font-size:32px; line-height:1; }}
-    .retention-card span {{ display:block; margin-top:8px; color:#4b5563; font-weight:700; }}
-    .retention-card em {{ display:block; margin-top:5px; color:var(--muted); font-size:12px; font-style:normal; }}
-    .section-link {{ float:right; color:#2563eb; text-decoration:none; font-size:12px; font-weight:600; }}
+    .card.card-good strong {{ color:var(--green); }}
+    .card.card-warn strong {{ color:var(--amber); }}
+    .card.card-bad strong {{ color:var(--red); }}
+    .split-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }}
+    .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:14px; }}
+    section {{ padding:18px 20px; overflow:auto; }}
+    h2 {{ margin:0 0 12px; font-size:16px; }}
+    .section-link {{ float:right; color:var(--blue); text-decoration:none; font-size:12px; font-weight:600; }}
+    .retention-panel {{ margin-top:22px; }}
+    .retention-heading {{ display:flex; justify-content:space-between; gap:16px; align-items:flex-start; margin-bottom:8px; }}
+    .retention-heading p {{ margin:0 0 8px; color:var(--muted); max-width:880px; }}
+    .retention-panel h3 {{ margin:16px 0 10px; font-size:13px; color:#3f3f46; }}
+    .retention-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }}
+    .retention-card {{ border:1px solid #ececf2; border-radius:16px; padding:18px 14px; background:#fff; text-align:center; }}
+    .retention-card strong {{ display:block; color:var(--green); font-size:34px; line-height:1; }}
+    .retention-card span {{ display:block; margin-top:10px; color:#4b5563; font-weight:700; }}
+    .retention-card em {{ display:block; margin-top:6px; color:var(--muted); font-size:12px; font-style:normal; }}
+    .data-panel table td:first-child {{ color:#475569; width:58%; }}
     table {{ width:100%; border-collapse:collapse; }}
-    td, th {{ padding:8px 6px; border-bottom:1px solid #eef0f3; text-align:left; white-space:nowrap; }}
+    td, th {{ padding:10px 6px; border-bottom:1px solid #eef0f3; text-align:left; white-space:nowrap; }}
     th {{ color:var(--muted); font-size:12px; }}
-    .recent {{ margin-top:16px; }}
-    .feedback-item {{ border:1px solid #ececf2; border-radius:8px; margin-bottom:10px; background:#fff; }}
-    .feedback-item summary {{ cursor:pointer; list-style:none; padding:10px 12px; }}
+    .recent {{ margin-top:22px; }}
+    .feedback-item {{ border:1px solid #ececf2; border-radius:16px; margin-bottom:12px; background:#fff; overflow:hidden; }}
+    .feedback-item summary {{ cursor:pointer; list-style:none; padding:14px 16px; }}
     .feedback-item summary::-webkit-details-marker {{ display:none; }}
-    .feedback-row {{ display:grid; grid-template-columns:70px 170px minmax(220px,1.15fr) minmax(240px,1.2fr) 1.05fr 80px 180px 130px; gap:10px; align-items:start; }}
+    .feedback-row {{ display:grid; grid-template-columns:70px 170px minmax(260px,1.2fr) minmax(260px,1.25fr) 1.1fr 90px 180px 130px; gap:12px; align-items:start; }}
     .feedback-index {{ font-weight:600; color:#4b5563; }}
     .feedback-time {{ color:#6e6e73; font-size:12px; }}
     .feedback-query {{ white-space:normal; overflow:visible; text-overflow:clip; word-break:break-word; line-height:1.35; }}
@@ -2290,18 +2350,30 @@ def render_dashboard():
     .feedback-expand-hint {{ justify-self:end; color:#2563eb; font-size:12px; }}
     .feedback-item[open] .feedback-expand-hint {{ color:#4b5563; }}
     .feedback-item[open] .feedback-expand-hint::after {{ content:"（已展开）"; }}
-    .feedback-body {{ border-top:1px solid #ececf2; padding:10px 12px 12px; }}
+    .feedback-body {{ border-top:1px solid #ececf2; padding:14px 16px 16px; }}
     .feedback-body p {{ margin:0 0 8px; }}
     .feedback-query-full {{ white-space:pre-wrap; word-break:break-word; }}
     .feedback-reason {{ white-space:pre-wrap; word-break:break-word; }}
     .feedback-meta {{ color:#6e6e73; font-size:12px; }}
     .feedback-empty {{ color:#6e6e73; margin:4px 0; }}
+    .recent-table table td:first-child, .recent-table table th:first-child {{ white-space:nowrap; }}
+    .panel-note {{ margin-top:6px; color:var(--muted); font-size:12px; }}
     @media (max-width: 1100px) {{
-      .hero-grid {{ grid-template-columns:1fr; }}
+      .hero-grid, .split-grid {{ grid-template-columns:1fr; }}
+      .hero-cards {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+      .block-meta {{ justify-content:flex-start; min-width:0; }}
     }}
     @media (max-width: 780px) {{
+      header {{ padding:16px 18px; }}
+      main {{ padding:20px 16px 36px; }}
+      .block-heading {{ flex-direction:column; }}
+      .hero-cards, .stats-cards, .grid, .retention-grid {{ grid-template-columns:1fr; }}
       .feedback-row {{ grid-template-columns:1fr; gap:4px; }}
       .feedback-expand-hint {{ justify-self:start; }}
+      .core-card strong {{ font-size:34px; }}
+      .card strong {{ font-size:28px; }}
+      .core-sidecard li span {{ font-size:16px; }}
+      .core-sidecard li strong {{ font-size:18px; }}
     }}
   </style>
 </head>
@@ -2316,41 +2388,124 @@ def render_dashboard():
     </div>
   </header>
   <main>
-    <div class="hero-grid">
-      <div class="hero-cards">{core_cards}</div>
-      {core_platform_devices}
-      {core_platform_agents}
-    </div>
-    <div class="stats-cards">{secondary_cards}</div>
+    <section class="dashboard-block overview-block">
+      <div class="block-heading">
+        <div>
+          <p class="eyebrow">Overview</p>
+          <h1>核心看板 / Core Metrics</h1>
+          <p>把增长、官网访问、反馈信号和使用健康度拆开看，第一眼先判断规模，第二眼再看问题在哪。</p>
+        </div>
+        <div class="block-meta">
+          <span class="meta-pill">自动刷新倒计时 / Refresh in <strong id="refresh-countdown">{countdown_seconds}</strong>s</span>
+          <span class="meta-pill">生成时间 / Generated: {generated_at}</span>
+        </div>
+      </div>
+      <div class="overview-shell panel">
+        <div class="hero-grid">
+          <div class="hero-cards">{core_cards}</div>
+          {core_platform_devices}
+          {core_platform_agents}
+        </div>
+      </div>
+    </section>
+    <section class="dashboard-block">
+      <div class="block-heading">
+        <div>
+          <p class="eyebrow">Operations</p>
+          <h2>运行与增长 / Operations & Growth</h2>
+          <p>把调用、官网访问、反馈数量、留存相关指标拆成两组，避免一大片卡片挤在一起。</p>
+        </div>
+      </div>
+      <div class="split-grid">
+        <div class="triple-stack">
+          <section class="panel">
+            <h2>运行态 / Runtime</h2>
+            <div class="stats-cards">{operational_cards}</div>
+          </section>
+        </div>
+        <div class="triple-stack">
+          <section class="panel">
+            <h2>增长与反馈 / Growth & Feedback</h2>
+            <div class="stats-cards">{growth_cards}</div>
+          </section>
+        </div>
+      </div>
+    </section>
+    <section class="dashboard-block">
+      <div class="block-heading">
+        <div>
+          <p class="eyebrow">Performance</p>
+          <h2>健康度与深度 / Health & Depth</h2>
+          <p>把效率、时长、错误和异常结束单独放一屏，颜色更聚焦，读起来不会和增长指标混在一起。</p>
+        </div>
+      </div>
+      <section class="panel">
+        <div class="stats-cards">{performance_cards}</div>
+      </section>
+    </section>
     {retention}
-    <div class="grid">
-      {surface}
-      {commands}
-      {agents}
-      {versions}
-      {platforms}
-      {platform_devices}
-      {platform_agents}
-      {feedback_commands}
-      {feedback_queries}
-      {feedback_reasons}
-      {depth}
-      {quality}
-      {orphan_sources}
-    </div>
     {feedback_inbox}
-    <section class="recent">
+    <section class="dashboard-block">
+      <div class="block-heading">
+        <div>
+          <p class="eyebrow">Breakdown</p>
+          <h2>结构拆解 / Distribution & Diagnostics</h2>
+          <p>这里是解释层：大家都在用什么命令、什么平台、什么版本，异常主要集中在哪些来源。</p>
+        </div>
+      </div>
+      <div class="grid">
+        {surface}
+        {commands}
+        {agents}
+        {versions}
+        {platforms}
+        {platform_devices}
+        {platform_agents}
+        {feedback_commands}
+        {feedback_queries}
+        {feedback_reasons}
+        {depth}
+        {quality}
+        {orphan_sources}
+      </div>
+    </section>
+    <section class="panel recent recent-table">
       <h2>最近事件 / Recent Events</h2>
+      <p class="panel-note">按时间倒序显示最近调用生命周期，适合快速确认新版本是否真的在进来。</p>
       <table>
         <thead><tr><th>时间 / Time (CST)</th><th>事件 / Event</th><th>入口 / Surface</th><th>命令 / Command</th><th>Agent</th><th>版本 / Version</th><th>状态 / Status</th><th>耗时 / Duration (ms)</th></tr></thead>
         <tbody>{recent}</tbody>
       </table>
     </section>
   </main>
+  <script>
+    (function () {{
+      var countdown = {countdown_seconds};
+      var el = document.getElementById("refresh-countdown");
+      var reloading = false;
+      if (!el) return;
+      function tick() {{
+        if (reloading) return;
+        el.textContent = Math.max(0, countdown);
+        if (countdown <= 0) {{
+          reloading = true;
+          window.location.reload();
+          return;
+        }}
+        countdown -= 1;
+      }}
+      tick();
+      window.setInterval(tick, 1000);
+    }})();
+  </script>
 </body>
 </html>""".format(
         core_cards=core_card_html,
-        secondary_cards=secondary_card_html,
+        countdown_seconds=countdown_seconds,
+        generated_at=generated_at,
+        operational_cards=operational_card_html,
+        growth_cards=growth_card_html,
+        performance_cards=performance_card_html,
         core_platform_devices=render_group("平台独立设备 / Platform Unique Devices (All-time)", data["platform_unique_devices_all"]),
         core_platform_agents=render_group("平台独立 Agent / Platform Unique Agents (All-time)", data["platform_unique_agents_all"]),
         surface=render_group("入口分布 / Surface", data["surface"]),
@@ -2372,6 +2527,22 @@ def render_dashboard():
     )
 
 
+def render_dashboard_cached(force_refresh=False):
+    current = now_ms()
+    with _DASHBOARD_CACHE_LOCK:
+        if (
+            not force_refresh
+            and _DASHBOARD_CACHE.get("html")
+            and current - int(_DASHBOARD_CACHE.get("built_ms") or 0)
+            < DASHBOARD_CACHE_TTL_SECONDS * 1000
+        ):
+            return _DASHBOARD_CACHE["html"]
+        html_text = render_dashboard()
+        _DASHBOARD_CACHE["html"] = html_text
+        _DASHBOARD_CACHE["built_ms"] = now_ms()
+        return html_text
+
+
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
@@ -2389,7 +2560,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except OSError:
+            # Client may disconnect when upstream/proxy timeout is reached.
+            return
 
     def authorized(self):
         if not ADMIN_PASSWORD:
@@ -2458,7 +2633,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path in ("/", "/dashboard"):
             if not self.require_auth():
                 return
-            self.send_text(200, render_dashboard(), "text/html; charset=utf-8")
+            self.send_text(200, render_dashboard_cached(), "text/html; charset=utf-8")
             return
         if parsed.path in ("/feedback-archive", "/feedback-archive/"):
             if not self.require_auth():
