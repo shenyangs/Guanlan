@@ -52,7 +52,8 @@ metadata:
 - 信源解释：当需要说明“为什么该看这些来源/某来源能不能当主证据”时，先用 `guanlan sources explain "query"` 或 `guanlan sources show gov.cn`；需要治理口径漂移时用 `guanlan sources audit`。这些都是只读信源元数据，不是实际搜索结果。
 - 轻重分流：不确定任务该轻搜还是深查时，先跑 `guanlan workflow "query" --json`；simple/direct 任务不要过度规划，复杂/高风险/对比/时间线/档案任务才用 `guanlan investigate "query" --limit 80 --format context`。
 - 页面诊断：当 `read` 读到动态页壳、登录墙、WAF、安全验证、搜索兜底或弱正文时，先跑 `guanlan diagnose page "URL"`；诊断只解释页面是否能当证据，不读取 Cookie，不执行浏览器动作。
-- 浏览器辅助补证：如果 `diagnose page` 输出 `browser_assist.recommended=true`，必须先询问用户授权；如需登录、验证或切换账号，让用户自己在浏览器里完成；Agent 只读取目标页面的浏览器可见内容，本次可见页补证不读取 Cookie、Token、钥匙串、私信、订单、后台或无关个人信息；如果仍需 Cookie，必须另行说明平台、用途和风险并获得用户明确同意，也不点赞、评论、关注、发帖、私信、下单或提交表单。用户授权后可先用 `guanlan browser-assist adapters --check` 查看只读适配器自检，再用 `guanlan browser-assist run "URL" --adapter host-browser --json` 取得宿主浏览器执行契约；可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库。`open-cli` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
+- 浏览器辅助补证：如果 `diagnose page` 输出 `browser_assist.recommended=true`，必须先询问用户授权；如需登录、验证或切换账号，让用户自己在浏览器里完成；Agent 只读取目标页面的浏览器可见内容，本次可见页补证不读取 Cookie、Token、钥匙串、私信、订单、后台或无关个人信息；如果仍需 Cookie，必须另行说明平台、用途和风险并获得用户明确同意，也不点赞、评论、关注、发帖、私信、下单或提交表单。用户授权后可先用 `guanlan browser-assist adapters --check` 查看只读适配器自检，用 `guanlan browser-assist sessions "URL" --json` 获取同一目标页会话契约，再用 `guanlan browser-assist run "URL" --adapter host-browser --json` 取得宿主浏览器执行契约；可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库。`open-cli` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
+- 浏览器可见页动态采集不能只靠固定 sleep。优先等待标题/正文、结果数增长、DOM 变化趋稳或相关网络响应；`aria-label`、`placeholder`、`title`、按钮文字等会随语言变化，不要用单一 UI 文案当唯一 selector。列表、评论、搜索页需要样本池时，用 `--min-visible-items` 并输出 `requested_min_items`、`collected_count`、`partial_reason`；未达到目标要标记 partial，不要把空结果当成功。
 - 研究模板：高频垂直任务先用 `guanlan recipe list` / `guanlan recipe run <recipe> "query"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`、`wps-office-radar`、`trajectory-map`。
 - 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究至少走 `route -> research -> scoped search`；热点题再补 `hotnews`；技术/AI/WPS/AI Office 题再补 `feeds`；来源过窄时再补 `dossier/compare/timeline`。
 - 体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE、安全公告、科学机构声明、文娱榜单/票房、考试官方信息等高确定性垂直题，优先执行 `route` 推荐的 direct `guanlan read` 命令，再用匹配的 `preset/scope` 扩大证据面；不要只看搜索引擎是否返回。
@@ -78,6 +79,7 @@ metadata:
 - 如果用户或 Agent 不知道观澜有哪些功能、该用哪个命令，先运行 `guanlan capabilities`；MCP 模式下调用 `guanlan_capabilities`。
 - `--advisor` 输出的是证据边界和写作规则，Agent 需要据此生成自然建议，不要机械复述固定小标题。
 - `research` 证据包会附带证据审计提示；遇到版本号、价格、参数量、发布日期冲突时，先说明不同来源分别怎么说，再给取舍依据。
+- 知识星球属于授权私域社区；只有用户明确要查自己已加入/创建的星球内容时，才引导安装/登录 `zsxq-cli`。默认只做浏览、搜索和资料整理，发帖、评论、回答、编辑、删除、打标签和笔记写入必须逐次确认。
 - `report html` 是旁支展示层，只把已有 JSON/stdin/demo 数据渲染成静态 HTML；不要用它替代 search/read/research/hotnews 主链路。
 - `archive wiki/context/pack` 是本地 archive 的旁支组织层：只使用已归档资料，不代表全网知识，不自动上传。
 - 更新观澜时必须全量更新，不要只跑增量 upgrade：优先 `uv tool install --force --upgrade guanlan`，注意 uv 只有 `--force` 可能重装旧锁定版本；Homebrew 用 `brew update && brew reinstall shenyangs/tap/guanlan`；pipx 用 `pipx install --force guanlan`。更新后运行 `hash -r`、`command -v guanlan`、`which -a guanlan`、`guanlan version`，再跑 `guanlan capabilities`、`guanlan doctor --install-check`、`guanlan doctor --trace`、`guanlan search "人工智能 政策" --profile china --limit 5 --trace`、`guanlan hotnews today --limit 5 --trends`。版本或路径不一致时停止配置 MCP。
@@ -89,6 +91,7 @@ metadata:
 | 网页搜索/代码搜索 | search | [references/search.md](references/search.md) |
 | 中文热榜/今日热点/快讯 | hotnews | [references/search.md](references/search.md) |
 | 小红书/抖音/微博/推特/B站/V2EX/Reddit | social | [references/social.md](references/social.md) |
+| 知识星球/私域社区 | private_community | `guanlan install --channels=zsxq` 后使用 `zsxq-cli`，默认只读、写操作确认 |
 | 招聘/职位/LinkedIn | career | [references/career.md](references/career.md) |
 | GitHub/代码 | dev | [references/dev.md](references/dev.md) |
 | 网页/文章/公众号/RSS | web | [references/web.md](references/web.md) |
@@ -140,11 +143,16 @@ guanlan search "台风 路径 中央气象台 日本气象厅" --scope weather_d
 guanlan search "梅西 比赛 伤病 最新" --scope sports --limit 80
 guanlan research "NBA季后赛2026年首轮战绩比分" --preset sports --read-top 5
 guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80
+guanlan install --env=auto --channels=zsxq
+zsxq-cli auth login
+zsxq-cli group +list
+zsxq-cli topic +search --group-id <id> --query "关键词"
 guanlan search "最近 query 热点" --profile china --trace
 guanlan search "中文问题" --profile china --limit 80 --trace  # 查看 Baidu/Bing/DDG 状态与 backend_recovery
 guanlan diagnose page "https://example.com/article"
 guanlan browser-assist plan "https://example.com/article" --json
 guanlan browser-assist adapters --check
+guanlan browser-assist sessions "https://example.com/article" --json
 guanlan browser-assist run "https://example.com/article" --adapter host-browser --json
 guanlan recipe list
 guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"

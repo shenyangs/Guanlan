@@ -45,7 +45,7 @@ SITE_VISIT_ALLOWED_HOSTS = set(
 )
 DASHBOARD_CACHE_TTL_SECONDS = max(
     1,
-    int(os.environ.get("GUANLAN_DASHBOARD_CACHE_TTL_SECONDS", "8")),
+    int(os.environ.get("GUANLAN_DASHBOARD_CACHE_TTL_SECONDS", "30")),
 )
 SYNTHETIC_QUERY_EXACT = set(
     [
@@ -62,7 +62,7 @@ SYNTHETIC_QUERY_EXACT = set(
     ]
 )
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_CACHE = {"built_ms": 0, "html": ""}
+_DASHBOARD_CACHE = {"built_ms": 0, "html": "", "refreshing": False}
 
 
 def now_ms():
@@ -80,6 +80,11 @@ def clamp_text(value, limit=160):
 
 def normalize_query_text(value):
     return str(value or "").strip().lower()
+
+
+def normalize_cluster_text(value):
+    text = " ".join(str(value or "").strip().lower().split())
+    return text[:320]
 
 
 def is_synthetic_feedback_query(query_text):
@@ -1438,9 +1443,12 @@ def query_feedback_archive(params):
     window = raw_window if raw_window in ("24h", "7d", "30d", "all") else "all"
     raw_kind = first_param(params, "kind", "all")
     kind = raw_kind if raw_kind in ("all", "real", "synthetic") else "all"
+    raw_view = first_param(params, "view", "clusters")
+    view = raw_view if raw_view in ("clusters", "raw") else "clusters"
     filters = {
         "window": window,
         "kind": kind,
+        "view": view,
         "q": clamp_text(first_param(params, "q", ""), 160),
         "command": clamp_text(first_param(params, "command", ""), 40),
         "profile": clamp_text(first_param(params, "profile", ""), 24),
@@ -1490,12 +1498,111 @@ def query_feedback_archive(params):
         conn.close()
 
 
+def query_feedback_clusters(params):
+    data = query_feedback_archive(params)
+    filters = data["filters"]
+    conn = db_connect()
+    try:
+        where, args = build_archive_where(filters)
+        rows = conn.execute(
+            """
+            SELECT received_ms, query_text, reason_text, command, profile, backend,
+                   agent_kind, agent_id, install_id, version, platform
+            FROM feedback
+            WHERE {where}
+            ORDER BY id DESC
+            """.format(where=where),
+            tuple(args),
+        ).fetchall()
+        clusters = {}
+        for row in rows:
+            command = row["command"] or "unknown-command"
+            profile = row["profile"] or "unknown-profile"
+            backend = row["backend"] or "unknown-backend"
+            reason_text = row["reason_text"] or ""
+            cluster_key = "||".join(
+                [
+                    command,
+                    profile,
+                    backend,
+                    normalize_cluster_text(reason_text),
+                ]
+            )
+            item = clusters.get(cluster_key)
+            if item is None:
+                item = {
+                    "command": command,
+                    "profile": profile,
+                    "backend": backend,
+                    "reason_text": reason_text,
+                    "sample_query": row["query_text"] or "",
+                    "count": 0,
+                    "latest_ms": int(row["received_ms"] or 0),
+                    "unique_agents": set(),
+                    "unique_installs": set(),
+                    "versions": set(),
+                    "platforms": set(),
+                }
+                clusters[cluster_key] = item
+            item["count"] += 1
+            item["latest_ms"] = max(item["latest_ms"], int(row["received_ms"] or 0))
+            if row["agent_id"]:
+                item["unique_agents"].add(row["agent_id"])
+            if row["install_id"]:
+                item["unique_installs"].add(row["install_id"])
+            if row["version"]:
+                item["versions"].add(row["version"])
+            if row["platform"]:
+                item["platforms"].add(row["platform"])
+        ordered = sorted(
+            clusters.values(),
+            key=lambda x: (-int(x["count"]), -int(x["latest_ms"])),
+        )
+        page = data["page"]
+        per_page = data["per_page"]
+        total = len(ordered)
+        pages = max(1, int((total + per_page - 1) // per_page))
+        page = min(page, pages)
+        offset = (page - 1) * per_page
+        page_rows = ordered[offset : offset + per_page]
+        items = []
+        for item in page_rows:
+            items.append(
+                {
+                    "command": item["command"],
+                    "profile": item["profile"],
+                    "backend": item["backend"],
+                    "reason_text": item["reason_text"],
+                    "sample_query": item["sample_query"],
+                    "count": item["count"],
+                    "latest_ms": item["latest_ms"],
+                    "unique_agents": len(item["unique_agents"]),
+                    "unique_installs": len(item["unique_installs"]),
+                    "versions": sorted(item["versions"]),
+                    "platforms": sorted(item["platforms"]),
+                }
+            )
+        data["page"] = page
+        data["pages"] = pages
+        data["total"] = total
+        data["clusters"] = items
+        return data
+    finally:
+        conn.close()
+
+
 def archive_url(filters, page, per_page):
     query = {"page": page, "per_page": per_page}
     for key, value in filters.items():
         if value:
             query[key] = value
     return "./feedback-archive?" + urlencode(query)
+
+
+def archive_view_url(filters, view):
+    next_filters = dict(filters)
+    next_filters["view"] = view
+    return archive_url(next_filters, 1, 100)
 
 
 def render_select(name, label, current, options, include_all=True):
@@ -1520,26 +1627,94 @@ def render_select(name, label, current, options, include_all=True):
 
 
 def render_feedback_archive(params):
-    data = query_feedback_archive(params)
+    base = query_feedback_archive(params)
+    if base["filters"].get("view") == "clusters":
+        data = query_feedback_clusters(params)
+    else:
+        data = base
     filters = data["filters"]
     rows = []
-    for row in data["rows"]:
-        synthetic = is_synthetic_feedback_query(row.get("query_text"))
-        kind_class = "kind-synthetic" if synthetic else "kind-real"
-        kind_text = "测试流量 / Synthetic" if synthetic else "真实反馈 / Real"
-        query_text = html.escape(row.get("query_text") or "")
-        reason_text = html.escape(row.get("reason_text") or "")
-        meta = " · ".join(
-            [
-                row.get("command") or "unknown-command",
-                row.get("profile") or "unknown-profile",
-                row.get("backend") or "unknown-backend",
-                row.get("agent_kind") or "unknown-agent",
-                row.get("platform") or "unknown-platform",
-            ]
-        )
-        rows.append(
-            """
+    if filters.get("view") == "clusters":
+        for index, row in enumerate(data.get("clusters") or [], 1):
+            version_text = html.escape(", ".join(row.get("versions") or []) or "unknown")
+            platform_text = html.escape(", ".join(row.get("platforms") or []) or "unknown")
+            rows.append(
+                """
+<details class="archive-item cluster-item">
+  <summary>
+    <span class="archive-row cluster-row">
+      <span class="archive-id">#{index}</span>
+      <span class="archive-time">{time}</span>
+      <span class="archive-query">{query}</span>
+      <span class="archive-reason">{reason_preview}</span>
+      <span class="archive-meta">{meta}</span>
+      <span class="archive-version">{count} 次</span>
+      <span class="kind-real">{agents} Agent</span>
+      <span class="archive-action">展开 / Open</span>
+    </span>
+  </summary>
+  <div class="archive-body">
+    <p><strong>代表搜索词 / Representative Query</strong></p>
+    <p class="full-text">{query_full}</p>
+    <p><strong>聚类原因 / Clustered Reason</strong></p>
+    <p class="full-text">{reason}</p>
+    <div class="detail-grid">
+      <p><strong>命令 / Command</strong><br>{command}</p>
+      <p><strong>Profile</strong><br>{profile}</p>
+      <p><strong>Backend</strong><br>{backend}</p>
+      <p><strong>最近出现 / Latest Seen</strong><br>{time}</p>
+      <p><strong>出现次数 / Total Count</strong><br>{count}</p>
+      <p><strong>影响 Agent / Unique Agents</strong><br>{agents}</p>
+      <p><strong>影响设备 / Unique Devices</strong><br>{installs}</p>
+      <p><strong>版本分布 / Versions</strong><br>{versions}</p>
+      <p><strong>平台分布 / Platforms</strong><br>{platforms}</p>
+    </div>
+  </div>
+</details>
+                """.strip().format(
+                    index=index,
+                    time=html.escape(format_time(row.get("latest_ms"))),
+                    query=html.escape(clamp_text(row.get("sample_query") or "", 72)) or "(empty query)",
+                    query_full=html.escape(row.get("sample_query") or "(empty query)"),
+                    reason_preview=html.escape(clamp_text(row.get("reason_text") or "", 88)) or "(empty reason)",
+                    reason=html.escape(row.get("reason_text") or "(empty reason)"),
+                    meta=html.escape(
+                        " · ".join(
+                            [
+                                row.get("command") or "unknown-command",
+                                row.get("profile") or "unknown-profile",
+                                row.get("backend") or "unknown-backend",
+                            ]
+                        )
+                    ),
+                    command=html.escape(row.get("command") or ""),
+                    profile=html.escape(row.get("profile") or ""),
+                    backend=html.escape(row.get("backend") or ""),
+                    count=html.escape(str(row.get("count") or 0)),
+                    agents=html.escape(str(row.get("unique_agents") or 0)),
+                    installs=html.escape(str(row.get("unique_installs") or 0)),
+                    versions=version_text,
+                    platforms=platform_text,
+                )
+            )
+    else:
+        for row in data["rows"]:
+            synthetic = is_synthetic_feedback_query(row.get("query_text"))
+            kind_class = "kind-synthetic" if synthetic else "kind-real"
+            kind_text = "测试流量 / Synthetic" if synthetic else "真实反馈 / Real"
+            query_text = html.escape(row.get("query_text") or "")
+            reason_text = html.escape(row.get("reason_text") or "")
+            meta = " · ".join(
+                [
+                    row.get("command") or "unknown-command",
+                    row.get("profile") or "unknown-profile",
+                    row.get("backend") or "unknown-backend",
+                    row.get("agent_kind") or "unknown-agent",
+                    row.get("platform") or "unknown-platform",
+                ]
+            )
+            rows.append(
+                """
 <details class="archive-item">
   <summary>
     <span class="archive-row">
@@ -1572,30 +1747,35 @@ def render_feedback_archive(params):
     </div>
   </div>
 </details>
-            """.strip().format(
-                id=int(row.get("id") or 0),
-                time=html.escape(format_time(row.get("received_ms"))),
-                query=query_text or "(empty query)",
-                query_full=query_text or "(empty query)",
-                reason_preview=html.escape(clamp_text(row.get("reason_text") or "", 72)) or "(empty reason)",
-                reason=reason_text or "(empty reason)",
-                meta=html.escape(meta),
-                command=html.escape(row.get("command") or ""),
-                profile=html.escape(row.get("profile") or ""),
-                backend=html.escape(row.get("backend") or ""),
-                agent_kind=html.escape(row.get("agent_kind") or ""),
-                version=html.escape(row.get("version") or "unknown"),
-                platform=html.escape(row.get("platform") or ""),
-                python=html.escape(row.get("python") or ""),
-                install_id=html.escape(row.get("install_id") or ""),
-                agent_id=html.escape(row.get("agent_id") or ""),
-                remote_addr=html.escape(row.get("remote_addr") or ""),
-                kind_class=kind_class,
-                kind_text=kind_text,
+                """.strip().format(
+                    id=int(row.get("id") or 0),
+                    time=html.escape(format_time(row.get("received_ms"))),
+                    query=query_text or "(empty query)",
+                    query_full=query_text or "(empty query)",
+                    reason_preview=html.escape(clamp_text(row.get("reason_text") or "", 72)) or "(empty reason)",
+                    reason=reason_text or "(empty reason)",
+                    meta=html.escape(meta),
+                    command=html.escape(row.get("command") or ""),
+                    profile=html.escape(row.get("profile") or ""),
+                    backend=html.escape(row.get("backend") or ""),
+                    agent_kind=html.escape(row.get("agent_kind") or ""),
+                    version=html.escape(row.get("version") or "unknown"),
+                    platform=html.escape(row.get("platform") or ""),
+                    python=html.escape(row.get("python") or ""),
+                    install_id=html.escape(row.get("install_id") or ""),
+                    agent_id=html.escape(row.get("agent_id") or ""),
+                    remote_addr=html.escape(row.get("remote_addr") or ""),
+                    kind_class=kind_class,
+                    kind_text=kind_text,
+                )
+            )
+    if not rows:
+        rows.append(
+            "<p class='empty'>没有匹配的{} / No matching {}.</p>".format(
+                "问题簇" if filters.get("view") == "clusters" else "反馈明细",
+                "clusters" if filters.get("view") == "clusters" else "feedback rows",
             )
         )
-    if not rows:
-        rows.append("<p class='empty'>没有匹配的反馈 / No matching feedback.</p>")
 
     page = data["page"]
     pages = data["pages"]
@@ -1616,6 +1796,8 @@ def render_feedback_archive(params):
     )
 
     filter_options = data["options"]
+    cluster_view_active = " is-active" if filters.get("view") == "clusters" else ""
+    raw_view_active = " is-active" if filters.get("view") == "raw" else ""
     return """<!doctype html>
 <html>
 <head>
@@ -1635,6 +1817,9 @@ def render_feedback_archive(params):
     .nav a {{ color:var(--blue); text-decoration:none; font-weight:600; }}
     main {{ max-width:1280px; margin:0 auto; padding:18px 24px 36px; }}
     .panel {{ background:var(--card); border:1px solid var(--border); border-radius:8px; box-shadow:0 6px 18px rgba(15,23,42,.06); }}
+    .view-tabs {{ display:flex; gap:10px; margin:0 0 14px; }}
+    .view-tab {{ display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border:1px solid var(--border); border-radius:999px; background:#fff; color:var(--muted); text-decoration:none; font-weight:700; }}
+    .view-tab.is-active {{ background:#1d1d1f; color:#fff; border-color:#1d1d1f; }}
     .filters {{ padding:14px; display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; align-items:end; }}
     label span {{ display:block; color:var(--muted); font-size:12px; margin-bottom:4px; }}
     input, select {{ width:100%; box-sizing:border-box; border:1px solid #d8d8de; border-radius:8px; padding:9px 10px; background:#fff; color:var(--text); font:inherit; }}
@@ -1661,6 +1846,7 @@ def render_feedback_archive(params):
     .archive-body {{ border-top:1px solid #ececf2; padding:12px; }}
     .archive-body p {{ margin:0 0 10px; }}
     .full-text {{ white-space:pre-wrap; word-break:break-word; }}
+    .cluster-row {{ grid-template-columns:72px 170px minmax(220px,1fr) minmax(280px,1.35fr) minmax(200px,1fr) 90px 110px 100px; }}
     .detail-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; color:var(--muted); }}
     .detail-grid strong {{ color:var(--text); }}
     .empty {{ color:var(--muted); margin:8px 4px; }}
@@ -1686,6 +1872,10 @@ def render_feedback_archive(params):
     </div>
   </header>
   <main>
+    <div class="view-tabs">
+      <a class="view-tab{cluster_view_active}" href="{clusters_href}">问题簇 / Clusters</a>
+      <a class="view-tab{raw_view_active}" href="{raw_href}">原始明细 / Raw</a>
+    </div>
     <form class="panel filters" method="get" action="">
       <label><span>关键词 / Keyword</span><input name="q" value="{q}" placeholder="搜索 query 或 reason"></label>
       {window_select}
@@ -1704,13 +1894,17 @@ def render_feedback_archive(params):
       <button type="submit">筛选 / Filter</button>
     </form>
     <div class="summary">
-      <div><strong>{total}</strong> 条反馈 / feedback · 第 {page}/{pages} 页 · 每页 {per_page}</div>
+      <div><strong>{total}</strong> {summary_label} · 第 {page}/{pages} 页 · 每页 {per_page}</div>
       <div class="pager">{prev_link}{next_link}</div>
     </div>
     <section class="panel archive-list">{rows}</section>
   </main>
 </body>
 </html>""".format(
+        cluster_view_active=cluster_view_active,
+        raw_view_active=raw_view_active,
+        clusters_href=html.escape(archive_view_url(filters, "clusters")),
+        raw_href=html.escape(archive_view_url(filters, "raw")),
         q=html.escape(filters["q"]),
         window_select=render_select(
             "window",
@@ -1736,6 +1930,7 @@ def render_feedback_archive(params):
         pp100=" selected" if per_page == 100 else "",
         pp200=" selected" if per_page == 200 else "",
         total=data["total"],
+        summary_label="个问题簇 / clusters" if filters.get("view") == "clusters" else "条反馈 / feedback",
         page=page,
         pages=pages,
         per_page=per_page,
@@ -2527,20 +2722,88 @@ def render_dashboard():
     )
 
 
+def render_dashboard_loading():
+    return """<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guanlan Telemetry</title>
+  <link rel="icon" href="/assets/guanlan-logo.svg" type="image/svg+xml">
+  <style>
+    body { margin:0; font:14px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; background:#f3f4f6; color:#1d1d1f; }
+    main { min-height:100vh; display:grid; place-items:center; padding:24px; }
+    .panel { width:min(560px, 100%); padding:28px 30px; border:1px solid #e5e7eb; border-radius:20px; background:rgba(255,255,255,0.92); box-shadow:0 14px 40px rgba(15, 23, 42, 0.06); }
+    h1 { margin:0 0 8px; font-size:24px; }
+    p { margin:0; color:#6e6e73; }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <h1>遥测面板正在刷新 / Telemetry is refreshing</h1>
+      <p>缓存正在后台重建，几秒后自动再试。</p>
+    </section>
+  </main>
+  <script>
+    window.setTimeout(function () {
+      window.location.reload();
+    }, 4000);
+  </script>
+</body>
+</html>"""
+
+
+def _build_dashboard_html():
+    html_text = render_dashboard()
+    with _DASHBOARD_CACHE_LOCK:
+        _DASHBOARD_CACHE["html"] = html_text
+        _DASHBOARD_CACHE["built_ms"] = now_ms()
+        _DASHBOARD_CACHE["refreshing"] = False
+    return html_text
+
+
+def _dashboard_refresh_worker():
+    try:
+        _build_dashboard_html()
+    except Exception:
+        with _DASHBOARD_CACHE_LOCK:
+            _DASHBOARD_CACHE["refreshing"] = False
+
+
+def ensure_dashboard_refresh():
+    with _DASHBOARD_CACHE_LOCK:
+        if _DASHBOARD_CACHE.get("refreshing"):
+            return False
+        _DASHBOARD_CACHE["refreshing"] = True
+    thread = threading.Thread(
+        target=_dashboard_refresh_worker,
+        name="guanlan-dashboard-refresh",
+        daemon=True,
+    )
+    thread.start()
+    return True
+
+
 def render_dashboard_cached(force_refresh=False):
     current = now_ms()
     with _DASHBOARD_CACHE_LOCK:
-        if (
-            not force_refresh
-            and _DASHBOARD_CACHE.get("html")
-            and current - int(_DASHBOARD_CACHE.get("built_ms") or 0)
-            < DASHBOARD_CACHE_TTL_SECONDS * 1000
-        ):
-            return _DASHBOARD_CACHE["html"]
-        html_text = render_dashboard()
-        _DASHBOARD_CACHE["html"] = html_text
-        _DASHBOARD_CACHE["built_ms"] = now_ms()
+        html_text = _DASHBOARD_CACHE.get("html") or ""
+        built_ms = int(_DASHBOARD_CACHE.get("built_ms") or 0)
+        refreshing = bool(_DASHBOARD_CACHE.get("refreshing"))
+    if force_refresh:
+        if not refreshing:
+            return _build_dashboard_html()
+        return html_text or render_dashboard_loading()
+    if html_text and current - built_ms < DASHBOARD_CACHE_TTL_SECONDS * 1000:
         return html_text
+    if html_text:
+        if not refreshing:
+            ensure_dashboard_refresh()
+        return html_text
+    if not refreshing:
+        ensure_dashboard_refresh()
+    return render_dashboard_loading()
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -2690,6 +2953,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     init_db()
+    ensure_dashboard_refresh()
     httpd = ThreadedHTTPServer((BIND_HOST, BIND_PORT), Handler)
     print("Guanlan telemetry collector listening on %s:%s" % (BIND_HOST, BIND_PORT))
     httpd.serve_forever()

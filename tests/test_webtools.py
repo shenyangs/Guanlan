@@ -1801,6 +1801,40 @@ def test_search_quality_gate_keeps_official_cjk_compound_results():
     assert "cross_border_ecommerce" in gate["matched_groups"]
 
 
+def test_search_ranking_promotes_cjk_compound_group_match(monkeypatch):
+    def fake_backend(query, limit=10, network_mode="auto"):
+        return [
+            webtools.SearchResult(
+                title="国企风采|2025年5月5日至5月11日回顾",
+                url="https://www.zhuhai.gov.cn/gzw/gkmlpt/content/3/3798/post_3798638.html",
+                snippet="珠海市国资系统一周工作动态。",
+                source="duckduckgo",
+                rank=1,
+            ),
+            webtools.SearchResult(
+                title="关于开展横琴粤澳深度合作区2025年上半年跨境电商产业扶持申报工作的通知",
+                url="https://www.hengqin.gov.cn/macao_zh_hans/zwgk/tzgg/gg/content/post_3819367.html",
+                snippet="跨境电商产业扶持申报指南。",
+                source="duckduckgo",
+                rank=2,
+            ),
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_backend)
+
+    results = webtools.search_web(
+        "珠海横琴 跨境电商政策 2025",
+        backend="duckduckgo",
+        scope="gov",
+        profile="china",
+        trace=True,
+    )
+
+    assert results[0]["url"].startswith("https://www.hengqin.gov.cn/")
+    assert results[0]["score_parts"]["cjk_group_fit"] > 0
+    assert results[1]["score_parts"]["cjk_group_mismatch_penalty"] < 0
+
+
 def test_search_quality_gate_still_rejects_cjk_drift():
     batch = [
         webtools.SearchResult(
@@ -4030,10 +4064,26 @@ def test_build_research_packet_site_request_skips_preset_scopes(monkeypatch):
             "backend": "auto",
             "profile": "china",
             "cache_ttl": 0,
+            "recovery_mode": "off",
         }
     ]
     assert packet["scope"] == "social_web"
     assert packet["scopes"] == []
+
+
+def test_research_search_uses_light_recovery_for_subroutes(monkeypatch):
+    calls = []
+
+    def fake_search(query, **kwargs):
+        calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr(webtools, "search_web", fake_search)
+
+    webtools.build_research_packet("人工智能监管", preset="policy", read_top=0)
+
+    assert [call["scope"] for call in calls] == ["gov", "party_central", None]
+    assert [call["recovery_mode"] for call in calls] == ["lite", "lite", "auto"]
 
 
 def test_build_research_packet_preset_adds_site_evidence_groups(monkeypatch):

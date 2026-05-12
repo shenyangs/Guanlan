@@ -100,6 +100,7 @@ guanlan diagnose page "URL"
 
 ```bash
 guanlan browser-assist adapters --check
+guanlan browser-assist sessions "URL" --min-visible-items 30 --json
 guanlan browser-assist run "URL" --adapter host-browser --json
 guanlan archive add-browser-note --from-json browser-notes.jsonl
 ```
@@ -107,6 +108,12 @@ guanlan archive add-browser-note --from-json browser-notes.jsonl
 `browser-assist adapters --check` 只做只读可用性探测：检查可执行文件、命令模板、平台匹配和 dry-run 构造，不会打开页面、读取浏览器状态或调用外部平台。`browser-assist run` 默认只返回宿主浏览器执行契约，告诉 Agent 该打开哪些 URL、提取哪些可见字段、哪些动作不能做。`open-cli` / `browser-use` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先安装并配置命令模板；不要为了补证临时下载 Playwright、启动独立浏览器或读取浏览器 profile。只有用户另外明确授权 Cookie 平台、用途、风险和只读范围时，才允许走 Cookie 相关流程。
 
 适配器能力要分层理解：`extractor` 才能产出浏览器可见页 JSON/JSONL，`opener` 只负责把 URL 打开。`adapters --check` 会给出 `can_open`、`can_extract_visible_text`、`can_reuse_existing_session`、`cookie_flow_available`、`capability_score` 和 `risk_score`；如果只有 opener 可用，Agent 仍需要用宿主浏览器能力提取可见正文。小红书、知乎、公众号会带平台专项字段模板，入库时保留 `browser_visible_v2`、`browser_assisted`、`visible_page_only`、`user_authorized` 和 `session_dependent` 边界。
+
+`browser-assist sessions` 是给 Agent 的会话契约，不读取浏览器状态。多步补证应使用同一目标页会话，登录、验证、SPA 跳转、排序/筛选变化后必须重新确认 URL、标题、正文和结果数，不复用旧快照。Rednote 与小红书按同类公开笔记处理，但保留平台标签。
+
+动态页不要用固定 sleep 当作就绪证据。优先等待标题/主正文出现、结果数增长、DOM 连续无增长、或宿主工具能看到的相关网络响应。`aria-label`、`placeholder`、`title`、按钮文字等会随语言环境变化，不要用单一中文/英文 UI 文本做唯一 selector；如果定位失败，输出 `selector_or_locale_mismatch` 或 `skipped_reason`，不要返回空正文假成功。
+
+列表、评论或搜索页需要较大样本时，用 `--min-visible-items` 告诉宿主 Agent 目标数量。Agent 应滚动到达到请求数量、连续两轮无新增、触达平台边界或达到滚动上限；输出里保留 `requested_min_items`、`collected_count` 和 `partial_reason`。不要为了凑数量跳到无关推荐流或私域页面。
 
 如果宿主 Agent 没有浏览器提取能力，才退回 `--url "URL" --text-file notes.md` 的手动兜底。
 

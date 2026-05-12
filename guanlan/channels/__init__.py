@@ -26,6 +26,7 @@ from .xiaohongshu import XiaoHongShuChannel
 from .xiaoyuzhou import XiaoyuzhouChannel
 from .xueqiu import XueqiuChannel
 from .youtube import YouTubeChannel
+from .zsxq import ZsxqChannel
 
 ALL_CHANNELS: List[Channel] = [
     GitHubChannel(),
@@ -41,6 +42,7 @@ ALL_CHANNELS: List[Channel] = [
     XiaoyuzhouChannel(),
     V2EXChannel(),
     XueqiuChannel(),
+    ZsxqChannel(),
     RSSChannel(),
     ExaSearchChannel(),
     OpenWebSearchChannel(),

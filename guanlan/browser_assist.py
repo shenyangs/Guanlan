@@ -56,6 +56,7 @@ FORBIDDEN_BROWSER_ASSIST_IMPLEMENTATIONS = [
 PLATFORM_HINTS: dict[str, str] = {
     "xiaohongshu.com": "xiaohongshu",
     "xhslink.com": "xiaohongshu",
+    "rednote.com": "rednote",
     "weixin.qq.com": "wechat",
     "mp.weixin.qq.com": "wechat",
     "zhihu.com": "zhihu",
@@ -68,6 +69,7 @@ PLATFORM_HINTS: dict[str, str] = {
 
 BROWSER_ASSIST_TRIGGER_PLATFORMS = {
     "xiaohongshu",
+    "rednote",
     "wechat",
     "zhihu",
     "weibo",
@@ -174,6 +176,32 @@ BROWSER_ASSIST_PLATFORM_TEMPLATES: dict[str, dict[str, Any]] = {
             "作者、发布时间缺失时保留空值，不编造。",
         ],
     },
+    "rednote": {
+        "name": "Rednote 可见笔记",
+        "evidence_role": "user_visible_sample",
+        "extract_fields": [
+            "url",
+            "title",
+            "visible_text",
+            "author",
+            "published_at",
+            "engagement_summary",
+            "visible_comment_summary",
+            "captured_at",
+            "visible_context",
+            "skipped_reason",
+        ],
+        "field_hints": [
+            "按小红书同类公开笔记处理，但保留 rednote 平台标签。",
+            "正文优先于推荐流、页脚和登录提示。",
+            "互动数仅作为样本语境，不写成平台全量结论。",
+        ],
+        "quality_checks": [
+            "visible_text 至少包含标题或正文之一。",
+            "如果只能看到登录/扫码/验证码，填写 skipped_reason=needs_login_or_verification。",
+            "作者、发布时间缺失时保留空值，不编造。",
+        ],
+    },
     "zhihu": {
         "name": "知乎可见问答",
         "evidence_role": "user_visible_answer",
@@ -251,6 +279,7 @@ def build_browser_assist_plan(
     force: bool = False,
     max_pages: int = 3,
     max_chars_per_page: int = 3000,
+    min_visible_items: int = 0,
     task_goal: str = "",
 ) -> dict[str, Any]:
     """Return a stable browser-assist plan for Agent-facing diagnostics."""
@@ -276,6 +305,7 @@ def build_browser_assist_plan(
         evidence_role="user_visible_sample" if recommended else "",
         max_pages=max_pages,
         max_chars_per_page=max_chars_per_page,
+        min_visible_items=min_visible_items,
         task_goal=task_goal,
     )
     recommended_adapter = recommend_browser_assist_adapter(platform=platform, need_extraction=True)
@@ -294,10 +324,18 @@ def build_browser_assist_plan(
         "recommended_adapter": recommended_adapter,
         "recommended_commands": [
             "guanlan browser-assist adapters --check",
-            f'guanlan browser-assist run "{normalized_url}" --adapter {recommended_adapter} --json',
+            f'guanlan browser-assist run "{normalized_url}" --adapter {recommended_adapter}'
+            + (f" --min-visible-items {max(int(min_visible_items or 0), 0)}" if int(min_visible_items or 0) > 0 else "")
+            + " --json",
             "guanlan archive add-browser-note --from-json browser-notes.jsonl",
         ],
         "failure_taxonomy": browser_assist_failure_taxonomy(),
+        "session_contract": build_browser_assist_session_contract(
+            normalized_url,
+            platform=platform,
+            task_goal=task_goal,
+            min_visible_items=min_visible_items,
+        ),
         "user_prompt": user_prompt,
         "agent_execution_rule": (
             "Use only the host Agent's already-available browser/computer-use/webview tool. "
@@ -313,6 +351,8 @@ def build_browser_assist_plan(
             "如确实需要 Cookie，必须暂停当前任务，单独征求用户对具体平台和用途的明确授权。",
             "不执行点赞、评论、关注、发帖、私信、下单、提交表单等写操作。",
             "补证内容可能依赖用户当前浏览器状态，应标注 browser_assisted 和 visible_page_only。",
+            "多步补证要绑定同一目标页会话；页面跳转、登录、SPA 变化后重新确认 URL 和标题，不复用旧快照。",
+            "等待动态内容时优先使用可见正文、结果数增长、DOM 变化或网络响应等就绪信号，不用固定 sleep 当作证据充分。",
         ],
         "archive_next_step": "guanlan archive add-browser-note --from-json browser-notes.jsonl",
         "manual_fallback_next_step": 'guanlan archive add-browser-note --url "URL" --text-file notes.md',
@@ -370,6 +410,8 @@ def build_browser_assist_adapter_contract(adapter: str = "host-browser", *, plat
             max_pages=1,
             max_chars_per_page=3000,
         )["output_schema"],
+        "readiness_contract": browser_assist_readiness_contract(platform=platform),
+        "repair_protocol": browser_assist_repair_protocol(adapter_id),
         "archive_next_step": "guanlan archive add-browser-note --from-json browser-notes.jsonl",
         "safety": {
             "read_only": True,
@@ -527,6 +569,7 @@ def run_browser_assist_adapter(
     platform: str = "",
     max_pages: int = 3,
     max_chars_per_page: int = 3000,
+    min_visible_items: int = 0,
     task_goal: str = "",
 ) -> dict[str, Any]:
     """Build or execute a browser-assist adapter bridge.
@@ -547,6 +590,7 @@ def run_browser_assist_adapter(
         force=True,
         max_pages=max(max_pages, 1),
         max_chars_per_page=max(max_chars_per_page, 1),
+        min_visible_items=max(min_visible_items, 0),
         task_goal=task_goal,
     )
     if inferred_platform:
@@ -746,6 +790,7 @@ def build_browser_assist_task(
     evidence_role: str = "user_visible_sample",
     max_pages: int = 3,
     max_chars_per_page: int = 3000,
+    min_visible_items: int = 0,
     task_goal: str = "",
 ) -> dict[str, Any]:
     """Build the host-browser task description for Agent platforms.
@@ -758,6 +803,7 @@ def build_browser_assist_task(
     clean_urls = _unique(urls)
     max_pages = max(max_pages, 1)
     max_chars_per_page = max(max_chars_per_page, 1)
+    min_visible_items = max(min_visible_items, 0)
     template = browser_assist_platform_template(platform)
     extract_fields = _unique(
         [*(template.get("extract_fields") or []), "url", "title", "visible_text", "captured_at", "skipped_reason"]
@@ -805,6 +851,18 @@ def build_browser_assist_task(
             platform=platform,
             extract_fields=extract_fields,
             max_chars_per_page=max_chars_per_page,
+            min_visible_items=min_visible_items,
+        ),
+        "session_contract": build_browser_assist_session_contract(
+            clean_urls[0] if clean_urls else "",
+            platform=platform,
+            task_goal=task_goal,
+            min_visible_items=min_visible_items,
+        ),
+        "readiness_contract": browser_assist_readiness_contract(platform=platform),
+        "sufficiency_contract": browser_assist_sufficiency_contract(
+            platform=platform,
+            min_visible_items=min_visible_items,
         ),
         "archive_commands": [
             "guanlan archive add-browser-note --from-json browser-notes.jsonl",
@@ -832,6 +890,8 @@ def build_browser_assist_task(
             "url 必须是目标页或同一任务候选页，不要把推荐流无关页面混入。",
             "如果只能看到登录提示、验证码或空壳，应输出 skipped_reason，而不是伪造成正文证据。",
             "补证材料必须标注 browser_assisted / visible_page_only / user_authorized / session_dependent。",
+            "不要只因为固定等待结束就认为页面已充分加载；必须满足 readiness_contract 或填写 skipped_reason。",
+            "列表/评论/搜索页如果设置了 min_visible_items，应滚动到足够条数、连续无增长或达到上限，并输出 collected_count 与 partial_reason。",
         ],
         "allowed_actions": ALLOWED_BROWSER_ASSIST_ACTIONS,
         "forbidden_actions": FORBIDDEN_BROWSER_ASSIST_ACTIONS,
@@ -875,6 +935,7 @@ def build_browser_assist_execution_contract(
     platform: str = "",
     extract_fields: list[str] | None = None,
     max_chars_per_page: int = 3000,
+    min_visible_items: int = 0,
 ) -> dict[str, Any]:
     """Stable instructions that host agents can execute with their own browser tool."""
 
@@ -886,6 +947,12 @@ def build_browser_assist_execution_contract(
         "urls": _unique(urls),
         "extract_fields": fields,
         "max_chars_per_page": max(max_chars_per_page, 1),
+        "min_visible_items": max(min_visible_items, 0),
+        "readiness_contract": browser_assist_readiness_contract(platform=platform),
+        "sufficiency_contract": browser_assist_sufficiency_contract(
+            platform=platform,
+            min_visible_items=min_visible_items,
+        ),
         "wait_for_user_steps": [
             "login",
             "verification",
@@ -894,6 +961,7 @@ def build_browser_assist_execution_contract(
         "success_criteria": [
             "url matches the target page or task candidate page",
             "visible_text or skipped_reason is present",
+            "if min_visible_items > 0, collected_count or partial_reason is present",
             "browser_assisted=true, visible_page_only=true, user_authorized=true, session_dependent=true",
         ],
         "failure_reasons": list(browser_assist_failure_taxonomy().keys()),
@@ -906,6 +974,9 @@ def build_browser_assist_execution_contract(
             "captured_at": "iso8601_or_unix_timestamp",
             "visible_context": "string",
             "skipped_reason": "string",
+            "requested_min_items": "integer",
+            "collected_count": "integer",
+            "partial_reason": "string",
             "platform": "string",
             "source_mode": "browser_visible",
             "browser_assisted": True,
@@ -941,6 +1012,135 @@ def browser_assist_platform_template(platform: str = "") -> dict[str, Any]:
     return template
 
 
+def build_browser_assist_session_contract(
+    url: str = "",
+    *,
+    platform: str = "",
+    task_goal: str = "",
+    min_visible_items: int = 0,
+) -> dict[str, Any]:
+    """Return a host-agent session contract without touching browser state."""
+
+    normalized_url = str(url or "").strip()
+    inferred_platform = platform or platform_hint(normalized_url)
+    safe_host = urlparse(normalized_url).netloc.lower().replace(":", "-") or "target"
+    session_id = f"guanlan-visible-{safe_host}"[:80]
+    return {
+        "version": "browser_visible_session_v1",
+        "session_id_hint": session_id,
+        "platform": inferred_platform,
+        "target_url": normalized_url,
+        "task_goal": task_goal or "只读补充目标页浏览器可见证据",
+        "ownership": "host_agent_existing_browser_only",
+        "requires_user_authorization": True,
+        "user_may_login_or_verify": True,
+        "agent_allowed_to_bind_visible_tab": True,
+        "agent_must_not_create_private_browser_profile": True,
+        "agent_must_not_read_browser_profile_or_storage": True,
+        "same_session_rules": [
+            "同一补证任务使用同一 session_id_hint，避免把多个平台或多个账号的页面混在一起。",
+            "每次读取前确认当前 tab 的 URL 与 target_url 或候选 URL 同源/同任务。",
+            "登录、验证、SPA 跳转、排序/筛选变化后重新获取标题、URL、正文和结果数，不复用旧快照。",
+            "多 tab 场景必须显式记录读取的是哪个目标页；不读取无关 tab。",
+        ],
+        "readiness_signals": browser_assist_readiness_contract(platform=inferred_platform),
+        "sufficiency_contract": browser_assist_sufficiency_contract(
+            platform=inferred_platform,
+            min_visible_items=min_visible_items,
+        ),
+        "timeout_budget_seconds": 90,
+        "timeout_budget_ms": 90000,
+        "unit_rule": "timeout_budget_seconds 用秒；字段名是 timeout_ms/timeout_milliseconds 时用毫秒，90 秒 = 90000 ms。",
+        "release_rule": "完成目标页提取或遇到 private_area_detected/cookie_authorization_required 后结束本次会话，不继续浏览无关页面。",
+        "output_boundary": {
+            "source_mode": "browser_visible",
+            "browser_assisted": True,
+            "visible_page_only": True,
+            "user_authorized": True,
+            "session_dependent": True,
+        },
+    }
+
+
+def browser_assist_readiness_contract(*, platform: str = "") -> dict[str, Any]:
+    """Describe robust page-readiness signals for host browser extraction."""
+
+    platform_label = platform or "generic"
+    return {
+        "platform": platform_label,
+        "principle": "优先等待可解释的内容就绪信号；固定 sleep 只能作为最后兜底，不能单独证明页面已加载充分。",
+        "preferred_signals": [
+            "target_url_or_same_task_candidate_confirmed",
+            "title_or_primary_heading_visible",
+            "main_visible_text_non_empty",
+            "result_count_or_visible_card_count_increased",
+            "dom_mutation_plateau_after_scroll",
+            "relevant_network_response_seen_if_host_tool_exposes_network",
+        ],
+        "avoid_as_primary_signal": [
+            "fixed_sleep_only",
+            "screenshot_only_without_text",
+            "localized_aria_label_or_placeholder_only",
+            "stale_ref_from_previous_snapshot",
+        ],
+        "selector_guidance": [
+            "aria-label、placeholder、title、alt、按钮可见文案会随语言环境变化；不要把单一中文/英文 UI 文本当稳定锚点。",
+            "优先使用稳定 data-*、URL、结构化正文区域、文章/卡片容器、同源网络响应或多语言 fallback。",
+            "页面变化后重新定位元素；如果定位不到，输出 skipped_reason=selector_or_locale_mismatch，不要返回空正文假成功。",
+        ],
+    }
+
+
+def browser_assist_sufficiency_contract(*, platform: str = "", min_visible_items: int = 0) -> dict[str, Any]:
+    """Return collection sufficiency rules for dynamic lists and social pages."""
+
+    target = max(int(min_visible_items or 0), 0)
+    platform_label = platform or "generic"
+    list_like = platform_label in {"xiaohongshu", "rednote", "zhihu", "weibo", "bilibili", "douban", "linkedin"}
+    return {
+        "platform": platform_label,
+        "requested_min_items": target,
+        "applies_to": "list_or_comment_or_search_page" if list_like or target else "article_or_single_page",
+        "rules": [
+            "单篇文章/笔记页优先保证标题、正文、作者/账号、发布时间和 URL。",
+            "列表、评论或搜索页需要结果池时，不要只取首屏；滚动到 requested_min_items、连续两轮无新增、触达平台边界或达到滚动上限后停止。",
+            "停止时输出 collected_count；未达到 requested_min_items 时输出 partial_reason，例如 plateaued、login_gate、rate_limited、no_more_results。",
+            "不要为了凑数量跳到无关推荐流或私域页面。",
+        ],
+        "default_scroll_policy": {
+            "max_scroll_rounds": 15 if list_like or target else 3,
+            "plateau_rounds": 2,
+            "wait_after_growth_ms": 200,
+            "max_wait_per_scroll_ms": 2500,
+        },
+    }
+
+
+def browser_assist_repair_protocol(adapter_id: str = "host-browser") -> dict[str, Any]:
+    """Agent-readable failure repair protocol for browser-assist adapters."""
+
+    return {
+        "version": "browser_assist_repair_v1",
+        "adapter": adapter_id,
+        "max_rounds": 3,
+        "when_to_use": "适配器打开失败、可见正文为空、结果数明显少于请求、selector/locale 漂移或外部 CLI stdout 无法解析时。",
+        "steps": [
+            "保留原始任务 URL、平台、adapter、command_preview、status、error、stdout_preview、stderr_preview。",
+            "不要立刻扩大权限；先用 adapters --check 或同一 host-browser 会话重新确认平台、URL、可见状态和 readiness 信号。",
+            "如果是 selector_or_locale_mismatch，改用稳定结构、URL、data-* 或多语言 fallback；不要把空结果当成功。",
+            "如果是 insufficient_visible_items，按 sufficiency_contract 继续滚动或输出 partial_reason。",
+            "如果是 auth/login/captcha/rate_limit/private_area，停止并让用户处理或说明边界，不改成 Cookie 流。",
+            "最多重试 3 轮；仍失败时报告失败类型、已尝试步骤和下一步授权需求。",
+        ],
+        "never_fix_by": [
+            "读取 Cookie/Token/浏览器 profile",
+            "安装独立浏览器或 Playwright 来模拟用户登录态",
+            "执行点赞、评论、关注、发布、提交表单等写操作",
+            "降低字段/数量要求来伪造成功",
+        ],
+    }
+
+
 def recommend_browser_assist_adapter(*, platform: str = "", need_extraction: bool = True) -> str:
     """Pick the least surprising adapter for Agent-facing plans."""
 
@@ -963,6 +1163,10 @@ def browser_assist_failure_taxonomy() -> dict[str, str]:
         "target_url_mismatch": "浏览器实际页面不是任务目标 URL 或同一候选页。",
         "private_area_detected": "页面进入私信、订单、后台、账号设置、支付或其他无关个人区域。",
         "cookie_authorization_required": "仅靠可见页仍不足，下一步需要单独 Cookie 授权。",
+        "selector_or_locale_mismatch": "选择器、aria-label、placeholder、title 或可见文案因语言/DOM 漂移失效。",
+        "insufficient_visible_items": "列表/评论/搜索页采集条数低于请求数量，且未给出充分 partial_reason。",
+        "fixed_sleep_readiness_untrusted": "仅靠固定等待判断页面就绪，缺少正文、结果数、DOM 或网络就绪信号。",
+        "session_drift": "多步补证过程中 tab、账号、URL 或目标页发生漂移，需要重新确认会话边界。",
     }
 
 
@@ -1127,6 +1331,9 @@ def normalize_browser_visible_payload(payload: dict[str, Any]) -> dict[str, Any]
         "skipped_reason": str(payload.get("skipped_reason") or "").strip(),
         "engagement_summary": str(payload.get("engagement_summary") or "").strip(),
         "visible_comment_summary": str(payload.get("visible_comment_summary") or "").strip(),
+        "requested_min_items": int(payload.get("requested_min_items") or 0),
+        "collected_count": int(payload.get("collected_count") or 0),
+        "partial_reason": str(payload.get("partial_reason") or "").strip(),
         "question": str(payload.get("question") or "").strip(),
         "account": str(payload.get("account") or "").strip(),
         "source_mode": str(payload.get("source_mode") or "browser_visible").strip(),

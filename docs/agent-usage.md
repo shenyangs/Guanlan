@@ -32,8 +32,9 @@
 - 用户需要建议、影响判断、下一步行动，或询问“为什么会搜这个”时，优先使用 `research --advisor`，但把助理视角当作证据边界和写作规则，由你结合用户问题生成自然建议；不要机械复述模板，也不要当作用户真实意图。
 - 不确定该查哪些信源时，先用 `guanlan route "关键词"` 看需求路由；路由计划是软约束，优先源用于提高适配度，开放网页兜底用于防止信源池过窄。
 - 页面读不出来时，先用 `guanlan diagnose page "URL"` 判断是可读正文、动态页壳、访问门槛、搜索兜底还是弱正文；不要把搜索兜底当原文，也不要反复重试登录/WAF 页面。
-- 如果 `diagnose page` 输出 `browser_assist.recommended=true`，先请求用户授权，再使用宿主浏览器打开目标 URL 并只读取目标页面的浏览器可见内容作为补证；如需登录、验证或切换账号，让用户自己在浏览器里完成；本次可见页补证不要读取 Cookie、Token、钥匙串、私信、订单、后台或无关个人资料；如果仍需 Cookie，必须另行说明平台、用途和风险并获得用户明确同意，也不要执行任何写操作。授权后先用 `guanlan browser-assist adapters --check` 查看当前适配器的只读自检结果，再用 `guanlan browser-assist run "URL" --adapter host-browser --json` 取得宿主浏览器执行契约；可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库。`open-cli` / `browser-use` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
+- 如果 `diagnose page` 输出 `browser_assist.recommended=true`，先请求用户授权，再使用宿主浏览器打开目标 URL 并只读取目标页面的浏览器可见内容作为补证；如需登录、验证或切换账号，让用户自己在浏览器里完成；本次可见页补证不要读取 Cookie、Token、钥匙串、私信、订单、后台或无关个人资料；如果仍需 Cookie，必须另行说明平台、用途和风险并获得用户明确同意，也不要执行任何写操作。授权后先用 `guanlan browser-assist adapters --check` 查看当前适配器的只读自检结果，用 `guanlan browser-assist sessions "URL" --json` 获取同一目标页会话契约，再用 `guanlan browser-assist run "URL" --adapter host-browser --json` 取得宿主浏览器执行契约；可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库。`open-cli` / `browser-use` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
 - 浏览器补证适配器分为 `extractor` 和 `opener`：`extractor` 能产出可入库的可见页 JSON/JSONL，`opener` 只负责打开 URL。`guanlan browser-assist adapters --check` 会返回 `can_open`、`can_extract_visible_text`、`can_reuse_existing_session`、`cookie_flow_available`、`capability_score`、`risk_score`；如果只有 opener 可用，仍需宿主 Agent 浏览器提取可见正文。小红书、知乎、公众号会带平台专项字段模板，入库保留 `browser_visible_v2` 与 `session_dependent` 边界。
+- 浏览器补证不要把固定 sleep 当作就绪证据；优先等待标题/正文、结果数增长、DOM 稳定或相关网络响应。UI 文本、`aria-label`、`placeholder` 和 `title` 可能随语言变化，selector 失败时输出 `selector_or_locale_mismatch` 或 `skipped_reason`。列表、评论、搜索页需要样本池时用 `--min-visible-items`，并输出 `requested_min_items`、`collected_count`、`partial_reason`。
 - 高频垂直任务用 `guanlan recipe list` / `guanlan recipe run <recipe> "问题"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`、`wps-office-radar`。
 
 ## 信源矩阵与公开基准
@@ -127,6 +128,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “页面读出来像脚本/登录墙/兜底” | `guanlan diagnose page "URL"` |
 | “需要生成浏览器可见页补证任务” | `guanlan browser-assist plan "URL" --json` |
 | “查看浏览器补证适配器” | `guanlan browser-assist adapters --check` |
+| “生成浏览器补证会话契约” | `guanlan browser-assist sessions "URL" --json` |
 | “生成宿主浏览器执行契约” | `guanlan browser-assist run "URL" --adapter host-browser --json` |
 | “用户授权后把浏览器可见页补证入库” | `guanlan archive add-browser-note --from-json browser-notes.jsonl` |
 | “按固定流程查高校/财经/口碑/安全/技术/WPS 选题” | `guanlan recipe list`，再 `guanlan recipe run wps-office-radar "WPS AI 选题线索"` |

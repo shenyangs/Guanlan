@@ -143,6 +143,7 @@ guanlan doctor --auth-check
 | 微博 | `guanlan install --env=auto --channels=weibo` | 用于热搜、搜索和公开内容读取。 |
 | 微信公众号 | `guanlan install --env=auto --channels=wechat` | 安装后只代表 backend-ready，端到端稳定性仍需按文章验证。 |
 | 小红书 | `guanlan install --env=auto --channels=xiaohongshu` | 通常需要登录态。 |
+| 知识星球 | `guanlan install --env=auto --channels=zsxq` | 需要用户账号授权；默认只读，发帖/评论/标签等写操作必须确认。 |
 | Reddit | `guanlan install --env=auto --channels=reddit` | 部分网络环境需要认证或代理。 |
 | B站增强 | `guanlan install --env=auto --channels=bilibili` | 在基础视频能力上补热门、排行、搜索。 |
 | 小宇宙 | `guanlan install --env=auto --channels=xiaoyuzhou` | 转录需要 Groq API Key。 |

@@ -59,6 +59,8 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "advisor" in research_tool["inputSchema"]["properties"]
     assert "advisor=true" in research_tool["description"]
     assert "writing rules" in research_tool["description"]
+    assert "180-300 seconds" in research_tool["description"]
+    assert "300000 ms" in research_tool["description"]
     assert "助理视角规则" in research_tool["inputSchema"]["properties"]["advisor"]["description"]
     assert "backend" in hotnews_tool["inputSchema"]["properties"]
     assert "newsnow_base_url" in hotnews_tool["inputSchema"]["properties"]

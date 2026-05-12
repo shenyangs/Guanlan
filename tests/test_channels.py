@@ -29,6 +29,7 @@ class TestChannelRegistry:
         assert "github" in names
         assert "twitter" in names
         assert "v2ex" in names
+        assert "zsxq" in names
 
 
 class TestHotNewsChannel:
@@ -460,3 +461,25 @@ class TestXiaoHongShuChannel:
         status, msg = XiaoHongShuChannel().check()
         assert status == "off"
         assert "xiaohongshu-cli" in msg
+
+
+class TestZsxqChannel:
+    def test_can_handle_zsxq_domains(self):
+        from guanlan.channels.zsxq import ZsxqChannel
+
+        channel = ZsxqChannel()
+
+        assert channel.can_handle("https://wx.zsxq.com/dweb2/index/group/123")
+        assert channel.can_handle("https://garden.zsxq.com/skill/")
+        assert not channel.can_handle("https://example.com/skill/")
+
+    def test_reports_off_when_not_installed(self, monkeypatch):
+        from guanlan.channels.zsxq import ZsxqChannel
+
+        monkeypatch.setattr(shutil, "which", lambda _cmd: None)
+
+        status, msg = ZsxqChannel().check()
+
+        assert status == "off"
+        assert "zsxq-cli" in msg
+        assert "auth login" in msg

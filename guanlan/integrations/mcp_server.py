@@ -299,7 +299,10 @@ def _tool_definitions() -> list[dict]:
                 "Build an agent-ready research evidence packet. Prefer a broad limit such as 80-100 for "
                 "serious research. Set advisor=true when the user wants advice, next steps, implications, "
                 "risk reminders, or cautious hypotheses about why they may be searching; the advisor block "
-                "returns evidence-bound writing rules for the agent, not final advice or the user's true intent."
+                "returns evidence-bound writing rules for the agent, not final advice or the user's true intent. "
+                "Use an outer timeout budget of 180-300 seconds for research; if the host field is named "
+                "timeout_ms or timeout_milliseconds, convert explicitly, for example 300 seconds = 300000 ms. "
+                "On timeout, retry once with cache_ttl=3600 where available or reduce read_top before reducing limit."
             ),
             "inputSchema": {
                 "type": "object",

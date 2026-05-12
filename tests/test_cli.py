@@ -229,6 +229,31 @@ class TestCLI:
         assert data["recommended_adapter"] == "host-browser"
         assert data["cookie_access_policy"]["default"] == "forbidden_for_visible_page_task"
         assert "read_cookies" in data["forbidden_actions"]
+        assert data["session_contract"]["version"] == "browser_visible_session_v1"
+        assert "fixed_sleep_only" in data["browser_assist_task"]["readiness_contract"]["avoid_as_primary_signal"]
+
+    def test_browser_assist_plan_supports_rednote_and_collection_sufficiency(self, capsys):
+        with patch(
+            "sys.argv",
+            [
+                "guanlan",
+                "browser-assist",
+                "plan",
+                "https://www.rednote.com/explore/demo",
+                "--min-visible-items",
+                "30",
+                "--json",
+            ],
+        ):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["platform"] == "rednote"
+        task = data["browser_assist_task"]
+        assert task["platform_template"]["name"] == "Rednote 可见笔记"
+        assert task["sufficiency_contract"]["requested_min_items"] == 30
+        assert "collected_count" in task["execution_contract"]["output_schema"]
 
     def test_browser_assist_adapters_command_lists_host_and_external(self, capsys):
         with patch("sys.argv", ["guanlan", "browser-assist", "adapters", "--json"]):
@@ -243,6 +268,30 @@ class TestCLI:
         assert host["capability_layer"] == "extractor"
         assert host["capability_score"] >= 90
         assert host["safety"]["cookie_access_requires_separate_explicit_authorization"] is True
+        assert "readiness_contract" in host
+        assert "repair_protocol" in host
+
+    def test_browser_assist_sessions_command_returns_contract(self, capsys):
+        with patch(
+            "sys.argv",
+            [
+                "guanlan",
+                "browser-assist",
+                "sessions",
+                "https://www.xiaohongshu.com/explore/demo",
+                "--min-visible-items",
+                "20",
+                "--json",
+            ],
+        ):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["version"] == "browser_visible_session_v1"
+        assert data["platform"] == "xiaohongshu"
+        assert data["sufficiency_contract"]["requested_min_items"] == 20
+        assert data["timeout_budget_ms"] == 90000
 
     def test_browser_assist_run_browser_use_without_install_is_actionable(self, capsys, monkeypatch):
         monkeypatch.setattr("shutil.which", lambda _: None)

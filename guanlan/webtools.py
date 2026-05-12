@@ -50,6 +50,12 @@ from guanlan.search_quality import (
     filter_unsafe_search_results as _filter_unsafe_search_results,
 )
 from guanlan.search_quality import (
+    matched_relevance_groups as _matched_relevance_groups,
+)
+from guanlan.search_quality import (
+    query_relevance_groups as _query_relevance_groups,
+)
+from guanlan.search_quality import (
     query_relevance_terms as _query_relevance_terms,
 )
 from guanlan.search_quality import (
@@ -1324,12 +1330,18 @@ def search_web(
     cache_ttl: int = 0,
     use_cache: bool = True,
     strict_scope: bool = False,
+    recovery_mode: str = "auto",
 ) -> list[dict[str, Any]]:
     """Search the web and return normalized result dictionaries."""
     original_query = query.strip()
     query = original_query
     if not original_query:
         raise ValueError("query is required")
+    recovery_mode = (recovery_mode or "auto").strip().lower()
+    if recovery_mode not in {"auto", "lite", "off"}:
+        recovery_mode = "auto"
+    scoped_fallback_enabled = recovery_mode in {"auto", "lite"}
+    full_recovery_enabled = recovery_mode == "auto"
     network_mode = _normalize_network_mode(network_mode)
     requested_scope = scope
     effective_scope = _effective_search_scope(original_query, scope)
@@ -1585,7 +1597,8 @@ def search_web(
             else:
                 raise ValueError(f"unknown backend: {name}")
             if (
-                not batch
+                scoped_fallback_enabled
+                and not batch
                 and effective_scope
                 and effective_scope != "university"
                 and not site
@@ -1639,7 +1652,7 @@ def search_web(
                 attempt["network_mode"] = _first_ok_network_mode(network_attempts)
             batch_quality = _assess_backend_batch_quality(original_query, batch, quality)
             attempt["quality_gate"] = batch_quality
-            if not batch and name == "bing" and _contains_cjk(original_query):
+            if full_recovery_enabled and not batch and name == "bing" and _contains_cjk(original_query):
                 recovered_batch, recovered_attempts, recovery_trace = _try_bing_generic_recovery(
                     original_query,
                     limit=limit,
@@ -1666,63 +1679,72 @@ def search_web(
                     continue
             if batch and not batch_quality["usable"] and (backend == "auto" or name == "bing"):
                 if name == "bing" and _contains_cjk(original_query):
-                    recovered_batch, recovered_attempts, recovery_trace = _try_bing_generic_recovery(
-                        original_query,
-                        limit=limit,
-                        network_mode=network_mode,
-                        profile=profile,
-                        quality=quality,
-                    )
-                    if recovered_attempts:
-                        network_attempts.extend(recovered_attempts)
-                        attempt["network_attempts"] = network_attempts
-                        attempt["network_mode"] = _first_ok_network_mode(network_attempts)
-                    if recovery_trace:
-                        attempt["bing_generic_recovery"] = recovery_trace
-                    if recovered_batch:
-                        batch = recovered_batch
-                        attempt["result_count"] = len(batch)
-                        attempt["quality_gate"] = recovery_trace.get("quality_gate", batch_quality)
-                        attempt["status"] = "ok"
-                        attempt["note"] = (
-                            "Bing CN 入口中文召回疑似漂移；观澜已补跑 Bing generic 入口，"
-                            "并仅保留通过相关性门控的候选。"
+                    if full_recovery_enabled:
+                        recovered_batch, recovered_attempts, recovery_trace = _try_bing_generic_recovery(
+                            original_query,
+                            limit=limit,
+                            network_mode=network_mode,
+                            profile=profile,
+                            quality=quality,
                         )
-                        results.extend(batch)
-                        continue
-                    recovered_batch, recovered_attempts, recovery_trace = _try_bing_cjk_variant_recovery(
-                        original_query,
-                        limit=limit,
-                        network_mode=network_mode,
-                        profile=profile,
-                        quality=quality,
-                    )
-                    if recovered_attempts:
-                        network_attempts.extend(recovered_attempts)
-                        attempt["network_attempts"] = network_attempts
-                        attempt["network_mode"] = _first_ok_network_mode(network_attempts)
-                    if recovery_trace:
-                        attempt["bing_cjk_recovery"] = recovery_trace
-                    if recovered_batch:
-                        batch = recovered_batch
-                        attempt["result_count"] = len(batch)
-                        attempt["quality_gate"] = recovery_trace.get("quality_gate", batch_quality)
-                        attempt["status"] = "ok"
-                        attempt["note"] = (
-                            "Bing 原始中文召回疑似漂移；观澜已补跑 Bing 中文消歧 query，"
-                            "并仅保留通过相关性门控的候选。"
+                        if recovered_attempts:
+                            network_attempts.extend(recovered_attempts)
+                            attempt["network_attempts"] = network_attempts
+                            attempt["network_mode"] = _first_ok_network_mode(network_attempts)
+                        if recovery_trace:
+                            attempt["bing_generic_recovery"] = recovery_trace
+                        if recovered_batch:
+                            batch = recovered_batch
+                            attempt["result_count"] = len(batch)
+                            attempt["quality_gate"] = recovery_trace.get("quality_gate", batch_quality)
+                            attempt["status"] = "ok"
+                            attempt["note"] = (
+                                "Bing CN 入口中文召回疑似漂移；观澜已补跑 Bing generic 入口，"
+                                "并仅保留通过相关性门控的候选。"
+                            )
+                            results.extend(batch)
+                            continue
+                        recovered_batch, recovered_attempts, recovery_trace = _try_bing_cjk_variant_recovery(
+                            original_query,
+                            limit=limit,
+                            network_mode=network_mode,
+                            profile=profile,
+                            quality=quality,
                         )
-                        results.extend(batch)
-                        continue
-                    if backend == "auto":
-                        _record_bing_cjk_drift()
-                    attempt["bing_issue"] = {
-                        "type": "cjk_retrieval_drift",
-                        "agent_note": (
-                            "Bing 本轮中文开放网页召回明显漂移；这是 Bing 候选池/排序问题，"
-                            "不是观澜质量门槛过紧。观澜已拒绝污染结果并继续兜底。"
-                        ),
-                    }
+                        if recovered_attempts:
+                            network_attempts.extend(recovered_attempts)
+                            attempt["network_attempts"] = network_attempts
+                            attempt["network_mode"] = _first_ok_network_mode(network_attempts)
+                        if recovery_trace:
+                            attempt["bing_cjk_recovery"] = recovery_trace
+                        if recovered_batch:
+                            batch = recovered_batch
+                            attempt["result_count"] = len(batch)
+                            attempt["quality_gate"] = recovery_trace.get("quality_gate", batch_quality)
+                            attempt["status"] = "ok"
+                            attempt["note"] = (
+                                "Bing 原始中文召回疑似漂移；观澜已补跑 Bing 中文消歧 query，"
+                                "并仅保留通过相关性门控的候选。"
+                            )
+                            results.extend(batch)
+                            continue
+                        if backend == "auto":
+                            _record_bing_cjk_drift()
+                        attempt["bing_issue"] = {
+                            "type": "cjk_retrieval_drift",
+                            "agent_note": (
+                                "Bing 本轮中文开放网页召回明显漂移；这是 Bing 候选池/排序问题，"
+                                "不是观澜质量门槛过紧。观澜已拒绝污染结果并继续兜底。"
+                            ),
+                        }
+                    else:
+                        attempt["bing_issue"] = {
+                            "type": "cjk_retrieval_drift_recovery_skipped",
+                            "agent_note": (
+                                "research 子搜索已跳过昂贵 Bing 纠偏；如该 scope 仍缺证据，"
+                                "单独补跑对应 `guanlan search ... --trace`。"
+                            ),
+                        }
                 attempt["status"] = _LOW_RELEVANCE_RESULT_STATUS
                 attempt["note"] = str(batch_quality["note"])
                 attempt["rejected_samples"] = _diagnostic_result_samples(batch)
@@ -1747,7 +1769,7 @@ def search_web(
         finally:
             backend_diagnostics.append(attempt)
 
-    if backend in {"auto", "duckduckgo"} and not site and effective_scope != "university":
+    if full_recovery_enabled and backend in {"auto", "duckduckgo"} and not site and effective_scope != "university":
         _run_duckduckgo_recovery_pass(
             results,
             diagnostics=backend_diagnostics,
@@ -1764,7 +1786,7 @@ def search_web(
             strict_scope=strict_scope,
         )
 
-    if backend in {"auto", "duckduckgo"} and not site and effective_scope != "university":
+    if full_recovery_enabled and backend in {"auto", "duckduckgo"} and not site and effective_scope != "university":
         _run_multi_entity_fanout_pass(
             results,
             diagnostics=backend_diagnostics,
@@ -5311,6 +5333,7 @@ def _research_search(
                 backend=search_backend,
                 profile=profile,
                 cache_ttl=cache_ttl,
+                recovery_mode="auto" if job_type == "general" else ("lite" if job_type == "scope" else "off"),
             )
             combined.extend(result)
             groups.append({"type": job_type, "label": target, "query": job_query, "result_count": len(result), "results": result})
@@ -8666,7 +8689,8 @@ def build_query_strategy(
     if query_shape.get("rewritten") and query_shape.get("backend_query"):
         add("query_rewrite", str(query_shape.get("backend_query")), "对过短、过长、歧义或多实体 query 先做搜索友好的重写")
     if {"policy", "official_position", "local"} & set(intents):
-        add("official_primary", f"{clean_query} 官方 原文 通知", "政策/官方问题先找一手口径")
+        official_terms = "扶持 申报 通知 政策" if any(term in clean_query for term in ("跨境电商", "跨境电子商务", "横琴")) else "官方 原文 通知"
+        add("official_primary", f"{clean_query} {official_terms}", "政策/官方问题先找一手口径")
         add("authoritative_report", f"{clean_query} 人民日报 新华社 央视", "补党央媒与权威报道")
     if "global_policy" in intents:
         add("official_primary", f"{clean_query} official regulation standard primary source", "英文政策/监管问题先找官方或标准组织原文")
@@ -9393,6 +9417,8 @@ def _score_result_parts(
         "source_risk_penalty": 0.0,
         "entity_match": 0.0,
         "entity_mismatch_penalty": 0.0,
+        "cjk_group_fit": 0.0,
+        "cjk_group_mismatch_penalty": 0.0,
         "semantic_noise_penalty": 0.0,
         "stale_penalty": 0.0,
     }
@@ -9436,6 +9462,26 @@ def _score_result_parts(
     if terms:
         matched = sum(1 for term in terms if term in title_text)
         parts["keyword_match"] = min(matched / max(len(terms), 1), 1.0) * 0.8
+    if _contains_cjk(query):
+        groups = _query_relevance_groups(query)
+        if groups:
+            matched_groups = _matched_relevance_groups([item], groups)
+            required_groups = {
+                str(group.get("name"))
+                for group in groups
+                if str(group.get("name")) in {"cross_border_ecommerce", "solid_state_battery", "hara_kenya_design"}
+            }
+            group_ratio = len(matched_groups) / max(len(groups), 1)
+            parts["cjk_group_fit"] = group_ratio * 0.95
+            missing_required = required_groups - matched_groups
+            if missing_required:
+                parts["cjk_group_mismatch_penalty"] -= 1.7 + min(len(missing_required), 2) * 0.35
+            if len(groups) >= 2 and not matched_groups:
+                parts["cjk_group_mismatch_penalty"] -= 1.15
+            if route_intents & {"policy", "official_position", "local", "ecommerce"} and len(matched_groups) < min(2, len(groups)):
+                parts["cjk_group_mismatch_penalty"] -= 0.65
+            if required_groups and required_groups <= matched_groups and len(matched_groups) >= min(2, len(groups)):
+                parts["cjk_group_fit"] += 0.55
     first_backend = (item.source.split("+")[0] or "").strip()
     if first_backend in backend_order:
         parts["backend_priority"] = max(0, len(backend_order) - backend_order.index(first_backend)) * 0.05
@@ -9724,20 +9770,25 @@ def _order_topic_representatives_first(results: list[SearchResult]) -> list[Sear
 
 
 def _interleave_by_source_type(results: list[SearchResult]) -> list[SearchResult]:
-    """Prefer source-type diversity among already-ranked representative items."""
-    buckets: dict[str, list[SearchResult]] = {}
-    for item in results:
-        key = item.source_type or "通用网页"
-        buckets.setdefault(key, []).append(item)
-
+    """Prefer source diversity only among similarly scored representatives."""
+    remaining = list(results)
     ordered: list[SearchResult] = []
-    while buckets:
-        for key in list(buckets):
-            bucket = buckets[key]
-            if bucket:
-                ordered.append(bucket.pop(0))
-            if not bucket:
-                del buckets[key]
+    seen_source_types: set[str] = set()
+    diversity_window = 0.75
+    while remaining:
+        current = remaining.pop(0)
+        ordered.append(current)
+        seen_source_types.add(current.source_type or "通用网页")
+        current_score = float(current.score or 0.0)
+        for idx, candidate in enumerate(remaining):
+            source_type = candidate.source_type or "通用网页"
+            if source_type in seen_source_types:
+                continue
+            if float(candidate.score or 0.0) < current_score - diversity_window:
+                break
+            ordered.append(remaining.pop(idx))
+            seen_source_types.add(source_type)
+            break
     return ordered
 
 

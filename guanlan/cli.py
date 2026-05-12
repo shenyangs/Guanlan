@@ -267,6 +267,13 @@ def main():
     p_browser_assist_adapters.add_argument("--check", action="store_true", help="Run read-only adapter readiness checks")
     p_browser_assist_adapters.add_argument("--platform", default="", help="Optional platform label for adapter compatibility checks")
     p_browser_assist_adapters.add_argument("--dry-run-url", default="https://example.com/article", help="Example URL used to validate dry-run command construction")
+    p_browser_assist_sessions = browser_assist_sub.add_parser("sessions", help="Describe the host-browser visible-page session contract")
+    p_browser_assist_sessions.add_argument("url", nargs="?", default="", help="Target page URL")
+    p_browser_assist_sessions.add_argument("--platform", default="", help="Optional platform label override")
+    p_browser_assist_sessions.add_argument("--min-visible-items", type=int, default=0, help="Minimum visible list/comment/search items the host Agent should try to collect")
+    p_browser_assist_sessions.add_argument("--task-goal", default="", help="Optional host-agent task goal")
+    p_browser_assist_sessions.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
+    p_browser_assist_sessions.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
     p_browser_assist_plan = browser_assist_sub.add_parser("plan", help="Build a host-browser visible evidence task")
     p_browser_assist_plan.add_argument("url", help="Target page URL")
     p_browser_assist_plan.add_argument("--page-type", default="access_gate", help="Diagnosis page type hint")
@@ -274,6 +281,7 @@ def main():
     p_browser_assist_plan.add_argument("--platform", default="", help="Optional platform label override")
     p_browser_assist_plan.add_argument("--max-pages", type=int, default=3, help="Maximum browser-visible target pages in the host-agent task")
     p_browser_assist_plan.add_argument("--max-chars-per-page", type=int, default=3000, help="Maximum visible characters per page for the host-agent task")
+    p_browser_assist_plan.add_argument("--min-visible-items", type=int, default=0, help="Minimum visible list/comment/search items to collect before marking partial")
     p_browser_assist_plan.add_argument("--task-goal", default="", help="Optional host-agent task goal")
     p_browser_assist_plan.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_browser_assist_plan.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
@@ -289,6 +297,7 @@ def main():
     p_browser_assist_run.add_argument("--platform", default="", help="Optional platform label override")
     p_browser_assist_run.add_argument("--max-pages", type=int, default=3, help="Maximum browser-visible target pages")
     p_browser_assist_run.add_argument("--max-chars-per-page", type=int, default=3000, help="Maximum visible characters per page")
+    p_browser_assist_run.add_argument("--min-visible-items", type=int, default=0, help="Minimum visible list/comment/search items to collect before marking partial")
     p_browser_assist_run.add_argument("--task-goal", default="", help="Optional host-agent task goal")
     p_browser_assist_run.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_browser_assist_run.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
@@ -1130,6 +1139,8 @@ def _cmd_install(args):
         "xiaohongshu": _install_xhs_deps,
         "reddit":      _install_reddit_deps,
         "bilibili":    _install_bili_deps,
+        "zsxq":        _install_zsxq_deps,
+        "zhishixingqiu": _install_zsxq_deps,
         "browseruse":  _install_browser_use_deps,
         "browser-use": _install_browser_use_deps,
         # douyin/linkedin: manual setup, no auto-install
@@ -1626,6 +1637,7 @@ def _cmd_browser_assist(args):
         sys.exit(2)
     from guanlan.browser_assist import (
         build_browser_assist_plan,
+        build_browser_assist_session_contract,
         format_browser_assist_adapters_markdown,
         format_browser_assist_markdown,
         format_browser_assist_run_markdown,
@@ -1643,6 +1655,20 @@ def _cmd_browser_assist(args):
         print(json.dumps(adapters, ensure_ascii=False, indent=2) if output_format == "json" else format_browser_assist_adapters_markdown(adapters))
         return
 
+    if args.browser_assist_command == "sessions":
+        session_contract = build_browser_assist_session_contract(
+            getattr(args, "url", "") or "",
+            platform=getattr(args, "platform", "") or "",
+            task_goal=getattr(args, "task_goal", "") or "",
+            min_visible_items=max(getattr(args, "min_visible_items", 0), 0),
+        )
+        output_format = "json" if args.json else args.format
+        if output_format == "json":
+            print(json.dumps(session_contract, ensure_ascii=False, indent=2))
+        else:
+            print(_format_browser_assist_session_markdown(session_contract))
+        return
+
     if args.browser_assist_command == "run":
         result = run_browser_assist_adapter(
             args.url,
@@ -1656,6 +1682,7 @@ def _cmd_browser_assist(args):
             platform=args.platform,
             max_pages=max(args.max_pages, 1),
             max_chars_per_page=max(args.max_chars_per_page, 1),
+            min_visible_items=max(args.min_visible_items, 0),
             task_goal=args.task_goal,
         )
         output_format = "json" if args.json else args.format
@@ -1673,6 +1700,7 @@ def _cmd_browser_assist(args):
         force=True,
         max_pages=max(args.max_pages, 1),
         max_chars_per_page=max(args.max_chars_per_page, 1),
+        min_visible_items=max(args.min_visible_items, 0),
         task_goal=args.task_goal,
     )
     if args.platform:
@@ -1681,6 +1709,40 @@ def _cmd_browser_assist(args):
             plan["browser_assist_task"]["platform"] = args.platform
     output_format = "json" if args.json else args.format
     print(json.dumps(plan, ensure_ascii=False, indent=2) if output_format == "json" else format_browser_assist_markdown(plan))
+
+
+def _format_browser_assist_session_markdown(contract: dict) -> str:
+    """Render browser-assist session contract without importing rich UI helpers."""
+
+    lines = [
+        "# 观澜浏览器辅助补证会话契约",
+        "",
+        f"- Session: `{contract.get('session_id_hint', '')}`",
+        f"- 平台: {contract.get('platform') or '-'}",
+        f"- URL: {contract.get('target_url') or '-'}",
+        f"- 目标: {contract.get('task_goal') or '-'}",
+        f"- 授权: {'需要' if contract.get('requires_user_authorization') else '不需要'}",
+        f"- Timeout: {contract.get('timeout_budget_seconds')} 秒 / {contract.get('timeout_budget_ms')} ms",
+        f"- 单位规则: {contract.get('unit_rule')}",
+    ]
+    rules = contract.get("same_session_rules") or []
+    if rules:
+        lines.append("")
+        lines.append("## 同一会话规则")
+        lines.extend(f"- {item}" for item in rules)
+    readiness = contract.get("readiness_signals") or {}
+    preferred = readiness.get("preferred_signals") or []
+    if preferred:
+        lines.append("")
+        lines.append("## 就绪信号")
+        lines.extend(f"- {item}" for item in preferred)
+    sufficiency = contract.get("sufficiency_contract") or {}
+    if sufficiency:
+        lines.append("")
+        lines.append("## 充分性")
+        lines.append(f"- requested_min_items: {sufficiency.get('requested_min_items', 0)}")
+        lines.extend(f"- {item}" for item in sufficiency.get("rules") or [])
+    return "\n".join(lines)
 
 
 def _cmd_search(args):
@@ -3082,6 +3144,37 @@ def _install_xhs_deps():
             except Exception:
                 pass
     print("  [!]  xhs-cli install failed. Run: pipx install xiaohongshu-cli")
+
+
+def _install_zsxq_deps():
+    """Install zsxq-cli for optional ZhiShiXingQiu workflows."""
+    import shutil
+    import subprocess
+
+    print("Setting up ZhiShiXingQiu (zsxq-cli)...")
+    if shutil.which("zsxq-cli"):
+        print("  ✅ zsxq-cli already installed")
+        print("  Login when needed: zsxq-cli auth login")
+        return
+    npm = shutil.which("npm")
+    if not npm:
+        print("  [!]  npm not found. Install Node.js first, then run: npm install -g zsxq-cli")
+        return
+    try:
+        subprocess.run(
+            [npm, "install", "-g", "zsxq-cli"],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
+        )
+        if shutil.which("zsxq-cli"):
+            print("  ✅ zsxq-cli installed")
+            print("  Login when needed: zsxq-cli auth login")
+            return
+    except Exception:
+        pass
+    print("  [!]  zsxq-cli install failed. Run: npm install -g zsxq-cli")
 
 
 def _install_reddit_deps():

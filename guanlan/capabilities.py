@@ -90,10 +90,12 @@ CAPABILITIES: tuple[Capability, ...] = (
         when_to_use="diagnose page 显示动态壳、登录墙、访问门槛、搜索兜底或弱正文，但该平台内容仍有样本价值时。",
         cli=[
             "guanlan browser-assist plan \"URL\" --json",
+            "guanlan browser-assist sessions \"URL\" --json",
+            "guanlan browser-assist run \"URL\" --adapter host-browser --min-visible-items 30 --json",
             "guanlan archive add-browser-note --from-json browser-notes.jsonl",
         ],
         mcp="guanlan_browser_assist_plan",
-        boundary="只生成计划或归档用户授权的可见页笔记；不读取 Cookie、Token、钥匙串、私信、订单、后台，不执行写操作。",
+        boundary="只生成计划/会话契约或归档用户授权的可见页笔记；不读取 Cookie、Token、钥匙串、私信、订单、后台，不执行写操作。动态页用就绪信号和采集充分性，不把固定等待当作成功。",
         examples=["小红书页面公开读取不足，能不能让浏览器补一眼？", "把授权后的可见页笔记存入 archive。"],
     ),
     Capability(
@@ -140,6 +142,24 @@ CAPABILITIES: tuple[Capability, ...] = (
         ],
         boundary="sources 是元数据解释层，不联网，不代表实际搜索结果；回答事实仍需 search/read/research。",
         examples=["为什么政策题优先 gov.cn？", "雪球能不能当财经主证据？"],
+    ),
+    Capability(
+        id="private_community",
+        name="私域知识社区",
+        description="把知识星球这类授权私域社区纳入 Agent 路由：先诊断本机 zsxq-cli 和登录状态，再在用户已有权限范围内检索星球、主题、评论、标签和个人笔记。",
+        when_to_use="用户明确要查自己已加入/创建的知识星球内容，或希望把私域社群沉淀为品牌、公关、社群运营资料时。",
+        cli=[
+            "guanlan install --env=auto --channels=zsxq",
+            "guanlan doctor --trace",
+            "zsxq-cli auth login",
+            "zsxq-cli group +list",
+            "zsxq-cli topic +search --group-id <id> --query \"关键词\"",
+            "zsxq-cli topic +detail --topic-id <id>",
+        ],
+        mcp=None,
+        status="opt-in",
+        boundary="知识星球内容依赖用户账号权限。默认只做浏览、搜索、查看详情和资料整理；发帖、评论、回答、编辑、删除、打标签、记笔记等写操作必须用户明确确认后才执行。",
+        examples=["搜一下我星球里最近一个月关于 AI 的帖子。", "汇总这个星球今天的新帖和评论讨论。"],
     ),
     Capability(
         id="read",
