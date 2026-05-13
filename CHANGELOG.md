@@ -6,6 +6,15 @@
 
 ## Unreleased
 
+## v0.5.32 - 2026-05-13
+
+### Changed
+
+- OpenGuanlan 浏览器桥新增本机配对令牌协议：CLI 使用本机会话令牌，扩展需先通过 `openguanlan pair-code --json` 完成一次用户可见配对，再拉取任务与回传结果。
+- OpenGuanlan popup 新增配对状态与 Pair Code 保存入口，浏览器桥从“手动加载扩展”推进到“可配对、可诊断、可回归测试”的闭环形态。
+- research 子搜索优先复用 `query_rewrite`、`entity_compare` 等更稳的 query 变体，减少退回原始 base query 带来的中文复合词拆字漂移。
+- 官网和版本面同步到 `0.5.32`。
+
 ## v0.5.31 - 2026-05-13
 
 ### Changed

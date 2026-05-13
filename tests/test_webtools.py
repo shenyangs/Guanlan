@@ -4013,6 +4013,32 @@ def test_research_uses_role_specific_query_variants(monkeypatch):
     assert any("最新" in query for query in queries)
 
 
+def test_query_for_research_job_prefers_query_rewrite_for_general_job():
+    strategy = webtools.build_query_strategy(
+        "苹果",
+        route_plan=webtools.build_route_plan("苹果", scope="ecommerce").to_dict(),
+        quality={"requested_scope": "ecommerce"},
+    )
+
+    selected = webtools._query_for_research_job("苹果", "general", "open_web", strategy)
+
+    assert selected != "苹果"
+    assert "iPhone" in selected
+
+
+def test_query_for_research_job_prefers_entity_compare_for_multi_entity_general_job():
+    strategy = webtools.build_query_strategy(
+        "珠海 澳门 香港 深圳 广州 GDP 对比",
+        route_plan=webtools.build_route_plan("珠海 澳门 香港 深圳 广州 GDP 对比").to_dict(),
+        quality={},
+    )
+
+    selected = webtools._query_for_research_job("珠海 澳门 香港 深圳 广州 GDP 对比", "general", "open_web", strategy)
+
+    assert "对比" in selected
+    assert "珠海 澳门 香港 深圳" in selected
+
+
 def test_source_diagnostics_flags_missing_authority_for_policy():
     diagnostics = webtools.build_source_diagnostics(
         [

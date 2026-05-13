@@ -1,18 +1,22 @@
 const DAEMON_URL = "http://127.0.0.1:19830";
 
 const daemonStatus = document.getElementById("daemon-status");
+const pairingStatus = document.getElementById("pairing-status");
 const siteStatus = document.getElementById("site-status");
+const pairingCode = document.getElementById("pairing-code");
+const savePairingButton = document.getElementById("save-pairing");
 const grantButton = document.getElementById("grant-site");
 const refreshButton = document.getElementById("refresh");
 
 refreshButton.addEventListener("click", refreshStatus);
+savePairingButton.addEventListener("click", savePairingCode);
 grantButton.addEventListener("click", grantCurrentSite);
 
 refreshStatus();
 
 async function refreshStatus() {
   grantButton.disabled = true;
-  await Promise.all([checkDaemon(), checkSitePermission()]);
+  await Promise.all([checkDaemon(), checkPairingState(), checkSitePermission()]);
 }
 
 async function checkDaemon() {
@@ -20,8 +24,18 @@ async function checkDaemon() {
     const response = await fetch(`${DAEMON_URL}/status`);
     const payload = await response.json();
     daemonStatus.textContent = payload && payload.ok ? "Ready" : "Unavailable";
+    if (payload && payload.pairing_required) {
+      pairingStatus.textContent = payload.extension_paired ? "Paired" : "Needs pair code";
+    }
   } catch (_error) {
     daemonStatus.textContent = "Start openguanlan daemon";
+  }
+}
+
+async function checkPairingState() {
+  const response = await chrome.runtime.sendMessage({ type: "openguanlan:get-pairing-state" });
+  if (response && response.saved && pairingStatus.textContent === "Checking...") {
+    pairingStatus.textContent = "Saved locally";
   }
 }
 
@@ -36,6 +50,20 @@ async function checkSitePermission() {
   const allowed = await chrome.permissions.contains({ origins: [origin] });
   siteStatus.textContent = allowed ? "Granted" : "Needs grant";
   grantButton.disabled = allowed;
+}
+
+async function savePairingCode() {
+  savePairingButton.disabled = true;
+  try {
+    await chrome.runtime.sendMessage({
+      type: "openguanlan:set-pairing-token",
+      token: pairingCode.value || ""
+    });
+    pairingCode.value = "";
+    pairingStatus.textContent = "Saved locally";
+  } finally {
+    savePairingButton.disabled = false;
+  }
 }
 
 async function grantCurrentSite() {

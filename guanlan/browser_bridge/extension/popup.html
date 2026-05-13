@@ -22,11 +22,20 @@
           <strong id="daemon-status">Checking...</strong>
         </div>
         <div>
+          <span>Pairing</span>
+          <strong id="pairing-status">Checking...</strong>
+        </div>
+        <div>
           <span>Current site</span>
           <strong id="site-status">Checking...</strong>
         </div>
       </section>
 
+      <label class="pairing" for="pairing-code">
+        <span>Pair Code</span>
+        <input id="pairing-code" type="password" autocomplete="off" placeholder="Paste from openguanlan pair-code" />
+      </label>
+      <button id="save-pairing" type="button" class="secondary">Save Pair Code</button>
       <button id="grant-site" type="button">Grant Current Site</button>
       <button id="refresh" type="button" class="secondary">Refresh Status</button>
 

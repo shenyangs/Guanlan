@@ -1,5 +1,9 @@
 const DAEMON_URL = "http://127.0.0.1:19830";
 const POLL_INTERVAL_MS = 900;
+const PAIRING_HEADER = "x-openguanlan-pairing";
+const DB_NAME = "openguanlan-bridge";
+const DB_STORE = "kv";
+const DB_KEY = "pairing-token";
 
 let polling = false;
 let lastHelloAt = 0;
@@ -25,13 +29,20 @@ async function pollOnce() {
   }
   polling = true;
   try {
-    await maybeHello();
-    const response = await fetch(`${DAEMON_URL}/extension/task`, { method: "GET" });
+    const pairingToken = await readPairingToken();
+    if (!pairingToken) {
+      return;
+    }
+    await maybeHello(pairingToken);
+    const response = await fetch(`${DAEMON_URL}/extension/task`, {
+      method: "GET",
+      headers: { [PAIRING_HEADER]: pairingToken }
+    });
     const payload = await response.json();
     const task = payload && payload.task;
     if (task) {
       const result = await runTask(task);
-      await postResult(task.id, result);
+      await postResult(task.id, result, pairingToken);
     }
   } catch (_error) {
     // Daemon is optional; stay quiet until the user runs `openguanlan daemon`.
@@ -40,7 +51,7 @@ async function pollOnce() {
   }
 }
 
-async function maybeHello() {
+async function maybeHello(pairingToken) {
   const now = Date.now();
   if (now - lastHelloAt < 5000) {
     return;
@@ -48,23 +59,44 @@ async function maybeHello() {
   lastHelloAt = now;
   await fetch(`${DAEMON_URL}/extension/hello`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      [PAIRING_HEADER]: pairingToken
+    },
     body: JSON.stringify({
       name: "OpenGuanlan Browser Bridge",
       version: chrome.runtime.getManifest().version,
       permissions: ["activeTab", "scripting", "tabs"],
-      credential_material_access_allowed: false
+      credential_material_access_allowed: false,
+      pairing_state: "paired"
     })
   });
 }
 
-async function postResult(taskId, result) {
+async function postResult(taskId, result, pairingToken) {
   await fetch(`${DAEMON_URL}/extension/result`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      [PAIRING_HEADER]: pairingToken
+    },
     body: JSON.stringify({ task_id: taskId, result })
   });
 }
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (!message || !message.type) {
+    return;
+  }
+  if (message.type === "openguanlan:get-pairing-state") {
+    void readPairingToken().then((token) => sendResponse({ saved: Boolean(token) }));
+    return true;
+  }
+  if (message.type === "openguanlan:set-pairing-token") {
+    void writePairingToken(String(message.token || "")).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+});
 
 async function runTask(task) {
   try {
@@ -655,4 +687,41 @@ function safeAttrs(node) {
     }
   }
   return attrs;
+}
+
+function openPairingDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(DB_STORE)) {
+        db.createObjectStore(DB_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function readPairingToken() {
+  const db = await openPairingDb();
+  return await new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, "readonly");
+    const store = tx.objectStore(DB_STORE);
+    const request = store.get(DB_KEY);
+    request.onsuccess = () => resolve(String(request.result || "").trim());
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function writePairingToken(token) {
+  const db = await openPairingDb();
+  return await new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, "readwrite");
+    const store = tx.objectStore(DB_STORE);
+    const value = String(token || "").trim();
+    const request = value ? store.put(value, DB_KEY) : store.delete(DB_KEY);
+    request.onsuccess = () => resolve(true);
+    request.onerror = () => reject(request.error);
+  });
 }

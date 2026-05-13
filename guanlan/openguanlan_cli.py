@@ -11,7 +11,10 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import queue
+import secrets
+import stat
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,6 +26,10 @@ from urllib.request import Request, urlopen
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 19830
 SCHEMA_VERSION = "openguanlan_bridge_v1"
+SESSION_HEADER = "x-openguanlan-session"
+PAIRING_HEADER = "x-openguanlan-pairing"
+AUTH_DIRNAME = "openguanlan"
+AUTH_FILENAME = "bridge-auth.json"
 
 READ_ONLY_ACTIONS = {
     "back",
@@ -85,6 +92,7 @@ class BridgeState:
         self.results: dict[str, dict[str, Any]] = {}
         self.extension_seen_at = 0.0
         self.extension_info: dict[str, Any] = {}
+        self.extension_paired_at = 0.0
 
 
 STATE = BridgeState()
@@ -107,6 +115,10 @@ def main(argv: list[str] | None = None) -> int:
     _add_json_arg(p_capabilities)
     p_setup = sub.add_parser("setup", help="Show extension install path and setup steps")
     _add_json_arg(p_setup)
+    p_pair_code = sub.add_parser("pair-code", help="Show or create the browser bridge pairing code")
+    _add_json_arg(p_pair_code)
+    p_pair_reset = sub.add_parser("pair-reset", help="Rotate the browser bridge pairing code")
+    _add_json_arg(p_pair_reset)
 
     p_extension = sub.add_parser("extension", help="Show browser extension information")
     p_extension.add_argument("extension_command", choices=["path", "manifest"], nargs="?", default="path")
@@ -202,6 +214,10 @@ def main(argv: list[str] | None = None) -> int:
         return _print_payload(_capabilities(), as_json=args.json)
     if args.command == "setup":
         return _print_payload(_setup_payload(), as_json=args.json)
+    if args.command == "pair-code":
+        return _print_payload(_pair_code_payload(), as_json=True)
+    if args.command == "pair-reset":
+        return _print_payload(_pair_reset_payload(), as_json=True)
     if args.command == "extension":
         payload = _extension_payload()
         if args.extension_command == "path":
@@ -369,9 +385,15 @@ def _doctor(host: str, port: int) -> dict[str, Any]:
         daemon_ok = False
     extension = _extension_payload()
     extension_seen = bool(status.get("extension_connected")) if daemon_ok else False
+    extension_paired = bool(status.get("extension_paired")) if daemon_ok else False
+    auth_state = _bridge_auth_state(create=False)
     return {
         "schema_version": SCHEMA_VERSION,
-        "status": "ok" if daemon_ok and extension_seen else ("daemon_ready" if daemon_ok else "needs_daemon"),
+        "status": (
+            "ok"
+            if daemon_ok and extension_seen and extension_paired
+            else ("daemon_ready" if daemon_ok else "needs_daemon")
+        ),
         "daemon": {
             "ok": daemon_ok,
             "host": host,
@@ -379,6 +401,14 @@ def _doctor(host: str, port: int) -> dict[str, Any]:
             **status,
         },
         "extension": extension,
+        "pairing": {
+            "required": True,
+            "paired": extension_paired,
+            "pair_code_command": "openguanlan pair-code",
+            "pair_reset_command": "openguanlan pair-reset",
+            "auth_path": str(_bridge_auth_path()),
+            "initialized": bool(auth_state.get("session_token") and auth_state.get("pairing_token")),
+        },
         "capabilities": _capabilities(),
         "safety": {
             "read_only": True,
@@ -428,6 +458,8 @@ def _setup_payload() -> dict[str, Any]:
         "steps": [
             "Run `openguanlan daemon` in a local terminal.",
             f"Open chrome://extensions and load the unpacked extension directory: {extension['path']}",
+            "Run `openguanlan pair-code --json` and copy the pairing code.",
+            "Paste the pairing code into the OpenGuanlan popup and save it once.",
             "Click the OpenGuanlan extension popup on the target tab and grant the current site.",
             "Run `openguanlan doctor --json` until daemon and extension are connected.",
             "Use `guanlan browser-assist run \"URL\" --adapter openguanlan --json` after user authorization.",
@@ -444,6 +476,12 @@ def _setup_payload() -> dict[str, Any]:
             "privacy_policy": "website/openguanlan-browser-bridge-privacy.html",
             "default_host_permissions": ["http://127.0.0.1:19830/*", "http://localhost:19830/*"],
             "optional_host_permissions": ["<all_urls>"],
+        },
+        "pairing": {
+            "pair_code_command": "openguanlan pair-code --json",
+            "pair_reset_command": "openguanlan pair-reset --json",
+            "auth_path": str(_bridge_auth_path()),
+            "note": "CLI uses a local session token; the extension must be paired once with a user-copied pairing code.",
         },
     }
 
@@ -477,15 +515,63 @@ def _extension_payload() -> dict[str, Any]:
                 "icons/icon-128.png",
             ]
         ),
+        "pairing_required": True,
+    }
+
+
+def _pair_code_payload() -> dict[str, Any]:
+    auth_state = _bridge_auth_state(create=True)
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "status": "pair_code_ready",
+        "pairing_token": str(auth_state.get("pairing_token") or ""),
+        "auth_path": str(_bridge_auth_path()),
+        "instructions": [
+            "Open the OpenGuanlan popup.",
+            "Paste this pairing code into the popup and save it once.",
+            "Run `openguanlan doctor --json` to confirm the extension is paired.",
+        ],
+    }
+
+
+def _pair_reset_payload() -> dict[str, Any]:
+    auth_state = _bridge_auth_state(create=True, rotate_pairing=True)
+    STATE.extension_paired_at = 0.0
+    STATE.extension_info = {}
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "status": "pair_code_rotated",
+        "pairing_token": str(auth_state.get("pairing_token") or ""),
+        "auth_path": str(_bridge_auth_path()),
+        "instructions": [
+            "Open the OpenGuanlan popup.",
+            "Replace the saved pairing code with this new one.",
+            "Run `openguanlan doctor --json` to confirm the extension is paired again.",
+        ],
     }
 
 
 def _run_daemon(host: str, port: int, *, once: bool = False) -> int:
+    auth_state = _bridge_auth_state(create=True)
+
     class _ReusableThreadingHTTPServer(ThreadingHTTPServer):
         allow_reuse_address = True
 
     server = _ReusableThreadingHTTPServer((host, port), _BridgeHandler)
-    print(json.dumps({"status": "listening", "host": host, "port": port, "schema_version": SCHEMA_VERSION}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "status": "listening",
+                "host": host,
+                "port": port,
+                "schema_version": SCHEMA_VERSION,
+                "auth_path": str(_bridge_auth_path()),
+                "pair_code_command": "openguanlan pair-code --json",
+                "pairing_initialized": bool(auth_state.get("pairing_token")),
+            },
+            ensure_ascii=False,
+        )
+    )
     if once:
         server.handle_request()
     else:
@@ -497,25 +583,32 @@ def _run_daemon(host: str, port: int, *, once: bool = False) -> int:
 
 
 class _BridgeHandler(BaseHTTPRequestHandler):
-    server_version = "OpenGuanlanBridge/0.1"
+    server_version = "OpenGuanlanBridge/0.2"
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/ping":
             self._write_json({"ok": True, "schema_version": SCHEMA_VERSION})
             return
         if self.path == "/status":
+            auth_state = _bridge_auth_state(create=False)
             self._write_json(
                 {
                     "ok": True,
                     "schema_version": SCHEMA_VERSION,
                     "pending": STATE.pending.qsize(),
                     "extension_connected": time.time() - STATE.extension_seen_at < 10,
+                    "extension_paired": time.time() - STATE.extension_paired_at < 86400 if STATE.extension_paired_at else False,
                     "extension_seen_at": STATE.extension_seen_at,
+                    "extension_paired_at": STATE.extension_paired_at,
                     "extension_info": STATE.extension_info,
+                    "pairing_required": True,
+                    "pairing_initialized": bool(auth_state.get("pairing_token")),
                 }
             )
             return
         if self.path == "/extension/task":
+            if not self._check_extension_pairing():
+                return
             STATE.extension_seen_at = time.time()
             try:
                 task = STATE.pending.get_nowait()
@@ -525,6 +618,8 @@ class _BridgeHandler(BaseHTTPRequestHandler):
                 self._write_json({"ok": True, "task": task})
             return
         if self.path.startswith("/results/"):
+            if not self._check_session_auth():
+                return
             task_id = self.path.rsplit("/", 1)[-1]
             if task_id in STATE.results:
                 self._write_json({"ok": True, "ready": True, "result": STATE.results.pop(task_id)})
@@ -536,6 +631,8 @@ class _BridgeHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         payload = self._read_json()
         if self.path == "/tasks":
+            if not self._check_session_auth():
+                return
             if payload.get("action") not in READ_ONLY_ACTIONS:
                 self._write_json({"ok": False, "error": "unsupported_action"}, status=400)
                 return
@@ -543,17 +640,23 @@ class _BridgeHandler(BaseHTTPRequestHandler):
             self._write_json({"ok": True, "task_id": payload.get("id")})
             return
         if self.path == "/extension/hello":
+            if not self._check_extension_pairing():
+                return
             STATE.extension_seen_at = time.time()
+            STATE.extension_paired_at = time.time()
             STATE.extension_info = dict(payload)
             self._write_json({"ok": True})
             return
         if self.path == "/extension/result":
+            if not self._check_extension_pairing():
+                return
             task_id = str(payload.get("task_id") or "")
             if not task_id:
                 self._write_json({"ok": False, "error": "task_id_required"}, status=400)
                 return
             STATE.results[task_id] = dict(payload.get("result") or {})
             STATE.extension_seen_at = time.time()
+            STATE.extension_paired_at = time.time()
             self._write_json({"ok": True})
             return
         self._write_json({"ok": False, "error": "not_found"}, status=404)
@@ -587,6 +690,24 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    def _check_session_auth(self) -> bool:
+        auth_state = _bridge_auth_state(create=False)
+        expected = str(auth_state.get("session_token") or "")
+        provided = str(self.headers.get(SESSION_HEADER) or "")
+        if expected and secrets.compare_digest(provided, expected):
+            return True
+        self._write_json({"ok": False, "error": "session_auth_required"}, status=401)
+        return False
+
+    def _check_extension_pairing(self) -> bool:
+        auth_state = _bridge_auth_state(create=False)
+        expected = str(auth_state.get("pairing_token") or "")
+        provided = str(self.headers.get(PAIRING_HEADER) or "")
+        if expected and secrets.compare_digest(provided, expected):
+            return True
+        self._write_json({"ok": False, "error": "pairing_required"}, status=401)
+        return False
+
 
 def _write_screenshot_file(result: dict[str, Any], output_path: str, image_format: str) -> None:
     data = dict(result.get("data") or result)
@@ -613,7 +734,9 @@ def _request_json(
 ) -> dict[str, Any]:
     url = f"http://{host}:{port}{path}"
     data = json.dumps(payload or {}, ensure_ascii=False).encode("utf-8") if method == "POST" else None
-    request = Request(url, data=data, method=method, headers={"content-type": "application/json"})
+    headers = {"content-type": "application/json"}
+    headers.update(_auth_headers_for_path(path))
+    request = Request(url, data=data, method=method, headers=headers)
     try:
         with urlopen(request, timeout=timeout) as response:  # noqa: S310
             raw = response.read().decode("utf-8", errors="replace")
@@ -630,6 +753,55 @@ def _print_payload(payload: dict[str, Any], *, as_json: bool = False) -> int:
         for key, value in payload.items():
             print(f"{key}: {value}")
     return 0
+
+
+def _auth_headers_for_path(path: str) -> dict[str, str]:
+    auth_state = _bridge_auth_state(create=False)
+    session_token = str(auth_state.get("session_token") or "")
+    if path == "/tasks" or path.startswith("/results/"):
+        return {SESSION_HEADER: session_token} if session_token else {}
+    return {}
+
+
+def _bridge_auth_path() -> Path:
+    return Path.home() / ".guanlan" / AUTH_DIRNAME / AUTH_FILENAME
+
+
+def _bridge_auth_state(*, create: bool, rotate_pairing: bool = False) -> dict[str, Any]:
+    path = _bridge_auth_path()
+    current: dict[str, Any] = {}
+    if path.exists():
+        try:
+            current = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            current = {}
+    changed = False
+    session_token = str(current.get("session_token") or "")
+    pairing_token = str(current.get("pairing_token") or "")
+    if create and not session_token:
+        session_token = secrets.token_urlsafe(24)
+        changed = True
+    if create and (rotate_pairing or not pairing_token):
+        pairing_token = secrets.token_urlsafe(18)
+        current["paired_at"] = 0.0
+        changed = True
+    state = {
+        "schema_version": SCHEMA_VERSION,
+        "session_token": session_token,
+        "pairing_token": pairing_token,
+        "created_at": float(current.get("created_at") or time.time()),
+        "paired_at": float(current.get("paired_at") or 0.0),
+    }
+    if create and changed:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass
+    else:
+        state.update({key: value for key, value in current.items() if key not in state})
+    return state
 
 
 if __name__ == "__main__":

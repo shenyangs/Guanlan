@@ -5559,6 +5559,14 @@ def _query_for_research_job(
     variants = list(strategy.get("variants") or [])
     if not variants:
         return query
+    variant_map = {
+        str(item.get("role") or ""): str(item.get("query") or "")
+        for item in variants
+        if str(item.get("role") or "") and str(item.get("query") or "")
+    }
+    query_shape = strategy.get("query_shape") or {}
+    rewritten = bool(query_shape.get("rewritten"))
+    multi_entity = bool(query_shape.get("multi_entity"))
     target = (target or "").lower()
     role_preferences: list[str] = []
     if job_type == "scope":
@@ -5652,11 +5660,14 @@ def _query_for_research_job(
         elif any(site in target for site in ("cls.cn", "stcn", "cnstock", "yicai")):
             role_preferences = ["market_news", "fresh_news", "base"]
     elif job_type == "general":
-        role_preferences = ["fresh_news", "base"]
+        role_preferences = ["entity_compare", "fresh_news", "query_rewrite", "base"] if multi_entity else ["fresh_news", "query_rewrite", "base"]
     for role in role_preferences:
-        for item in variants:
-            if item.get("role") == role:
-                return str(item.get("query") or query)
+        if role in variant_map:
+            return variant_map[role]
+    if rewritten and variant_map.get("query_rewrite"):
+        return variant_map["query_rewrite"]
+    if multi_entity and variant_map.get("entity_compare"):
+        return variant_map["entity_compare"]
     return str(variants[0].get("query") or query)
 
 

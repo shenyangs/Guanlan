@@ -71,6 +71,30 @@ header p {
   font-weight: 700;
 }
 
+.pairing {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.pairing span {
+  display: block;
+  margin-bottom: 6px;
+  color: #617176;
+  font-size: 12px;
+}
+
+.pairing input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 38px;
+  border: 1px solid #d8d1c4;
+  border-radius: 8px;
+  background: #fffdf7;
+  color: #16252a;
+  padding: 0 10px;
+  font: inherit;
+}
+
 button {
   width: 100%;
   min-height: 36px;
