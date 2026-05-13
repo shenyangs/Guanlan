@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenGuanlan Browser Bridge</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <img src="icons/icon-48.png" alt="" />
+        <div>
+          <h1>OpenGuanlan</h1>
+          <p>Browser Bridge</p>
+        </div>
+      </header>
+
+      <section class="status">
+        <div>
+          <span>Daemon</span>
+          <strong id="daemon-status">Checking...</strong>
+        </div>
+        <div>
+          <span>Current site</span>
+          <strong id="site-status">Checking...</strong>
+        </div>
+      </section>
+
+      <button id="grant-site" type="button">Grant Current Site</button>
+      <button id="refresh" type="button" class="secondary">Refresh Status</button>
+
+      <p class="note">
+        Reads only user-authorized target-page visible content for Guanlan evidence.
+        It does not read cookies, tokens, passwords, browser storage, or browser profiles.
+      </p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

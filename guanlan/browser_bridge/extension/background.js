@@ -112,7 +112,14 @@ async function runTask(task) {
         return fail("unsupported_action", `Unsupported OpenGuanlan action: ${task.action}`);
     }
   } catch (error) {
-    return fail("bridge_task_error", String(error && error.message ? error.message : error));
+    const message = String(error && error.message ? error.message : error);
+    if (message.startsWith("site_permission_required:")) {
+      return fail(
+        "site_permission_required",
+        "Open the target tab, click the OpenGuanlan extension, and grant this current site before reading visible content."
+      );
+    }
+    return fail("bridge_task_error", message);
   }
 }
 
@@ -134,6 +141,7 @@ async function openUrl(task) {
 async function readVisible(task) {
   const tab = await ensureTab(task, { navigate: true });
   await waitForTabComplete(tab.id, task.timeout_ms || secondsToMs(task.timeout, 30000));
+  await ensureSitePermission(tab.url);
   return await runInTab(tab.id, collectVisiblePage, [{
     maxChars: numberOr(task.max_chars, 3000),
     minVisibleItems: numberOr(task.min_visible_items, 0),
@@ -143,6 +151,7 @@ async function readVisible(task) {
 
 async function state(task) {
   const tab = await ensureTab(task, { navigate: false });
+  await ensureSitePermission(tab.url);
   return await runInTab(tab.id, collectVisiblePage, [{
     maxChars: numberOr(task.max_chars, 3000),
     minVisibleItems: 0,
@@ -153,11 +162,13 @@ async function state(task) {
 async function getField(task) {
   const tab = await ensureTab(task, { navigate: false });
   if (task.action === "get_title") {
+    await ensureSitePermission(tab.url);
     return { value: tab.title || "", title: tab.title || "", url: tab.url || "" };
   }
   if (task.action === "get_url") {
     return { value: tab.url || "", title: tab.title || "", url: tab.url || "" };
   }
+  await ensureSitePermission(tab.url);
   return await runInTab(tab.id, getPageField, [{
     action: task.action,
     selector: task.selector || task.target || "",
@@ -167,6 +178,7 @@ async function getField(task) {
 
 async function find(task) {
   const tab = await ensureTab(task, { navigate: false });
+  await ensureSitePermission(tab.url);
   return await runInTab(tab.id, findElements, [{
     css: task.css || task.selector || "",
     text: task.text || "",
@@ -179,6 +191,7 @@ async function find(task) {
 
 async function extract(task) {
   const tab = await ensureTab(task, { navigate: false });
+  await ensureSitePermission(tab.url);
   return await runInTab(tab.id, extractContent, [{
     selector: task.selector || "",
     chunkSize: numberOr(task.chunk_size, 6000),
@@ -188,11 +201,13 @@ async function extract(task) {
 
 async function frames(task) {
   const tab = await ensureTab(task, { navigate: false });
+  await ensureSitePermission(tab.url);
   return await runInTab(tab.id, listFrames, [{}]);
 }
 
 async function screenshot(task) {
   const tab = await ensureTab(task, { navigate: false });
+  await ensureSitePermission(tab.url);
   const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
     format: task.format === "jpeg" ? "jpeg" : "png"
   });
@@ -209,6 +224,7 @@ async function waitText(task) {
   const deadline = Date.now() + (numberOr(task.timeout_ms, 0) || secondsToMs(task.timeout, 10000));
   const expected = String(task.value || "");
   const tab = await ensureTab(task, { navigate: false });
+  await ensureSitePermission(tab.url);
   while (Date.now() < deadline) {
     const result = await runInTab(tab.id, pageContainsText, [expected]);
     if (result && result.found) {
@@ -221,6 +237,7 @@ async function waitText(task) {
 
 async function scroll(task) {
   const tab = await ensureTab(task, { navigate: false });
+  await ensureSitePermission(tab.url);
   return await runInTab(tab.id, scrollPage, [{
     direction: task.direction === "up" ? "up" : "down",
     amount: numberOr(task.amount, 800)
@@ -337,6 +354,29 @@ async function runInTab(tabId, func, args) {
     args
   });
   return results && results[0] ? results[0].result : null;
+}
+
+async function ensureSitePermission(url) {
+  const origin = originPattern(url);
+  if (!origin) {
+    return;
+  }
+  const hasPermission = await chrome.permissions.contains({ origins: [origin] });
+  if (!hasPermission) {
+    throw new Error(`site_permission_required:${origin}`);
+  }
+}
+
+function originPattern(url) {
+  try {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return "";
+    }
+    return `${parsed.protocol}//${parsed.host}/*`;
+  } catch (_error) {
+    return "";
+  }
 }
 
 function tabSummary(tab) {

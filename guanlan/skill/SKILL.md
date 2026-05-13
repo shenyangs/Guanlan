@@ -154,6 +154,8 @@ guanlan browser-assist plan "https://example.com/article" --json
 guanlan browser-assist adapters --check
 guanlan browser-assist setup-openguanlan --json
 guanlan browser-assist setup-opencli --json
+openguanlan setup --json
+scripts/build_openguanlan_extension.sh
 guanlan browser-assist sessions "https://example.com/article" --json
 guanlan browser-assist run "https://example.com/article" --adapter host-browser --json
 guanlan recipe list

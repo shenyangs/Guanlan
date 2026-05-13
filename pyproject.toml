@@ -1,6 +1,6 @@
 [project]
 name = "guanlan"
-version = "0.5.30"
+version = "0.5.31"
 description = "Guanlan: a China-aware source and platform router for AI agents."
 readme = "README.md"
 license = {text = "MIT"}
@@ -70,6 +70,13 @@ packages = ["guanlan"]
 "guanlan/data/hotboard_nodes.json" = "guanlan/data/hotboard_nodes.json"
 "guanlan/browser_bridge/extension/manifest.json" = "guanlan/browser_bridge/extension/manifest.json"
 "guanlan/browser_bridge/extension/background.js" = "guanlan/browser_bridge/extension/background.js"
+"guanlan/browser_bridge/extension/popup.html" = "guanlan/browser_bridge/extension/popup.html"
+"guanlan/browser_bridge/extension/popup.css" = "guanlan/browser_bridge/extension/popup.css"
+"guanlan/browser_bridge/extension/popup.js" = "guanlan/browser_bridge/extension/popup.js"
+"guanlan/browser_bridge/extension/icons/icon-16.png" = "guanlan/browser_bridge/extension/icons/icon-16.png"
+"guanlan/browser_bridge/extension/icons/icon-32.png" = "guanlan/browser_bridge/extension/icons/icon-32.png"
+"guanlan/browser_bridge/extension/icons/icon-48.png" = "guanlan/browser_bridge/extension/icons/icon-48.png"
+"guanlan/browser_bridge/extension/icons/icon-128.png" = "guanlan/browser_bridge/extension/icons/icon-128.png"
 
 [tool.hatch.build.targets.sdist.force-include]
 "NOTICE" = "NOTICE"
@@ -77,6 +84,13 @@ packages = ["guanlan"]
 "guanlan/data/hotboard_nodes.json" = "guanlan/data/hotboard_nodes.json"
 "guanlan/browser_bridge/extension/manifest.json" = "guanlan/browser_bridge/extension/manifest.json"
 "guanlan/browser_bridge/extension/background.js" = "guanlan/browser_bridge/extension/background.js"
+"guanlan/browser_bridge/extension/popup.html" = "guanlan/browser_bridge/extension/popup.html"
+"guanlan/browser_bridge/extension/popup.css" = "guanlan/browser_bridge/extension/popup.css"
+"guanlan/browser_bridge/extension/popup.js" = "guanlan/browser_bridge/extension/popup.js"
+"guanlan/browser_bridge/extension/icons/icon-16.png" = "guanlan/browser_bridge/extension/icons/icon-16.png"
+"guanlan/browser_bridge/extension/icons/icon-32.png" = "guanlan/browser_bridge/extension/icons/icon-32.png"
+"guanlan/browser_bridge/extension/icons/icon-48.png" = "guanlan/browser_bridge/extension/icons/icon-48.png"
+"guanlan/browser_bridge/extension/icons/icon-128.png" = "guanlan/browser_bridge/extension/icons/icon-128.png"
 "docs/data/hotboard_nodes.csv" = "docs/data/hotboard_nodes.csv"
 "docs/data/hotboard_nodes_summary.json" = "docs/data/hotboard_nodes_summary.json"
 

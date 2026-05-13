@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenGuanlan Browser Bridge Privacy Policy</title>
+    <style>
+      body {
+        max-width: 840px;
+        margin: 0 auto;
+        padding: 48px 20px 72px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #18282d;
+        background: #f7f4ec;
+        line-height: 1.65;
+      }
+      h1, h2 {
+        line-height: 1.2;
+      }
+      a {
+        color: #a62b22;
+      }
+      code {
+        background: #eee6d8;
+        padding: 0.1em 0.35em;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>OpenGuanlan Browser Bridge Privacy Policy</h1>
+    <p>Effective date: 2026-05-13</p>
+    <p>
+      OpenGuanlan Browser Bridge is a read-only browser extension for Guanlan. It
+      helps AI agents collect user-authorized target-page visible evidence from
+      Chrome or Chromium and send it to a local <code>openguanlan daemon</code>
+      running on the same computer.
+    </p>
+
+    <h2>Data Collected</h2>
+    <p>
+      The extension can read the current target page URL, title, visible text,
+      visible links, visible frame metadata, and visible HTML structure after the
+      user grants the current site and authorizes a Guanlan browser-assist task.
+    </p>
+    <p>
+      The extension does not collect or read cookies, tokens, passwords,
+      localStorage, sessionStorage, browser profiles, browser databases, keychain
+      data, hidden credential fields, or unrelated private pages.
+    </p>
+
+    <h2>Data Use</h2>
+    <p>
+      Data is used only to create Guanlan browser-visible evidence for the target
+      page requested by the user. The extension sends results only to the local
+      <code>openguanlan daemon</code> on <code>127.0.0.1</code> or
+      <code>localhost</code>. The extension does not sell data, use data for
+      advertising, or send browser page content to a remote server.
+    </p>
+
+    <h2>Permissions</h2>
+    <p>
+      The extension uses <code>tabs</code>, <code>scripting</code>,
+      <code>activeTab</code>, localhost host permissions, and optional
+      per-site host permissions. It does not request cookie, storage, debugger,
+      downloads, or native messaging permissions.
+    </p>
+
+    <h2>User Control</h2>
+    <p>
+      Users choose which sites to grant. Users can revoke site permissions in
+      Chrome's extension settings at any time. Users can stop the local bridge by
+      terminating the <code>openguanlan daemon</code> process.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      For questions, use the
+      <a href="https://github.com/shenyangs/Guanlan">Guanlan GitHub repository</a>.
+    </p>
+  </body>
+</html>

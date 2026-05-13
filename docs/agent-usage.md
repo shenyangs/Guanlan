@@ -129,6 +129,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “需要生成浏览器可见页补证任务” | `guanlan browser-assist plan "URL" --json` |
 | “查看浏览器补证适配器” | `guanlan browser-assist adapters --check` |
 | “安装/检查 Guanlan 原生浏览器桥” | `guanlan browser-assist setup-openguanlan --json` |
+| “打包 OpenGuanlan Chrome 扩展” | `scripts/build_openguanlan_extension.sh` |
 | “生成浏览器补证会话契约” | `guanlan browser-assist sessions "URL" --json` |
 | “生成宿主浏览器执行契约” | `guanlan browser-assist run "URL" --adapter host-browser --json` |
 | “用户授权后把浏览器可见页补证入库” | `guanlan archive add-browser-note --from-json browser-notes.jsonl` |

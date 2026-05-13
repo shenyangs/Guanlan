@@ -6,6 +6,14 @@
 
 ## Unreleased
 
+## v0.5.31 - 2026-05-13
+
+### Changed
+
+- 将 OpenGuanlan Browser Bridge 扩展推进到 Chrome Web Store 准备形态：新增 popup 状态页、当前站点授权、商店图标、隐私政策页面和扩展 zip 构建脚本。
+- 扩展默认权限收窄到本机 daemon，网页读取改为按站点可选授权；`<all_urls>` 不再作为默认 host permission。
+- 官网和版本面同步到 `0.5.31`。
+
 ## v0.5.30 - 2026-05-13
 
 ### Changed

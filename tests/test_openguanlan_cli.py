@@ -27,8 +27,11 @@ def test_openguanlan_setup_points_to_packaged_extension(capsys):
     assert exit_code == 0
     assert data["status"] == "manual_extension_step_required"
     assert (extension_path / "manifest.json").exists()
+    assert (extension_path / "popup.html").exists()
     assert data["safety"]["credential_material_access_allowed"] is False
     assert data["safety"]["extension_install_requires_user_confirmation"] is True
+    assert data["safety"]["site_permission_requires_user_confirmation"] is True
+    assert data["chrome_store"]["package_command"] == "scripts/build_openguanlan_extension.sh"
 
 
 def test_openguanlan_doctor_supports_subcommand_json_and_port(capsys):
@@ -58,9 +61,15 @@ def test_openguanlan_read_visible_fails_closed_without_daemon(capsys):
 def test_openguanlan_extension_manifest_does_not_request_credential_permissions():
     manifest_path = Path(openguanlan_cli._extension_payload()["manifest"])
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    background = (manifest_path.parent / "background.js").read_text(encoding="utf-8")
 
     permissions = set(manifest["permissions"])
     assert {"activeTab", "scripting", "tabs"} <= permissions
     assert "cookies" not in permissions
     assert "storage" not in permissions
     assert "debugger" not in permissions
+    assert "<all_urls>" not in set(manifest.get("host_permissions", []))
+    assert "<all_urls>" in set(manifest.get("optional_host_permissions", []))
+    assert manifest["action"]["default_popup"] == "popup.html"
+    assert 'if (task.action === "get_title") {\n    await ensureSitePermission(tab.url);' in background
+    assert "async function screenshot(task) {\n  const tab = await ensureTab(task, { navigate: false });\n  await ensureSitePermission(tab.url);" in background

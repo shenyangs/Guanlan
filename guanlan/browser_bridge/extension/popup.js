@@ -1,0 +1,67 @@
+const DAEMON_URL = "http://127.0.0.1:19830";
+
+const daemonStatus = document.getElementById("daemon-status");
+const siteStatus = document.getElementById("site-status");
+const grantButton = document.getElementById("grant-site");
+const refreshButton = document.getElementById("refresh");
+
+refreshButton.addEventListener("click", refreshStatus);
+grantButton.addEventListener("click", grantCurrentSite);
+
+refreshStatus();
+
+async function refreshStatus() {
+  grantButton.disabled = true;
+  await Promise.all([checkDaemon(), checkSitePermission()]);
+}
+
+async function checkDaemon() {
+  try {
+    const response = await fetch(`${DAEMON_URL}/status`);
+    const payload = await response.json();
+    daemonStatus.textContent = payload && payload.ok ? "Ready" : "Unavailable";
+  } catch (_error) {
+    daemonStatus.textContent = "Start openguanlan daemon";
+  }
+}
+
+async function checkSitePermission() {
+  const tab = await currentTab();
+  const origin = originPattern(tab && tab.url);
+  if (!origin) {
+    siteStatus.textContent = "Not a web page";
+    grantButton.disabled = true;
+    return;
+  }
+  const allowed = await chrome.permissions.contains({ origins: [origin] });
+  siteStatus.textContent = allowed ? "Granted" : "Needs grant";
+  grantButton.disabled = allowed;
+}
+
+async function grantCurrentSite() {
+  const tab = await currentTab();
+  const origin = originPattern(tab && tab.url);
+  if (!origin) {
+    return;
+  }
+  const granted = await chrome.permissions.request({ origins: [origin] });
+  siteStatus.textContent = granted ? "Granted" : "Not granted";
+  grantButton.disabled = granted;
+}
+
+async function currentTab() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tabs && tabs[0] ? tabs[0] : null;
+}
+
+function originPattern(url) {
+  try {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return "";
+    }
+    return `${parsed.protocol}//${parsed.host}/*`;
+  } catch (_error) {
+    return "";
+  }
+}

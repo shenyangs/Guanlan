@@ -428,14 +428,22 @@ def _setup_payload() -> dict[str, Any]:
         "steps": [
             "Run `openguanlan daemon` in a local terminal.",
             f"Open chrome://extensions and load the unpacked extension directory: {extension['path']}",
+            "Click the OpenGuanlan extension popup on the target tab and grant the current site.",
             "Run `openguanlan doctor --json` until daemon and extension are connected.",
             "Use `guanlan browser-assist run \"URL\" --adapter openguanlan --json` after user authorization.",
         ],
         "safety": {
             "extension_install_requires_user_confirmation": True,
+            "site_permission_requires_user_confirmation": True,
             "read_only": True,
             "credential_material_access_allowed": False,
             "navigation_requires_browser_assist_authorization": True,
+        },
+        "chrome_store": {
+            "package_command": "scripts/build_openguanlan_extension.sh",
+            "privacy_policy": "website/openguanlan-browser-bridge-privacy.html",
+            "default_host_permissions": ["http://127.0.0.1:19830/*", "http://localhost:19830/*"],
+            "optional_host_permissions": ["<all_urls>"],
         },
     }
 
@@ -448,6 +456,27 @@ def _extension_payload() -> dict[str, Any]:
         "manifest": str(path / "manifest.json"),
         "exists": (path / "manifest.json").exists(),
         "manual_user_step_required": True,
+        "popup": str(path / "popup.html"),
+        "icons": {
+            "16": str(path / "icons" / "icon-16.png"),
+            "32": str(path / "icons" / "icon-32.png"),
+            "48": str(path / "icons" / "icon-48.png"),
+            "128": str(path / "icons" / "icon-128.png"),
+        },
+        "chrome_store_ready_assets": all(
+            (path / rel).exists()
+            for rel in [
+                "manifest.json",
+                "background.js",
+                "popup.html",
+                "popup.css",
+                "popup.js",
+                "icons/icon-16.png",
+                "icons/icon-32.png",
+                "icons/icon-48.png",
+                "icons/icon-128.png",
+            ]
+        ),
     }
 
 

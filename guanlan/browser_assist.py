@@ -1014,7 +1014,7 @@ def build_openguanlan_browser_bridge_setup_plan() -> dict[str, Any]:
         "compatibility_fallback": "open-cli adapter remains optional for users who already installed OpenCLI.",
         "components": [
             "openguanlan CLI/daemon: 本机只读任务队列，提供 open/state/get/find/extract/frames/screenshot/wait/scroll/tab/read-visible。",
-            "OpenGuanlan Browser Bridge 扩展: 用户手动加载 unpacked extension，连接本机只读 daemon。",
+            "OpenGuanlan Browser Bridge 扩展: 用户手动安装/启用，连接本机只读 daemon，并通过 popup 授权当前站点。",
             "Guanlan adapter: 检测 openguanlan runtime 后作为 experimental extractor 使用；默认推荐仍是 host-browser。",
         ],
         "absorbed_opencli_capability_layers": [
@@ -1029,6 +1029,7 @@ def build_openguanlan_browser_bridge_setup_plan() -> dict[str, Any]:
         "user_install_boundary": [
             "不要求用户安装 opencli。",
             "浏览器扩展仍必须由用户手动安装/启用，因为 Chrome/Chromium 扩展权限需要用户确认。",
+            "网页读取权限按当前站点授权；默认 host permissions 只用于连接本机 daemon。",
             "不读取 Cookie、Token、localStorage、sessionStorage、浏览器数据库、profile、钥匙串或密码。",
             "只读目标页可见内容；私域目标页仍需要单独明确授权并标记 private_account_evidence。",
         ],
@@ -1036,10 +1037,16 @@ def build_openguanlan_browser_bridge_setup_plan() -> dict[str, Any]:
             "openguanlan setup --json",
             "openguanlan daemon",
             "openguanlan doctor --json",
+            "scripts/build_openguanlan_extension.sh",
             "guanlan browser-assist adapters --check --json",
             "guanlan browser-assist run \"URL\" --adapter host-browser --json",
             "guanlan browser-assist run \"URL\" --adapter openguanlan --json",
         ],
+        "chrome_store": {
+            "package_command": "scripts/build_openguanlan_extension.sh",
+            "privacy_policy": "website/openguanlan-browser-bridge-privacy.html",
+            "permission_model": "localhost daemon by default; target sites via optional_host_permissions and popup grant",
+        },
         "next_engineering_step": "用户手动加载扩展并启动 openguanlan daemon 后，Agent 可在授权后用 openguanlan 输出 Guanlan browser-visible JSON/JSONL。",
         "safety": {
             "read_only": True,
@@ -1899,6 +1906,7 @@ def _openguanlan_setup_guidance() -> dict[str, Any]:
         "doctor_command": "openguanlan doctor --json",
         "daemon_command": "openguanlan daemon",
         "extension_path_command": "openguanlan extension path",
+        "package_command": "scripts/build_openguanlan_extension.sh",
         "boundary": "Guanlan-native browser bridge is preferred; OpenCLI is compatibility only.",
         "default_adapter_remains": "host-browser",
     }

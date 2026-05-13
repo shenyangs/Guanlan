@@ -1,0 +1,100 @@
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #16252a;
+  background: #f7f4ec;
+}
+
+body {
+  width: 320px;
+  margin: 0;
+  background: #f7f4ec;
+}
+
+main {
+  padding: 16px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+header img {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+p {
+  margin: 0;
+}
+
+header p {
+  color: #5c6b70;
+  font-size: 12px;
+}
+
+.status {
+  border: 1px solid #d8d1c4;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.status div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  background: #fffdf7;
+}
+
+.status div + div {
+  border-top: 1px solid #e5ded0;
+}
+
+.status span {
+  color: #617176;
+}
+
+.status strong {
+  text-align: right;
+  font-weight: 700;
+}
+
+button {
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: #b42d24;
+  color: #fffaf0;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+button.secondary {
+  background: #244f58;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.note {
+  margin-top: 8px;
+  color: #5c6b70;
+  font-size: 12px;
+  line-height: 1.45;
+}

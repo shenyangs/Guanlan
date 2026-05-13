@@ -102,6 +102,8 @@ guanlan diagnose page "URL"
 guanlan browser-assist adapters --check
 guanlan browser-assist setup-openguanlan --json
 guanlan browser-assist setup-opencli --json
+openguanlan setup --json
+scripts/build_openguanlan_extension.sh
 guanlan browser-assist sessions "URL" --min-visible-items 30 --json
 guanlan browser-assist run "URL" --adapter host-browser --json
 guanlan archive add-browser-note --from-json browser-notes.jsonl
@@ -109,7 +111,7 @@ guanlan archive add-browser-note --from-json browser-notes.jsonl
 
 `browser-assist adapters --check` 只做只读可用性探测：检查可执行文件、命令模板、平台匹配和 dry-run 构造，不会打开页面、读取浏览器状态或调用外部平台。`browser-assist run` 默认只返回宿主浏览器执行契约，告诉 Agent 该打开哪些 URL、提取哪些可见字段、哪些动作不能做。`open-cli` 默认仍可只作为 opener；如果检测到 OpenCLI 浏览器桥或用户配置了可输出 browser-visible JSON/JSONL 的命令模板，能力层会升级为 extractor。`host-browser` 仍是默认稳定推荐。`browser-use` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先安装并配置命令模板；不要为了补证临时下载 Playwright、启动独立浏览器或读取浏览器 profile。只有用户另外明确授权 Cookie 平台、用途、风险和只读范围时，才允许走凭据相关流程，且凭据材料不进入可见页入库 payload。
 
-如果用户需要独立浏览器桥，优先用 `guanlan browser-assist setup-openguanlan --json` 进入 Guanlan-native 的 OpenGuanlan 路线；不要把安装 OpenCLI 当成观澜核心前置条件。`setup-opencli` 只保留给已经明确想用 OpenCLI 的兼容用户。无论哪条桥，Chrome 扩展都必须由用户在浏览器里手动安装/启用。
+如果用户需要独立浏览器桥，优先用 `guanlan browser-assist setup-openguanlan --json` 进入 Guanlan-native 的 OpenGuanlan 路线；不要把安装 OpenCLI 当成观澜核心前置条件。`setup-opencli` 只保留给已经明确想用 OpenCLI 的兼容用户。无论哪条桥，Chrome 扩展都必须由用户在浏览器里手动安装/启用。OpenGuanlan 的商店版权限模型应保持“默认只连本机 daemon，目标网站按当前站点授权”；用 `scripts/build_openguanlan_extension.sh` 生成商店 zip 并检查 manifest 权限，不要把 `<all_urls>` 放回默认 host permissions。
 
 适配器能力要分层理解：`extractor` 才能产出浏览器可见页 JSON/JSONL，`opener` 只负责把 URL 打开。`adapters --check` 会给出 `can_open`、`can_extract_visible_text`、`can_reuse_existing_session`、`can_wait_dynamic_ready`、`can_scroll_until_min_items`、`can_read_private_account_visible_pages`、`credential_material_access_allowed`、`cookie_flow_available`、`capability_score` 和 `risk_score`；如果只有 opener 可用，Agent 仍需要用宿主浏览器能力提取可见正文。小红书、知乎、公众号会带平台专项字段模板，入库时保留 `browser_visible_v2`、`browser_assisted`、`visible_page_only`、`user_authorized` 和 `session_dependent` 边界。
 
