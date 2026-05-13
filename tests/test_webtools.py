@@ -2269,8 +2269,25 @@ def test_research_tech_route_forces_rss_discovery(monkeypatch):
             }
         ]
 
+    def fake_ai_vertical(query, **kwargs):
+        feed_calls.append(("ai-vertical", kwargs))
+        return [
+            {
+                "title": "AI 垂类精选动态",
+                "url": "https://ai.example.com/agent",
+                "summary": "来自 AI 垂类精选动态源的线索。",
+                "source_id": "ai-vertical",
+                "source_title": "AI 垂类精选动态源",
+                "evidence_role": "ai_vertical_discovery_signal",
+                "source_card": {"domain": "ai.example.com", "source_type": "科技/开发者社区"},
+                "feed_status": {"status": "fresh", "source_id": "ai-vertical", "stale": False, "error": ""},
+                "risk_tags": ["source_requires_original_verification"],
+            }
+        ]
+
     monkeypatch.setattr(webtools, "search_web", fake_search)
     monkeypatch.setattr("guanlan.feeds.fetch_feed_source", fake_feed)
+    monkeypatch.setattr("guanlan.feeds.fetch_ai_vertical_signals", fake_ai_vertical)
 
     packet = webtools.build_research_packet(
         "Python Agent 框架 对比 github issue",
@@ -2282,9 +2299,32 @@ def test_research_tech_route_forces_rss_discovery(monkeypatch):
     assert search_calls
     assert feed_calls and feed_calls[0][0] == "curated"
     assert feed_calls[0][1]["category"] == "ai"
+    assert any(call[0] == "ai-vertical" for call in feed_calls)
     assert any(group["type"] == "feed" and group["forced"] for group in packet["result_groups"])
+    assert any(group["label"] == "ai-vertical" for group in packet["result_groups"])
     assert any(item["source"].startswith("feeds:") for item in packet["results"])
+    assert any(item["source"] == "feeds:ai-vertical" for item in packet["results"])
     assert any("强制补跑 RSS" in item for item in packet["guidance"])
+
+
+def test_safety_filter_diagnostics_are_json_safe():
+    raw = {
+        "kept_results": [
+            webtools.SearchResult(
+                title="Safe",
+                url="https://example.com",
+                snippet="ok",
+            )
+        ],
+        "dropped_count": 1,
+        "dropped": [{"title": "Bad", "domain": "example.com", "reason": "unsafe"}],
+    }
+
+    data = webtools._serializable_safety_filter(raw)
+
+    json.dumps(data)
+    assert isinstance(data["kept_results"][0], dict)
+    assert raw["kept_results"][0].title == "Safe"
 
 
 def test_search_web_parses_bing_html(monkeypatch):
@@ -2360,7 +2400,14 @@ def test_explicit_bing_low_relevance_batch_is_not_returned(monkeypatch):
 
     monkeypatch.setattr(webtools, "_search_bing", noisy_bing)
 
-    results = webtools.search_web("固态电池量产时间表", backend="bing", limit=10, trace=True)
+    results = webtools.search_web(
+        "固态电池量产时间表",
+        backend="bing",
+        limit=10,
+        trace=True,
+        cache_ttl=0,
+        recovery_mode="off",
+    )
     diagnostics = results.diagnostics["backend_diagnostics"]
 
     assert results == []
@@ -2371,7 +2418,7 @@ def test_explicit_bing_low_relevance_batch_is_not_returned(monkeypatch):
     rendered = webtools.format_search_markdown(results, title="观澜搜索 / 固态电池量产时间表")
     assert "暂无可用搜索结果" in rendered
     assert "bing=low_relevance(3)" in rendered
-    assert "不是观澜质量门槛过紧" in rendered
+    assert "候选与查询意图明显不匹配" in rendered
     assert "rejected_sample: 什么是固本培元？" in rendered
     assert "guanlan search \"固态电池量产时间表\" --profile china --limit 80" in rendered
 

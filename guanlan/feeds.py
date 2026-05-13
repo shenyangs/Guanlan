@@ -51,6 +51,27 @@ CURATED_RSS_BASE = "https://www." + _CURATED_DOMAIN + "/{language}/feeds/rss"
 AISHORT_BAIDU_RSS_URL = "https://rss.aishort.top/?type=baidu"
 AISHORT_WECHAT_RSS_URL = "https://rss.aishort.top/?type=wasi"
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
+AI_VERTICAL_ITEMS_URL = "https://aihot.virxact.com/api/public/items"
+AI_VERTICAL_CATEGORY_ALIASES = {
+    "model": "ai-models",
+    "models": "ai-models",
+    "ai-models": "ai-models",
+    "模型": "ai-models",
+    "产品": "ai-products",
+    "product": "ai-products",
+    "products": "ai-products",
+    "ai-products": "ai-products",
+    "industry": "industry",
+    "行业": "industry",
+    "paper": "paper",
+    "papers": "paper",
+    "论文": "paper",
+    "research": "paper",
+    "tip": "tip",
+    "tips": "tip",
+    "技巧": "tip",
+    "观点": "tip",
+}
 DEFAULT_FEED_WATCHLIST_PATH = Path.home() / ".guanlan" / "feeds-watchlist.json"
 
 
@@ -145,6 +166,24 @@ def recommend_feed_sources(query: str) -> list[str]:
         recommendations.append("baidu-rss")
     if any(term in text for term in ("技术文章", "技术博客", "ai", "人工智能", "agent", "产品设计", "商业科技", "值得读", "好文章")):
         recommendations.append("curated")
+    if any(
+        term in text
+        for term in (
+            "人工智能",
+            "大模型",
+            "agent",
+            "智能体",
+            "openai",
+            "anthropic",
+            "claude",
+            "gemini",
+            "wps ai",
+            "ai office",
+            "office ai",
+            "ai ppt",
+        )
+    ):
+        recommendations.append("ai-vertical")
     if any(term in text for term in ("arxiv", "预印本", "preprint", "论文", "paper")):
         recommendations.append("arxiv")
     if any(term in text for term in ("源", "订阅", "rss", "opml", "目录", "信源")):
@@ -162,6 +201,24 @@ def _read_bytes(url: str, timeout: int = _TIMEOUT) -> bytes:
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
+
+
+def _read_json(url: str, timeout: int = _TIMEOUT, headers: dict[str, str] | None = None) -> dict[str, Any]:
+    req_headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 "
+            f"guanlan/{__version__} ai-vertical-source"
+        ),
+        "Accept": "application/json",
+    }
+    if headers:
+        req_headers.update(headers)
+    req = urllib.request.Request(url, headers=req_headers)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+    data = json.loads(raw)
+    return data if isinstance(data, dict) else {}
 
 
 def feed_cache_dir() -> Path:
@@ -404,6 +461,145 @@ def _feed_risk_tags(source_id: str, card: dict[str, Any]) -> list[str]:
     if meta.get("category") == "source_catalog":
         tags.append("catalog_not_content")
     return _unique(tags)
+
+
+def infer_ai_vertical_category(query: str = "", category: str | None = None) -> str | None:
+    """Map Guanlan route hints to the AI vertical API categories."""
+    explicit = (category or "").strip().lower()
+    if explicit:
+        return AI_VERTICAL_CATEGORY_ALIASES.get(explicit, explicit if explicit in set(AI_VERTICAL_CATEGORY_ALIASES.values()) else None)
+    text = (query or "").lower()
+    compact = re.sub(r"\s+", "", text)
+    if any(term in compact for term in ("模型", "大模型", "llm", "gpt", "claude", "gemini", "qwen", "glm")):
+        return "ai-models"
+    if any(term in compact for term in ("产品", "发布", "工具", "agent", "智能体", "wps", "office", "ppt", "应用")):
+        return "ai-products"
+    if any(term in compact for term in ("论文", "paper", "arxiv", "研究", "benchmark", "评测")):
+        return "paper"
+    if any(term in compact for term in ("技巧", "观点", "实践", "经验", "教程", "方法")):
+        return "tip"
+    if any(term in compact for term in ("行业", "融资", "公司", "商业化", "监管", "市场")):
+        return "industry"
+    return None
+
+
+def build_ai_vertical_items_url(
+    *,
+    mode: str = "selected",
+    category: str | None = None,
+    keyword: str | None = None,
+    since: str | None = None,
+    take: int = DEFAULT_FEEDS_LIMIT,
+    cursor: str | None = None,
+) -> str:
+    """Build the read-only AI vertical source URL used internally by routing."""
+    clean_mode = "all" if (mode or "").strip().lower() == "all" else "selected"
+    params: dict[str, str] = {"mode": clean_mode, "take": str(max(1, min(int(take), 100)))}
+    clean_category = infer_ai_vertical_category(category=category)
+    if clean_category:
+        params["category"] = clean_category
+    clean_keyword = (keyword or "").strip()
+    if len(clean_keyword) >= 2:
+        params["q"] = clean_keyword[:200]
+    if since:
+        params["since"] = since
+    if cursor:
+        params["cursor"] = cursor
+    return AI_VERTICAL_ITEMS_URL + "?" + urllib.parse.urlencode(params)
+
+
+def _normalize_ai_vertical_items(data: dict[str, Any], *, source_url: str, limit: int) -> list[dict[str, Any]]:
+    rows = data.get("items") if isinstance(data.get("items"), list) else []
+    items: list[dict[str, Any]] = []
+    for row in rows[: max(limit, 1)]:
+        if not isinstance(row, dict):
+            continue
+        url = _clean_text(row.get("url"))
+        title = _clean_text(row.get("title") or row.get("title_en") or url)
+        if not title and not url:
+            continue
+        source_card = _source_card_for_feed(url, "ai-vertical")
+        category = _clean_text(row.get("category")) or "ai"
+        item = FeedItem(
+            title=title or url,
+            url=url,
+            source_id="ai-vertical",
+            source_title="AI 垂类精选动态源",
+            category=category,
+            content_direction=FEED_SOURCE_CATALOG["ai-vertical"]["content_direction"],
+            published_at=_clean_text(row.get("publishedAt")),
+            author=_clean_text(row.get("source")),
+            summary=_clean_text(row.get("summary"), max_chars=900),
+            tags=_unique(["ai", category]),
+            metrics={"item_id": _clean_text(row.get("id"))} if row.get("id") else {},
+            rank=len(items) + 1,
+            source_confidence=str(FEED_SOURCE_CATALOG["ai-vertical"].get("confidence") or "medium"),
+            evidence_role=_feed_evidence_role("ai-vertical", "ai"),
+            source_card=source_card,
+            freshness=_feed_freshness("ai-vertical", _clean_text(row.get("publishedAt"))),
+            fetched_at=_now_iso(),
+            risk_tags=_unique(_feed_risk_tags("ai-vertical", source_card)),
+            feed_status={"status": "fresh", "source_id": "ai-vertical", "stale": False, "error": "", "url": source_url},
+        )
+        items.append(item.to_dict())
+    return items
+
+
+def fetch_ai_vertical_signals(
+    query: str = "",
+    *,
+    limit: int = DEFAULT_FEEDS_LIMIT,
+    category: str | None = None,
+    mode: str = "selected",
+    keyword: str | None = None,
+    since: str | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch the internal AI vertical discovery source for AI/WPS routing."""
+    inferred_category = infer_ai_vertical_category(query, category)
+    query_keyword = keyword if keyword is not None else ""
+    url = build_ai_vertical_items_url(
+        mode=mode,
+        category=inferred_category,
+        keyword=query_keyword,
+        since=since,
+        take=min(max(limit, 1), 100),
+    )
+    cache_key = _feed_cache_key(
+        "ai-vertical",
+        {
+            "url": url,
+            "query": query,
+            "category": inferred_category or "",
+            "keyword": query_keyword,
+            "mode": mode,
+            "since": since or "",
+        },
+    )
+    try:
+        data = _read_json(url)
+        items = _normalize_ai_vertical_items(data, source_url=url, limit=limit)
+        items = _annotate_feed_status(items, "fresh", source_id="ai-vertical")
+        _feed_cache_set("ai-vertical", cache_key, {"items": items, "url": url, "source_id": "ai-vertical"})
+        return items[: max(limit, 1)]
+    except Exception as exc:
+        cached = _feed_cache_get_any("ai-vertical", cache_key)
+        if cached and isinstance(cached.get("items"), list):
+            return _annotate_feed_status(
+                [dict(item) for item in cached["items"][: max(limit, 1)]],
+                "stale_cache",
+                source_id="ai-vertical",
+                error=str(exc),
+                stale=True,
+            )
+        return [
+            _feed_failure_item(
+                url=url,
+                source_id="ai-vertical",
+                category="ai",
+                content_direction=FEED_SOURCE_CATALOG["ai-vertical"]["content_direction"],
+                error=str(exc),
+            )
+        ]
 
 
 def _entry_tags(entry: Any) -> list[str]:
@@ -969,7 +1165,7 @@ def format_feed_catalog_markdown(catalog: dict[str, dict[str, Any]] | None = Non
     lines = [
         "# 观澜 RSS 信源路由",
         "",
-        "这些入口都只读公开 RSS/OPML。路由原则：实时热点看动态源，深度阅读看精品内容流，长期扩源看源目录。",
+        "这些入口都只读公开 RSS/OPML/API。路由原则：实时热点看动态源，深度阅读看精品内容流，AI/WPS 研究看垂类精选动态源，长期扩源看源目录。",
         "",
     ]
     for source_id, meta in data.items():

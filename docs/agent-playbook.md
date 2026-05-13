@@ -150,6 +150,8 @@ Recipe 输出的是计划、证据层和边界，不是最终答案。执行时�
 3. `search --scope ...`
 4. `feeds`
 
+`research --preset tech` 和 `research --preset wps_office` 会自动补 RSS/精品内容流；当 query 命中 AI/WPS/Agent/大模型语义时，还会内部纳入 AI 垂类精选动态源作为近 7 天线索层。这个源不要求用户记新命令，也不替代官方文档、代码仓库、原始公告或产品页面；关键事实要回读原始 URL。
+
 学术发现：
 
 1. `route`

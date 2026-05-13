@@ -1293,9 +1293,26 @@ def build_route_plan(
         recommended_feeds.append("baidu-rss")
     if "tech" in primary + secondary and "curated" not in recommended_feeds:
         recommended_feeds.append("curated")
+    ai_vertical_terms = (
+        "人工智能",
+        "大模型",
+        "agent",
+        "智能体",
+        "llm",
+        "openai",
+        "anthropic",
+        "claude",
+        "gemini",
+        "sora",
+        "mcp",
+    )
+    if ("tech" in primary + secondary and _contains_any(text, ai_vertical_terms)) and "ai-vertical" not in recommended_feeds:
+        recommended_feeds.append("ai-vertical")
     if "wps_office" in primary + secondary:
         if "curated" not in recommended_feeds:
             recommended_feeds.append("curated")
+        if "ai-vertical" not in recommended_feeds:
+            recommended_feeds.append("ai-vertical")
         if profile == "china" and "wechat-rss" not in recommended_feeds:
             recommended_feeds.append("wechat-rss")
     recommended_feeds = _unique(recommended_feeds)

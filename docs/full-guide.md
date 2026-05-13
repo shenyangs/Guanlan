@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.5.28`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.29`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -655,7 +655,7 @@ guanlan search "LangGraph AutoGen CrewAI 对比" --profile china --scope tech_de
 guanlan feeds curated --category ai --limit 80
 ```
 
-科技、AI、WPS/AI Office、开发者、工程实践类问题有一条硬规则：必须额外补一轮 RSS/精品内容流。`research --preset tech` 和 `research --preset wps_office` 会自动把 `feeds curated` 纳入候选池和 `result_groups`；如果 Agent 只使用 `route` 或 `search`，则需要再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。RSS 只作为阅读发现和新鲜线索，不替代官方文档、代码仓库、issue、benchmark 原文。
+科技、AI、WPS/AI Office、开发者、工程实践类问题有一条硬规则：必须额外补一轮 RSS/精品内容流。`research --preset tech` 和 `research --preset wps_office` 会自动把 `feeds curated` 纳入候选池和 `result_groups`；AI/WPS/Agent/大模型命中时，还会内部纳入 AI 垂类精选动态源作为近 7 天线索层。这个源不是新的用户入口，重要事实仍要回读原始 URL。如果 Agent 只使用 `route` 或 `search`，则需要再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。RSS 只作为阅读发现和新鲜线索，不替代官方文档、代码仓库、issue、benchmark 原文。
 
 ### 9. 查 WPS/AI Office 选题雷达
 

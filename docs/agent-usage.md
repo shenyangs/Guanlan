@@ -414,7 +414,7 @@ guanlan research "某主题" --profile china --limit 80 --read-top 5
 
 `route` 会输出主要意图、证据角色、优先 scope、推荐站点、兜底 scope、查询改写和边界提醒。不要把 route 当成硬过滤：除非用户显式指定 `--scope` 或 `--site`，否则 `research` 会同时保留开放网页兜底，避免只在白名单里打转。
 
-科技、AI、WPS/AI Office、开发者、工程实践类问题必须额外补一轮 RSS/精品内容流。`guanlan research "问题" --preset tech` 和 `guanlan research "问题" --preset wps_office` 会自动把 `feeds curated` 作为 forced feed group 纳入候选池；如果 Agent 只跑了 `route` 或 `search`，还需要再跑：
+科技、AI、WPS/AI Office、开发者、工程实践类问题必须额外补一轮 RSS/精品内容流。`guanlan research "问题" --preset tech` 和 `guanlan research "问题" --preset wps_office` 会自动把 `feeds curated` 作为 forced feed group 纳入候选池；AI/WPS/Agent/大模型命中时，还会内部纳入 AI 垂类精选动态源，作为近 7 天动态和选题线索层。这个源不是新的用户命令，关键事实仍要回读原始 URL。如果 Agent 只跑了 `route` 或 `search`，还需要再跑：
 
 ```bash
 guanlan feeds curated --category ai --limit 80

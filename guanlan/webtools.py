@@ -1639,7 +1639,7 @@ def search_web(
             raw_result_count = len(batch)
             safety_filter = _filter_unsafe_search_results(batch)
             if safety_filter["dropped_count"]:
-                attempt["safety_filter"] = safety_filter
+                attempt["safety_filter"] = _serializable_safety_filter(safety_filter)
                 batch = safety_filter["kept_results"]
                 attempt["raw_result_count"] = raw_result_count
             attempt["result_count"] = len(batch)
@@ -5366,8 +5366,13 @@ def _research_feed_discovery(
     reason = "office_ai_route_requires_rss_discovery" if is_wps_route else "tech_route_requires_rss_discovery"
     errors: list[str] = []
     groups: list[dict[str, Any]] = []
+    all_results: list[dict[str, Any]] = []
     try:
-        from guanlan.feeds import fetch_feed_source
+        from guanlan.feeds import (
+            fetch_ai_vertical_signals,
+            fetch_feed_source,
+            infer_ai_vertical_category,
+        )
 
         items = fetch_feed_source(
             "curated",
@@ -5385,6 +5390,7 @@ def _research_feed_discovery(
             for item in items
             if item.get("evidence_role") == "source_availability_signal"
         ]
+        all_results.extend(results)
         if unavailable and not results:
             errors.append(f"feed:curated: {unavailable[0]}")
         groups.append(
@@ -5402,7 +5408,43 @@ def _research_feed_discovery(
                 **({"error": unavailable[0]} if unavailable and not results else {}),
             }
         )
-        return results, errors, groups
+        if _requires_ai_vertical_discovery(query, route_plan=route_plan, preset_id=preset_id):
+            ai_category = infer_ai_vertical_category(query, "ai-products" if is_wps_route else None)
+            ai_items = fetch_ai_vertical_signals(
+                query,
+                limit=max(1, min(feed_limit, 40)),
+                category=ai_category,
+            )
+            ai_results = [
+                converted
+                for idx, item in enumerate(ai_items, start=1)
+                if (converted := _feed_item_to_search_result(item, rank=idx)) is not None
+            ]
+            ai_unavailable = [
+                str((item.get("feed_status") or {}).get("error") or item.get("summary") or "")
+                for item in ai_items
+                if item.get("evidence_role") == "source_availability_signal"
+            ]
+            all_results.extend(ai_results)
+            if ai_unavailable and not ai_results:
+                errors.append(f"feed:ai-vertical: {ai_unavailable[0]}")
+            groups.append(
+                {
+                    "type": "feed",
+                    "label": "ai-vertical",
+                    "query": f"{query} / AI vertical selected:{ai_category or 'all'}",
+                    "result_count": len(ai_results),
+                    "results": ai_results,
+                    "forced": True,
+                    "reason": "ai_wps_route_requires_vertical_discovery",
+                    "source": "AI 垂类精选动态源",
+                    "category": ai_category or "all",
+                    "language": "zh",
+                    "evidence_boundary": "精选动态和摘要层；关键事实需回读原始 URL。",
+                    **({"error": ai_unavailable[0]} if ai_unavailable and not ai_results else {}),
+                }
+            )
+        return all_results, errors, groups
     except Exception as exc:
         message = f"feed:curated: {exc}"
         errors.append(message)
@@ -5427,6 +5469,47 @@ def _research_feed_discovery(
 def _requires_tech_rss_discovery(route_plan: dict[str, Any], preset_id: str) -> bool:
     primary = set(route_plan.get("primary_intents") or [])
     return preset_id in {"tech", "wps_office"} or bool({"tech", "wps_office"} & primary)
+
+
+def _requires_ai_vertical_discovery(query: str, *, route_plan: dict[str, Any], preset_id: str) -> bool:
+    """Decide whether AI/WPS routes should add the internal vertical AI source."""
+    primary = set(route_plan.get("primary_intents") or [])
+    if preset_id == "wps_office" or "wps_office" in primary:
+        return True
+    text = (query or "").lower()
+    compact = re.sub(r"\s+", "", text)
+    terms = (
+        "人工智能",
+        "大模型",
+        "llm",
+        "agent",
+        "智能体",
+        "openai",
+        "anthropic",
+        "claude",
+        "gemini",
+        "sora",
+        "mcp",
+        "wpsai",
+        "wps",
+        "aippt",
+        "officeai",
+        "aioffice",
+    )
+    return any(term in compact for term in terms)
+
+
+def _serializable_safety_filter(safety_filter: dict[str, Any]) -> dict[str, Any]:
+    """Keep diagnostics JSON-safe without changing the filtered result batch."""
+    data = dict(safety_filter)
+    kept_rows: list[dict[str, Any]] = []
+    for item in data.get("kept_results") or []:
+        if hasattr(item, "to_dict"):
+            kept_rows.append(item.to_dict())
+        elif isinstance(item, dict):
+            kept_rows.append(dict(item))
+    data["kept_results"] = kept_rows[:5]
+    return data
 
 
 def _feed_item_to_search_result(item: dict[str, Any], *, rank: int) -> dict[str, Any] | None:

@@ -222,6 +222,69 @@ def test_named_dynamic_sources_normalize_heat_and_wechat(monkeypatch):
     assert wechat[0]["evidence_role"] == "wechat_article_signal"
 
 
+def test_fetch_ai_vertical_signals_uses_api_and_keeps_boundary(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    calls = []
+
+    def fake_read_json(url, **_kwargs):
+        calls.append(url)
+        return {
+            "count": 1,
+            "items": [
+                {
+                    "id": "ai-1",
+                    "title": "Claude Code 新能力发布",
+                    "url": "https://claude.com/blog/example",
+                    "source": "Claude Blog",
+                    "publishedAt": "2026-05-13T00:00:00.000Z",
+                    "summary": "摘要层线索，重要事实应回读原文。",
+                    "category": "ai-products",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(feeds, "_read_json", fake_read_json)
+
+    items = feeds.fetch_ai_vertical_signals("WPS AI PPT Agent 办公选题", limit=3)
+
+    assert "category=ai-products" in calls[0]
+    assert "mode=selected" in calls[0]
+    assert items[0]["source_id"] == "ai-vertical"
+    assert items[0]["source_title"] == "AI 垂类精选动态源"
+    assert items[0]["evidence_role"] == "ai_vertical_discovery_signal"
+    assert "source_requires_original_verification" in items[0]["risk_tags"]
+    assert items[0]["feed_status"]["status"] == "fresh"
+
+
+def test_ai_vertical_signals_use_stale_cache_on_api_failure(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(
+        feeds,
+        "_read_json",
+        lambda *_args, **_kwargs: {
+            "items": [
+                {
+                    "title": "Cached AI item",
+                    "url": "https://example.com/ai",
+                    "summary": "cached",
+                    "category": "industry",
+                }
+            ]
+        },
+    )
+    assert feeds.fetch_ai_vertical_signals("AI 行业动态", limit=1)[0]["feed_status"]["status"] == "fresh"
+
+    def fail_json(*_args, **_kwargs):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(feeds, "_read_json", fail_json)
+    stale = feeds.fetch_ai_vertical_signals("AI 行业动态", limit=1)
+
+    assert stale[0]["title"] == "Cached AI item"
+    assert stale[0]["feed_status"]["status"] == "stale_cache"
+    assert "stale_cache" in stale[0]["risk_tags"]
+
+
 def test_fetch_arxiv_normalizes_public_api_results(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     raw = b"""<?xml version="1.0" encoding="UTF-8"?>
