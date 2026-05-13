@@ -13,6 +13,10 @@
 
 在开始做新自动化、评测、benchmark、MCP 编排前，至少重新读一次本文件和 `AGENTS.md`。
 
+## 发版纪律
+
+版本提交不是完整发版。只把 `main` 推上远端，不能算完成；必须继续完成同版本 tag、PyPI、Homebrew tap、官网部署和本地安装验证。推荐直接使用 `scripts/publish_release.sh`，不要把“稍后再打 tag / 稍后再同步官网”留成口头约定。
+
 ## 先记住定位
 
 Guanlan 不是“单次泛搜引擎”，而是给 Agent 用的中文互联网证据路由器。

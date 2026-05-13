@@ -29,7 +29,9 @@ telling users Homebrew is current. If the website carries version, install, capa
 copy, update and deploy it in the same release pass.
 Use `scripts/publish_release.sh` for real releases so pushing `main` and pushing the matching `v*`
 tag happen together; PyPI publishing is tag-triggered, so a version commit without a tag is not a
-complete release.
+complete release. Pushing `main` alone is never the end of a release. After the version commit lands,
+you must continue through `scripts/publish_release.sh` or an equivalent full release path until tag,
+PyPI, Homebrew tap, website deploy, and local installer verification all succeed for that same version.
 
 Install/update rule: after installing or upgrading Guanlan, always do a full reinstall, not an
 incremental upgrade, before configuring MCP, optional channels, or auth. Prefer one clean path:

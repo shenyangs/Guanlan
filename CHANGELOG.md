@@ -6,6 +6,13 @@
 
 ## Unreleased
 
+## v0.5.33 - 2026-05-13
+
+### Changed
+
+- 加硬发版规则：版本提交后不能停在 `main` 推送，必须继续完成 tag、PyPI、Homebrew tap、官网部署和本地安装核验，推荐统一走 `scripts/publish_release.sh`。
+- 官网和版本面同步到 `0.5.33`。
+
 ## v0.5.32 - 2026-05-13
 
 ### Changed
