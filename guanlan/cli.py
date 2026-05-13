@@ -267,6 +267,14 @@ def main():
     p_browser_assist_adapters.add_argument("--check", action="store_true", help="Run read-only adapter readiness checks")
     p_browser_assist_adapters.add_argument("--platform", default="", help="Optional platform label for adapter compatibility checks")
     p_browser_assist_adapters.add_argument("--dry-run-url", default="https://example.com/article", help="Example URL used to validate dry-run command construction")
+    p_browser_assist_setup_opencli = browser_assist_sub.add_parser("setup-opencli", help="Plan or explicitly install OpenCLI browser bridge CLI")
+    p_browser_assist_setup_opencli.add_argument("--execute", action="store_true", help="Install OpenCLI CLI with npm; browser extension remains a manual user step")
+    p_browser_assist_setup_opencli.add_argument("--timeout", type=int, default=180, help="Install timeout seconds when --execute is used")
+    p_browser_assist_setup_opencli.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
+    p_browser_assist_setup_opencli.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_browser_assist_setup_openguanlan = browser_assist_sub.add_parser("setup-openguanlan", help="Show Guanlan-native OpenGuanlan browser bridge plan")
+    p_browser_assist_setup_openguanlan.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
+    p_browser_assist_setup_openguanlan.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
     p_browser_assist_sessions = browser_assist_sub.add_parser("sessions", help="Describe the host-browser visible-page session contract")
     p_browser_assist_sessions.add_argument("url", nargs="?", default="", help="Target page URL")
     p_browser_assist_sessions.add_argument("--platform", default="", help="Optional platform label override")
@@ -1143,6 +1151,10 @@ def _cmd_install(args):
         "zhishixingqiu": _install_zsxq_deps,
         "browseruse":  _install_browser_use_deps,
         "browser-use": _install_browser_use_deps,
+        "openguanlan": _install_openguanlan_deps,
+        "open-guanlan": _install_openguanlan_deps,
+        "opencli":     _install_opencli_deps,
+        "open-cli":    _install_opencli_deps,
         # douyin/linkedin: manual setup, no auto-install
     }
     COOKIE_CHANNELS = {"twitter", "xueqiu", "bilibili"}
@@ -1638,12 +1650,31 @@ def _cmd_browser_assist(args):
     from guanlan.browser_assist import (
         build_browser_assist_plan,
         build_browser_assist_session_contract,
+        build_opencli_browser_bridge_setup_plan,
+        build_openguanlan_browser_bridge_setup_plan,
         format_browser_assist_adapters_markdown,
         format_browser_assist_markdown,
         format_browser_assist_run_markdown,
+        format_opencli_browser_bridge_setup_markdown,
+        format_openguanlan_browser_bridge_setup_markdown,
         list_browser_assist_adapters,
         run_browser_assist_adapter,
     )
+
+    if args.browser_assist_command == "setup-openguanlan":
+        setup = build_openguanlan_browser_bridge_setup_plan()
+        output_format = "json" if args.json else args.format
+        print(json.dumps(setup, ensure_ascii=False, indent=2) if output_format == "json" else format_openguanlan_browser_bridge_setup_markdown(setup))
+        return
+
+    if args.browser_assist_command == "setup-opencli":
+        setup = build_opencli_browser_bridge_setup_plan(
+            execute=bool(getattr(args, "execute", False)),
+            timeout=max(getattr(args, "timeout", 180), 1),
+        )
+        output_format = "json" if args.json else args.format
+        print(json.dumps(setup, ensure_ascii=False, indent=2) if output_format == "json" else format_opencli_browser_bridge_setup_markdown(setup))
+        return
 
     if args.browser_assist_command == "adapters":
         adapters = list_browser_assist_adapters(
@@ -3121,6 +3152,64 @@ def _install_browser_use_deps():
         except Exception:
             pass
     print("  [!]  browser-use install failed. Try: uvx --from 'browser-use[cli]' browser-use doctor")
+
+
+def _install_opencli_deps():
+    """Install OpenCLI CLI; Browser Bridge extension remains a manual browser step."""
+    import shutil
+    import subprocess
+
+    print("Setting up OpenCLI browser bridge...")
+    if shutil.which("opencli"):
+        print("  ✅ opencli already installed")
+    else:
+        npm = shutil.which("npm")
+        if not npm:
+            print("  [!] npm not found. Install Node.js/npm first, then run: npm install -g @jackwener/opencli@latest")
+            return
+        try:
+            subprocess.run(
+                [npm, "install", "-g", "@jackwener/opencli@latest"],
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=180,
+                check=False,
+            )
+        except Exception as exc:
+            print(f"  [!] opencli install failed: {exc}")
+            return
+        if shutil.which("opencli"):
+            print("  ✅ opencli installed")
+        else:
+            print("  [!] opencli install did not expose an `opencli` command. Check npm global bin path.")
+            return
+    print("  Next manual browser step:")
+    print("    1. Install/enable the OpenCLI Chrome extension:")
+    print("       https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk")
+    print("    2. Run: opencli doctor")
+    print("    3. Run: guanlan browser-assist adapters --check --json")
+
+
+def _install_openguanlan_deps():
+    """Explain the Guanlan-native browser bridge path without installing OpenCLI."""
+    import shutil
+
+    print("Setting up OpenGuanlan browser bridge...")
+    if shutil.which("openguanlan"):
+        print("  ✅ openguanlan command is available")
+        print("  Run: openguanlan setup --json")
+        print("  Run: openguanlan daemon")
+        print("  Run: openguanlan doctor --json")
+    else:
+        print("  -- openguanlan is bundled with Guanlan 0.5.30+.")
+        print("  -- Reinstall/upgrade Guanlan, then refresh your shell path:")
+        print("     uv tool install --force --upgrade guanlan && hash -r")
+    print("  Manual browser step:")
+    print("     open chrome://extensions and Load unpacked the directory from `openguanlan extension path`")
+    print("  Guanlan remains stable through host-browser by default:")
+    print("     guanlan browser-assist run \"URL\" --adapter host-browser --json")
+    print("  OpenCLI remains an optional compatibility path, not the Guanlan-native default.")
 
 
 def _install_xhs_deps():

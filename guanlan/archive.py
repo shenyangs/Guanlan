@@ -230,6 +230,7 @@ def add_browser_visible_note(
     captured_at: float | None = None,
     visible_context: str = "",
     skipped_reason: str = "",
+    private_account_evidence: bool = False,
     extra_metadata: dict[str, Any] | None = None,
     db_path: str | Path | None = None,
 ) -> dict[str, Any]:
@@ -254,6 +255,7 @@ def add_browser_visible_note(
             "captured_at": captured_at,
             "visible_context": visible_context,
             "skipped_reason": skipped_reason,
+            "private_account_evidence": private_account_evidence,
         }
     )
     metadata = browser_visible_metadata(
@@ -263,6 +265,7 @@ def add_browser_visible_note(
         published_at=published_at,
         captured_at=captured_at,
         quality_report=quality_report,
+        private_account_evidence=private_account_evidence,
     )
     if visible_context:
         metadata["visible_context"] = visible_context
@@ -286,6 +289,7 @@ def add_browser_visible_note(
             "source_mode": "browser_visible",
             "browser_assisted": True,
             "visible_page_only": True,
+            "private_account_evidence": bool(private_account_evidence),
             "platform": metadata.get("platform", ""),
             "browser_visible_quality": quality_report,
             "boundary": "用户授权的浏览器可见页补证；不可伪装成所有人可复现的普通公开网页证据。",
@@ -321,9 +325,17 @@ def add_browser_visible_payload(
         captured_at=_coerce_timestamp(row.get("captured_at")),
         visible_context=row.get("visible_context", ""),
         skipped_reason=row.get("skipped_reason", ""),
+        private_account_evidence=bool(row.get("private_account_evidence", False)),
         extra_metadata={
             key: row.get(key, "")
-            for key in ("engagement_summary", "visible_comment_summary", "question", "account", "session_dependent")
+            for key in (
+                "engagement_summary",
+                "visible_comment_summary",
+                "question",
+                "account",
+                "session_dependent",
+                "private_account_evidence",
+            )
             if row.get(key, "") not in ("", None)
         },
         db_path=db_path,

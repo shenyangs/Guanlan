@@ -95,7 +95,7 @@ CAPABILITIES: tuple[Capability, ...] = (
             "guanlan archive add-browser-note --from-json browser-notes.jsonl",
         ],
         mcp="guanlan_browser_assist_plan",
-        boundary="只生成计划/会话契约或归档用户授权的可见页笔记；不读取 Cookie、Token、钥匙串、私信、订单、后台，不执行写操作。动态页用就绪信号和采集充分性，不把固定等待当作成功。",
+        boundary="只生成计划/会话契约或归档用户授权的目标页可见笔记；私信/订单/后台等目标私域页需单独明确授权；不读取 Cookie、Token、存储、钥匙串等凭据材料，不执行写操作。动态页用就绪信号和采集充分性，不把固定等待当作成功。",
         examples=["小红书页面公开读取不足，能不能让浏览器补一眼？", "把授权后的可见页笔记存入 archive。"],
     ),
     Capability(

@@ -262,7 +262,7 @@ class TestCLI:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         ids = {item["id"] for item in data}
-        assert {"host-browser", "open-cli", "browser-use", "xhs-cli"} <= ids
+        assert {"host-browser", "openguanlan", "open-cli", "browser-use", "xhs-cli"} <= ids
         host = next(item for item in data if item["id"] == "host-browser")
         assert host["available"] is True
         assert host["capability_layer"] == "extractor"
@@ -270,6 +270,34 @@ class TestCLI:
         assert host["safety"]["cookie_access_requires_separate_explicit_authorization"] is True
         assert "readiness_contract" in host
         assert "repair_protocol" in host
+
+    def test_browser_assist_setup_opencli_command_returns_install_plan(self, capsys, monkeypatch):
+        monkeypatch.setattr("shutil.which", lambda _: None)
+        with patch("sys.argv", ["guanlan", "browser-assist", "setup-opencli", "--json"]):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["status"] == "needs_cli_install"
+        assert data["execute"] is False
+        assert data["browser_extension"]["manual_user_step_required"] is True
+        assert "opencli doctor" in data["verification_commands"]
+        assert data["safety"]["credential_material_access_allowed"] is False
+
+    def test_browser_assist_setup_openguanlan_command_returns_native_plan(self, capsys, monkeypatch):
+        monkeypatch.setattr("shutil.which", lambda _: None)
+        with patch("sys.argv", ["guanlan", "browser-assist", "setup-openguanlan", "--json"]):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["adapter"] == "openguanlan"
+        assert data["status"] == "packaged_needs_install_entrypoint"
+        assert data["current_default"] == "host-browser"
+        assert data["runtime_packaged"] is True
+        assert data["extension_manifest_exists"] is True
+        assert any("不要求用户安装 opencli" in item for item in data["user_install_boundary"])
+        assert data["safety"]["credential_material_access_allowed"] is False
 
     def test_browser_assist_sessions_command_returns_contract(self, capsys):
         with patch(

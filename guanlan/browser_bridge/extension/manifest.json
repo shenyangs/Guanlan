@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "OpenGuanlan Browser Bridge",
+  "version": "0.5.30",
+  "description": "Read-only Guanlan browser-visible evidence bridge for user-authorized target pages.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "http://127.0.0.1:19830/*",
+    "http://localhost:19830/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "OpenGuanlan Browser Bridge"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

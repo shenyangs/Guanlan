@@ -6,6 +6,15 @@
 
 ## Unreleased
 
+## v0.5.30 - 2026-05-13
+
+### Changed
+
+- 增强浏览器补证适配器识别：`open-cli` 在检测到 OpenCLI 浏览器桥时可从 opener 升级为 extractor，同时默认推荐仍保持 `host-browser`。
+- 新增 OpenGuanlan 原生浏览器桥能力面：`guanlan browser-assist setup-openguanlan` 固定 Guanlan-native 路线，OpenCLI 只作为兼容参考；涉及登录态、私域页或凭据风险的能力统一收回 browser-assist 授权边界。
+- 明确目标私域可见页与凭据材料的边界：私信、订单、后台等目标页需单独授权并标记 `private_account_evidence`；Cookie、Token、浏览器存储和 profile 不进入可见页 payload。
+- 官网版本与静态资源版本同步到 `0.5.30`。
+
 ## v0.5.29 - 2026-05-13
 
 ### Changed

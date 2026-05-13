@@ -1,6 +1,6 @@
 [project]
 name = "guanlan"
-version = "0.5.29"
+version = "0.5.30"
 description = "Guanlan: a China-aware source and platform router for AI agents."
 readme = "README.md"
 license = {text = "MIT"}
@@ -55,6 +55,7 @@ dev = [
 guanlan = "guanlan.cli:main"
 guanlan-mcp = "guanlan.integrations.mcp_server:cli_main"
 guanlan-stock = "guanlan.stock_cli:main"
+openguanlan = "guanlan.openguanlan_cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -67,11 +68,15 @@ packages = ["guanlan"]
 "NOTICE" = "NOTICE"
 "docs/SOURCE_ATTRIBUTION.md" = "docs/SOURCE_ATTRIBUTION.md"
 "guanlan/data/hotboard_nodes.json" = "guanlan/data/hotboard_nodes.json"
+"guanlan/browser_bridge/extension/manifest.json" = "guanlan/browser_bridge/extension/manifest.json"
+"guanlan/browser_bridge/extension/background.js" = "guanlan/browser_bridge/extension/background.js"
 
 [tool.hatch.build.targets.sdist.force-include]
 "NOTICE" = "NOTICE"
 "docs/SOURCE_ATTRIBUTION.md" = "docs/SOURCE_ATTRIBUTION.md"
 "guanlan/data/hotboard_nodes.json" = "guanlan/data/hotboard_nodes.json"
+"guanlan/browser_bridge/extension/manifest.json" = "guanlan/browser_bridge/extension/manifest.json"
+"guanlan/browser_bridge/extension/background.js" = "guanlan/browser_bridge/extension/background.js"
 "docs/data/hotboard_nodes.csv" = "docs/data/hotboard_nodes.csv"
 "docs/data/hotboard_nodes_summary.json" = "docs/data/hotboard_nodes_summary.json"
 

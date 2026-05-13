@@ -51,7 +51,8 @@ def test_serve_dispatch_browser_assist_plan_is_read_only():
     assert body["browser_assist_task"]["read_only"] is True
     assert body["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
     assert "cookies_without_separate_explicit_authorization" in body["browser_assist_task"]["must_not_access"]
-    assert body["browser_assist_task"]["conditional_access"]["cookies"] == "allowed_only_after_separate_explicit_user_authorization"
+    assert body["browser_assist_task"]["conditional_access"]["cookies"] == "not_part_of_browser_visible_payload; requires_separate_credential_flow"
+    assert body["browser_assist_task"]["conditional_access"]["target_private_account_visible_pages"] == "allowed_only_after_targeted_explicit_user_authorization"
 
 
 def test_serve_dispatch_browser_assist_run_returns_adapter_contract():

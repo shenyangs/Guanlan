@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """Browser-assisted evidence planning for Guanlan.
 
-This module only describes a read-only, user-authorized handoff for host
-agents that already have a browser. It never reads browser state, cookies, or
-local credential stores.
+This module describes a read-only, user-authorized handoff for host agents
+that already have a browser or a browser bridge. It never treats credential
+material such as browser state, cookies, tokens, storage, keychains, or local
+credential stores as evidence.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import shlex
 import shutil
 import subprocess
 import time
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -28,11 +30,12 @@ FORBIDDEN_BROWSER_ASSIST_ACTIONS = [
     "read_cookies",
     "read_tokens",
     "read_keychain",
+    "read_passwords",
     "read_browser_profile",
     "read_browser_storage",
-    "read_private_messages",
-    "read_orders",
-    "read_admin_pages",
+    "read_unrelated_private_messages",
+    "read_unrelated_orders",
+    "read_unrelated_admin_pages",
     "post",
     "like",
     "comment",
@@ -40,6 +43,11 @@ FORBIDDEN_BROWSER_ASSIST_ACTIONS = [
     "message",
     "purchase",
     "submit_forms",
+]
+
+CONDITIONAL_BROWSER_ASSIST_ACTIONS = [
+    "read_target_private_account_visible_page_after_explicit_authorization",
+    "read_target_order_or_admin_visible_page_after_explicit_authorization",
 ]
 
 FORBIDDEN_BROWSER_ASSIST_IMPLEMENTATIONS = [
@@ -66,6 +74,11 @@ PLATFORM_HINTS: dict[str, str] = {
     "douban.com": "douban",
     "linkedin.com": "linkedin",
 }
+
+OPENCLI_NPM_PACKAGE = "@jackwener/opencli"
+OPENCLI_CHROME_WEBSTORE_URL = "https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk"
+OPENCLI_RELEASES_URL = "https://github.com/jackwener/opencli/releases"
+OPENGUANLAN_EXTENSION_NAME = "OpenGuanlan Browser Bridge"
 
 BROWSER_ASSIST_TRIGGER_PLATFORMS = {
     "xiaohongshu",
@@ -96,12 +109,29 @@ BROWSER_ASSIST_ADAPTERS: dict[str, dict[str, Any]] = {
         "requires_execute": False,
         "privacy_boundary": "visible_page_only_by_default",
     },
+    "openguanlan": {
+        "id": "openguanlan",
+        "aliases": ["open-guanlan", "guanlan-browser-bridge", "guanlan-bridge"],
+        "kind": "guanlan_native_browser_bridge",
+        "stability": "experimental",
+        "description": "观澜原生浏览器桥；内化 OpenCLI 的浏览器桥能力形态，按 browser-assist 授权边界输出可见页证据。",
+        "executable": "openguanlan",
+        "env_command": "GUANLAN_BROWSER_ASSIST_OPENGUANLAN_COMMAND",
+        "supports_platforms": ["*"],
+        "can_extract": True,
+        "can_open": True,
+        "can_reuse_existing_session": True,
+        "adapter_role": "extractor",
+        "risk_level": "low",
+        "requires_execute": True,
+        "privacy_boundary": "guanlan_native_user_authorized_visible_or_private_account_page_only",
+    },
     "open-cli": {
         "id": "open-cli",
-        "aliases": ["open", "system-open", "browser-open"],
+        "aliases": ["open", "system-open", "browser-open", "opencli", "opencli-browser", "open-cli-browser"],
         "kind": "system_open",
         "stability": "best-effort",
-        "description": "调用系统 open/xdg-open/start 打开目标 URL；只负责打开页面，正文仍由宿主 Agent 可见页读取。",
+        "description": "默认调用系统 open/xdg-open/start 打开目标 URL；若检测到 OpenCLI 浏览器桥或命令模板，则升级为可见页 extractor。",
         "executable": "open",
         "env_command": "GUANLAN_BROWSER_ASSIST_OPEN_CLI_COMMAND",
         "supports_platforms": ["*"],
@@ -265,8 +295,6 @@ SENSITIVE_PAYLOAD_KEYS = {
     "keychain",
     "localstorage",
     "sessionstorage",
-    "private_messages",
-    "orders",
 }
 
 
@@ -296,8 +324,9 @@ def build_browser_assist_plan(
         "公开搜索和普通网页读取目前不足。你当前浏览器可能已经登录或通过验证，能看到目标页面内容。"
         "是否允许我使用当前 Agent 平台已经提供的浏览器/Computer Use/WebView 打开目标链接，并只读取浏览器中可见的目标页面内容用于补充证据？"
         "如果页面需要登录或验证，请你自己在可见浏览器里完成。"
-        "本次可见页补证不会读取 Cookie、浏览器数据库、密码、钥匙串、私信、订单、后台信息，也不会点赞、评论、关注、发帖或发送消息。"
-        "如果后续确实需要 Cookie，我会单独说明平台、用途和风险，再征求一次明确授权。"
+        "若目标任务本身就是私信、订单、后台或账号页，也需要你对该目标页和用途单独明确授权；授权后仍只读取目标页可见内容。"
+        "本次可见页补证不会读取 Cookie、Token、浏览器数据库、localStorage、sessionStorage、密码、钥匙串或无关个人资料，也不会点赞、评论、关注、发帖或发送消息。"
+        "如果后续确实需要 Cookie 或其他凭据材料，我会暂停并说明平台、用途和风险，再征求一次单独授权；普通可见页补证不会碰这些材料。"
     )
     task = build_browser_assist_task(
         urls,
@@ -318,6 +347,7 @@ def build_browser_assist_plan(
         "evidence_role": template.get("evidence_role") or ("user_visible_sample" if recommended else ""),
         "candidate_urls": urls,
         "allowed_actions": ALLOWED_BROWSER_ASSIST_ACTIONS,
+        "conditional_actions": CONDITIONAL_BROWSER_ASSIST_ACTIONS,
         "forbidden_actions": FORBIDDEN_BROWSER_ASSIST_ACTIONS,
         "forbidden_implementations": FORBIDDEN_BROWSER_ASSIST_IMPLEMENTATIONS,
         "browser_assist_task": task,
@@ -340,15 +370,17 @@ def build_browser_assist_plan(
         "agent_execution_rule": (
             "Use only the host Agent's already-available browser/computer-use/webview tool. "
             "For this visible-page evidence task, do not install Playwright, do not launch a separate browser profile, "
-            "and do not read browser cookies/profile/storage. If Cookie access is truly needed, stop and request a separate, "
-            "explicit Cookie authorization for the target platform. If no host browser tool exists, stop and use the manual fallback."
+            "and do not read browser cookies/profile/storage. If credential access is truly needed, stop and request a separate, "
+            "explicit credential authorization for the target platform and keep credential material out of browser-visible payloads. "
+            "If no host browser tool exists, stop and use the manual fallback."
         ),
         "cookie_access_policy": _cookie_access_policy(platform),
         "boundaries": [
             "浏览器辅助补证必须由用户明确授权。",
             "只使用宿主 Agent 已有的浏览器/Computer Use/WebView 工具，不安装 Playwright，不启动独立浏览器 profile。",
             "默认只读取目标页面可见内容，不读取 Cookie、Token、浏览器 profile、浏览器数据库、localStorage、sessionStorage、钥匙串。",
-            "如确实需要 Cookie，必须暂停当前任务，单独征求用户对具体平台和用途的明确授权。",
+            "私信、订单、后台、账号设置等私域页面只有在任务目标页和用途被用户单独明确授权后，才可作为 private_account_evidence 读取可见内容。",
+            "Cookie、Token、localStorage、sessionStorage、浏览器数据库、profile、钥匙串和密码属于凭据材料，不作为浏览器可见页 payload 读取或入库。",
             "不执行点赞、评论、关注、发帖、私信、下单、提交表单等写操作。",
             "补证内容可能依赖用户当前浏览器状态，应标注 browser_assisted 和 visible_page_only。",
             "多步补证要绑定同一目标页会话；页面跳转、登录、SPA 变化后重新确认 URL 和标题，不复用旧快照。",
@@ -389,6 +421,15 @@ def build_browser_assist_adapter_contract(adapter: str = "host-browser", *, plat
     command_env = str(spec.get("env_command") or "")
     command_template = os.environ.get(command_env, "").strip() if command_env else ""
     executable_path = _resolve_adapter_executable(adapter_id, executable)
+    opencli_profile = _opencli_browser_profile(command_template=command_template) if adapter_id == "open-cli" else {}
+    if adapter_id == "open-cli" and opencli_profile.get("browser_bridge_available"):
+        spec["kind"] = "opencli_browser_bridge"
+        spec["description"] = "检测到 OpenCLI 浏览器桥；可打开并按 Guanlan 可见页契约提取目标页正文，默认推荐仍是 host-browser。"
+        spec["can_extract"] = True
+        spec["adapter_role"] = "extractor"
+        spec["risk_level"] = "medium"
+        spec["privacy_boundary"] = "user_authorized_visible_or_private_account_page_only"
+        executable_path = str(opencli_profile.get("opencli_path") or executable_path)
     platform_ok = _adapter_supports_platform(spec, platform)
     capabilities = _adapter_capabilities(adapter_id, spec, platform_supported=platform_ok, available=bool(adapter_id == "host-browser" or executable_path or command_template))
     return {
@@ -402,6 +443,10 @@ def build_browser_assist_adapter_contract(adapter: str = "host-browser", *, plat
         "executable_path": executable_path,
         "command_template_env": command_env,
         "command_template_configured": bool(command_template),
+        "opencli_profile": opencli_profile,
+        "openguanlan_profile": _openguanlan_browser_profile(command_template=command_template) if adapter_id == "openguanlan" else {},
+        "setup_guidance": _opencli_setup_guidance(opencli_profile) if adapter_id == "open-cli" else {},
+        "native_setup_guidance": _openguanlan_setup_guidance() if adapter_id == "openguanlan" else {},
         "platform": platform,
         "platform_supported": platform_ok,
         "output_schema": build_browser_assist_task(
@@ -416,8 +461,11 @@ def build_browser_assist_adapter_contract(adapter: str = "host-browser", *, plat
         "safety": {
             "read_only": True,
             "visible_page_only_by_default": True,
+            "private_account_visible_pages_require_targeted_explicit_authorization": True,
+            "credential_material_access_allowed": False,
             "cookie_access_requires_separate_explicit_authorization": True,
             "forbidden_actions": FORBIDDEN_BROWSER_ASSIST_ACTIONS,
+            "conditional_actions": CONDITIONAL_BROWSER_ASSIST_ACTIONS,
             "forbidden_implementations": FORBIDDEN_BROWSER_ASSIST_IMPLEMENTATIONS,
         },
     }
@@ -462,6 +510,10 @@ def check_browser_assist_adapter(
             "can_open": bool(capabilities.get("can_open")),
             "can_extract_visible_text": bool(capabilities.get("can_extract_visible_text")),
             "can_reuse_existing_session": bool(capabilities.get("can_reuse_existing_session")),
+            "can_wait_dynamic_ready": bool(capabilities.get("can_wait_dynamic_ready")),
+            "can_scroll_until_min_items": bool(capabilities.get("can_scroll_until_min_items")),
+            "can_read_private_account_visible_pages": bool(capabilities.get("can_read_private_account_visible_pages")),
+            "credential_material_access_allowed": bool(capabilities.get("credential_material_access_allowed")),
             "cookie_flow_available": bool(capabilities.get("cookie_flow_available")),
             "checks": checks,
             "dry_run_available": platform_supported,
@@ -472,10 +524,17 @@ def check_browser_assist_adapter(
     executable_path = str(contract.get("executable_path") or "")
     command_env = str(contract.get("command_template_env") or "")
     template_configured = bool(contract.get("command_template_configured"))
+    opencli_profile = dict(contract.get("opencli_profile") or {})
     if executable_path:
         add("executable", "ok", "已找到可执行文件。", path=executable_path)
     else:
         add("executable", "warn", "未在 PATH 中找到默认可执行文件。")
+
+    if adapter_id == "open-cli":
+        if opencli_profile.get("browser_bridge_available"):
+            add("opencli_browser_bridge", "ok", "检测到 OpenCLI 浏览器桥，open-cli 能力层升级为 extractor。")
+        else:
+            add("opencli_browser_bridge", "warn", "未检测到 OpenCLI 浏览器桥；open-cli 仅作为系统 opener。")
 
     if command_env:
         if template_configured:
@@ -487,7 +546,9 @@ def check_browser_assist_adapter(
                 hints.append(f"设置 {command_env}，命令模板需包含 {{url}}，可选包含 {{output}}。")
 
     if adapter_id == "open-cli":
-        dry_run_command = _open_cli_command(dry_run_url)
+        dry_run_command = _opencli_doctor_command(opencli_profile) or _open_cli_command(dry_run_url)
+    elif adapter_id == "openguanlan":
+        dry_run_command = _openguanlan_doctor_command() or _external_adapter_command(adapter_id, dry_run_url, output_path="")
     elif adapter_id == "browser-use":
         dry_run_command = _browser_use_doctor_command()
     else:
@@ -502,9 +563,6 @@ def check_browser_assist_adapter(
         add("dry_run", "fail", "dry-run 命令不可构造。")
 
     ready = bool(platform_supported and dry_run_command and executable_ok)
-    can_extract = bool(contract.get("can_extract"))
-    can_open = bool(contract.get("can_open"))
-    can_reuse_existing_session = bool(contract.get("can_reuse_existing_session"))
     capabilities = _adapter_capabilities(
         adapter_id,
         dict(contract),
@@ -515,6 +573,8 @@ def check_browser_assist_adapter(
     status = "ok" if ready else ("fail" if adapter_id not in {"xhs-cli", "browser-use"} else "warn")
     if adapter_id == "open-cli" and not ready:
         hints.append("安装系统打开命令，或配置 GUANLAN_BROWSER_ASSIST_OPEN_CLI_COMMAND。")
+    if adapter_id == "openguanlan" and not ready:
+        hints.append("运行 guanlan browser-assist setup-openguanlan --json 查看 Guanlan 原生浏览器桥计划；当前可继续使用 host-browser。")
     if adapter_id == "xhs-cli" and not executable_path:
         hints.append("如需小红书外部适配器，先安装并配置 xhs-cli；否则继续使用 host-browser 稳定路径。")
     if adapter_id == "browser-use" and not ready:
@@ -529,15 +589,27 @@ def check_browser_assist_adapter(
         "capability_layer": capabilities.get("capability_layer", "opener"),
         "capability_score": capabilities.get("capability_score", 0),
         "risk_score": capabilities.get("risk_score", 0),
-        "can_open": can_open and executable_ok,
-        "can_extract_visible_text": can_extract and executable_ok,
-        "can_reuse_existing_session": can_reuse_existing_session,
-        "cookie_flow_available": adapter_id == "xhs-cli",
+        "can_open": bool(capabilities.get("can_open")) and executable_ok,
+        "can_extract_visible_text": bool(capabilities.get("can_extract_visible_text")) and executable_ok,
+        "can_reuse_existing_session": bool(capabilities.get("can_reuse_existing_session")),
+        "can_wait_dynamic_ready": bool(capabilities.get("can_wait_dynamic_ready")) and executable_ok,
+        "can_scroll_until_min_items": bool(capabilities.get("can_scroll_until_min_items")) and executable_ok,
+        "can_read_private_account_visible_pages": bool(capabilities.get("can_read_private_account_visible_pages")) and executable_ok,
+        "credential_material_access_allowed": bool(capabilities.get("credential_material_access_allowed")),
+        "cookie_flow_available": bool(capabilities.get("cookie_flow_available")),
         "checks": checks,
         "dry_run_available": ready,
         "dry_run_mode": "command_template"
         if template_configured
-        else ("builtin_open" if adapter_id == "open-cli" else ("builtin_doctor" if adapter_id == "browser-use" else "")),
+        else (
+            "opencli_doctor"
+            if adapter_id == "open-cli" and opencli_profile.get("browser_bridge_available")
+            else (
+                "openguanlan_doctor"
+                if adapter_id == "openguanlan"
+                else ("builtin_open" if adapter_id == "open-cli" else ("builtin_doctor" if adapter_id == "browser-use" else ""))
+            )
+        ),
         "command_preview": _safe_command_preview(dry_run_command) if dry_run_command else [],
         "repair_hints": _unique(hints),
     }
@@ -610,7 +682,7 @@ def run_browser_assist_adapter(
         "archive_next_step": "guanlan archive add-browser-note --from-json browser-notes.jsonl",
         "agent_instruction": (
             "Guanlan planned the browser-assisted route. Use this adapter only after user authorization; "
-            "do not read cookies unless the user separately authorizes Cookie access for the target platform."
+            "target private/account pages require separate explicit authorization, and credential material must stay out of browser-visible payloads."
         ),
     }
     if not normalized_url:
@@ -629,20 +701,62 @@ def run_browser_assist_adapter(
         response["execution_boundary"] = "host_agent_must_open_and_read_visible_page"
         return response
 
-    if adapter_id == "open-cli":
-        command = _open_cli_command(normalized_url, command_template=command_template)
+    if adapter_id == "openguanlan":
+        command = _openguanlan_command(normalized_url, command_template=command_template, output_path=output_path)
         response["command"] = command
+        response["native_setup"] = build_openguanlan_browser_bridge_setup_plan()
+        if not command:
+            response.update(
+                {
+                    "status": "native_bridge_not_installed",
+                    "error": "openguanlan_runtime_not_available",
+                    "setup_hint": "运行 openguanlan setup --json 查看扩展目录；安装/升级 Guanlan 后应有 openguanlan 命令。稳定补证默认仍可走 host-browser。",
+                }
+            )
+            return response
         if not execute:
-            response["status"] = "ready_to_open"
-            response["next_step"] = "Run with --execute, then let the host Agent read visible page content."
+            response["status"] = "ready_to_execute_openguanlan"
+            response["next_step"] = "确认用户授权后加 --execute；输出必须为 Guanlan browser-visible JSON/JSONL。"
             return response
         return _execute_adapter_command(
             response,
             command,
             timeout=timeout,
             output_path=output_path,
-            parse_stdout=False,
-            post_status="opened_requires_host_extraction",
+            parse_stdout=True,
+            post_status="executed_openguanlan",
+        )
+
+    if adapter_id == "open-cli":
+        command = _open_cli_command(normalized_url, command_template=command_template, output_path=output_path)
+        response["command"] = command
+        capabilities = dict(contract.get("capabilities") or {})
+        runtime_extract_capable = bool(
+            capabilities.get("can_extract_visible_text")
+            or _command_template_uses_opencli(command_template)
+            or _open_cli_command_supports_payload(command_template)
+        )
+        parse_stdout = bool(runtime_extract_capable and _open_cli_command_supports_payload(command_template))
+        if not execute:
+            response["status"] = "ready_to_extract_with_opencli" if runtime_extract_capable else "ready_to_open"
+            response["next_step"] = (
+                "检测到 OpenCLI 浏览器桥；如已配置会输出 Guanlan browser-visible JSON/JSONL 的命令模板，可加 --execute 执行。"
+                if runtime_extract_capable
+                else "Run with --execute, then let the host Agent read visible page content."
+            )
+            if runtime_extract_capable and not _open_cli_command_supports_payload(command_template):
+                response["template_hint"] = (
+                    "默认 OpenCLI 命令只负责打开并绑定会话。若要让 Guanlan 自动解析 stdout，请通过 "
+                    "GUANLAN_BROWSER_ASSIST_OPEN_CLI_COMMAND 或 --command-template 配置只读提取命令，并输出 browser-visible JSON/JSONL。"
+                )
+            return response
+        return _execute_adapter_command(
+            response,
+            command,
+            timeout=timeout,
+            output_path=output_path,
+            parse_stdout=parse_stdout,
+            post_status="executed_opencli_extractor" if parse_stdout else "opened_requires_host_extraction",
         )
     if adapter_id == "browser-use":
         command = _browser_use_open_command(
@@ -783,6 +897,227 @@ def format_browser_assist_run_markdown(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def build_opencli_browser_bridge_setup_plan(*, execute: bool = False, timeout: int = 180) -> dict[str, Any]:
+    """Plan or run the explicit OpenCLI CLI install step for browser bridge use."""
+
+    node_path = shutil.which("node") or ""
+    npm_path = shutil.which("npm") or ""
+    opencli_path = shutil.which("opencli") or ""
+    node_version = _node_version()
+    setup: dict[str, Any] = {
+        "status": "ready" if opencli_path else "needs_cli_install",
+        "execute": bool(execute),
+        "opencli_path": opencli_path,
+        "node_path": node_path,
+        "npm_path": npm_path,
+        "node_version": node_version,
+        "node_requirement": ">=21.0.0 for the standard npm install path",
+        "cli_install_command": ["npm", "install", "-g", f"{OPENCLI_NPM_PACKAGE}@latest"],
+        "browser_extension": {
+            "manual_user_step_required": True,
+            "chrome_webstore_url": OPENCLI_CHROME_WEBSTORE_URL,
+            "manual_release_zip_url": OPENCLI_RELEASES_URL,
+            "why_manual": "Chrome/Chromium 扩展安装需要用户在浏览器中确认，观澜不会静默安装或启用扩展。",
+        },
+        "verification_commands": [
+            "opencli doctor",
+            "opencli profile list",
+            "guanlan browser-assist adapters --check --json",
+        ],
+        "guanlan_next_steps": [
+            "确认 opencli doctor 显示 Browser Bridge 已连接。",
+            "运行 guanlan browser-assist adapters --check --json，确认 open-cli capability_layer=extractor。",
+            "浏览器补证默认仍使用 host-browser；只有用户明确选择 open-cli 时才走 OpenCLI bridge。",
+        ],
+        "safety": {
+            "read_only": True,
+            "does_not_install_chrome_extension_automatically": True,
+            "does_not_read_cookies_tokens_storage_or_profile": True,
+            "credential_material_access_allowed": False,
+            "write_actions_forbidden": True,
+        },
+    }
+    if opencli_path:
+        setup["message"] = "OpenCLI CLI 已安装；下一步让用户安装/启用 Chrome 扩展并运行 opencli doctor。"
+        return setup
+    if not execute:
+        setup["message"] = "OpenCLI CLI 未安装；用户可明确执行安装命令，扩展仍需手动安装。"
+        return setup
+    if not npm_path:
+        setup.update(
+            {
+                "status": "blocked",
+                "error": "npm_not_found",
+                "message": "未找到 npm。请先安装 Node.js/npm，再运行 npm install -g @jackwener/opencli@latest。",
+            }
+        )
+        return setup
+    command = [npm_path, "install", "-g", f"{OPENCLI_NPM_PACKAGE}@latest"]
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=max(timeout, 1),
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        setup.update({"status": "timeout", "error": f"opencli_install_timeout_after_{max(timeout, 1)}s", "command": command})
+        return setup
+    except Exception as exc:
+        setup.update({"status": "error", "error": str(exc), "command": command})
+        return setup
+    opencli_path = shutil.which("opencli") or ""
+    setup.update(
+        {
+            "command": command,
+            "returncode": completed.returncode,
+            "stdout_preview": (completed.stdout or "")[:800],
+            "stderr_preview": (completed.stderr or "")[:800],
+            "opencli_path": opencli_path,
+            "status": "cli_installed" if completed.returncode == 0 and opencli_path else "cli_install_failed",
+        }
+    )
+    if setup["status"] == "cli_installed":
+        setup["message"] = "OpenCLI CLI 已安装；请继续安装/启用 Chrome 扩展，然后运行 opencli doctor。"
+    else:
+        setup["message"] = "OpenCLI CLI 安装未完成；请查看 stderr_preview，或手动运行 npm install -g @jackwener/opencli@latest。"
+    return setup
+
+
+def build_openguanlan_browser_bridge_setup_plan() -> dict[str, Any]:
+    """Return the Guanlan-native browser bridge setup plan and current readiness."""
+
+    openguanlan_path = shutil.which("openguanlan") or ""
+    module_path = Path(__file__).resolve().parent / "openguanlan_cli.py"
+    extension_path = Path(__file__).resolve().parent / "browser_bridge" / "extension"
+    manifest_path = extension_path / "manifest.json"
+    runtime_packaged = module_path.exists() and manifest_path.exists()
+    if openguanlan_path and runtime_packaged:
+        status = "ready_for_manual_extension"
+    elif runtime_packaged:
+        status = "packaged_needs_install_entrypoint"
+    else:
+        status = "native_bridge_planned"
+    return {
+        "status": status,
+        "adapter": "openguanlan",
+        "openguanlan_path": openguanlan_path,
+        "runtime_packaged": runtime_packaged,
+        "module_path": str(module_path),
+        "extension_path": str(extension_path),
+        "extension_manifest": str(manifest_path),
+        "extension_manifest_exists": manifest_path.exists(),
+        "principle": "OpenCLI 的浏览器桥思想可以内化，但用户主路径应是 Guanlan/OpenGuanlan，不要求先安装 opencli。",
+        "current_default": "host-browser",
+        "compatibility_fallback": "open-cli adapter remains optional for users who already installed OpenCLI.",
+        "components": [
+            "openguanlan CLI/daemon: 本机只读任务队列，提供 open/state/get/find/extract/frames/screenshot/wait/scroll/tab/read-visible。",
+            "OpenGuanlan Browser Bridge 扩展: 用户手动加载 unpacked extension，连接本机只读 daemon。",
+            "Guanlan adapter: 检测 openguanlan runtime 后作为 experimental extractor 使用；默认推荐仍是 host-browser。",
+        ],
+        "absorbed_opencli_capability_layers": [
+            "browser state/snapshot -> browser-assist readiness and visible extraction",
+            "open/navigate/wait/scroll -> target-page-only collection steps",
+            "find/get/extract/frames/screenshot -> browser-visible evidence helpers",
+            "get text/html/title/url/value/attributes -> browser-visible JSON/JSONL payload",
+            "tab/session binding -> Guanlan session contract and user-selected browser context",
+            "private or logged-in pages -> explicit browser-assist authorization before read",
+            "click/type/fill/select/upload/drag/eval/raw network/cookies -> excluded from Guanlan research workflows",
+        ],
+        "user_install_boundary": [
+            "不要求用户安装 opencli。",
+            "浏览器扩展仍必须由用户手动安装/启用，因为 Chrome/Chromium 扩展权限需要用户确认。",
+            "不读取 Cookie、Token、localStorage、sessionStorage、浏览器数据库、profile、钥匙串或密码。",
+            "只读目标页可见内容；私域目标页仍需要单独明确授权并标记 private_account_evidence。",
+        ],
+        "commands": [
+            "openguanlan setup --json",
+            "openguanlan daemon",
+            "openguanlan doctor --json",
+            "guanlan browser-assist adapters --check --json",
+            "guanlan browser-assist run \"URL\" --adapter host-browser --json",
+            "guanlan browser-assist run \"URL\" --adapter openguanlan --json",
+        ],
+        "next_engineering_step": "用户手动加载扩展并启动 openguanlan daemon 后，Agent 可在授权后用 openguanlan 输出 Guanlan browser-visible JSON/JSONL。",
+        "safety": {
+            "read_only": True,
+            "credential_material_access_allowed": False,
+            "extension_install_requires_user_confirmation": True,
+            "write_actions_forbidden": True,
+        },
+    }
+
+
+def format_opencli_browser_bridge_setup_markdown(setup: dict[str, Any]) -> str:
+    """Render OpenCLI browser bridge setup guidance."""
+
+    lines = [
+        "# OpenCLI 浏览器桥安装向导",
+        "",
+        f"- 状态: {setup.get('status')}",
+        f"- opencli: {setup.get('opencli_path') or '未找到'}",
+        f"- node: {setup.get('node_path') or '未找到'} {setup.get('node_version') or ''}".rstrip(),
+        f"- npm: {setup.get('npm_path') or '未找到'}",
+        f"- 说明: {setup.get('message') or ''}",
+    ]
+    command = setup.get("cli_install_command") or []
+    if command:
+        lines.append("- CLI 安装命令: `" + " ".join(shlex.quote(str(part)) for part in command) + "`")
+    extension = setup.get("browser_extension") or {}
+    if extension:
+        lines.extend(
+            [
+                "- 浏览器扩展: 用户手动安装/启用",
+                f"  - Chrome Web Store: {extension.get('chrome_webstore_url')}",
+                f"  - 手动 zip: {extension.get('manual_release_zip_url')}",
+            ]
+        )
+    verification = setup.get("verification_commands") or []
+    if verification:
+        lines.append("- 验证命令:")
+        lines.extend(f"  - `{item}`" for item in verification)
+    next_steps = setup.get("guanlan_next_steps") or []
+    if next_steps:
+        lines.append("- 观澜下一步:")
+        lines.extend(f"  - {item}" for item in next_steps)
+    if setup.get("error"):
+        lines.append(f"- 错误: {setup.get('error')}")
+    return "\n".join(lines)
+
+
+def format_openguanlan_browser_bridge_setup_markdown(setup: dict[str, Any]) -> str:
+    lines = [
+        "# OpenGuanlan 浏览器桥",
+        "",
+        f"- 状态: {setup.get('status')}",
+        f"- openguanlan: {setup.get('openguanlan_path') or '未在 PATH 中找到'}",
+        f"- 扩展目录: {setup.get('extension_path') or ''}",
+        f"- 默认路径: {setup.get('current_default')}",
+        f"- 兼容路径: {setup.get('compatibility_fallback')}",
+        f"- 原则: {setup.get('principle')}",
+    ]
+    components = setup.get("components") or setup.get("planned_components") or []
+    if components:
+        lines.append("- 组件:")
+        lines.extend(f"  - {item}" for item in components)
+    layers = setup.get("absorbed_opencli_capability_layers") or []
+    if layers:
+        lines.append("- 内化能力层:")
+        lines.extend(f"  - {item}" for item in layers)
+    boundaries = setup.get("user_install_boundary") or []
+    if boundaries:
+        lines.append("- 安装与安全边界:")
+        lines.extend(f"  - {item}" for item in boundaries)
+    commands = setup.get("commands") or []
+    if commands:
+        lines.append("- 命令:")
+        lines.extend(f"  - `{item}`" for item in commands)
+    lines.append(f"- 下一步工程: {setup.get('next_engineering_step')}")
+    return "\n".join(lines)
+
+
 def build_browser_assist_task(
     urls: list[str],
     *,
@@ -816,7 +1151,7 @@ def build_browser_assist_task(
         "platform": platform,
         "platform_template": template,
         "evidence_role": template.get("evidence_role") or evidence_role,
-        "task_goal": task_goal or "补充公开读取不足的目标页面可见证据；只取可见页，不扩大到账号隐私区。",
+        "task_goal": task_goal or "补充公开读取不足的目标页面可见证据；只取目标可见页，不扩大到无关账号隐私区。",
         "urls": clean_urls[:max_pages],
         "max_pages": max_pages,
         "max_chars_per_page": max_chars_per_page,
@@ -827,8 +1162,10 @@ def build_browser_assist_task(
             "只读取任务目标页的浏览器可见内容；如需滚动，只为读取目标页可见正文或公开评论摘要。",
             "按 platform_template.extract_fields 提取字段；平台无模板时提取标题、URL、可见正文、作者/账号、发布时间、采集时间和可见上下文说明。",
             "如果页面要求登录但浏览器已可见，只读取当前页面可见内容；不要在本任务里读取 Cookie、Token、浏览器 profile、localStorage、sessionStorage、钥匙串、浏览器数据库或无关个人资料。",
-            "如果仅靠可见浏览器仍无法访问，停止并向用户说明：下一步需要单独 Cookie 授权；用户未明确同意前不要尝试提取 Cookie。",
-            "遇到私信、订单、后台、账号设置、支付、发布框或表单，立即跳过并在输出中标记 skipped_reason。",
+            "如果目标任务就是私信、订单、后台或账号设置页，必须确认用户已对该目标页、用途和只读范围单独授权，并在输出中标记 private_account_evidence=true。",
+            "如果私域页不是任务目标，或授权不清楚，立即跳过并在输出中标记 skipped_reason=private_area_not_authorized。",
+            "如果仅靠可见浏览器仍无法访问，停止并向用户说明：下一步需要单独凭据授权；用户未明确同意前不要尝试提取 Cookie、Token 或浏览器存储。",
+            "遇到支付确认、发布框、提交表单或任何写操作入口，立即跳过并在输出中标记 skipped_reason。",
         ],
         "extract_fields": extract_fields,
         "output_schema": {
@@ -844,6 +1181,7 @@ def build_browser_assist_task(
             "browser_assisted": True,
             "user_authorized": True,
             "visible_page_only": True,
+            "private_account_evidence": False,
             "session_dependent": True,
         },
         "execution_contract": build_browser_assist_execution_contract(
@@ -875,7 +1213,8 @@ def build_browser_assist_task(
             "agent_may_read_visible_dom_text": True,
             "agent_must_not_install_or_launch_own_browser": True,
             "agent_must_not_use_local_browser_profile": True,
-            "agent_must_not_extract_credentials_or_storage_without_separate_authorization": True,
+            "agent_must_not_extract_credentials_or_storage": True,
+            "agent_may_read_target_private_account_visible_page_after_explicit_authorization": True,
             "cookie_access_requires_separate_explicit_authorization": True,
             "manual_copy_is_fallback_only": True,
         },
@@ -892,8 +1231,10 @@ def build_browser_assist_task(
             "补证材料必须标注 browser_assisted / visible_page_only / user_authorized / session_dependent。",
             "不要只因为固定等待结束就认为页面已充分加载；必须满足 readiness_contract 或填写 skipped_reason。",
             "列表/评论/搜索页如果设置了 min_visible_items，应滚动到足够条数、连续无增长或达到上限，并输出 collected_count 与 partial_reason。",
+            "private_account_evidence=true 只能用于用户明确授权的目标页，不可用于无关私域页面。",
         ],
         "allowed_actions": ALLOWED_BROWSER_ASSIST_ACTIONS,
+        "conditional_actions": CONDITIONAL_BROWSER_ASSIST_ACTIONS,
         "forbidden_actions": FORBIDDEN_BROWSER_ASSIST_ACTIONS,
         "forbidden_implementations": FORBIDDEN_BROWSER_ASSIST_IMPLEMENTATIONS,
         "must_not_access": [
@@ -906,23 +1247,27 @@ def build_browser_assist_task(
             "local_storage",
             "session_storage",
             "browser_databases",
-            "private_messages",
-            "orders",
-            "admin_pages",
+            "unrelated_private_messages",
+            "unrelated_orders",
+            "unrelated_admin_pages",
             "unrelated_personal_data",
         ],
         "conditional_access": {
-            "cookies": "allowed_only_after_separate_explicit_user_authorization",
+            "target_private_account_visible_pages": "allowed_only_after_targeted_explicit_user_authorization",
+            "cookies": "not_part_of_browser_visible_payload; requires_separate_credential_flow",
             "tokens": "forbidden",
             "keychain": "forbidden",
             "passwords": "forbidden",
-            "browser_profile": "forbidden_unless_using_official_user_approved_auth_flow",
+            "browser_profile": "forbidden",
+            "local_storage": "forbidden",
+            "session_storage": "forbidden",
         },
         "output_contract": {
             "source_mode": "browser_visible",
             "browser_assisted": True,
             "visible_page_only": True,
             "user_authorized": True,
+            "private_account_evidence": False,
             "session_dependent": True,
             "reproducibility": "session_dependent",
         },
@@ -963,6 +1308,7 @@ def build_browser_assist_execution_contract(
             "visible_text or skipped_reason is present",
             "if min_visible_items > 0, collected_count or partial_reason is present",
             "browser_assisted=true, visible_page_only=true, user_authorized=true, session_dependent=true",
+            "private_account_evidence is true only for target private/account pages with explicit authorization",
         ],
         "failure_reasons": list(browser_assist_failure_taxonomy().keys()),
         "output_schema": {
@@ -982,6 +1328,7 @@ def build_browser_assist_execution_contract(
             "browser_assisted": True,
             "visible_page_only": True,
             "user_authorized": True,
+            "private_account_evidence": False,
             "session_dependent": True,
         },
     }
@@ -1051,12 +1398,13 @@ def build_browser_assist_session_contract(
         "timeout_budget_seconds": 90,
         "timeout_budget_ms": 90000,
         "unit_rule": "timeout_budget_seconds 用秒；字段名是 timeout_ms/timeout_milliseconds 时用毫秒，90 秒 = 90000 ms。",
-        "release_rule": "完成目标页提取或遇到 private_area_detected/cookie_authorization_required 后结束本次会话，不继续浏览无关页面。",
+        "release_rule": "完成目标页提取，或遇到未授权 private_area_detected / credential_authorization_required 后结束本次会话，不继续浏览无关页面。",
         "output_boundary": {
             "source_mode": "browser_visible",
             "browser_assisted": True,
             "visible_page_only": True,
             "user_authorized": True,
+            "private_account_evidence": False,
             "session_dependent": True,
         },
     }
@@ -1129,7 +1477,7 @@ def browser_assist_repair_protocol(adapter_id: str = "host-browser") -> dict[str
             "不要立刻扩大权限；先用 adapters --check 或同一 host-browser 会话重新确认平台、URL、可见状态和 readiness 信号。",
             "如果是 selector_or_locale_mismatch，改用稳定结构、URL、data-* 或多语言 fallback；不要把空结果当成功。",
             "如果是 insufficient_visible_items，按 sufficiency_contract 继续滚动或输出 partial_reason。",
-            "如果是 auth/login/captcha/rate_limit/private_area，停止并让用户处理或说明边界，不改成 Cookie 流。",
+            "如果是 auth/login/captcha/rate_limit/private_area，先确认是否是用户明确授权的目标页；不是则停止并说明边界，不改成 Cookie 流。",
             "最多重试 3 轮；仍失败时报告失败类型、已尝试步骤和下一步授权需求。",
         ],
         "never_fix_by": [
@@ -1161,8 +1509,9 @@ def browser_assist_failure_taxonomy() -> dict[str, str]:
         "adapter_can_open_but_cannot_extract": "当前适配器只能打开页面，不能直接产出结构化可见正文。",
         "host_browser_not_available": "宿主 Agent 没有可用浏览器/Computer Use/WebView 提取能力。",
         "target_url_mismatch": "浏览器实际页面不是任务目标 URL 或同一候选页。",
-        "private_area_detected": "页面进入私信、订单、后台、账号设置、支付或其他无关个人区域。",
-        "cookie_authorization_required": "仅靠可见页仍不足，下一步需要单独 Cookie 授权。",
+        "private_area_detected": "页面进入私信、订单、后台、账号设置、支付或其他个人区域；只有目标页和用途被单独明确授权时才可读取可见内容。",
+        "credential_authorization_required": "仅靠可见页仍不足，下一步需要单独凭据授权；凭据材料不得进入 browser-visible payload。",
+        "cookie_authorization_required": "仅靠可见页仍不足，下一步需要单独 Cookie 授权；Cookie 不属于 browser-visible payload。",
         "selector_or_locale_mismatch": "选择器、aria-label、placeholder、title 或可见文案因语言/DOM 漂移失效。",
         "insufficient_visible_items": "列表/评论/搜索页采集条数低于请求数量，且未给出充分 partial_reason。",
         "fixed_sleep_readiness_untrusted": "仅靠固定等待判断页面就绪，缺少正文、结果数、DOM 或网络就绪信号。",
@@ -1233,6 +1582,7 @@ def browser_visible_metadata(
     published_at: str = "",
     captured_at: float | None = None,
     quality_report: dict[str, Any] | None = None,
+    private_account_evidence: bool = False,
 ) -> dict[str, Any]:
     """Metadata used when a user-authorized visible browser note is archived."""
 
@@ -1241,6 +1591,7 @@ def browser_visible_metadata(
         "source_mode": "browser_visible",
         "browser_assisted": True,
         "visible_page_only": True,
+        "private_account_evidence": bool(private_account_evidence),
         "user_authorized": True,
         "session_dependent": True,
         "reproducibility": "session_dependent",
@@ -1262,6 +1613,7 @@ def browser_visible_metadata(
             "allowed_actions": ALLOWED_BROWSER_ASSIST_ACTIONS,
             "forbidden_actions": FORBIDDEN_BROWSER_ASSIST_ACTIONS,
             "credential_access": "forbidden",
+            "private_account_visible_page": "allowed_only_for_target_page_after_explicit_authorization",
         },
     }
 
@@ -1277,6 +1629,7 @@ def browser_visible_quality_report(payload: dict[str, Any]) -> dict[str, Any]:
     browser_assisted = bool(payload.get("browser_assisted", True))
     visible_page_only = bool(payload.get("visible_page_only", True))
     user_authorized = bool(payload.get("user_authorized", True))
+    private_account_evidence = bool(payload.get("private_account_evidence", False))
     sensitive_keys = sorted(_sensitive_keys_in_payload(payload))
     warnings: list[str] = []
     if not url:
@@ -1293,6 +1646,8 @@ def browser_visible_quality_report(payload: dict[str, Any]) -> dict[str, Any]:
         warnings.append("visible_page_only_not_confirmed")
     if not user_authorized:
         warnings.append("user_authorization_not_confirmed")
+    if private_account_evidence and not user_authorized:
+        warnings.append("private_account_authorization_not_confirmed")
     if 0 < len(visible_text) < 80:
         warnings.append("thin_visible_text")
     if sensitive_keys:
@@ -1306,6 +1661,7 @@ def browser_visible_quality_report(payload: dict[str, Any]) -> dict[str, Any]:
         "sensitive_keys": sensitive_keys,
         "skipped_reason": skipped_reason,
         "boundary": "browser_visible_user_authorized",
+        "private_account_evidence": private_account_evidence,
         "schema_version": "browser_visible_v2",
     }
 
@@ -1340,6 +1696,7 @@ def normalize_browser_visible_payload(payload: dict[str, Any]) -> dict[str, Any]
         "browser_assisted": bool(payload.get("browser_assisted", True)),
         "user_authorized": bool(payload.get("user_authorized", True)),
         "visible_page_only": bool(payload.get("visible_page_only", True)),
+        "private_account_evidence": bool(payload.get("private_account_evidence", False)),
         "session_dependent": bool(payload.get("session_dependent", True)),
     }
 
@@ -1423,6 +1780,9 @@ def _adapter_capabilities(
     can_extract = bool(spec.get("can_extract"))
     can_reuse_existing_session = bool(spec.get("can_reuse_existing_session"))
     cookie_flow_available = adapter_id == "xhs-cli"
+    can_wait_dynamic_ready = bool(can_extract and adapter_id in {"host-browser", "openguanlan", "open-cli", "xhs-cli"})
+    can_scroll_until_min_items = bool(can_extract and adapter_id in {"host-browser", "openguanlan", "open-cli", "xhs-cli"})
+    can_read_private_account_visible_pages = bool(can_extract and adapter_id in {"host-browser", "openguanlan", "open-cli"})
     executable_ok = available if executable_ready is None else executable_ready
     capability_layer = "extractor" if can_extract else "opener" if can_open else "planner"
     score = 0
@@ -1449,6 +1809,10 @@ def _adapter_capabilities(
         "can_open": can_open,
         "can_extract_visible_text": can_extract,
         "can_reuse_existing_session": can_reuse_existing_session,
+        "can_wait_dynamic_ready": can_wait_dynamic_ready,
+        "can_scroll_until_min_items": can_scroll_until_min_items,
+        "can_read_private_account_visible_pages": can_read_private_account_visible_pages,
+        "credential_material_access_allowed": False,
         "cookie_flow_available": cookie_flow_available,
         "platform_supported": platform_supported,
         "available": available,
@@ -1460,7 +1824,7 @@ def _resolve_adapter_executable(adapter_id: str, executable: str = "") -> str:
     if adapter_id == "host-browser":
         return ""
     if adapter_id == "open-cli":
-        for candidate in [executable, "open", "xdg-open", "start"]:
+        for candidate in ["opencli", executable, "open", "xdg-open", "start"]:
             if not candidate:
                 continue
             found = shutil.which(candidate)
@@ -1472,10 +1836,140 @@ def _resolve_adapter_executable(adapter_id: str, executable: str = "") -> str:
     return ""
 
 
-def _open_cli_command(url: str, *, command_template: str = "") -> list[str]:
+def _opencli_browser_profile(*, command_template: str = "") -> dict[str, Any]:
+    template = str(command_template or os.environ.get("GUANLAN_BROWSER_ASSIST_OPEN_CLI_COMMAND") or "").strip()
+    opencli_path = shutil.which("opencli") or ""
+    template_uses_opencli = _command_template_uses_opencli(template)
+    browser_bridge_available = bool(opencli_path or template_uses_opencli)
+    return {
+        "browser_bridge_available": browser_bridge_available,
+        "opencli_path": opencli_path,
+        "template_uses_opencli": template_uses_opencli,
+        "template_outputs_payload": _open_cli_command_supports_payload(template),
+        "mode": "opencli_browser_bridge" if browser_bridge_available else "system_open",
+        "read_only_commands": [
+            "opencli browser --session guanlan-visible open {url}",
+            "opencli browser --session guanlan-visible wait text <ready-text> --timeout 90000",
+            "opencli browser --session guanlan-visible state",
+            "opencli browser --session guanlan-visible get text body",
+        ],
+        "forbidden_opencli_patterns": [
+            "commands that export cookies/tokens/storage/profile data",
+            "write commands such as click-to-submit, fill, upload, post, like, follow, purchase",
+        ],
+    }
+
+
+def _openguanlan_browser_profile(*, command_template: str = "") -> dict[str, Any]:
+    template = str(command_template or os.environ.get("GUANLAN_BROWSER_ASSIST_OPENGUANLAN_COMMAND") or "").strip()
+    openguanlan_path = shutil.which("openguanlan") or ""
+    extension_path = Path(__file__).resolve().parent / "browser_bridge" / "extension"
+    return {
+        "native_bridge_available": bool(openguanlan_path or template),
+        "openguanlan_path": openguanlan_path,
+        "extension_path": str(extension_path),
+        "extension_manifest_exists": (extension_path / "manifest.json").exists(),
+        "template_configured": bool(template),
+        "mode": "openguanlan_native_bridge" if openguanlan_path or template else "packaged_needs_install_entrypoint",
+        "template_outputs_payload": bool(template and _open_cli_command_supports_payload(template)),
+    }
+
+
+def _opencli_setup_guidance(profile: dict[str, Any] | None = None) -> dict[str, Any]:
+    opencli_ready = bool((profile or {}).get("browser_bridge_available"))
+    return {
+        "needed": not opencli_ready,
+        "cli_install_command": f"npm install -g {OPENCLI_NPM_PACKAGE}@latest",
+        "extension_url": OPENCLI_CHROME_WEBSTORE_URL,
+        "manual_release_zip_url": OPENCLI_RELEASES_URL,
+        "verify_commands": [
+            "opencli doctor",
+            "opencli profile list",
+            "guanlan browser-assist adapters --check --json",
+        ],
+        "guanlan_command": "guanlan browser-assist setup-opencli --json",
+        "execute_command": "guanlan browser-assist setup-opencli --execute --json",
+        "boundary": "CLI 可由用户明确安装；Chrome 扩展需要用户在浏览器中手动确认；观澜不读取凭据材料。",
+    }
+
+
+def _openguanlan_setup_guidance() -> dict[str, Any]:
+    return {
+        "guanlan_command": "guanlan browser-assist setup-openguanlan --json",
+        "doctor_command": "openguanlan doctor --json",
+        "daemon_command": "openguanlan daemon",
+        "extension_path_command": "openguanlan extension path",
+        "boundary": "Guanlan-native browser bridge is preferred; OpenCLI is compatibility only.",
+        "default_adapter_remains": "host-browser",
+    }
+
+
+def _node_version() -> str:
+    node = shutil.which("node")
+    if not node:
+        return ""
+    try:
+        completed = subprocess.run(
+            [node, "--version"],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+            check=False,
+        )
+    except Exception:
+        return ""
+    return (completed.stdout or completed.stderr or "").strip()
+
+
+def _command_template_uses_opencli(template: str = "") -> bool:
+    if not template:
+        return False
+    try:
+        first = shlex.split(template)[0]
+    except Exception:
+        return "opencli" in template
+    return os.path.basename(first).lower() == "opencli"
+
+
+def _open_cli_command_supports_payload(command_template: str = "") -> bool:
+    template = str(command_template or os.environ.get("GUANLAN_BROWSER_ASSIST_OPEN_CLI_COMMAND") or "").strip().lower()
+    if not template:
+        return False
+    return any(marker in template for marker in ["{output}", "--output", "--jsonl", "jsonl", "browser-visible", "browser_visible", "guanlan-visible"])
+
+
+def _opencli_doctor_command(profile: dict[str, Any] | None = None) -> list[str]:
+    opencli_path = str((profile or {}).get("opencli_path") or shutil.which("opencli") or "")
+    if opencli_path:
+        return [opencli_path, "doctor"]
+    return []
+
+
+def _openguanlan_doctor_command() -> list[str]:
+    executable = shutil.which("openguanlan") or ""
+    if executable:
+        return [executable, "doctor"]
+    return []
+
+
+def _openguanlan_command(url: str, *, command_template: str = "", output_path: str = "") -> list[str]:
+    template = str(command_template or os.environ.get("GUANLAN_BROWSER_ASSIST_OPENGUANLAN_COMMAND") or "").strip()
+    if template:
+        return _render_command_template(template, url=url, output=output_path)
+    executable = shutil.which("openguanlan") or ""
+    if executable:
+        return [executable, "read-visible", url, "--output", output_path or "-"]
+    return []
+
+
+def _open_cli_command(url: str, *, command_template: str = "", output_path: str = "") -> list[str]:
     template = str(command_template or os.environ.get("GUANLAN_BROWSER_ASSIST_OPEN_CLI_COMMAND") or "").strip()
     if template:
-        return _render_command_template(template, url=url, output="")
+        return _render_command_template(template, url=url, output=output_path)
+    opencli_path = shutil.which("opencli") or ""
+    if opencli_path:
+        return [opencli_path, "browser", "--session", "guanlan-visible", "open", url]
     executable = _resolve_adapter_executable("open-cli", "open")
     if executable:
         return [executable, url]
@@ -1620,17 +2114,18 @@ def _cookie_access_policy(platform: str = "") -> dict[str, Any]:
     platform_label = platform or "target_platform"
     return {
         "default": "forbidden_for_visible_page_task",
-        "can_escalate": "yes_but_only_after_separate_explicit_user_authorization",
+        "can_escalate": "yes_but_only_after_separate_explicit_credential_authorization",
         "required_before_cookie_access": [
             "说明需要哪个平台的 Cookie",
             "说明为什么仅靠公开读取和浏览器可见页仍不足",
             "说明 Cookie 只用于当前目标平台的只读检索/读取",
-            "说明不会读取密码、Token、钥匙串、私信、订单、后台或无关个人资料",
+            "说明 Cookie/凭据材料不会进入 browser-visible payload 或 archive 正文",
+            "说明不会读取密码、Token、钥匙串、无关私域页面或无关个人资料",
             "获得用户明确同意，例如：我同意读取小红书 Cookie 用于这次只读检索",
         ],
         "authorization_prompt": (
             f"公开读取和浏览器可见页仍不足。是否允许我读取 {platform_label} 的 Cookie，"
-            "仅用于本次只读检索/读取目标页面？我不会读取密码、Token、钥匙串、私信、订单、后台或无关个人资料，"
+            "仅用于本次只读检索/读取目标页面？Cookie 不会进入可见页 payload 或 archive 正文；我不会读取密码、Token、钥匙串、无关私域页面或无关个人资料，"
             "也不会执行点赞、评论、关注、发帖、私信、下单或提交表单。"
         ),
         "preferred_flow": "use Guanlan's explicit auth/config command or a user-approved host credential connector; do not ad-hoc scrape browser profiles.",

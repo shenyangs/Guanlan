@@ -90,24 +90,28 @@ guanlan diagnose page "URL"
 
 公众号文章先用普通 `read`。`mp.weixin.qq.com` 文章链接在 `auto` 模式下会优先尝试公众号专项提取；`--trace` 中出现 `selected_backend=wechat_article` 时，表示正文来自公开文章 HTML 的标题、作者、发布时间和正文块。只有这条路径、Jina 和 direct HTML 都失败或正文弱时，才进入页面诊断或请求用户授权浏览器可见页补证。
 
-如果诊断输出 `browser_assist.recommended=true`，说明公开读取不足但目标页可能仍有样本价值。Agent 必须先问用户是否允许使用宿主浏览器读取目标页可见内容；如页面需要登录、验证或切换账号，应让用户自己在浏览器里完成。允许后，Agent 只能读取目标页可见文本、标题、URL、作者和时间，本次可见页补证不读取 Cookie、Token、钥匙串、浏览器数据库、私信、订单、后台或无关个人资料；如果仍需 Cookie，必须另行说明平台、用途和风险并获得用户明确同意，不执行点赞、评论、关注、发帖、私信、下单或提交表单。
+如果诊断输出 `browser_assist.recommended=true`，说明公开读取不足但目标页可能仍有样本价值。Agent 必须先问用户是否允许使用宿主浏览器读取目标页可见内容；如页面需要登录、验证或切换账号，应让用户自己在浏览器里完成。允许后，Agent 只能读取目标页可见文本、标题、URL、作者和时间，本次可见页补证不读取 Cookie、Token、钥匙串、浏览器数据库、localStorage、sessionStorage、浏览器 profile 或无关个人资料。若任务目标本身是私信、订单、后台或账号页，需要用户对该目标页、用途、风险和只读范围单独明确授权，并标记 `private_account_evidence=true`；如果仍需 Cookie 或其他凭据材料，必须另行说明平台、用途和风险并获得用户明确同意，且凭据材料不得进入 browser-visible payload。不执行点赞、评论、关注、发帖、私信、下单或提交表单。
 
 推荐外显说法：
 
-> 观澜已经完成信源路线判断，当前公开读取拿到的正文不足。下一步建议使用你当前浏览器里的目标页面做补证；如果页面需要登录或验证，请你自己在浏览器里完成。是否允许我只读取目标页面的可见内容？我不会读取 Cookie、密码、钥匙串、浏览器数据库、私信、订单或后台信息，也不会执行任何写操作。
+> 观澜已经完成信源路线判断，当前公开读取拿到的正文不足。下一步建议使用你当前浏览器里的目标页面做补证；如果页面需要登录或验证，请你自己在浏览器里完成。是否允许我只读取目标页面的可见内容？如果目标页是私信、订单、后台或账号页，我会再确认该目标页和用途。我不会读取 Cookie、Token、密码、钥匙串、浏览器数据库、localStorage、sessionStorage 或浏览器 profile，也不会执行任何写操作。
 
 授权后的浏览器可见页结果优先由宿主 Agent 直接提取为 JSON/JSONL，然后这样入库：
 
 ```bash
 guanlan browser-assist adapters --check
+guanlan browser-assist setup-openguanlan --json
+guanlan browser-assist setup-opencli --json
 guanlan browser-assist sessions "URL" --min-visible-items 30 --json
 guanlan browser-assist run "URL" --adapter host-browser --json
 guanlan archive add-browser-note --from-json browser-notes.jsonl
 ```
 
-`browser-assist adapters --check` 只做只读可用性探测：检查可执行文件、命令模板、平台匹配和 dry-run 构造，不会打开页面、读取浏览器状态或调用外部平台。`browser-assist run` 默认只返回宿主浏览器执行契约，告诉 Agent 该打开哪些 URL、提取哪些可见字段、哪些动作不能做。`open-cli` / `browser-use` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先安装并配置命令模板；不要为了补证临时下载 Playwright、启动独立浏览器或读取浏览器 profile。只有用户另外明确授权 Cookie 平台、用途、风险和只读范围时，才允许走 Cookie 相关流程。
+`browser-assist adapters --check` 只做只读可用性探测：检查可执行文件、命令模板、平台匹配和 dry-run 构造，不会打开页面、读取浏览器状态或调用外部平台。`browser-assist run` 默认只返回宿主浏览器执行契约，告诉 Agent 该打开哪些 URL、提取哪些可见字段、哪些动作不能做。`open-cli` 默认仍可只作为 opener；如果检测到 OpenCLI 浏览器桥或用户配置了可输出 browser-visible JSON/JSONL 的命令模板，能力层会升级为 extractor。`host-browser` 仍是默认稳定推荐。`browser-use` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先安装并配置命令模板；不要为了补证临时下载 Playwright、启动独立浏览器或读取浏览器 profile。只有用户另外明确授权 Cookie 平台、用途、风险和只读范围时，才允许走凭据相关流程，且凭据材料不进入可见页入库 payload。
 
-适配器能力要分层理解：`extractor` 才能产出浏览器可见页 JSON/JSONL，`opener` 只负责把 URL 打开。`adapters --check` 会给出 `can_open`、`can_extract_visible_text`、`can_reuse_existing_session`、`cookie_flow_available`、`capability_score` 和 `risk_score`；如果只有 opener 可用，Agent 仍需要用宿主浏览器能力提取可见正文。小红书、知乎、公众号会带平台专项字段模板，入库时保留 `browser_visible_v2`、`browser_assisted`、`visible_page_only`、`user_authorized` 和 `session_dependent` 边界。
+如果用户需要独立浏览器桥，优先用 `guanlan browser-assist setup-openguanlan --json` 进入 Guanlan-native 的 OpenGuanlan 路线；不要把安装 OpenCLI 当成观澜核心前置条件。`setup-opencli` 只保留给已经明确想用 OpenCLI 的兼容用户。无论哪条桥，Chrome 扩展都必须由用户在浏览器里手动安装/启用。
+
+适配器能力要分层理解：`extractor` 才能产出浏览器可见页 JSON/JSONL，`opener` 只负责把 URL 打开。`adapters --check` 会给出 `can_open`、`can_extract_visible_text`、`can_reuse_existing_session`、`can_wait_dynamic_ready`、`can_scroll_until_min_items`、`can_read_private_account_visible_pages`、`credential_material_access_allowed`、`cookie_flow_available`、`capability_score` 和 `risk_score`；如果只有 opener 可用，Agent 仍需要用宿主浏览器能力提取可见正文。小红书、知乎、公众号会带平台专项字段模板，入库时保留 `browser_visible_v2`、`browser_assisted`、`visible_page_only`、`user_authorized` 和 `session_dependent` 边界。
 
 `browser-assist sessions` 是给 Agent 的会话契约，不读取浏览器状态。多步补证应使用同一目标页会话，登录、验证、SPA 跳转、排序/筛选变化后必须重新确认 URL、标题、正文和结果数，不复用旧快照。Rednote 与小红书按同类公开笔记处理，但保留平台标签。
 

@@ -67,8 +67,8 @@ the recommended structured source, scoped search, or archive workflow.
 If diagnosis emits `browser_assist.recommended=true`, ask the user for explicit permission before
 using the host Agent browser to open the target URL and read only the target page's visible content. If login, verification, or account switching is needed, let the user complete it in the browser first. Report it as
 "Guanlan planned the route, then I used user-authorized browser-visible evidence as supplementary
-evidence." For the visible-page task, do not read Cookie, Token, password, keychain, private messages, orders, admin pages, or
-unrelated personal data; Cookie access is allowed only after a separate explicit user authorization for the target platform, purpose, risk, and read-only scope, and do not post, like, comment, follow, message, purchase, or submit forms.
+evidence." For the visible-page task, do not read Cookie, Token, password, keychain, browser storage/profile, or
+unrelated personal data. Private messages, orders, admin pages, and account pages may only be read as target-page visible evidence after separate explicit authorization for that target page, purpose, risk, and read-only scope; mark them as `private_account_evidence`. Cookie/credential access is a separate authorization flow and must not enter browser-visible payloads. Do not post, like, comment, follow, message, purchase, or submit forms.
 If the user authorizes visible-page evidence, it may be archived with
 `guanlan archive add-browser-note --from-json browser-notes.jsonl`; keep the
 `browser_assisted` / `visible_page_only` boundary. `--url ... --text-file` is only a manual fallback when the host Agent has no browser extraction capability.
@@ -180,6 +180,8 @@ guanlan workflow "中文研究需求" --json
 guanlan diagnose page "https://example.com/article"
 guanlan browser-assist plan "https://example.com/article" --json
 guanlan browser-assist adapters
+guanlan browser-assist setup-openguanlan --json
+guanlan browser-assist setup-opencli --json
 guanlan browser-assist run "https://example.com/article" --adapter host-browser --json
 guanlan browser-assist run "https://example.com/article" --adapter browser-use --json
 guanlan recipe list
@@ -255,8 +257,9 @@ Safety rules:
 - Use `guanlan capabilities` when the user asks what Guanlan can do, which Guanlan command/tool to use, or why the tool is relevant.
 - Use `guanlan route "query"` when deciding which source pools, sites, evidence roles, and caveats fit a request; route plans are soft guidance, not hard filters.
 - Use `guanlan diagnose page "URL"` before repeatedly retrying a weak `read`; if it reports dynamic shell, access gate, or search-fallback-only context, use the recommended structured/scoped/archive path instead of treating the page as evidence.
-- If `diagnose page` recommends browser-assisted evidence, ask first and only read the target browser-visible page content; use `browser-assist adapters` / `browser-assist run --adapter host-browser` to get the execution contract for the host Agent browser. `open-cli` / `browser-use` can be used as URL opener adapters only; do not install Playwright, launch a separate browser profile, or read a browser profile for this flow. Never read cookies, private areas, or perform write actions unless the user gives a separate Cookie authorization for that platform and purpose. Archive authorized visible notes with `archive add-browser-note` and preserve the evidence boundary.
-- Treat browser-assist adapters by capability layer. `extractor` adapters can produce browser-visible JSON/JSONL; `opener` adapters only open target URLs and still require the host Agent browser to extract visible text. Read `can_open`, `can_extract_visible_text`, `can_reuse_existing_session`, `cookie_flow_available`, `capability_score`, and `risk_score` before choosing an adapter.
+- If `diagnose page` recommends browser-assisted evidence, ask first and only read the target browser-visible page content; use `browser-assist adapters` / `browser-assist run --adapter host-browser` to get the execution contract for the host Agent browser. `open-cli` may upgrade from opener to extractor when Guanlan detects an OpenCLI browser bridge, but the default recommendation remains `host-browser`; do not install Playwright, launch a separate browser profile, or read a browser profile for this flow. Private/account pages require separate target-page authorization and `private_account_evidence=true`. Cookie/credential material stays outside browser-visible payloads. Archive authorized visible notes with `archive add-browser-note` and preserve the evidence boundary.
+- If the user wants a browser bridge beyond `host-browser`, prefer the Guanlan-native path: `guanlan browser-assist setup-openguanlan --json`. Do not require users to install OpenCLI for Guanlan core workflows. `open-cli` / `setup-opencli` remain compatibility paths only for users who already want OpenCLI; Chrome extension installation/enabling always remains a manual user browser step.
+- Treat browser-assist adapters by capability layer. `extractor` adapters can produce browser-visible JSON/JSONL; `opener` adapters only open target URLs and still require the host Agent browser to extract visible text. Read `can_open`, `can_extract_visible_text`, `can_reuse_existing_session`, `can_wait_dynamic_ready`, `can_scroll_until_min_items`, `can_read_private_account_visible_pages`, `credential_material_access_allowed`, `cookie_flow_available`, `capability_score`, and `risk_score` before choosing an adapter.
 - Use `guanlan recipe run <recipe> "query"` when the user task matches a reusable vertical workflow; recipes are plans and boundaries, not final conclusions.
 - Use `guanlan search ... --trace` or `guanlan research ...` when you need query_strategy, source diagnostics, and evidence-role query rewrites; do not rely on one broad query for serious research.
 - Use `guanlan compare`, `guanlan timeline`, or `guanlan dossier` when the user asks for comparison, event chronology, or an entity dossier; these are structured views over evidence packets, not final truth.

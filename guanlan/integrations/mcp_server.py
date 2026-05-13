@@ -203,8 +203,9 @@ def _tool_definitions() -> list[dict]:
             "description": (
                 "Build a read-only host-browser visible-page evidence task after Guanlan finds that public "
                 "reading is weak, blocked, dynamic, or search-fallback-only. The tool only returns a plan; "
-                "the Agent must ask the user before reading browser-visible content and must not read "
-                "cookies, tokens, keychain data, private messages, orders, admin pages, or perform writes."
+                "the Agent must ask the user before reading browser-visible content. Target private/account "
+                "pages require separate explicit authorization; cookies, tokens, keychain/storage/profile "
+                "credential material must not enter the browser-visible payload, and write actions are forbidden."
             ),
             "inputSchema": {
                 "type": "object",
@@ -227,9 +228,9 @@ def _tool_definitions() -> list[dict]:
             "name": "guanlan_browser_assist_run",
             "description": (
                 "Prepare or run a user-authorized browser-assist adapter bridge. Default host-browser mode "
-                "returns an execution contract for the host Agent browser; open-cli and external adapters are "
-                "explicit opt-in and remain read-only visible-page evidence flows. Cookie access still requires "
-                "separate explicit user authorization for the target platform."
+                "returns an execution contract for the host Agent browser; open-cli can upgrade from opener to "
+                "extractor when an OpenCLI browser bridge is detected. External adapters remain explicit opt-in "
+                "read-only visible-page evidence flows; credential material is outside the payload boundary."
             ),
             "inputSchema": {
                 "type": "object",

@@ -52,7 +52,7 @@ metadata:
 - 信源解释：当需要说明“为什么该看这些来源/某来源能不能当主证据”时，先用 `guanlan sources explain "query"` 或 `guanlan sources show gov.cn`；需要治理口径漂移时用 `guanlan sources audit`。这些都是只读信源元数据，不是实际搜索结果。
 - 轻重分流：不确定任务该轻搜还是深查时，先跑 `guanlan workflow "query" --json`；simple/direct 任务不要过度规划，复杂/高风险/对比/时间线/档案任务才用 `guanlan investigate "query" --limit 80 --format context`。
 - 页面诊断：当 `read` 读到动态页壳、登录墙、WAF、安全验证、搜索兜底或弱正文时，先跑 `guanlan diagnose page "URL"`；诊断只解释页面是否能当证据，不读取 Cookie，不执行浏览器动作。
-- 浏览器辅助补证：如果 `diagnose page` 输出 `browser_assist.recommended=true`，必须先询问用户授权；如需登录、验证或切换账号，让用户自己在浏览器里完成；Agent 只读取目标页面的浏览器可见内容，本次可见页补证不读取 Cookie、Token、钥匙串、私信、订单、后台或无关个人信息；如果仍需 Cookie，必须另行说明平台、用途和风险并获得用户明确同意，也不点赞、评论、关注、发帖、私信、下单或提交表单。用户授权后可先用 `guanlan browser-assist adapters --check` 查看只读适配器自检，用 `guanlan browser-assist sessions "URL" --json` 获取同一目标页会话契约，再用 `guanlan browser-assist run "URL" --adapter host-browser --json` 取得宿主浏览器执行契约；可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库。`open-cli` 只负责打开页面，`xhs-cli` 等外部适配器必须由用户预先配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
+- 浏览器辅助补证：如果 `diagnose page` 输出 `browser_assist.recommended=true`，必须先询问用户授权；如需登录、验证或切换账号，让用户自己在浏览器里完成；Agent 只读取目标页面的浏览器可见内容，本次可见页补证不读取 Cookie、Token、钥匙串、localStorage、sessionStorage、浏览器数据库/profile 或无关个人信息。私信、订单、后台、账号页只有在它们就是目标页且用户单独明确授权目标、用途、风险和只读范围时才读取，并标记 `private_account_evidence=true`；如果仍需 Cookie 或其他凭据材料，必须另行说明平台、用途和风险并获得用户明确同意，凭据材料不得进入 browser-visible payload，也不点赞、评论、关注、发帖、私信、下单或提交表单。用户授权后可先用 `guanlan browser-assist adapters --check` 查看只读适配器自检，用 `guanlan browser-assist sessions "URL" --json` 获取同一目标页会话契约，再用 `guanlan browser-assist run "URL" --adapter host-browser --json` 取得宿主浏览器执行契约；可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库。OpenCLI 的浏览器桥思想应内化为 Guanlan-native 的 `openguanlan` 能力；如需独立桥，优先用 `guanlan browser-assist setup-openguanlan --json`，隐私/登录态/私域页能力全部放在 browser-assist 授权边界下。`open-cli` 只作为兼容迁移入口，不要求用户安装 OpenCLI。`xhs-cli` 等外部适配器必须由用户预先配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
 - 浏览器可见页动态采集不能只靠固定 sleep。优先等待标题/正文、结果数增长、DOM 变化趋稳或相关网络响应；`aria-label`、`placeholder`、`title`、按钮文字等会随语言变化，不要用单一 UI 文案当唯一 selector。列表、评论、搜索页需要样本池时，用 `--min-visible-items` 并输出 `requested_min_items`、`collected_count`、`partial_reason`；未达到目标要标记 partial，不要把空结果当成功。
 - 研究模板：高频垂直任务先用 `guanlan recipe list` / `guanlan recipe run <recipe> "query"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`、`wps-office-radar`、`trajectory-map`。
 - 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究至少走 `route -> research -> scoped search`；热点题再补 `hotnews`；技术/AI/WPS/AI Office 题再补 `feeds`；来源过窄时再补 `dossier/compare/timeline`。
@@ -152,6 +152,8 @@ guanlan search "中文问题" --profile china --limit 80 --trace  # 查看 Baidu
 guanlan diagnose page "https://example.com/article"
 guanlan browser-assist plan "https://example.com/article" --json
 guanlan browser-assist adapters --check
+guanlan browser-assist setup-openguanlan --json
+guanlan browser-assist setup-opencli --json
 guanlan browser-assist sessions "https://example.com/article" --json
 guanlan browser-assist run "https://example.com/article" --adapter host-browser --json
 guanlan recipe list
