@@ -6,6 +6,15 @@
 
 ## Unreleased
 
+## v0.5.36 - 2026-05-14
+
+### Changed
+
+- 加固发布后同步链路：GitHub workflow 轮询命中匿名 API `403`/rate limit 时不再整条卡死，改为继续由 PyPI、Homebrew 和官网版本面确认发布是否生效。
+- 加固本机 `uv` 安装同步：发布后默认使用 `--reinstall-package guanlan --no-sources`，并在版本未追平时自动 `--no-cache` 重试，避免命令成功但实际仍回落旧版。
+- 发布自动化文档同步补充 GitHub API 限流降级和 `uv` 强刷校验约束。
+- 官网和版本面同步到 `0.5.36`。
+
 ## v0.5.35 - 2026-05-14
 
 ### Added

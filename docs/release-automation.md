@@ -54,11 +54,11 @@ scripts/publish_release.sh
 如果只想做本地诊断而不跑完整闸门，可以临时使用 `GUANLAN_RELEASE_SKIP_GATE=1 scripts/publish_release.sh`；正式发布不要跳过完整闸门。
 
 7. `scripts/publish_release.sh` 推送成功后会自动执行 `scripts/post_release_sync.sh`，默认完成以下同步动作：
-   - 轮询 GitHub `release-pypi` workflow（tag 分支）直到成功。
+   - 优先轮询 GitHub `release-pypi` workflow（tag 分支）；如果匿名 API 命中 `403`/rate limit，不阻塞整条发版链路，而是继续由 PyPI、Homebrew 和官网版本面确认发布已生效。
    - 轮询 PyPI，确认目标版本已可见。
    - 轮询 Homebrew tap 公式，确认已指向目标版本 tarball。
    - 默认执行官网部署脚本并校验站点版本。
-   - 自动刷新本机 `uv` / `brew` / `pipx` 安装并核验 `which -a guanlan` 下的所有可执行入口版本（`uv` 默认携带 `--refresh --index-url https://pypi.org/simple`，降低索引滞后导致的旧版回装）。
+   - 自动刷新本机 `uv` / `brew` / `pipx` 安装并核验 `which -a guanlan` 下的所有可执行入口版本。`uv` 路径会使用 `--reinstall-package guanlan --no-sources --default-index https://pypi.org/simple`，若第一次仍解析到旧版，再自动 `--no-cache` 重试一次。
 8. 等待 `release` workflow 完成：
    - Job `publish-pypi`：发布到 PyPI。
    - Job `update-homebrew-tap`：更新 tap 仓库公式，并从 tap 真实安装一次确认版本。

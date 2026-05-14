@@ -48,6 +48,17 @@ def test_release_gate_runs_full_quality_ladder():
     assert "guanlan version" in script
 
 
+def test_post_release_sync_script_handles_github_rate_limit_and_uv_version_verification():
+    script = (ROOT / "scripts" / "post_release_sync.sh").read_text(encoding="utf-8")
+
+    assert "HTTP_STATUS:%{http_code}" in script
+    assert "github workflow probe hit API 403/rate-limit" in script
+    assert "uv tool install --force --upgrade --reinstall-package guanlan" in script
+    assert "--no-sources --default-index https://pypi.org/simple guanlan" in script
+    assert "uv tool path resolved v" in script
+    assert "verify_single_bin_version \"uv tool\"" in script
+
+
 def test_agent_update_docs_require_full_reinstall_and_smoke():
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     update_doc = (ROOT / "docs" / "update.md").read_text(encoding="utf-8")

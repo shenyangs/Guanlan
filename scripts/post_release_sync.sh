@@ -77,10 +77,24 @@ if token:
 
 try:
     raw = subprocess.check_output(
-        ["curl", "-fsSL", "--max-time", "20", *headers, url],
+        ["curl", "-sSL", "--max-time", "20", *headers, "-w", "\nHTTP_STATUS:%{http_code}\n", url],
         text=True,
     )
-    payload = json.loads(raw)
+except Exception:
+    sys.exit(1)
+
+marker = "\nHTTP_STATUS:"
+if marker not in raw:
+    sys.exit(1)
+body, status_text = raw.rsplit(marker, 1)
+status_code = int((status_text or "").strip() or "0")
+if status_code == 403:
+    sys.exit(2)
+if status_code >= 400:
+    sys.exit(1)
+
+try:
+    payload = json.loads(body)
 except Exception:
     sys.exit(1)
 
@@ -95,6 +109,31 @@ if status == "completed" and conclusion == "success":
     sys.exit(0)
 sys.exit(1)
 PY
+}
+
+wait_for_github_release_workflow() {
+  local started now status
+  started="$(date +%s)"
+  while true; do
+    set +e
+    check_github_release_workflow
+    status=$?
+    set -e
+    if [ "$status" = "0" ]; then
+      echo "[sync] github release workflow (${TAG}): ready"
+      return 0
+    fi
+    if [ "$status" = "2" ]; then
+      echo "[sync] github workflow probe hit API 403/rate-limit; defer to PyPI/Homebrew/website confirmation."
+      return 0
+    fi
+    now="$(date +%s)"
+    if [ $((now - started)) -ge "$SYNC_TIMEOUT_SECONDS" ]; then
+      fail "github release workflow (${TAG}) not ready after ${SYNC_TIMEOUT_SECONDS}s"
+    fi
+    echo "[sync] waiting for github release workflow (${TAG})..."
+    sleep "$SYNC_INTERVAL_SECONDS"
+  done
 }
 
 check_pypi_release() {
@@ -139,6 +178,25 @@ deploy_website_if_needed() {
   echo "[sync] website deploy script not found, skip deploy."
 }
 
+uv_tool_bin_path() {
+  local tool_dir
+  tool_dir="$(uv tool dir 2>/dev/null || true)"
+  if [ -z "$tool_dir" ]; then
+    return 0
+  fi
+  printf '%s/guanlan/bin/guanlan\n' "$tool_dir"
+}
+
+verify_single_bin_version() {
+  local label="$1"
+  local bin_path="$2"
+  local version
+  [ -x "$bin_path" ] || fail "$label path not executable: $bin_path"
+  version="$(extract_version "$bin_path")"
+  [ -n "$version" ] || fail "$label path $bin_path returned unknown version"
+  [ "$version" = "$VERSION" ] || fail "$label path $bin_path version $version != expected $VERSION"
+}
+
 sync_local_installs() {
   if [ "$SYNC_LOCAL_INSTALLS" != "1" ]; then
     echo "[sync] local installer sync skipped (GUANLAN_SYNC_LOCAL_INSTALLS=$SYNC_LOCAL_INSTALLS)"
@@ -147,7 +205,18 @@ sync_local_installs() {
 
   if command -v uv >/dev/null 2>&1; then
     echo "[sync] refreshing uv tool install..."
-    uv tool install --force --upgrade --refresh --index-url https://pypi.org/simple guanlan
+    uv tool install --force --upgrade --reinstall-package guanlan --refresh --no-sources --default-index https://pypi.org/simple guanlan
+    local uv_bin
+    uv_bin="$(uv_tool_bin_path)"
+    if [ -n "$uv_bin" ] && [ -x "$uv_bin" ]; then
+      local uv_version
+      uv_version="$(extract_version "$uv_bin")"
+      if [ "$uv_version" != "$VERSION" ]; then
+        echo "[sync] uv tool path resolved v${uv_version:-unknown}; retrying once with --no-cache..."
+        uv tool install --force --upgrade --reinstall-package guanlan --refresh --no-sources --no-cache --default-index https://pypi.org/simple guanlan
+      fi
+      verify_single_bin_version "uv tool" "$uv_bin"
+    fi
   else
     echo "[sync] uv not found, skip uv sync."
   fi
@@ -201,7 +270,7 @@ require_tools
 
 if [ "$SKIP_DIST_WAIT" != "1" ]; then
   echo "[sync] waiting for release workflow/PyPI/Homebrew..."
-  wait_for_condition "github release workflow (${TAG})" "check_github_release_workflow"
+  wait_for_github_release_workflow
   wait_for_condition "pypi ${PYPI_PACKAGE}==${VERSION}" "check_pypi_release"
   wait_for_condition "homebrew tap formula ${VERSION}" "check_homebrew_tap_release"
 else
