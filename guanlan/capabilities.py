@@ -385,8 +385,10 @@ CAPABILITIES: tuple[Capability, ...] = (
         cli=[
             "guanlan archive wiki build --output ./guanlan-wiki",
             "guanlan archive wiki build --format both --topic \"AI Agent\"",
+            "guanlan archive wiki build --format llm-wiki --output ./guanlan-llm-wiki",
             "guanlan archive wiki context \"KV Cache 量化\"",
             "guanlan archive pack \"主题\" --format langchain-jsonl --output pack.jsonl",
+            "guanlan archive pack \"主题\" --format llm-wiki --output ./topic-wiki",
         ],
         mcp=None,
         status="sidecar",

@@ -211,10 +211,12 @@ Archive 保存在本机 `~/.guanlan/archive.db`，不会自动上传，也不会
 
 ```bash
 guanlan archive wiki build --output ./guanlan-wiki --format both
+guanlan archive wiki build --output ./guanlan-llm-wiki --format llm-wiki
 guanlan archive wiki context "人工智能 政策"
+guanlan archive pack "人工智能 政策" --format llm-wiki --output ./policy-wiki
 ```
 
-Wiki 只反映本地 archive 中已有资料，不代表全网知识。低质量或正文较薄的材料会被标为 candidate，本地模型回答时应先说明证据边界。
+Wiki 只反映本地 archive 中已有资料，不代表全网知识。低质量或正文较薄的材料会被标为 candidate，本地模型回答时应先说明证据边界。`--format llm-wiki` 会生成 `purpose.md`、`schema.md`、`index.md`、`log.md`、`raw/sources/`、`wiki/sources/`、`wiki/topics/`、`wiki/entities/` 和 `graph.json`，适合把一次调研沉淀成本地模型或长期 Agent 可维护的知识目录；它不联网、不调用模型，也不会改写 Archive 原始记录。
 
 ## 六、安全边界
 

@@ -32,6 +32,39 @@ def test_archive_wiki_builds_static_html_and_markdown(tmp_path):
     assert "AI Agent" in (output / "index.md").read_text(encoding="utf-8")
 
 
+def test_archive_wiki_builds_llm_wiki_directory(tmp_path):
+    db = tmp_path / "archive.db"
+    output = tmp_path / "llm-wiki"
+    archive.add_document(
+        "https://example.com/kv",
+        "# KV Cache 优化\n\nKIVI 和 KVQuant 是 KV Cache 量化方法，vLLM 是推理框架。",
+        metadata={
+            "topic_key": "KV Cache",
+            "topic_label": "KV Cache 量化",
+            "source_type": "技术资料",
+            "evidence_role": "technical_note",
+            "read_quality": {"score": 88},
+            "content_mode": "full_body",
+        },
+        db_path=db,
+    )
+
+    result = build_archive_wiki(output_dir=output, output_format="llm-wiki", db_path=db)
+
+    assert result["format"] == "llm-wiki"
+    assert (output / "purpose.md").exists()
+    assert (output / "schema.md").exists()
+    assert (output / "index.md").exists()
+    assert (output / "log.md").exists()
+    assert (output / "graph.json").exists()
+    assert (output / "manifest.json").exists()
+    assert list((output / "raw" / "sources").glob("*.md"))
+    assert list((output / "wiki" / "sources").glob("*.md"))
+    assert list((output / "wiki" / "topics").glob("*.md"))
+    assert "not whole-web knowledge" in (output / "manifest.json").read_text(encoding="utf-8")
+    assert "[[entity:KIVI]]" in next((output / "wiki" / "sources").glob("*.md")).read_text(encoding="utf-8")
+
+
 def test_archive_wiki_context_is_prompt_ready(tmp_path):
     db = tmp_path / "archive.db"
     archive.add_document(
@@ -80,6 +113,29 @@ def test_archive_pack_can_write_loader_jsonl(tmp_path):
     assert row["metadata"]["tool"] == "guanlan"
     assert row["metadata"]["topic_label"] == "AI Agent"
     assert row["metadata"]["content_mode"] in {"partial_body", "full_body"}
+
+
+def test_archive_pack_can_write_focused_llm_wiki(tmp_path):
+    db = tmp_path / "archive.db"
+    output = tmp_path / "focused-wiki"
+    archive.add_document(
+        "https://example.com/agent",
+        "# Agent 资料\n\n本地模型可以读取这段资料，作为 Agent Wiki 的证据。",
+        metadata={"topic_key": "agent", "read_quality": {"score": 90}},
+        db_path=db,
+    )
+
+    result = build_archive_pack(
+        "Agent 资料",
+        output_path=output,
+        output_format="llm-wiki",
+        db_path=db,
+    )
+
+    assert result["path"] == str(output)
+    assert result["format"] == "llm-wiki"
+    assert (output / "index.md").exists()
+    assert (output / "wiki" / "queries" / "Agent-资料.md").exists()
 
 
 def test_archive_wiki_cli_builds_summary(tmp_path, capsys):

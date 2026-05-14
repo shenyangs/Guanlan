@@ -118,7 +118,7 @@ guanlan doctor --install-check
 guanlan status
 ```
 
-看到 `观澜 / Guanlan v0.5.33`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.34`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
 
 ## 给 Agent 复制的安装指令
 
@@ -147,7 +147,7 @@ guanlan status
 - 不自动点赞、评论、关注、发帖或发送消息。
 - 高风险平台能力保持 `best-effort` / `opt-in` / `experimental` 口径，不包装成稳定端到端能力。
 - `doctor` 默认不做深度授权探测；需要认证检查必须显式运行相关命令。
-- Archive、Wiki、RAG 导出都基于本地已归档资料，不代表全网事实。
+- Archive、Wiki、LLM Wiki、RAG 导出都基于本地已归档资料，不代表全网事实。
 - 真实网络超时应被视为网络/上游证据，不应直接解释为“没有结果”。
 
 ## 文档入口

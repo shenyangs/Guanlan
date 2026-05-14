@@ -631,8 +631,10 @@ guanlan archive reindex
 guanlan archive verify
 guanlan archive context "人工智能 政策" --limit 20
 guanlan archive wiki build --output ./guanlan-wiki --format both
+guanlan archive wiki build --output ./guanlan-llm-wiki --format llm-wiki
 guanlan archive wiki context "人工智能 政策"
 guanlan archive pack "人工智能 政策" --format langchain-jsonl --output guanlan-pack.jsonl
+guanlan archive pack "人工智能 政策" --format llm-wiki --output ./policy-wiki
 ```
 
 导出给 RAG、向量库或其他本地系统：
@@ -645,7 +647,7 @@ guanlan archive export --format langchain-jsonl
 guanlan archive export --format openwebui-jsonl
 ```
 
-Archive 默认保存在 `~/.guanlan/archive.db`。它只保存本机归档内容，不自动上传。当前本地检索默认是 SQLite FTS/LIKE 宽召回；如果显式运行 `guanlan archive embed --backend local`，可以再用 `archive search/context --semantic` 调用本地轻量语义侧车。语义侧车不联网、不替代 FTS；`--trace` 会返回 matched terms、field hits、score 和语义边界。`archive verify` 用来检查索引一致性、空正文、样本召回和 RAG/Wiki 就绪度；把 archive 交给长期 Agent 记忆前应先跑一遍。`archive wiki build` 只是把已有 archive records 组织成静态 Markdown/HTML Wiki，不代表全网知识；低质量资料会被标为 candidate。`rag-jsonl` 会导出本地 RAG 常用的 `id/text/source/title/domain/source_type/topic` 字段；`llamaindex-jsonl`、`langchain-jsonl`、`openwebui-jsonl` 适合常见本地加载器。如果需要完整元数据，用普通 `jsonl`。批量归档仍遵守高风险社交域名保护；遇到微博、小红书、抖音、Twitter/X、LinkedIn 等平台时，不要绕过授权边界批量读取。
+Archive 默认保存在 `~/.guanlan/archive.db`。它只保存本机归档内容，不自动上传。当前本地检索默认是 SQLite FTS/LIKE 宽召回；如果显式运行 `guanlan archive embed --backend local`，可以再用 `archive search/context --semantic` 调用本地轻量语义侧车。语义侧车不联网、不替代 FTS；`--trace` 会返回 matched terms、field hits、score 和语义边界。`archive verify` 用来检查索引一致性、空正文、样本召回和 RAG/Wiki 就绪度；把 archive 交给长期 Agent 记忆前应先跑一遍。`archive wiki build` 只是把已有 archive records 组织成静态 Markdown/HTML Wiki，不代表全网知识；低质量资料会被标为 candidate。`archive wiki build --format llm-wiki` 会生成 `purpose/schema/index/log/raw/wiki/graph` 结构的本地知识目录，适合长期 Agent 或本地模型复用；`archive pack --format llm-wiki --output DIR` 则按某个查询打包聚焦 Wiki。`rag-jsonl` 会导出本地 RAG 常用的 `id/text/source/title/domain/source_type/topic` 字段；`llamaindex-jsonl`、`langchain-jsonl`、`openwebui-jsonl` 适合常见本地加载器。如果需要完整元数据，用普通 `jsonl`。批量归档仍遵守高风险社交域名保护；遇到微博、小红书、抖音、Twitter/X、LinkedIn 等平台时，不要绕过授权边界批量读取。
 
 自定义 backend 只在显式调用时启用。配置示例：
 

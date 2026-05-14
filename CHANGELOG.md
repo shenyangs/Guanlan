@@ -6,6 +6,19 @@
 
 ## Unreleased
 
+## v0.5.34 - 2026-05-14
+
+### Added
+
+- `archive wiki build` 新增 `--format llm-wiki`，可把本地 Archive 导出为 `purpose/schema/index/log/raw/wiki/graph` 结构的轻量 LLM Wiki 目录，方便长期 Agent、本地模型和 RAG 工作流复用。
+- `archive pack` 新增 `--format llm-wiki --output DIR`，可按某个查询把命中的本地证据打包成聚焦 Wiki。
+- LLM Wiki 导出会生成 `manifest.json`、`graph.json`、`wiki/sources/`、`wiki/topics/`、`wiki/entities/` 和 `wiki/queries/`，保留 URL、Domain、质量状态、主题和只代表本地归档的边界。
+
+### Changed
+
+- Agent 文档、完整指南、本地模型指南、Skill 和能力说明同步补充 LLM Wiki 用法。
+- 官网和版本面同步到 `0.5.34`。
+
 ## v0.5.33 - 2026-05-13
 
 ### Changed

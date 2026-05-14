@@ -230,8 +230,10 @@ guanlan archive reindex
 guanlan archive verify
 guanlan archive context "query" --limit 20
 guanlan archive wiki build --output ./guanlan-wiki
+guanlan archive wiki build --output ./guanlan-llm-wiki --format llm-wiki
 guanlan archive wiki context "query"
 guanlan archive pack "query" --format langchain-jsonl --output guanlan-pack.jsonl
+guanlan archive pack "query" --format llm-wiki --output ./topic-wiki
 guanlan archive export --format rag-jsonl
 guanlan mcp config --client codex
 guanlan serve --host 127.0.0.1 --port 8765

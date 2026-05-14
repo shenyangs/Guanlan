@@ -7,6 +7,7 @@ records, writes static Markdown/HTML, and never triggers web search or reads.
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from html import escape
@@ -44,6 +45,8 @@ def build_archive_wiki(
     topic_groups = _group_by_topic(enriched)
     files: list[str] = []
 
+    if output_format == "llm-wiki":
+        files.extend(_write_llm_wiki(output, enriched, topic_groups, topic=topic))
     formats = {"markdown", "html"} if output_format == "both" else {output_format}
     if "markdown" in formats:
         index = _render_wiki_markdown(enriched, topic_groups, topic=topic)
@@ -192,14 +195,22 @@ def build_archive_pack(
         content = context_payload["context"]
     elif output_format in {"jsonl", "rag-jsonl", "llamaindex-jsonl", "langchain-jsonl", "openwebui-jsonl"}:
         content = format_archive_export_jsonl(records, profile=output_format)
+    elif output_format == "llm-wiki":
+        if not output_path:
+            raise ValueError("archive pack --format llm-wiki requires --output DIR")
+        output = Path(output_path).expanduser()
+        topic_groups = _group_by_topic(records)
+        files = _write_llm_wiki(output, records, topic_groups, topic=query)
+        content = _render_llm_wiki_index(records, topic_groups, topic=query, files=files)
     else:
         raise ValueError(f"unsupported archive pack format: {output_format}")
 
     path_value = ""
     if output_path:
         path = Path(output_path).expanduser()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        if output_format != "llm-wiki":
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
         path_value = str(path.resolve())
     return {
         "query": query,
@@ -233,7 +244,7 @@ def format_wiki_build_summary(result: dict[str, Any]) -> str:
             "## Agent 提示",
             "- 这个 Wiki 是 archive 的组织层，只代表本地已归档资料，不代表全网知识。",
             "- 回答用户时优先引用页面来源；低质量或 candidate 材料需要提醒用户继续核验。",
-            "- 如果用户要给本地模型/RAG 用，下一步可运行 `guanlan archive wiki context \"问题\"` 或 `guanlan archive pack \"问题\" --format langchain-jsonl`。",
+            "- 如果用户要给本地模型/RAG 用，下一步可运行 `guanlan archive wiki context \"问题\"`、`guanlan archive pack \"问题\" --format langchain-jsonl` 或 `guanlan archive pack \"问题\" --format llm-wiki --output ./topic-wiki`。",
         ]
     )
     return "\n".join(lines)
@@ -371,6 +382,262 @@ def _render_topic_markdown(topic_name: str, records: list[dict[str, Any]]) -> st
     return "\n".join(lines)
 
 
+def _write_llm_wiki(
+    output: Path,
+    records: list[dict[str, Any]],
+    groups: dict[str, list[dict[str, Any]]],
+    *,
+    topic: str,
+) -> list[str]:
+    """Write a lightweight LLM Wiki directory without external app/runtime deps."""
+    files: list[str] = []
+    raw_dir = output / "raw" / "sources"
+    source_dir = output / "wiki" / "sources"
+    topic_dir = output / "wiki" / "topics"
+    entity_dir = output / "wiki" / "entities"
+    query_dir = output / "wiki" / "queries"
+    for directory in (raw_dir, source_dir, topic_dir, entity_dir, query_dir):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    graph = _build_llm_wiki_graph(records, groups)
+    entity_records = _llm_wiki_entities(records)
+
+    root_files = {
+        "purpose.md": _render_llm_wiki_purpose(records, topic=topic),
+        "schema.md": _render_llm_wiki_schema(),
+        "index.md": _render_llm_wiki_index(records, groups, topic=topic, files=[]),
+        "log.md": _render_llm_wiki_log(records, topic=topic),
+        "graph.json": json.dumps(graph, ensure_ascii=False, indent=2, sort_keys=True),
+        "manifest.json": json.dumps(
+            _llm_wiki_manifest(records, groups, entity_records, topic=topic),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        ),
+    }
+    for filename, content in root_files.items():
+        path = output / filename
+        path.write_text(content.rstrip() + "\n", encoding="utf-8")
+        files.append(str(path))
+
+    for record in records:
+        stem = _record_stem(record)
+        raw_path = raw_dir / f"{stem}.md"
+        source_path = source_dir / f"{stem}.md"
+        raw_path.write_text(_render_llm_raw_source(record), encoding="utf-8")
+        source_path.write_text(_render_llm_source_page(record, raw_path=raw_path), encoding="utf-8")
+        files.extend([str(raw_path), str(source_path)])
+
+    for topic_name, topic_records in groups.items():
+        path = topic_dir / f"{_slug(topic_name)}.md"
+        path.write_text(_render_llm_topic_page(topic_name, topic_records), encoding="utf-8")
+        files.append(str(path))
+
+    for entity in entity_records:
+        path = entity_dir / f"{_slug(entity['name'])}.md"
+        path.write_text(_render_llm_entity_page(entity), encoding="utf-8")
+        files.append(str(path))
+
+    query_path = query_dir / f"{_slug(topic or 'all-archive')}.md"
+    query_path.write_text(_render_llm_query_page(topic, records), encoding="utf-8")
+    files.append(str(query_path))
+    return files
+
+
+def _render_llm_wiki_purpose(records: list[dict[str, Any]], *, topic: str) -> str:
+    scope = topic.strip() or "全部本地 Archive"
+    return "\n".join(
+        [
+            "# Purpose",
+            "",
+            f"本 Wiki 用于把观澜本地 Archive 中关于「{scope}」的材料沉淀为可复用、可追溯的 Agent 知识库。",
+            "",
+            "它适合：",
+            "",
+            "- 给本地模型、RAG、长期 Agent 复用已归档证据。",
+            "- 在回答前快速确认资料来源、主题、质量状态和证据边界。",
+            "- 把一次搜索/研究留下的材料整理为可维护的 Markdown 目录。",
+            "",
+            "它不适合：",
+            "",
+            "- 作为全网知识库或事实最终裁决。",
+            "- 替代原始 URL、官方来源或后续核验。",
+            "- 自动生成没有来源约束的新结论。",
+            "",
+            f"当前文档数：{len(records)}。",
+        ]
+    )
+
+
+def _render_llm_wiki_schema() -> str:
+    return "\n".join(
+        [
+            "# Schema",
+            "",
+            "## Page Types",
+            "",
+            "- `raw/sources/*.md`: 原始归档正文，保留 URL、Domain、Archive ID 和本地边界。",
+            "- `wiki/sources/*.md`: 面向 Agent 阅读的来源卡，包含摘要、质量状态、主题和 wikilink。",
+            "- `wiki/topics/*.md`: 按主题聚合的证据页。",
+            "- `wiki/entities/*.md`: 从标题、主题和正文中轻量抽取的实体/关键词共现页。",
+            "- `wiki/queries/*.md`: 本次构建或打包的入口问题页。",
+            "- `graph.json`: 本地归档的轻量共现图，不是向量库，也不是事实图谱。",
+            "",
+            "## Stable Fields",
+            "",
+            "- `url`: 原始来源链接。",
+            "- `domain`: 来源域名。",
+            "- `wiki_status`: `core` 或 `candidate`，用于提示复用强度。",
+            "- `wiki_topic`: 本地主题标签。",
+            "- `quality_score`: 阅读质量分；为空表示缺少评分，不等于低质量。",
+            "- `content_mode`: `full_body` / `partial_body` / `snippet` / `unknown`。",
+            "",
+            "## Answering Rules",
+            "",
+            "- 回答时优先引用 `wiki/sources` 中的 URL/Domain。",
+            "- `candidate` 材料只能作为线索或样本，不能单独支撑强结论。",
+            "- 如果本 Wiki 无命中，只能说明本地 Archive 暂无材料，不能说明全网没有证据。",
+        ]
+    )
+
+
+def _render_llm_wiki_index(
+    records: list[dict[str, Any]],
+    groups: dict[str, list[dict[str, Any]]],
+    *,
+    topic: str,
+    files: list[str],
+) -> str:
+    lines = [
+        "# Guanlan LLM Wiki",
+        "",
+        f"Scope: {topic or 'all local archive documents'}",
+        "",
+        "This directory is generated from Guanlan local archive records. It is local-only, evidence-bound, and model-free.",
+        "",
+        "## Start Here",
+        "",
+        "- Read `purpose.md` for the knowledge-base goal.",
+        "- Read `schema.md` before writing answers against this wiki.",
+        "- Use `wiki/topics/` for theme navigation.",
+        "- Use `wiki/sources/` when citing evidence.",
+        "- Use `graph.json` only as a lightweight co-occurrence map.",
+        "",
+        "## Metrics",
+        "",
+        f"- Documents: {len(records)}",
+        f"- Core: {sum(1 for record in records if record.get('wiki_status') == 'core')}",
+        f"- Candidate: {sum(1 for record in records if record.get('wiki_status') != 'core')}",
+        f"- Topics: {len(groups)}",
+        "",
+        "## Topics",
+    ]
+    if not groups:
+        lines.append("- 暂无主题。")
+    for topic_name, topic_records in groups.items():
+        lines.append(f"- [[topic:{topic_name}]] / `wiki/topics/{_slug(topic_name)}.md` ({len(topic_records)})")
+    lines.extend(["", "## Sources"])
+    for record in records[:60]:
+        lines.append(f"- [[source:{_record_stem(record)}]] {record.get('title', '')} / {record.get('domain', '')} / {record.get('wiki_status', '')}")
+    if files:
+        lines.extend(["", "## Generated Files"])
+        lines.extend(f"- `{path}`" for path in files[:80])
+    return "\n".join(lines)
+
+
+def _render_llm_wiki_log(records: list[dict[str, Any]], *, topic: str) -> str:
+    return "\n".join(
+        [
+            "# Log",
+            "",
+            f"- Generated at: {_format_time(time.time())}",
+            f"- Scope: {topic or 'all local archive documents'}",
+            f"- Documents: {len(records)}",
+            f"- Core: {sum(1 for record in records if record.get('wiki_status') == 'core')}",
+            f"- Candidate: {sum(1 for record in records if record.get('wiki_status') != 'core')}",
+            "- Generator: Guanlan archive wiki build",
+            "- Boundary: local archive only; no web fetch; no model inference; no mutation of archive records.",
+        ]
+    )
+
+
+def _render_llm_raw_source(record: dict[str, Any]) -> str:
+    lines = _source_meta_lines(record, title="# Raw Source")
+    lines.extend(["", str(record.get("content") or "").strip(), ""])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_llm_source_page(record: dict[str, Any], *, raw_path: Path) -> str:
+    topic = str(record.get("wiki_topic") or "general")
+    entities = _record_entities(record)[:8]
+    lines = _source_meta_lines(record, title=f"# {record.get('title', '')}")
+    lines.extend(
+        [
+            "",
+            "## Links",
+            "",
+            f"- Topic: [[topic:{topic}]]",
+            f"- Domain: [[domain:{record.get('domain', '')}]]",
+            f"- Raw: `{raw_path.as_posix()}`",
+        ]
+    )
+    if entities:
+        lines.append("- Entities: " + ", ".join(f"[[entity:{entity}]]" for entity in entities))
+    lines.extend(
+        [
+            "",
+            "## Summary",
+            "",
+            str(record.get("excerpt") or "").strip() or "暂无摘要。",
+            "",
+            "## Reuse Boundary",
+            "",
+            "- Use as evidence only with URL/domain citation.",
+            "- If status is candidate, verify against original source before strong claims.",
+        ]
+    )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_llm_topic_page(topic_name: str, records: list[dict[str, Any]]) -> str:
+    lines = [
+        f"# Topic: {topic_name}",
+        "",
+        "This page groups local archive evidence by Guanlan topic labels.",
+        "",
+        "## Sources",
+    ]
+    for record in records:
+        lines.append(f"- [[source:{_record_stem(record)}]] {record.get('title', '')} / {record.get('domain', '')} / {record.get('wiki_status', '')}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_llm_entity_page(entity: dict[str, Any]) -> str:
+    lines = [
+        f"# Entity: {entity['name']}",
+        "",
+        f"- Mentions: {entity['count']}",
+        "",
+        "## Sources",
+    ]
+    for record in entity.get("records", []):
+        lines.append(f"- [[source:{_record_stem(record)}]] {record.get('title', '')} / {record.get('domain', '')}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_llm_query_page(topic: str, records: list[dict[str, Any]]) -> str:
+    lines = [
+        f"# Query: {topic or 'all-archive'}",
+        "",
+        "Use this as the entrypoint for the focused Guanlan LLM Wiki pack.",
+        "",
+        "## Evidence",
+    ]
+    for record in records[:80]:
+        lines.append(f"- [[source:{_record_stem(record)}]] / [[topic:{record.get('wiki_topic', '')}]] / {record.get('wiki_status', '')}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def _render_wiki_html(
     records: list[dict[str, Any]],
     groups: dict[str, list[dict[str, Any]]],
@@ -418,6 +685,148 @@ def _record_card(record: dict[str, Any]) -> str:
       <footer>{escape(str(record.get('domain', '')))} · {escape(str(record.get('updated_label', '')))}</footer>
     </article>
     """
+
+
+def _source_meta_lines(record: dict[str, Any], *, title: str) -> list[str]:
+    quality = "" if record.get("quality_score") is None else str(record.get("quality_score"))
+    return [
+        title,
+        "",
+        "## Metadata",
+        "",
+        f"- Archive ID: {record.get('id', '')}",
+        f"- URL: {record.get('url', '')}",
+        f"- Domain: {record.get('domain', '')}",
+        f"- Wiki status: {record.get('wiki_status', '')}",
+        f"- Topic: {record.get('wiki_topic', '')}",
+        f"- Content mode: {record.get('content_mode', '')}",
+        f"- Quality score: {quality or 'unknown'}",
+        f"- Updated: {record.get('updated_label', '')}",
+    ]
+
+
+def _llm_wiki_manifest(
+    records: list[dict[str, Any]],
+    groups: dict[str, list[dict[str, Any]]],
+    entities: list[dict[str, Any]],
+    *,
+    topic: str,
+) -> dict[str, Any]:
+    return {
+        "tool": "guanlan",
+        "format": "llm-wiki",
+        "schema_version": 1,
+        "scope": topic or "all",
+        "documents": len(records),
+        "core_documents": sum(1 for record in records if record.get("wiki_status") == "core"),
+        "candidate_documents": sum(1 for record in records if record.get("wiki_status") != "core"),
+        "topics": sorted(groups.keys()),
+        "entities": [entity["name"] for entity in entities],
+        "boundary": "local archive only; no web fetch; no model inference; not whole-web knowledge",
+    }
+
+
+def _build_llm_wiki_graph(
+    records: list[dict[str, Any]],
+    groups: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    seen_nodes: set[str] = set()
+
+    def add_node(node_id: str, label: str, node_type: str, **extra: Any) -> None:
+        if node_id in seen_nodes:
+            return
+        seen_nodes.add(node_id)
+        nodes.append({"id": node_id, "label": label, "type": node_type, **extra})
+
+    for topic_name in groups:
+        add_node(f"topic:{topic_name}", topic_name, "topic", count=len(groups[topic_name]))
+    for record in records:
+        source_id = f"source:{_record_stem(record)}"
+        topic = str(record.get("wiki_topic") or "general")
+        domain = str(record.get("domain") or "unknown")
+        add_node(source_id, str(record.get("title") or ""), "source", url=record.get("url", ""), status=record.get("wiki_status", ""))
+        add_node(f"domain:{domain}", domain, "domain")
+        add_node(f"topic:{topic}", topic, "topic")
+        edges.append({"source": source_id, "target": f"topic:{topic}", "relation": "has_topic"})
+        edges.append({"source": source_id, "target": f"domain:{domain}", "relation": "from_domain"})
+        for entity in _record_entities(record)[:8]:
+            add_node(f"entity:{entity}", entity, "entity")
+            edges.append({"source": source_id, "target": f"entity:{entity}", "relation": "mentions"})
+    return {
+        "schema_version": 1,
+        "boundary": "lightweight local co-occurrence graph; not semantic vector graph",
+        "nodes": nodes,
+        "edges": edges,
+    }
+
+
+def _llm_wiki_entities(records: list[dict[str, Any]], *, limit: int = 80) -> list[dict[str, Any]]:
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        for entity in _record_entities(record):
+            buckets.setdefault(entity, []).append(record)
+    items = [
+        {"name": name, "count": len(items), "records": items[:12]}
+        for name, items in buckets.items()
+        if len(name.strip()) >= 2
+    ]
+    return sorted(items, key=lambda item: (-int(item["count"]), str(item["name"]).lower()))[:limit]
+
+
+def _record_entities(record: dict[str, Any]) -> list[str]:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    seeds = [
+        str(record.get("wiki_topic") or ""),
+        str(metadata.get("topic_key") or ""),
+        str(metadata.get("source_type") or ""),
+        str(metadata.get("evidence_role") or ""),
+        str(record.get("title") or ""),
+    ]
+    content = str(record.get("content") or record.get("excerpt") or "")
+    text = " ".join(seeds) + " " + content[:1200]
+    candidates = re.findall(r"[A-Za-z][A-Za-z0-9_+.#-]{1,30}|[\u4e00-\u9fff]{2,8}", text)
+    stop = {
+        "https",
+        "http",
+        "www",
+        "com",
+        "html",
+        "unknown",
+        "正文",
+        "资料",
+        "相关",
+        "来源",
+        "标题",
+        "通用资料",
+        "本地",
+        "观澜",
+    }
+    seen: set[str] = set()
+    entities: list[str] = []
+    for raw in candidates:
+        value = raw.strip(" -_#")
+        if not value or value.lower() in stop:
+            continue
+        if re.match(r"^[是的和与及或而在为把将对从到里上中下]", value):
+            continue
+        if re.fullmatch(r"\d+", value):
+            continue
+        key = value.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        entities.append(value)
+        if len(entities) >= 24:
+            break
+    return entities
+
+
+def _record_stem(record: dict[str, Any]) -> str:
+    doc_id = str(record.get("id") or "doc")
+    title = str(record.get("title") or record.get("domain") or "source")
+    return f"{doc_id}-{_slug(title)[:60]}"
 
 
 def _html_page(title: str, subtitle: str, body: str) -> str:

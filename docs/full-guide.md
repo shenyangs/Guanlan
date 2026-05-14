@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.5.33`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.34`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -499,8 +499,10 @@ guanlan configure --from-browser chrome
 | `guanlan archive verify` | 体检本地库：索引一致性、空正文、样本召回、RAG/Wiki 就绪度。 |
 | `guanlan archive context "问题"` | 从本地库生成给 Agent/本地模型的证据上下文。 |
 | `guanlan archive wiki build --output ./guanlan-wiki` | 把本地库组织成静态 Markdown/HTML Agent Wiki。 |
+| `guanlan archive wiki build --format llm-wiki --output ./guanlan-llm-wiki` | 导出 `purpose/schema/index/log/raw/wiki/graph` 结构的轻量 LLM Wiki 目录。 |
 | `guanlan archive wiki context "问题"` | 从 Agent Wiki/本地库生成 prompt-ready 上下文。 |
 | `guanlan archive pack "问题" --format langchain-jsonl --output pack.jsonl` | 把本地命中资料打包给 RAG/本地模型加载器。 |
+| `guanlan archive pack "问题" --format llm-wiki --output ./topic-wiki` | 把某个查询命中的资料打包成聚焦 LLM Wiki 目录。 |
 | `guanlan archive stats --quality` | 查看本地库阅读质量、入库审计和 RAG-ready 概览。 |
 | `guanlan archive export --format jsonl --source-type 政府` | 按 domain/source_type/topic 导出 RAG 友好 JSONL。 |
 | `guanlan archive export --format rag-jsonl --min-quality 60` | 只导出达到阅读质量阈值的 RAG 材料。 |
@@ -969,8 +971,10 @@ guanlan archive reindex
 guanlan archive verify
 guanlan archive context "人工智能 政策" --limit 20
 guanlan archive wiki build --output ./guanlan-wiki --format both
+guanlan archive wiki build --output ./guanlan-llm-wiki --format llm-wiki
 guanlan archive wiki context "人工智能 政策"
 guanlan archive pack "人工智能 政策" --format langchain-jsonl --output guanlan-pack.jsonl
+guanlan archive pack "人工智能 政策" --format llm-wiki --output ./policy-wiki
 guanlan archive export --format jsonl > guanlan-archive.jsonl
 guanlan archive export --format rag-jsonl > guanlan-rag.jsonl
 guanlan archive export --format llamaindex-jsonl > guanlan-llamaindex.jsonl
@@ -981,7 +985,7 @@ guanlan archive export --format openwebui-jsonl > guanlan-openwebui.jsonl
 
 `archive ingest-search` / `archive ingest-research` 的行为是“联网研究并入库”，如果只想查本地库，请使用 `archive search` 或 `archive context`；写入前可用 `--dry-run` 预览。观澜会为每个候选生成 `ingest_audit`，解释相关性、平台首页、重复候选、正文厚度和漂移风险，跳过明显低相关或平台首页结果。归档元数据会保留 `source_card`、`read_quality`、`quality_report`、`route_plan`、`query_strategy` 和 `ingest_audit`，方便后续接 RAG 时知道材料的来源角色、正文质量、检索路径和入库理由。
 
-Agent Wiki 是 archive 的旁支组织层，不是全网知识库。`archive wiki build` 会把已归档资料导出成静态 Markdown/HTML，按 topic/source/domain 组织，并把低质量材料标为 candidate；`archive wiki context` 和 `archive context` 则更适合给 LM Studio、Ollama、Open WebUI 或其他 Agent 准备证据约束的上下文。`rag-jsonl` 会把每条材料收束成 `id/text/source/title/domain/source_type/topic/updated_at`；`llamaindex-jsonl`、`langchain-jsonl`、`openwebui-jsonl` 是面向常见本地 RAG/加载器的结构化导出。它不是云同步，也不会自动上传内容。
+Agent Wiki 是 archive 的旁支组织层，不是全网知识库。`archive wiki build` 会把已归档资料导出成静态 Markdown/HTML，按 topic/source/domain 组织，并把低质量材料标为 candidate；`--format llm-wiki` 会额外生成 `purpose.md`、`schema.md`、`index.md`、`log.md`、`raw/sources/`、`wiki/sources/`、`wiki/topics/`、`wiki/entities/` 和 `graph.json`，适合给长期 Agent、RAG 或本地模型当可维护知识目录。`archive wiki context` 和 `archive context` 则更适合给 LM Studio、Ollama、Open WebUI 或其他 Agent 准备证据约束的上下文。`rag-jsonl` 会把每条材料收束成 `id/text/source/title/domain/source_type/topic/updated_at`；`llamaindex-jsonl`、`langchain-jsonl`、`openwebui-jsonl` 是面向常见本地 RAG/加载器的结构化导出。它不是云同步，也不会自动上传内容。
 
 ### 19. 质量闸门
 
