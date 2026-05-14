@@ -106,6 +106,11 @@ guanlan search "query" --profile china --scope local_official
 # 电商、零售、跨境和产业带，包含亿邦动力等
 guanlan search "query" --profile china --scope ecommerce
 
+# 亿邦动力垂类频道入口，小窗口发现线索后仍要回到 search/research 大池核验
+guanlan hotnews ebrun:cross-border --limit 10
+guanlan hotnews ebrun:retail --limit 10
+guanlan hotnews ebrun:ai --limit 10
+
 # 科技与开发者社区
 guanlan search "query" --profile china --scope tech_dev
 

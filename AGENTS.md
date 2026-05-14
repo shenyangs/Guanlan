@@ -157,6 +157,9 @@ guanlan search "query" --limit 80
 guanlan search "中文问题" --profile china --limit 80
 guanlan search "政策或产业问题" --profile china --scope party_central
 guanlan search "电商零售问题" --profile china --scope ecommerce
+guanlan hotnews ebrun:cross-border --limit 10
+guanlan hotnews ebrun:retail --limit 10
+guanlan hotnews ebrun:ai --limit 10
 guanlan search "学术会议 投稿 检索问题" --profile china --scope academic
 guanlan search "高校 研究生招生 导师 院系官网" --profile china --scope university
 guanlan search "影视 综艺 游戏 明星 票房口碑" --profile china --scope entertainment
@@ -280,6 +283,7 @@ Safety rules:
 - Use `guanlan search ... --scope weather_disaster --trace` for typhoon, weather alert, earthquake, disaster, and official safety questions; prioritize official meteorological/emergency sources and check timestamps.
 - Use `guanlan research ... --preset sports`, `--preset science`, `--preset career`, `--preset podcast`, or `--preset test_prep` for sports, science-news verification, job/salary/interview, podcast discovery, and exam-prep questions instead of leaving them as generic web search.
 - Use `guanlan hotnews hotboard:catalog:*` as the local full hotboard directory when a task needs platform-level hotboard routing; this uses the packaged hotboard catalog and does not require a key. Use `guanlan hotnews hotboard:snapshots:<node>` for free snapshot IDs when a key and active balance are configured. Use `guanlan hotnews hotboard:<node>` only as explicit opt-in detail fetching; it is cache-backed and metered, so keep `paid_api` / `cost_u` metadata visible to downstream agents.
+- Use `guanlan hotnews ebrun:<channel>` when an ecommerce/retail/cross-border/brand/industrial-internet/AI-commerce task needs a fresh Ebrun vertical channel signal. Useful aliases include `cross-border`, `retail`, `temu`, `amazon`, `tiktok-shop`, `brand-globalization`, `industrial`, and `ai`. Treat it as a small latest-items discovery window, then run `search/research --scope ecommerce --limit 80` or read representative URLs before making claims.
 - Use `guanlan hotnews tophub:*`, `guanlan hotnews uapis:*`, `guanlan hotnews vvhan:*`, or `guanlan hotnews hotboard:*` only as optional external hotboard expansion. Keep the `external_backend`, cache/staleness, and cost metadata in mind; do not treat third-party aggregate lists as authoritative facts.
 - For technology/AI/developer routing, always include one RSS discovery pass. `guanlan research ... --preset tech` does this automatically; when a query matches AI/WPS/Agent/large-model semantics, research also internally includes an AI vertical selected-dynamics source as a discovery layer. This is not a new user command and does not replace original URLs, official docs, code repositories, announcements, or product pages. If you only run `route` or `search`, also run `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80` as a second pass.
 - Use `guanlan read ... --quality-report` when deciding whether a page body is clean enough for downstream reasoning; use `--strict` when noisy page chrome would be harmful; use `--extract metadata` or `--extract links` for source/date/link checks.

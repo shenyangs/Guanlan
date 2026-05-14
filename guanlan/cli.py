@@ -189,7 +189,7 @@ def main():
     # ── hotnews ──
     p_hotnews = sub.add_parser("hotnews", help="Fetch Chinese hotnews from native sources")
     p_hotnews.add_argument("source", nargs="?", default="today",
-                           help="Source id: today, snapshot, baidu, weibo, bilibili-hot-search, bilibili, ithome, sspai, xinzhiyuan, youtube-ai-rss, zeli-hn, buzzing, zhihu, v2ex, newsnow:<id>, vvhan:<id>, uapis:<id>, tophub:<id>, hotboard:<id>, or list")
+                           help="Source id: today, snapshot, baidu, weibo, bilibili-hot-search, bilibili, ithome, sspai, xinzhiyuan, youtube-ai-rss, zeli-hn, buzzing, zhihu, v2ex, ebrun:<channel>, newsnow:<id>, vvhan:<id>, uapis:<id>, tophub:<id>, hotboard:<id>, or list")
     p_hotnews.add_argument("snapshot_source", nargs="?",
                            help="Source id when using `guanlan hotnews snapshot <source>`")
     p_hotnews.add_argument("--backend", default="auto",

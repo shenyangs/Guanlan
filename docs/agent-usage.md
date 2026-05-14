@@ -119,6 +119,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “查官方/央媒表述” | `guanlan search "关键词" --profile china --scope party_central` |
 | “查地方官媒/区域政策” | `guanlan search "关键词" --profile china --scope local_official` |
 | “查电商/零售/产业带” | `guanlan search "关键词" --profile china --scope ecommerce` |
+| “查亿邦动力垂类频道最新线索” | `guanlan hotnews ebrun:cross-border --limit 10`，频道可换 `retail` / `temu` / `brand-globalization` / `ai` |
 | “查金山办公/WPS/WPS AI/WPS 365/办公 AI 选题” | `guanlan research "WPS AI PPT Agent 办公选题 最近热点" --preset wps_office --limit 80 --read-top 5 --advisor` |
 | “查高校招生/导师/院系官网” | `guanlan research "关键词" --preset university --read-top 0` |
 | “查影视/综艺/明星/游戏/票房口碑” | `guanlan research "关键词" --preset entertainment --read-top 0` |
@@ -450,7 +451,7 @@ Preset 会自动选择一个或多个 scope，并可包含平台定向站点。�
 | `policy` | `gov` + `party_central` | 政策、监管、部委通知、法规原文和权威解读。 |
 | `official` | `party_central` + `gov` | 党央媒、中央重点媒体、宏观表述。 |
 | `industry` | `business` + `ecommerce` + `finance`；36氪、虎嗅、一财 | 产业趋势、商业模式、公司动态。 |
-| `ecommerce` | `ecommerce` + `business`；亿邦动力、网经社、雨果跨境 | 电商、零售、跨境、品牌和产业带。 |
+| `ecommerce` | `ecommerce` + `business`；亿邦动力、网经社、雨果跨境；明显命中时补 `ebrun:*` 频道入口 | 电商、零售、跨境、品牌和产业带。 |
 | `reputation` | `social_web` + `tech_dev` + `business`；知乎、微博、小红书、B站 | 产品口碑、用户评价、社交平台公开讨论。 |
 | `entertainment` | `entertainment` + `social_web` + `business`；豆瓣、猫眼/灯塔、B站、微博、TapTap | 影视、综艺、音乐、游戏、明星、票房、播放热度和公开口碑。 |
 | `global_entertainment` | `global_entertainment` + `community_sample` + `global_news`；Variety、Deadline、Hollywood Reporter、Billboard、Rolling Stone、People | 欧美娱乐、Hollywood、音乐榜单、奖项、巡演、新歌专辑和明星动态。 |

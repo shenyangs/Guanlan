@@ -6,6 +6,20 @@
 
 ## Unreleased
 
+## v0.5.35 - 2026-05-14
+
+### Added
+
+- 内置亿邦动力分频道垂类入口：新增 `guanlan hotnews ebrun:<channel>`，覆盖 `cross-border`、`retail`、`temu`、`amazon`、`tiktok-shop`、`brand-globalization`、`industrial`、`ai` 等电商/零售/跨境/品牌/产业互联网频道。
+- 新增 `guanlan/ebrun_channels.py`，把亿邦动力频道事实、匹配词、查询词和只读边界沉淀为观澜自己的频道路由资产，不要求用户额外安装外部 skill。
+
+### Changed
+
+- `route` 对电商、零售、跨境、品牌和产业互联网查询会推荐对应 `ebrun:*` 小窗口频道入口，并继续保留 `--scope ecommerce --limit 80` 的研究级大池搜索。
+- `search/research` 的 `query_strategy` 在电商语境下会补充 `site:ebrun.com` 的频道化查询变体，用于提升跨境、平台、品牌和产业链问题的垂类召回。
+- Agent 文档、完整指南、Skill 和精选信源说明同步亿邦动力频道路由用法，并明确它是最新线索入口，不替代代表 URL 阅读与大候选池核验。
+- 官网和版本面同步到 `0.5.35`。
+
 ## v0.5.34 - 2026-05-14
 
 ### Added

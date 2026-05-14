@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.5.34`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.35`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -609,6 +609,16 @@ guanlan research "低空经济 广东 政策" --preset local --read-top 5
 guanlan search "跨境电商 AI 工具" --profile china --scope ecommerce --limit 80
 guanlan research "跨境电商 AI 工具" --preset ecommerce --read-top 3
 ```
+
+如果任务明显落在亿邦动力的垂直频道，可先跑一个小窗口频道入口，再回到 `search/research` 做大候选池核验：
+
+```bash
+guanlan hotnews ebrun:cross-border --limit 10
+guanlan hotnews ebrun:temu --limit 10
+guanlan hotnews ebrun:ai --limit 10
+```
+
+`ebrun:*` 是只读的垂类最新文章入口，适合发现“跨境/零售/品牌/产业互联网/AI 电商”近期线索；它受上游频道返回条数限制，不替代 `--scope ecommerce --limit 80` 的研究级搜索池。
 
 更宽一点的产业研究可以用：
 

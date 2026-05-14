@@ -1877,9 +1877,28 @@ def _recommended_commands(
             commands.append(f"guanlan feeds wechat-rss --limit {feeds_limit}")
 
     if _needs_hotboard_route(intents):
+        commands.extend(_ebrun_route_commands(query, intents=intents))
         commands.extend(_hotboard_route_commands(query, intents=intents, domains=domains))
 
     return _unique(commands)[:10]
+
+
+def _ebrun_route_commands(query: str, *, intents: list[str]) -> list[str]:
+    """Suggest Ebrun vertical channel follow-ups for ecommerce-like tasks."""
+    if not ({"ecommerce", "industry"} & set(intents)):
+        return []
+    try:
+        from guanlan.ebrun_channels import ebrun_query_variants, match_ebrun_channels
+    except Exception:
+        return []
+
+    commands: list[str] = []
+    for channel in match_ebrun_channels(query, limit=2):
+        commands.append(f"guanlan hotnews {channel.source_id} --limit 10")
+    for variant in ebrun_query_variants(query, limit=1):
+        variant_query = str(variant.get("query") or query).replace('"', '\\"')
+        commands.append(f'guanlan search "{variant_query}" --profile china --scope ecommerce --limit 80 --trace')
+    return commands[:3]
 
 
 def _hotboard_route_commands(query: str, *, intents: list[str], domains: list[str]) -> list[str]:

@@ -27,6 +27,7 @@
 ## 代码入口
 
 - 数据定义：`guanlan/source_packs.py`
+- 亿邦动力频道路由：`guanlan/ebrun_channels.py`
 - scope 增强：`guanlan/search_sources.py`
 - 路由站点推荐：`guanlan/router.py`
 - 本地热点目录：`guanlan/data/hotboard_nodes.json`

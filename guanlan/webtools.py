@@ -8801,6 +8801,17 @@ def build_query_strategy(
     if "ecommerce" in intents or str(quality.get("requested_scope") or "") == "ecommerce":
         add("industry_report", f"{clean_query} 电商 零售 行业 数据 案例", "电商问题先看垂类媒体和行业材料")
         add("review", f"{clean_query} 价格 售后 投诉 用户评价 值不值得买", "补购买决策、售后和用户样本")
+        try:
+            from guanlan.ebrun_channels import ebrun_query_variants
+
+            for variant in ebrun_query_variants(clean_query, limit=2):
+                add(
+                    str(variant.get("role") or "ecommerce_vertical_feed"),
+                    str(variant.get("query") or ""),
+                    str(variant.get("reason") or "补亿邦动力垂类频道线索"),
+                )
+        except Exception:
+            pass
     finance_intents = {"finance", "finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"}
     requested_scope = str(quality.get("requested_scope") or "")
     if finance_intents & set(intents) or requested_scope.startswith("finance"):

@@ -35,7 +35,7 @@ DEFAULT_NEWSNOW_BASE_URL = "https://newsnow.busiyi.world"
 VVHAN_HOTLIST_BASE_URL = "https://hot-api.vhan.eu.org/v2"
 UAPI_HOTBOARD_BASE_URL = "https://uapis.cn"
 TOPHUB_BASE_URL = "https://tophub.today"
-EXTERNAL_HOTNEWS_BACKENDS = {"newsnow", "vvhan", "uapis", "tophub", "hotboard"}
+EXTERNAL_HOTNEWS_BACKENDS = {"newsnow", "vvhan", "uapis", "tophub", "hotboard", "ebrun"}
 EXTERNAL_HOTNEWS_RISK_TAGS = ("external_backend", "third_party_aggregation", "provider_volatility")
 HOTNEWS_CACHE_VERSION = 1
 HOTNEWS_CACHE_MAX_AGE_SECONDS = 900
@@ -353,7 +353,8 @@ def _source_card_for_hotnews(source_id: str, url: Any = "", platform: str | None
             "freshness_value": 0.85,
             "stability": "best_effort",
         }
-    return source_card_for_domain(domain).to_dict()
+    preferred_scope = "ecommerce" if source_id.startswith("ebrun:") else None
+    return source_card_for_domain(domain, preferred_scope=preferred_scope).to_dict()
 
 
 def _default_evidence_role(category: str) -> str:
@@ -953,6 +954,24 @@ def list_external_hotnews_catalog(provider: str | None = None) -> dict[str, dict
                 "command": f"guanlan hotnews hotboard:{alias} --limit 80",
                 "caveat": "详情接口约 1u/次，观澜只在显式调用时使用，并带缓存兜底。",
             }
+    if provider_key in ("", "ebrun"):
+        from guanlan.ebrun_channels import list_ebrun_channels
+
+        for row in list_ebrun_channels():
+            source_id = str(row.get("source_id") or "")
+            alias = source_id.split(":", 1)[1] if ":" in source_id else source_id
+            catalog[source_id] = {
+                "surface": "hotnews",
+                "backend": "native",
+                "optional_backend": "ebrun",
+                "provider_source_id": alias,
+                "status": "best-effort",
+                "evidence_role": row.get("evidence_role") or "ecommerce_vertical_feed",
+                "source_url": row.get("api_url") or "https://www.ebrun.com/",
+                "risk_tags": ["official_vertical_feed", "server_side_limit_low", "public_json_endpoint"],
+                "command": f"guanlan hotnews {source_id} --limit 10",
+                "caveat": row.get("server_limit_note") or "",
+            }
     return catalog
 
 
@@ -1072,6 +1091,44 @@ def fetch_uapis(source: str = "weibo", limit: int = DEFAULT_HOTNEWS_LIMIT) -> li
         )
 
     return _fetch_external_with_cache("uapis", source_key, _fetch)[: max(limit, 1)]
+
+
+def fetch_ebrun(source: str = "recommend", limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
+    """Fetch Ebrun channel JSON as a vertical ecommerce/retail news signal."""
+    from guanlan.ebrun_channels import EBRUN_SERVER_LIMIT_NOTE, resolve_ebrun_channel
+
+    channel = resolve_ebrun_channel(source)
+    payload = _read_json(channel.api_url)
+    rows = [row for row in _extract_rows(payload) if isinstance(row, dict)]
+    items: list[dict[str, Any]] = []
+    for idx, raw in enumerate(rows[: max(limit, 1)], start=1):
+        item = _item(
+            source_id=channel.source_id,
+            platform="ebrun",
+            category="ecommerce",
+            title=_pick(raw, "title", "name"),
+            url=_pick(raw, "url", "link"),
+            summary=_pick(raw, "summary", "desc", "description", "excerpt"),
+            published_at=_pick(raw, "publish_time", "published_at", "created_at", "time"),
+            metrics={
+                "author": _pick(raw, "author"),
+                "channel": channel.channel,
+                "sub_channel": channel.sub_channel,
+                "provider_status": "public_json",
+                "server_limit_note": EBRUN_SERVER_LIMIT_NOTE,
+                "requested_limit": limit,
+                "returned_rows": len(rows),
+            },
+            rank=idx,
+            confidence="medium",
+        ).to_dict()
+        item["evidence_role"] = channel.evidence_role
+        item["risk_tags"] = _unique(
+            list(item.get("risk_tags") or [])
+            + ["official_vertical_feed", "server_side_limit_low", "public_json_endpoint"]
+        )
+        items.append(enrich_hotnews_item(item))
+    return items
 
 
 def fetch_tophub(source: str = "weibo", limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
@@ -1484,6 +1541,8 @@ def fetch_hotnews(
         return fetch_tophub(raw_external or source.split(":", 1)[1], limit=limit)
     if source.startswith("hotboard:"):
         return fetch_hotboard(raw_external or source.split(":", 1)[1], limit=limit)
+    if source.startswith("ebrun:"):
+        return fetch_ebrun(raw_external or source.split(":", 1)[1], limit=limit)
     if source.startswith("newsnow:"):
         return fetch_newsnow(source.split(":", 1)[1], limit=limit, base_url=newsnow_base_url)
     if backend == "vvhan":
@@ -1494,10 +1553,12 @@ def fetch_hotnews(
         return fetch_tophub(source, limit=limit)
     if backend == "hotboard":
         return fetch_hotboard(source, limit=limit)
+    if backend == "ebrun":
+        return fetch_ebrun(source, limit=limit)
     if backend == "newsnow":
         return fetch_newsnow(source, limit=limit, base_url=newsnow_base_url)
     if backend not in {"auto", "native"}:
-        raise ValueError("backend must be one of: auto, native, newsnow, vvhan, uapis, tophub, hotboard")
+        raise ValueError("backend must be one of: auto, native, newsnow, vvhan, uapis, tophub, hotboard, ebrun")
     if source not in fetchers:
         if backend == "auto":
             return fetch_newsnow(source, limit=limit, base_url=newsnow_base_url)

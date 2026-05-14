@@ -155,6 +155,8 @@ Recipe 输出的是计划、证据层和边界，不是最终答案。执行时�
 3. `search --scope ...`
 4. `hotnews`
 
+电商/零售/跨境/品牌/产业互联网类任务如果命中亿邦动力垂类语境，可在第 4 步补一个小窗口频道入口，例如 `guanlan hotnews ebrun:cross-border --limit 10`、`guanlan hotnews ebrun:retail --limit 10`、`guanlan hotnews ebrun:brand-globalization --limit 10`。它用于发现最新垂类线索，不能替代 `search/research --scope ecommerce --limit 80`。
+
 技术/AI/WPS/AI Office：
 
 1. `route`
@@ -224,6 +226,7 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 
 - 先判断是否强路由命中，再决定 `preset` / `scope`
 - 热点题必须带 `hotnews`
+- 电商/零售/跨境题可补 `hotnews ebrun:*` 频道线索，但仍要用 `ecommerce` 大池搜索和代表 URL 阅读核验
 - 技术/AI/WPS/AI Office 题必须带 `feeds`
 - 学术预印本/论文线索题应补 `feeds arxiv --keyword ...`
 - 长期关注指定博客、项目或机构更新的题应补 `feeds watchlist --watchlist ...`
