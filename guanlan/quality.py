@@ -439,6 +439,7 @@ def run_live_smoke_checks(limit: int = 5, timeout_budget: int = 180, profile: st
         "pass": sum(1 for item in checks if item.get("status") == "pass"),
         "warn": sum(1 for item in checks if item.get("status") == "warn"),
         "fail": sum(1 for item in checks if item.get("status") == "fail"),
+        "scenario_groups": _live_scenario_group_summary(checks),
     }
     return report
 
@@ -1209,24 +1210,36 @@ def _check_advisor_quality() -> list[dict[str, Any]]:
 def _check_live(limit: int = 5) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     probes = [
-        ("live_policy_search_has_official_source", "search_quality", lambda: _live_search_probe("新质生产力 政策 原文 最新", limit, preferred_types={"政府/部委", "党央媒"})),
-        ("live_industry_search_has_policy_or_media_source", "search_quality", lambda: _live_search_probe("低空经济政策补贴", limit, min_results=1)),
-        ("live_cjk_compound_search_has_diagnostics_or_results", "search_quality", lambda: _live_search_probe("固态电池量产时间表", limit, min_results=0, require_diagnostics=True)),
-        ("live_company_battery_search_has_results_or_diagnostics", "search_quality", lambda: _live_search_probe("宁德时代 固态电池 进展", limit, min_results=0, require_diagnostics=True)),
-        ("live_cybersecurity_search_has_results_or_diagnostics", "search_quality", lambda: _live_search_probe("OpenSSL CVE 最新 漏洞 影响版本", limit, profile="english", min_results=0, require_diagnostics=True)),
-        ("live_hotnews_today_returns_items", "hotnews_freshness", lambda: _live_hotnews_probe(limit)),
-        ("live_feeds_curated_ai_returns_items_or_cache_status", "feeds_resilience", lambda: _live_feeds_probe(limit)),
-        ("live_read_govcn_has_body_or_quality_boundary", "read_quality", lambda: _live_read_probe()),
+        ("live_policy_search_has_official_source", "search_quality", "policy", lambda: _live_search_probe("新质生产力 政策 原文 最新", limit, scope="gov", preferred_types={"政府/部委", "党央媒"})),
+        ("live_industry_search_has_policy_or_media_source", "search_quality", "policy", lambda: _live_search_probe("低空经济政策补贴", limit, min_results=1)),
+        ("live_finance_disclosure_has_results_or_diagnostics", "search_quality", "finance", lambda: _live_search_probe("宁德时代 财报 公告 最近风险", limit, scope="finance_disclosure", min_results=0, require_diagnostics=True)),
+        ("live_university_scope_has_results_or_diagnostics", "search_quality", "university", lambda: _live_search_probe("清华大学计算机系研究生招生 导师名单", limit, scope="university", min_results=0, require_diagnostics=True)),
+        ("live_reputation_scope_has_results_or_diagnostics", "search_quality", "reputation", lambda: _live_search_probe("某新能源车 用户评价 值不值得买", limit, scope="social_web", min_results=0, require_diagnostics=True)),
+        ("live_cjk_compound_search_has_diagnostics_or_results", "search_quality", "cjk_compound", lambda: _live_search_probe("固态电池量产时间表", limit, min_results=0, require_diagnostics=True)),
+        ("live_company_battery_search_has_results_or_diagnostics", "search_quality", "cjk_compound", lambda: _live_search_probe("宁德时代 固态电池 进展", limit, min_results=0, require_diagnostics=True)),
+        ("live_cybersecurity_search_has_results_or_diagnostics", "search_quality", "cybersecurity", lambda: _live_search_probe("OpenSSL CVE 最新 漏洞 影响版本", limit, profile="english", scope="cybersecurity", min_results=0, require_diagnostics=True)),
+        ("live_hotnews_today_returns_items", "hotnews_freshness", "hotnews", lambda: _live_hotnews_probe(limit)),
+        ("live_feeds_curated_ai_returns_items_or_cache_status", "feeds_resilience", "feeds", lambda: _live_feeds_probe(limit)),
+        ("live_read_govcn_has_body_or_quality_boundary", "read_quality", "read", lambda: _live_read_probe()),
     ]
-    for check_id, dimension, probe in probes:
+    for check_id, dimension, scenario_group, probe in probes:
         try:
             ok, message = probe()
-            checks.append({"id": check_id, "dimension": dimension, "status": "pass" if ok else "warn", "message": message})
+            checks.append(
+                {
+                    "id": check_id,
+                    "dimension": dimension,
+                    "scenario_group": scenario_group,
+                    "status": "pass" if ok else "warn",
+                    "message": message,
+                }
+            )
         except Exception as exc:
             checks.append(
                 {
                     "id": check_id,
                     "dimension": dimension,
+                    "scenario_group": scenario_group,
                     "status": "warn",
                     "message": f"{classify_exception(exc)}: {exc}",
                 }
@@ -1239,11 +1252,12 @@ def _live_search_probe(
     limit: int,
     *,
     profile: str = "china",
+    scope: str | None = None,
     preferred_types: set[str] | None = None,
     min_results: int = 1,
     require_diagnostics: bool = False,
 ) -> tuple[bool, str]:
-    results = webtools.search_web(query, profile=profile, limit=max(limit, 3), trace=True)
+    results = webtools.search_web(query, profile=profile, scope=scope, limit=max(limit, 3), trace=True)
     preferred = [item for item in results if item.get("source_type") in (preferred_types or set())]
     diagnostics = getattr(results, "diagnostics", {}) or {}
     backend_diagnostics = diagnostics.get("backend_diagnostics") or []
@@ -1252,7 +1266,21 @@ def _live_search_probe(
         ok = bool(preferred)
     if require_diagnostics:
         ok = ok or bool(backend_diagnostics)
-    return ok, f"results={len(results)}, preferred={len(preferred)}, backends={len(backend_diagnostics)}"
+    return ok, f"scope={scope or 'open'}, results={len(results)}, preferred={len(preferred)}, backends={len(backend_diagnostics)}"
+
+
+def _live_scenario_group_summary(checks: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    summary: dict[str, dict[str, int]] = {}
+    for item in checks:
+        group = str(item.get("scenario_group") or "misc")
+        bucket = summary.setdefault(group, {"total": 0, "pass": 0, "warn": 0, "fail": 0})
+        bucket["total"] += 1
+        status = str(item.get("status") or "warn")
+        if status in bucket:
+            bucket[status] += 1
+        else:
+            bucket["warn"] += 1
+    return summary
 
 
 def _live_hotnews_probe(limit: int) -> tuple[bool, str]:

@@ -6,6 +6,17 @@
 
 ## Unreleased
 
+## v0.5.37 - 2026-05-14
+
+### Added
+
+- 新增 OpenGuanlan 浏览器桥最小集成烟测：覆盖 daemon、pair-code、扩展配对、`read-visible` 任务回传和 archive-ready JSONL 输出，避免只靠静态断言判断桥是否可用。
+
+### Changed
+
+- `guanlan quality live-smoke` 增强为更显式的中文高频 live regression，新增 `policy / finance / university / reputation` 场景组摘要，帮助持续观察中文复合词、垂类 scope 和高频研究任务的真实外网稳定性。
+- 官网和版本面同步到 `0.5.37`。
+
 ## v0.5.36 - 2026-05-14
 
 ### Changed

@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.5.36`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.37`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -523,7 +523,7 @@ guanlan configure --from-browser chrome
 | `guanlan quality regression` | 发版前检查结果池、来源多样性、RSS 兜底、正文抽取和 advisor 动态性没有退化。 |
 | `guanlan quality robustness` | 更深的稳健性闸门，检查 Archive 入库审计、Agent 字段契约、空结果解释和发布脚本完整性。 |
 | `guanlan quality performance` | 确定性性能护栏，检查显式并发、语义侧车 opt-in 和默认候选池不缩水。 |
-| `guanlan quality live-smoke --limit 5` | 可选外网 smoke，用于观察源站/网络波动；默认不阻断发版。 |
+| `guanlan quality live-smoke --limit 5` | 可选外网 smoke，用于观察源站/网络波动；默认不阻断发版，并会按 `policy / finance / university / reputation` 等场景组输出 live regression 摘要。 |
 | `scripts/release_gate.sh` | 维护者发版前一键跑静态检查、全量测试、质量闸门、构建、安装 smoke 和版本核对。 |
 | `guanlan hotnews today --limit 80` | 拉取原生多源中文热榜。 |
 | `guanlan profile set china` | 切换到中文场景画像。 |

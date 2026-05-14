@@ -1,4 +1,8 @@
 import json
+import socket
+import threading
+import urllib.request
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from guanlan import openguanlan_cli
@@ -112,3 +116,103 @@ def test_openguanlan_extension_manifest_does_not_request_credential_permissions(
     assert "Pair Code" in popup
     assert 'if (task.action === "get_title") {\n    await ensureSitePermission(tab.url);' in background
     assert "async function screenshot(task) {\n  const tab = await ensureTab(task, { navigate: false });\n  await ensureSitePermission(tab.url);" in background
+
+
+def test_openguanlan_end_to_end_read_visible_roundtrip_writes_archive_ready_jsonl(tmp_path, monkeypatch):
+    auth_path = tmp_path / "bridge-auth.json"
+    monkeypatch.setattr(openguanlan_cli, "_bridge_auth_path", lambda: auth_path)
+    auth_state = openguanlan_cli._bridge_auth_state(create=True)
+    openguanlan_cli.STATE.pending = openguanlan_cli.queue.Queue()
+    openguanlan_cli.STATE.results = {}
+    openguanlan_cli.STATE.extension_seen_at = 0.0
+    openguanlan_cli.STATE.extension_info = {}
+    openguanlan_cli.STATE.extension_paired_at = 0.0
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+
+    server = ThreadingHTTPServer(("127.0.0.1", port), openguanlan_cli._BridgeHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    output_path = tmp_path / "browser-notes.jsonl"
+
+    def extension_worker() -> None:
+        base = f"http://127.0.0.1:{port}"
+        pairing_header = {openguanlan_cli.PAIRING_HEADER: str(auth_state["pairing_token"])}
+        hello = urllib.request.Request(
+            f"{base}/extension/hello",
+            data=json.dumps({"name": "OpenGuanlan Browser Bridge", "version": "test"}).encode("utf-8"),
+            method="POST",
+            headers={"content-type": "application/json", **pairing_header},
+        )
+        with urllib.request.urlopen(hello, timeout=2):
+            pass
+        while True:
+            task_req = urllib.request.Request(
+                f"{base}/extension/task",
+                method="GET",
+                headers=pairing_header,
+            )
+            with urllib.request.urlopen(task_req, timeout=2) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            task = payload.get("task")
+            if not task:
+                continue
+            result = {
+                "ok": True,
+                "status": "ok",
+                "data": {
+                    "url": str(task.get("url") or ""),
+                    "title": "Example Title",
+                    "visible_text": "Visible body for archive import.",
+                    "items": [{"tag": "p", "text": "Visible body for archive import.", "href": ""}],
+                    "collected_count": 1,
+                    "partial_reason": "",
+                    "captured_at": 1777700000.0,
+                },
+            }
+            result_req = urllib.request.Request(
+                f"{base}/extension/result",
+                data=json.dumps({"task_id": task["id"], "result": result}).encode("utf-8"),
+                method="POST",
+                headers={"content-type": "application/json", **pairing_header},
+            )
+            with urllib.request.urlopen(result_req, timeout=2):
+                pass
+            return
+
+    worker = threading.Thread(target=extension_worker, daemon=True)
+    worker.start()
+
+    try:
+        exit_code = openguanlan_cli.main(
+            [
+                "read-visible",
+                "https://example.com/article",
+                "--port",
+                str(port),
+                "--timeout",
+                "2",
+                "--output",
+                str(output_path),
+                "--min-visible-items",
+                "1",
+            ]
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=2)
+        thread.join(timeout=2)
+
+    assert exit_code == 0
+    payload = json.loads(output_path.read_text(encoding="utf-8").strip())
+    assert payload["url"] == "https://example.com/article"
+    assert payload["title"] == "Example Title"
+    assert payload["visible_text"] == "Visible body for archive import."
+    assert payload["browser_assisted"] is True
+    assert payload["visible_page_only"] is True
+    assert payload["requested_min_items"] == 1
+    assert payload["collected_count"] == 1

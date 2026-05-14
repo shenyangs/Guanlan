@@ -114,3 +114,22 @@ def test_quality_cli_live_smoke_is_non_blocking_by_default(capsys):
     assert payload["contract"]["timeout_budget_ms"] == 180000
     assert any("timeout_ms" in item for item in payload["contract"]["timeout_unit_contract"])
     assert payload["summary"]["fail"] == 1
+
+
+def test_live_smoke_contract_exposes_scenario_groups():
+    fake_report = {
+        "mode": "live",
+        "summary": {"total": 4, "pass": 3, "warn": 1, "fail": 0, "score": 87.5},
+        "checks": [
+            {"id": "a", "scenario_group": "policy", "status": "pass"},
+            {"id": "b", "scenario_group": "finance", "status": "warn"},
+            {"id": "c", "scenario_group": "university", "status": "pass"},
+            {"id": "d", "scenario_group": "reputation", "status": "pass"},
+        ],
+    }
+    with patch("guanlan.quality.run_quality_checks", return_value=fake_report):
+        report = quality.run_live_smoke_checks(limit=3, timeout_budget=180, profile="china")
+
+    assert "scenario_groups" in report["network_summary"]
+    groups = report["network_summary"]["scenario_groups"]
+    assert {"policy", "finance", "university", "reputation"} <= set(groups)
