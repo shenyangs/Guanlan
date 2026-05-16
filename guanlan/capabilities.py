@@ -86,12 +86,12 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="browser_assist",
         name="浏览器辅助补证",
-        description="当公开读取不足时，生成用户授权的宿主浏览器可见页补证任务，并把补证材料按边界入库。",
+        description="当公开读取不足时，生成用户授权的 OpenGuanlan 可见页补证任务，并把补证材料按边界入库。",
         when_to_use="diagnose page 显示动态壳、登录墙、访问门槛、搜索兜底或弱正文，但该平台内容仍有样本价值时。",
         cli=[
             "guanlan browser-assist plan \"URL\" --json",
             "guanlan browser-assist sessions \"URL\" --json",
-            "guanlan browser-assist run \"URL\" --adapter host-browser --min-visible-items 30 --json",
+            "guanlan browser-assist run \"URL\" --adapter openguanlan --min-visible-items 30 --json",
             "guanlan archive add-browser-note --from-json browser-notes.jsonl",
         ],
         mcp="guanlan_browser_assist_plan",

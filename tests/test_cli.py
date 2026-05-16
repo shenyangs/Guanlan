@@ -226,7 +226,7 @@ class TestCLI:
         assert data["browser_assist_task"]["host_browser_contract"]["cookie_access_requires_separate_explicit_authorization"] is True
         assert data["browser_assist_task"]["platform_template"]["name"] == "小红书可见笔记"
         assert "engagement_summary" in data["browser_assist_task"]["extract_fields"]
-        assert data["recommended_adapter"] == "host-browser"
+        assert data["recommended_adapter"] == "openguanlan"
         assert data["cookie_access_policy"]["default"] == "forbidden_for_visible_page_task"
         assert "read_cookies" in data["forbidden_actions"]
         assert data["session_contract"]["version"] == "browser_visible_session_v1"
@@ -262,7 +262,7 @@ class TestCLI:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         ids = {item["id"] for item in data}
-        assert {"host-browser", "openguanlan", "open-cli", "browser-use", "xhs-cli"} <= ids
+        assert {"host-browser", "openguanlan", "openguanlan-bridge", "open-cli", "browser-use", "xhs-cli"} <= ids
         host = next(item for item in data if item["id"] == "host-browser")
         assert host["available"] is True
         assert host["capability_layer"] == "extractor"
@@ -292,12 +292,15 @@ class TestCLI:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         assert data["adapter"] == "openguanlan"
-        assert data["status"] == "packaged_needs_install_entrypoint"
-        assert data["current_default"] == "host-browser"
+        assert data["status"] == "ready_with_host_browser_contract"
+        assert data["current_default"] == "openguanlan"
+        assert data["primary_requires_extension"] is False
+        assert data["primary_requires_daemon"] is False
         assert data["runtime_packaged"] is True
         assert data["extension_manifest_exists"] is True
-        assert any("不要求用户安装 opencli" in item for item in data["user_install_boundary"])
+        assert any("不要求安装浏览器扩展" in item for item in data["user_install_boundary"])
         assert data["safety"]["credential_material_access_allowed"] is False
+        assert data["safety"]["extension_install_requires_user_confirmation"] is False
 
     def test_browser_assist_sessions_command_returns_contract(self, capsys):
         with patch(

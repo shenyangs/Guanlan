@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""OpenGuanlan native browser bridge CLI.
+"""OpenGuanlan optional browser bridge CLI.
 
-This is Guanlan's read-only browser bridge surface. It absorbs the useful
-browser-observation primitives into Guanlan's browser-assist boundary instead
-of requiring users to install OpenCLI as a prerequisite.
+OpenGuanlan itself is Guanlan's browser-assist layer. This CLI is only the
+optional local daemon/extension sidecar for environments that want a dedicated
+Chrome/Chromium bridge; the default OpenGuanlan flow does not require it.
 """
 
 from __future__ import annotations
@@ -101,7 +101,7 @@ STATE = BridgeState()
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="openguanlan",
-        description="Guanlan-native read-only browser bridge",
+        description="Optional OpenGuanlan read-only browser bridge sidecar",
     )
     parser.add_argument("--host", default=DEFAULT_HOST, help="Bridge daemon host")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Bridge daemon port")
@@ -422,7 +422,9 @@ def _doctor(host: str, port: int) -> dict[str, Any]:
 def _capabilities() -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
-        "name": "OpenGuanlan Browser Bridge",
+        "name": "OpenGuanlan Optional Browser Bridge",
+        "part_of": "OpenGuanlan browser-assist layer",
+        "default_openguanlan_path": "guanlan browser-assist run \"URL\" --adapter openguanlan --json",
         "absorbed_opencli_primitives": sorted(READ_ONLY_ACTIONS),
         "navigation_primitives": sorted(NAVIGATION_ACTIONS),
         "browser_visible_primitives": [
@@ -453,16 +455,20 @@ def _setup_payload() -> dict[str, Any]:
     extension = _extension_payload()
     return {
         "schema_version": SCHEMA_VERSION,
-        "status": "manual_extension_step_required",
+        "status": "optional_bridge_manual_setup",
+        "openguanlan_definition": "OpenGuanlan is Guanlan's browser-assist layer; this daemon/extension is only an optional sidecar.",
+        "primary_command": "guanlan browser-assist run \"URL\" --adapter openguanlan --json",
         "path": extension["path"],
         "steps": [
+            "For the default OpenGuanlan path, use `guanlan browser-assist run \"URL\" --adapter openguanlan --json`; no extension or daemon is required.",
+            "Only continue with the following steps when the user explicitly wants the optional Chrome/Chromium bridge.",
             "Run `openguanlan daemon` in a local terminal.",
             f"Open chrome://extensions and load the unpacked extension directory: {extension['path']}",
             "Run `openguanlan pair-code --json` and copy the pairing code.",
             "Paste the pairing code into the OpenGuanlan popup and save it once.",
             "Click the OpenGuanlan extension popup on the target tab and grant the current site.",
             "Run `openguanlan doctor --json` until daemon and extension are connected.",
-            "Use `guanlan browser-assist run \"URL\" --adapter openguanlan --json` after user authorization.",
+            "Use `guanlan browser-assist run \"URL\" --adapter openguanlan-bridge --json` after user authorization.",
         ],
         "safety": {
             "extension_install_requires_user_confirmation": True,

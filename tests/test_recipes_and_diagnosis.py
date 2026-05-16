@@ -193,10 +193,35 @@ def test_browser_assist_openguanlan_is_native_planned_adapter(monkeypatch):
     contract = build_browser_assist_adapter_contract("openguanlan")
 
     assert contract["id"] == "openguanlan"
-    assert contract["kind"] == "guanlan_native_browser_bridge"
+    assert contract["kind"] == "guanlan_browser_assist_layer"
     assert contract["capability_layer"] == "extractor"
-    assert contract["available"] is False
+    assert contract["available"] is True
     assert contract["native_setup_guidance"]["guanlan_command"] == "guanlan browser-assist setup-openguanlan --json"
+    assert contract["native_setup_guidance"]["default_adapter"] == "openguanlan"
+
+
+def test_browser_assist_openguanlan_bridge_is_optional_sidecar(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda name: None)
+
+    contract = build_browser_assist_adapter_contract("openguanlan-bridge")
+    check = check_browser_assist_adapter("openguanlan-bridge")
+
+    assert contract["id"] == "openguanlan-bridge"
+    assert contract["kind"] == "guanlan_optional_browser_bridge"
+    assert contract["available"] is False
+    assert check["status"] == "warn"
+    assert any("可选扩展桥" in hint for hint in check["repair_hints"])
+
+
+def test_browser_assist_openguanlan_run_uses_host_contract_without_plugin(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda name: None)
+
+    result = run_browser_assist_adapter("https://example.com/article", adapter="openguanlan")
+
+    assert result["adapter"] == "openguanlan"
+    assert result["status"] == "requires_host_browser_execution"
+    assert result["execution_boundary"] == "openguanlan_browser_assist_layer_uses_host_agent_visible_page"
+    assert result["native_setup"]["primary_requires_extension"] is False
 
 
 def test_openguanlan_browser_bridge_setup_plan_does_not_require_opencli(monkeypatch):
@@ -205,11 +230,13 @@ def test_openguanlan_browser_bridge_setup_plan_does_not_require_opencli(monkeypa
     plan = build_openguanlan_browser_bridge_setup_plan()
 
     assert plan["adapter"] == "openguanlan"
-    assert plan["status"] == "packaged_needs_install_entrypoint"
-    assert plan["current_default"] == "host-browser"
+    assert plan["status"] == "ready_with_host_browser_contract"
+    assert plan["current_default"] == "openguanlan"
+    assert plan["primary_requires_extension"] is False
+    assert plan["optional_bridge_adapter"] == "openguanlan-bridge"
     assert plan["runtime_packaged"] is True
     assert plan["extension_manifest_exists"] is True
-    assert "opencli" in plan["user_install_boundary"][0]
+    assert "不要求安装浏览器扩展" in plan["user_install_boundary"][0]
     assert plan["safety"]["credential_material_access_allowed"] is False
 
 

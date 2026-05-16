@@ -75,7 +75,7 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "evidence roles" in route_tool["description"]
     assert "avoid overthinking basic" in workflow_tool["description"]
     assert "dynamic shell" in diagnose_tool["description"]
-    assert "host-browser visible-page evidence task" in browser_assist_tool["description"]
+    assert "OpenGuanlan visible-page evidence task" in browser_assist_tool["description"]
     assert "format" in browser_assist_tool["inputSchema"]["properties"]
     assert "stable multi-step workflow" in recipe_tool["description"]
     assert "workflow_decision" in investigate_tool["description"]

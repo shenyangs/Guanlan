@@ -6,6 +6,15 @@
 
 ## Unreleased
 
+## v0.5.38 - 2026-05-16
+
+### Changed
+
+- 重定义 OpenGuanlan：`openguanlan` 现在代表观澜浏览器补证总层，默认返回宿主 Agent 浏览器可见页执行契约，不再被定义为必须依赖 Chrome 扩展、daemon 或配对流程。
+- 将旧的扩展/daemon 路线收束为可选 `openguanlan-bridge` 侧车，只有用户明确需要独立 Chrome/Chromium 桥时才使用。
+- 同步 AGENTS、Agent playbook、skill、MCP/HTTP 默认适配器和测试断言，避免下游 Agent 把插件桥误判成 OpenGuanlan 主路径。
+- 官网和版本面同步到 `0.5.38`。
+
 ## v0.5.37 - 2026-05-14
 
 ### Added

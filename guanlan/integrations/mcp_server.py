@@ -201,7 +201,7 @@ def _tool_definitions() -> list[dict]:
         {
             "name": "guanlan_browser_assist_plan",
             "description": (
-                "Build a read-only host-browser visible-page evidence task after Guanlan finds that public "
+                "Build a read-only OpenGuanlan visible-page evidence task after Guanlan finds that public "
                 "reading is weak, blocked, dynamic, or search-fallback-only. The tool only returns a plan; "
                 "the Agent must ask the user before reading browser-visible content. Target private/account "
                 "pages require separate explicit authorization; cookies, tokens, keychain/storage/profile "
@@ -227,17 +227,17 @@ def _tool_definitions() -> list[dict]:
         {
             "name": "guanlan_browser_assist_run",
             "description": (
-                "Prepare or run a user-authorized browser-assist adapter bridge. Default host-browser mode "
-                "returns an execution contract for the host Agent browser; open-cli can upgrade from opener to "
-                "extractor when an OpenCLI browser bridge is detected. External adapters remain explicit opt-in "
-                "read-only visible-page evidence flows; credential material is outside the payload boundary."
+                "Prepare or run a user-authorized OpenGuanlan browser-assist task. Default openguanlan mode "
+                "returns the host Agent browser visible-page execution contract without requiring an extension "
+                "or daemon; openguanlan-bridge and open-cli remain explicit opt-in sidecar/compatibility flows. "
+                "Credential material is outside the payload boundary."
             ),
             "inputSchema": {
                 "type": "object",
                 "required": ["url"],
                 "properties": {
                     "url": {"type": "string"},
-                    "adapter": {"type": "string", "default": "host-browser"},
+                    "adapter": {"type": "string", "default": "openguanlan"},
                     "execute": {"type": "boolean", "default": False},
                     "command_template": {"type": "string"},
                     "timeout": {"type": "integer", "default": 90, "minimum": 1, "maximum": 600},
@@ -761,7 +761,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
 
         payload = run_browser_assist_adapter(
             str(args.get("url", "")).strip(),
-            adapter=str(args.get("adapter") or "host-browser"),
+            adapter=str(args.get("adapter") or "openguanlan"),
             execute=bool(args.get("execute", False)),
             command_template=str(args.get("command_template") or ""),
             timeout=max(int(args.get("timeout") or 90), 1),

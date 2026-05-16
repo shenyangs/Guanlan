@@ -90,7 +90,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
 
             return 200, run_browser_assist_adapter(
                 str(payload.get("url", "")).strip(),
-                adapter=str(payload.get("adapter") or "host-browser"),
+                adapter=str(payload.get("adapter") or "openguanlan"),
                 execute=bool(payload.get("execute", False)),
                 command_template=str(payload.get("command_template") or ""),
                 timeout=max(_int(payload.get("timeout"), 90), 1),

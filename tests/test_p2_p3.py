@@ -61,12 +61,11 @@ def test_serve_dispatch_browser_assist_run_returns_adapter_contract():
         "/browser-assist/run",
         {
             "url": "https://www.xiaohongshu.com/explore/demo",
-            "adapter": "host-browser",
         },
     )
 
     assert status == 200
-    assert body["adapter"] == "host-browser"
+    assert body["adapter"] == "openguanlan"
     assert body["status"] == "requires_host_browser_execution"
     assert body["contract"]["safety"]["cookie_access_requires_separate_explicit_authorization"] is True
 

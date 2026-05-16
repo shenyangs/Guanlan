@@ -14,6 +14,9 @@ def test_openguanlan_capabilities_are_browser_assist_scoped(capsys):
     captured = capsys.readouterr()
     data = json.loads(captured.out)
     assert exit_code == 0
+    assert data["name"] == "OpenGuanlan Optional Browser Bridge"
+    assert data["part_of"] == "OpenGuanlan browser-assist layer"
+    assert data["default_openguanlan_path"] == 'guanlan browser-assist run "URL" --adapter openguanlan --json'
     assert "state" in data["absorbed_opencli_primitives"]
     assert "find" in data["absorbed_opencli_primitives"]
     assert "screenshot" in data["absorbed_opencli_primitives"]
@@ -29,7 +32,10 @@ def test_openguanlan_setup_points_to_packaged_extension(capsys):
     data = json.loads(captured.out)
     extension_path = Path(data["path"])
     assert exit_code == 0
-    assert data["status"] == "manual_extension_step_required"
+    assert data["status"] == "optional_bridge_manual_setup"
+    assert data["primary_command"] == 'guanlan browser-assist run "URL" --adapter openguanlan --json'
+    assert "optional sidecar" in data["openguanlan_definition"]
+    assert "no extension or daemon is required" in data["steps"][0]
     assert (extension_path / "manifest.json").exists()
     assert (extension_path / "popup.html").exists()
     assert data["safety"]["credential_material_access_allowed"] is False

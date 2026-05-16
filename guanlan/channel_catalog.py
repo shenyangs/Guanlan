@@ -108,7 +108,7 @@ CHANNEL_CATALOG = {
         "verification": "unverified",
         "auth": "required",
         "batch": "blocked",
-        "recommended_backend": "host-browser visible-page assist",
+        "recommended_backend": "OpenGuanlan visible-page assist",
         "expectation": "按小红书同类公开笔记处理；默认走用户授权的浏览器可见页补证，不默认批量读取。",
     },
     "douyin": {

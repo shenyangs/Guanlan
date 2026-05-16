@@ -272,17 +272,17 @@ def main():
     p_browser_assist_setup_opencli.add_argument("--timeout", type=int, default=180, help="Install timeout seconds when --execute is used")
     p_browser_assist_setup_opencli.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_browser_assist_setup_opencli.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
-    p_browser_assist_setup_openguanlan = browser_assist_sub.add_parser("setup-openguanlan", help="Show Guanlan-native OpenGuanlan browser bridge plan")
+    p_browser_assist_setup_openguanlan = browser_assist_sub.add_parser("setup-openguanlan", help="Show the OpenGuanlan browser-assist layer and optional bridge plan")
     p_browser_assist_setup_openguanlan.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_browser_assist_setup_openguanlan.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
-    p_browser_assist_sessions = browser_assist_sub.add_parser("sessions", help="Describe the host-browser visible-page session contract")
+    p_browser_assist_sessions = browser_assist_sub.add_parser("sessions", help="Describe the OpenGuanlan visible-page session contract")
     p_browser_assist_sessions.add_argument("url", nargs="?", default="", help="Target page URL")
     p_browser_assist_sessions.add_argument("--platform", default="", help="Optional platform label override")
     p_browser_assist_sessions.add_argument("--min-visible-items", type=int, default=0, help="Minimum visible list/comment/search items the host Agent should try to collect")
     p_browser_assist_sessions.add_argument("--task-goal", default="", help="Optional host-agent task goal")
     p_browser_assist_sessions.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_browser_assist_sessions.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
-    p_browser_assist_plan = browser_assist_sub.add_parser("plan", help="Build a host-browser visible evidence task")
+    p_browser_assist_plan = browser_assist_sub.add_parser("plan", help="Build an OpenGuanlan visible evidence task")
     p_browser_assist_plan.add_argument("url", help="Target page URL")
     p_browser_assist_plan.add_argument("--page-type", default="access_gate", help="Diagnosis page type hint")
     p_browser_assist_plan.add_argument("--signal", action="append", default=[], help="Diagnosis signal hint; can be repeated")
@@ -293,10 +293,10 @@ def main():
     p_browser_assist_plan.add_argument("--task-goal", default="", help="Optional host-agent task goal")
     p_browser_assist_plan.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_browser_assist_plan.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
-    p_browser_assist_run = browser_assist_sub.add_parser("run", help="Bridge a browser-assist task to host-browser/open-cli/browser-use/xhs-cli adapters")
+    p_browser_assist_run = browser_assist_sub.add_parser("run", help="Bridge a browser-assist task to openguanlan/host-browser/open-cli/browser-use/xhs-cli adapters")
     p_browser_assist_run.add_argument("url", help="Target page URL")
-    p_browser_assist_run.add_argument("--adapter", default="host-browser", help="Adapter: host-browser, open-cli, browser-use, xhs-cli")
-    p_browser_assist_run.add_argument("--execute", action="store_true", help="Execute external adapter when safe/configured; host-browser still returns a host task")
+    p_browser_assist_run.add_argument("--adapter", default="openguanlan", help="Adapter: openguanlan, host-browser, openguanlan-bridge, open-cli, browser-use, xhs-cli")
+    p_browser_assist_run.add_argument("--execute", action="store_true", help="Execute external/optional bridge adapter when safe/configured; openguanlan returns a host-browser task")
     p_browser_assist_run.add_argument("--command-template", default="", help="External CLI command template; supports {url} and {output}")
     p_browser_assist_run.add_argument("--output", default="", help="Optional JSONL output path for parsed adapter payloads")
     p_browser_assist_run.add_argument("--timeout", type=int, default=90, help="External adapter timeout seconds")
@@ -687,7 +687,7 @@ def main():
     p_archive_browser_note.add_argument("--url", default="", help="Target page URL shown in the browser; optional with --from-json")
     p_archive_browser_note.add_argument("--text", default="", help="Visible page text to archive")
     p_archive_browser_note.add_argument("--text-file", default="", help="File containing visible page text")
-    p_archive_browser_note.add_argument("--from-json", default="", help="JSON/JSONL file or '-' from host-browser visible-page extraction")
+    p_archive_browser_note.add_argument("--from-json", default="", help="JSON/JSONL file or '-' from OpenGuanlan visible-page extraction")
     p_archive_browser_note.add_argument("--title", default="", help="Visible page title")
     p_archive_browser_note.add_argument("--platform", default="", help="Optional platform label")
     p_archive_browser_note.add_argument("--author", default="", help="Visible author/account when relevant")
@@ -3192,12 +3192,14 @@ def _install_opencli_deps():
 
 
 def _install_openguanlan_deps():
-    """Explain the Guanlan-native browser bridge path without installing OpenCLI."""
+    """Explain the OpenGuanlan browser-assist layer and optional bridge path."""
     import shutil
 
-    print("Setting up OpenGuanlan browser bridge...")
+    print("OpenGuanlan is Guanlan's browser-assist layer.")
+    print("  Default path requires no extension or daemon:")
+    print("     guanlan browser-assist run \"URL\" --adapter openguanlan --json")
     if shutil.which("openguanlan"):
-        print("  ✅ openguanlan command is available")
+        print("  ✅ optional openguanlan bridge command is available")
         print("  Run: openguanlan setup --json")
         print("  Run: openguanlan daemon")
         print("  Run: openguanlan doctor --json")
@@ -3205,10 +3207,10 @@ def _install_openguanlan_deps():
         print("  -- openguanlan is bundled with Guanlan 0.5.30+.")
         print("  -- Reinstall/upgrade Guanlan, then refresh your shell path:")
         print("     uv tool install --force --upgrade guanlan && hash -r")
-    print("  Manual browser step:")
+    print("  Optional bridge manual browser step:")
     print("     open chrome://extensions and Load unpacked the directory from `openguanlan extension path`")
-    print("  Guanlan remains stable through host-browser by default:")
-    print("     guanlan browser-assist run \"URL\" --adapter host-browser --json")
+    print("  Optional bridge adapter:")
+    print("     guanlan browser-assist run \"URL\" --adapter openguanlan-bridge --json")
     print("  OpenCLI remains an optional compatibility path, not the Guanlan-native default.")
 
 

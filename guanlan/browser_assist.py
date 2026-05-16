@@ -111,10 +111,27 @@ BROWSER_ASSIST_ADAPTERS: dict[str, dict[str, Any]] = {
     },
     "openguanlan": {
         "id": "openguanlan",
-        "aliases": ["open-guanlan", "guanlan-browser-bridge", "guanlan-bridge"],
-        "kind": "guanlan_native_browser_bridge",
+        "aliases": ["open-guanlan", "guanlan-browser-assist", "browser-assist-layer"],
+        "kind": "guanlan_browser_assist_layer",
+        "stability": "stable",
+        "description": "OpenGuanlan 是观澜浏览器补证总层：默认生成宿主浏览器可见页契约，不要求安装扩展或 daemon。",
+        "executable": "",
+        "env_command": "GUANLAN_BROWSER_ASSIST_OPENGUANLAN_COMMAND",
+        "supports_platforms": ["*"],
+        "can_extract": True,
+        "can_open": True,
+        "can_reuse_existing_session": True,
+        "adapter_role": "extractor",
+        "risk_level": "low",
+        "requires_execute": False,
+        "privacy_boundary": "guanlan_native_user_authorized_visible_or_private_account_page_only",
+    },
+    "openguanlan-bridge": {
+        "id": "openguanlan-bridge",
+        "aliases": ["guanlan-browser-bridge", "guanlan-bridge", "open-guanlan-bridge", "openguanlan-daemon"],
+        "kind": "guanlan_optional_browser_bridge",
         "stability": "experimental",
-        "description": "观澜原生浏览器桥；内化 OpenCLI 的浏览器桥能力形态，按 browser-assist 授权边界输出可见页证据。",
+        "description": "OpenGuanlan 可选扩展桥：通过 openguanlan daemon 和用户手动启用的 Chrome/Chromium 扩展输出可见页 JSON/JSONL。",
         "executable": "openguanlan",
         "env_command": "GUANLAN_BROWSER_ASSIST_OPENGUANLAN_COMMAND",
         "supports_platforms": ["*"],
@@ -124,7 +141,7 @@ BROWSER_ASSIST_ADAPTERS: dict[str, dict[str, Any]] = {
         "adapter_role": "extractor",
         "risk_level": "low",
         "requires_execute": True,
-        "privacy_boundary": "guanlan_native_user_authorized_visible_or_private_account_page_only",
+        "privacy_boundary": "optional_bridge_user_authorized_visible_or_private_account_page_only",
     },
     "open-cli": {
         "id": "open-cli",
@@ -412,7 +429,7 @@ def list_browser_assist_adapters(
     return adapters
 
 
-def build_browser_assist_adapter_contract(adapter: str = "host-browser", *, platform: str = "") -> dict[str, Any]:
+def build_browser_assist_adapter_contract(adapter: str = "openguanlan", *, platform: str = "") -> dict[str, Any]:
     """Return a stable contract for a browser-assist adapter."""
 
     adapter_id = resolve_browser_assist_adapter(adapter)
@@ -424,18 +441,20 @@ def build_browser_assist_adapter_contract(adapter: str = "host-browser", *, plat
     opencli_profile = _opencli_browser_profile(command_template=command_template) if adapter_id == "open-cli" else {}
     if adapter_id == "open-cli" and opencli_profile.get("browser_bridge_available"):
         spec["kind"] = "opencli_browser_bridge"
-        spec["description"] = "检测到 OpenCLI 浏览器桥；可打开并按 Guanlan 可见页契约提取目标页正文，默认推荐仍是 host-browser。"
+        spec["description"] = "检测到 OpenCLI 浏览器桥；可打开并按 Guanlan 可见页契约提取目标页正文，默认 OpenGuanlan 主路径仍无需 OpenCLI。"
         spec["can_extract"] = True
         spec["adapter_role"] = "extractor"
         spec["risk_level"] = "medium"
         spec["privacy_boundary"] = "user_authorized_visible_or_private_account_page_only"
         executable_path = str(opencli_profile.get("opencli_path") or executable_path)
     platform_ok = _adapter_supports_platform(spec, platform)
-    capabilities = _adapter_capabilities(adapter_id, spec, platform_supported=platform_ok, available=bool(adapter_id == "host-browser" or executable_path or command_template))
+    always_available = adapter_id in {"host-browser", "openguanlan"}
+    available = bool(always_available or executable_path or command_template)
+    capabilities = _adapter_capabilities(adapter_id, spec, platform_supported=platform_ok, available=available)
     return {
         **spec,
         "id": adapter_id,
-        "available": bool(adapter_id == "host-browser" or executable_path or command_template),
+        "available": available,
         "capability_layer": capabilities["capability_layer"],
         "capability_score": capabilities["capability_score"],
         "risk_score": capabilities["risk_score"],
@@ -444,9 +463,13 @@ def build_browser_assist_adapter_contract(adapter: str = "host-browser", *, plat
         "command_template_env": command_env,
         "command_template_configured": bool(command_template),
         "opencli_profile": opencli_profile,
-        "openguanlan_profile": _openguanlan_browser_profile(command_template=command_template) if adapter_id == "openguanlan" else {},
+        "openguanlan_profile": _openguanlan_browser_profile(command_template=command_template)
+        if adapter_id in {"openguanlan", "openguanlan-bridge"}
+        else {},
         "setup_guidance": _opencli_setup_guidance(opencli_profile) if adapter_id == "open-cli" else {},
-        "native_setup_guidance": _openguanlan_setup_guidance() if adapter_id == "openguanlan" else {},
+        "native_setup_guidance": _openguanlan_setup_guidance()
+        if adapter_id in {"openguanlan", "openguanlan-bridge"}
+        else {},
         "platform": platform,
         "platform_supported": platform_ok,
         "output_schema": build_browser_assist_task(
@@ -472,7 +495,7 @@ def build_browser_assist_adapter_contract(adapter: str = "host-browser", *, plat
 
 
 def check_browser_assist_adapter(
-    adapter: str = "host-browser",
+    adapter: str = "openguanlan",
     *,
     platform: str = "",
     dry_run_url: str = "https://example.com/article",
@@ -497,8 +520,14 @@ def check_browser_assist_adapter(
     else:
         add("platform", "ok", "未指定平台；按适配器声明能力检查。")
 
-    if adapter_id == "host-browser":
-        add("host_browser_contract", "ok", "宿主浏览器路径只生成任务契约，不需要本机可执行文件。")
+    if adapter_id in {"host-browser", "openguanlan"}:
+        if adapter_id == "openguanlan":
+            add("openguanlan_contract", "ok", "OpenGuanlan 默认就是浏览器补证契约层；不要求扩展、daemon 或本机可执行文件。")
+            add("host_browser_contract", "ok", "执行仍交给宿主 Agent 浏览器读取目标页可见内容。")
+            dry_run_mode = "openguanlan_contract"
+        else:
+            add("host_browser_contract", "ok", "宿主浏览器路径只生成任务契约，不需要本机可执行文件。")
+            dry_run_mode = "contract_only"
         add("dry_run", "ok", "dry-run 可用：返回 host Agent 可执行契约，不读取浏览器状态。")
         capabilities = dict(contract.get("capabilities") or {})
         return {
@@ -517,7 +546,7 @@ def check_browser_assist_adapter(
             "cookie_flow_available": bool(capabilities.get("cookie_flow_available")),
             "checks": checks,
             "dry_run_available": platform_supported,
-            "dry_run_mode": "contract_only",
+            "dry_run_mode": dry_run_mode,
             "repair_hints": hints,
         }
 
@@ -547,7 +576,7 @@ def check_browser_assist_adapter(
 
     if adapter_id == "open-cli":
         dry_run_command = _opencli_doctor_command(opencli_profile) or _open_cli_command(dry_run_url)
-    elif adapter_id == "openguanlan":
+    elif adapter_id == "openguanlan-bridge":
         dry_run_command = _openguanlan_doctor_command() or _external_adapter_command(adapter_id, dry_run_url, output_path="")
     elif adapter_id == "browser-use":
         dry_run_command = _browser_use_doctor_command()
@@ -570,13 +599,13 @@ def check_browser_assist_adapter(
         available=bool(contract.get("available")),
         executable_ready=executable_ok,
     )
-    status = "ok" if ready else ("fail" if adapter_id not in {"xhs-cli", "browser-use"} else "warn")
+    status = "ok" if ready else ("fail" if adapter_id not in {"xhs-cli", "browser-use", "openguanlan-bridge"} else "warn")
     if adapter_id == "open-cli" and not ready:
         hints.append("安装系统打开命令，或配置 GUANLAN_BROWSER_ASSIST_OPEN_CLI_COMMAND。")
-    if adapter_id == "openguanlan" and not ready:
-        hints.append("运行 guanlan browser-assist setup-openguanlan --json 查看 Guanlan 原生浏览器桥计划；当前可继续使用 host-browser。")
+    if adapter_id == "openguanlan-bridge" and not ready:
+        hints.append("openguanlan-bridge 是可选扩展桥；无需它也可直接使用 --adapter openguanlan 生成宿主浏览器补证契约。")
     if adapter_id == "xhs-cli" and not executable_path:
-        hints.append("如需小红书外部适配器，先安装并配置 xhs-cli；否则继续使用 host-browser 稳定路径。")
+        hints.append("如需小红书外部适配器，先安装并配置 xhs-cli；否则继续使用 OpenGuanlan 稳定路径。")
     if adapter_id == "browser-use" and not ready:
         hints.append(
             "如需 browser-use，可安装后再试：`uvx --from 'browser-use[cli]' browser-use doctor`，或配置 "
@@ -605,8 +634,8 @@ def check_browser_assist_adapter(
             "opencli_doctor"
             if adapter_id == "open-cli" and opencli_profile.get("browser_bridge_available")
             else (
-                "openguanlan_doctor"
-                if adapter_id == "openguanlan"
+                "openguanlan_bridge_doctor"
+                if adapter_id == "openguanlan-bridge"
                 else ("builtin_open" if adapter_id == "open-cli" else ("builtin_doctor" if adapter_id == "browser-use" else ""))
             )
         ),
@@ -615,23 +644,23 @@ def check_browser_assist_adapter(
     }
 
 
-def resolve_browser_assist_adapter(adapter: str = "host-browser") -> str:
+def resolve_browser_assist_adapter(adapter: str = "openguanlan") -> str:
     """Resolve adapter aliases to canonical IDs."""
 
-    value = str(adapter or "host-browser").strip().lower().replace("_", "-")
+    value = str(adapter or "openguanlan").strip().lower().replace("_", "-")
     if value in BROWSER_ASSIST_ADAPTERS:
         return value
     for adapter_id, spec in BROWSER_ASSIST_ADAPTERS.items():
         aliases = {str(item).lower().replace("_", "-") for item in spec.get("aliases", [])}
         if value in aliases:
             return adapter_id
-    return "host-browser"
+    return "openguanlan"
 
 
 def run_browser_assist_adapter(
     url: str,
     *,
-    adapter: str = "host-browser",
+    adapter: str = "openguanlan",
     execute: bool = False,
     command_template: str = "",
     timeout: int = 90,
@@ -696,27 +725,34 @@ def run_browser_assist_adapter(
             }
         )
         return response
-    if adapter_id == "host-browser":
+    if adapter_id in {"host-browser", "openguanlan"}:
         response["status"] = "requires_host_browser_execution"
-        response["execution_boundary"] = "host_agent_must_open_and_read_visible_page"
+        response["execution_boundary"] = (
+            "openguanlan_browser_assist_layer_uses_host_agent_visible_page"
+            if adapter_id == "openguanlan"
+            else "host_agent_must_open_and_read_visible_page"
+        )
+        if adapter_id == "openguanlan":
+            response["native_setup"] = build_openguanlan_browser_bridge_setup_plan()
+            response["next_step"] = "用户授权后由宿主 Agent 浏览器读取目标页可见内容；可选 openguanlan-bridge 不是默认前置。"
         return response
 
-    if adapter_id == "openguanlan":
+    if adapter_id == "openguanlan-bridge":
         command = _openguanlan_command(normalized_url, command_template=command_template, output_path=output_path)
         response["command"] = command
         response["native_setup"] = build_openguanlan_browser_bridge_setup_plan()
         if not command:
             response.update(
                 {
-                    "status": "native_bridge_not_installed",
-                    "error": "openguanlan_runtime_not_available",
-                    "setup_hint": "运行 openguanlan setup --json 查看扩展目录；安装/升级 Guanlan 后应有 openguanlan 命令。稳定补证默认仍可走 host-browser。",
+                    "status": "optional_bridge_not_installed",
+                    "error": "openguanlan_bridge_runtime_not_available",
+                    "setup_hint": "openguanlan-bridge 只是可选增强；默认使用 guanlan browser-assist run \"URL\" --adapter openguanlan --json。",
                 }
             )
             return response
         if not execute:
-            response["status"] = "ready_to_execute_openguanlan"
-            response["next_step"] = "确认用户授权后加 --execute；输出必须为 Guanlan browser-visible JSON/JSONL。"
+            response["status"] = "ready_to_execute_openguanlan_bridge"
+            response["next_step"] = "确认用户授权、daemon 和扩展配对后加 --execute；输出必须为 Guanlan browser-visible JSON/JSONL。"
             return response
         return _execute_adapter_command(
             response,
@@ -724,7 +760,7 @@ def run_browser_assist_adapter(
             timeout=timeout,
             output_path=output_path,
             parse_stdout=True,
-            post_status="executed_openguanlan",
+            post_status="executed_openguanlan_bridge",
         )
 
     if adapter_id == "open-cli":
@@ -927,7 +963,7 @@ def build_opencli_browser_bridge_setup_plan(*, execute: bool = False, timeout: i
         "guanlan_next_steps": [
             "确认 opencli doctor 显示 Browser Bridge 已连接。",
             "运行 guanlan browser-assist adapters --check --json，确认 open-cli capability_layer=extractor。",
-            "浏览器补证默认仍使用 host-browser；只有用户明确选择 open-cli 时才走 OpenCLI bridge。",
+            "浏览器补证默认使用 OpenGuanlan 契约；只有用户明确选择 open-cli 时才走 OpenCLI bridge。",
         ],
         "safety": {
             "read_only": True,
@@ -987,35 +1023,40 @@ def build_opencli_browser_bridge_setup_plan(*, execute: bool = False, timeout: i
 
 
 def build_openguanlan_browser_bridge_setup_plan() -> dict[str, Any]:
-    """Return the Guanlan-native browser bridge setup plan and current readiness."""
+    """Return the OpenGuanlan browser-assist definition and optional bridge readiness."""
 
     openguanlan_path = shutil.which("openguanlan") or ""
     module_path = Path(__file__).resolve().parent / "openguanlan_cli.py"
     extension_path = Path(__file__).resolve().parent / "browser_bridge" / "extension"
     manifest_path = extension_path / "manifest.json"
     runtime_packaged = module_path.exists() and manifest_path.exists()
-    if openguanlan_path and runtime_packaged:
-        status = "ready_for_manual_extension"
-    elif runtime_packaged:
-        status = "packaged_needs_install_entrypoint"
-    else:
-        status = "native_bridge_planned"
+    bridge_status = (
+        "optional_bridge_entrypoint_ready"
+        if openguanlan_path and runtime_packaged
+        else ("optional_bridge_packaged_needs_install_entrypoint" if runtime_packaged else "optional_bridge_planned")
+    )
     return {
-        "status": status,
+        "status": "ready_with_host_browser_contract",
         "adapter": "openguanlan",
+        "optional_bridge_adapter": "openguanlan-bridge",
         "openguanlan_path": openguanlan_path,
+        "primary_requires_extension": False,
+        "primary_requires_daemon": False,
+        "primary_execution_contract": "guanlan browser-assist run \"URL\" --adapter openguanlan --json",
+        "optional_bridge_status": bridge_status,
         "runtime_packaged": runtime_packaged,
         "module_path": str(module_path),
         "extension_path": str(extension_path),
         "extension_manifest": str(manifest_path),
         "extension_manifest_exists": manifest_path.exists(),
-        "principle": "OpenCLI 的浏览器桥思想可以内化，但用户主路径应是 Guanlan/OpenGuanlan，不要求先安装 opencli。",
-        "current_default": "host-browser",
+        "principle": "OpenGuanlan 是观澜浏览器补证总层；默认走宿主 Agent 浏览器可见页契约，不要求安装扩展、daemon 或 OpenCLI。",
+        "current_default": "openguanlan",
+        "host_browser_contract": "included_as_primary_execution_surface",
         "compatibility_fallback": "open-cli adapter remains optional for users who already installed OpenCLI.",
         "components": [
-            "openguanlan CLI/daemon: 本机只读任务队列，提供 open/state/get/find/extract/frames/screenshot/wait/scroll/tab/read-visible。",
-            "OpenGuanlan Browser Bridge 扩展: 用户手动安装/启用，连接本机只读 daemon，并通过 popup 授权当前站点。",
-            "Guanlan adapter: 检测 openguanlan runtime 后作为 experimental extractor 使用；默认推荐仍是 host-browser。",
+            "OpenGuanlan browser-assist layer: `diagnose page`、`browser-assist plan/sessions/run`、可见页字段契约和 archive 入库边界。",
+            "Host Agent browser execution surface: 默认稳定路径，由宿主 Agent 在用户授权后读取目标页可见内容。",
+            "openguanlan-bridge optional sidecar: 只有用户明确需要独立 Chrome/Chromium 扩展桥时，才启动 daemon、配对和扩展授权。",
         ],
         "absorbed_opencli_capability_layers": [
             "browser state/snapshot -> browser-assist readiness and visible extraction",
@@ -1027,31 +1068,38 @@ def build_openguanlan_browser_bridge_setup_plan() -> dict[str, Any]:
             "click/type/fill/select/upload/drag/eval/raw network/cookies -> excluded from Guanlan research workflows",
         ],
         "user_install_boundary": [
+            "OpenGuanlan 主路径不要求安装浏览器扩展、daemon 或 opencli。",
             "不要求用户安装 opencli。",
-            "浏览器扩展仍必须由用户手动安装/启用，因为 Chrome/Chromium 扩展权限需要用户确认。",
-            "网页读取权限按当前站点授权；默认 host permissions 只用于连接本机 daemon。",
+            "Chrome/Chromium 扩展只属于 openguanlan-bridge 可选增强；如果使用，仍必须由用户手动安装/启用和配对。",
+            "网页读取权限按目标页授权；默认可见页补证由宿主 Agent 浏览器完成。",
             "不读取 Cookie、Token、localStorage、sessionStorage、浏览器数据库、profile、钥匙串或密码。",
             "只读目标页可见内容；私域目标页仍需要单独明确授权并标记 private_account_evidence。",
         ],
         "commands": [
+            "guanlan browser-assist adapters --check --json",
+            "guanlan browser-assist run \"URL\" --adapter openguanlan --json",
+            "guanlan browser-assist sessions \"URL\" --json",
+        ],
+        "optional_bridge_commands": [
+            "guanlan browser-assist run \"URL\" --adapter openguanlan-bridge --json",
             "openguanlan setup --json",
             "openguanlan daemon",
+            "openguanlan pair-code --json",
             "openguanlan doctor --json",
             "scripts/build_openguanlan_extension.sh",
-            "guanlan browser-assist adapters --check --json",
-            "guanlan browser-assist run \"URL\" --adapter host-browser --json",
-            "guanlan browser-assist run \"URL\" --adapter openguanlan --json",
         ],
         "chrome_store": {
             "package_command": "scripts/build_openguanlan_extension.sh",
             "privacy_policy": "website/openguanlan-browser-bridge-privacy.html",
             "permission_model": "localhost daemon by default; target sites via optional_host_permissions and popup grant",
+            "scope": "optional openguanlan-bridge sidecar, not the definition of OpenGuanlan",
         },
-        "next_engineering_step": "用户手动加载扩展并启动 openguanlan daemon 后，Agent 可在授权后用 openguanlan 输出 Guanlan browser-visible JSON/JSONL。",
+        "next_engineering_step": "把 Agent 文案统一改成：OpenGuanlan 默认是浏览器补证层；插件桥只是可选侧车。",
         "safety": {
             "read_only": True,
             "credential_material_access_allowed": False,
-            "extension_install_requires_user_confirmation": True,
+            "extension_install_requires_user_confirmation": False,
+            "optional_bridge_extension_install_requires_user_confirmation": True,
             "write_actions_forbidden": True,
         },
     }
@@ -1096,11 +1144,14 @@ def format_opencli_browser_bridge_setup_markdown(setup: dict[str, Any]) -> str:
 
 def format_openguanlan_browser_bridge_setup_markdown(setup: dict[str, Any]) -> str:
     lines = [
-        "# OpenGuanlan 浏览器桥",
+        "# OpenGuanlan 浏览器补证层",
         "",
         f"- 状态: {setup.get('status')}",
         f"- openguanlan: {setup.get('openguanlan_path') or '未在 PATH 中找到'}",
-        f"- 扩展目录: {setup.get('extension_path') or ''}",
+        f"- 主路径是否需要扩展: {setup.get('primary_requires_extension')}",
+        f"- 主路径是否需要 daemon: {setup.get('primary_requires_daemon')}",
+        f"- 主路径契约: `{setup.get('primary_execution_contract')}`",
+        f"- 可选桥状态: {setup.get('optional_bridge_status')}",
         f"- 默认路径: {setup.get('current_default')}",
         f"- 兼容路径: {setup.get('compatibility_fallback')}",
         f"- 原则: {setup.get('principle')}",
@@ -1121,6 +1172,10 @@ def format_openguanlan_browser_bridge_setup_markdown(setup: dict[str, Any]) -> s
     if commands:
         lines.append("- 命令:")
         lines.extend(f"  - `{item}`" for item in commands)
+    optional_commands = setup.get("optional_bridge_commands") or []
+    if optional_commands:
+        lines.append("- 可选扩展桥命令:")
+        lines.extend(f"  - `{item}`" for item in optional_commands)
     lines.append(f"- 下一步工程: {setup.get('next_engineering_step')}")
     return "\n".join(lines)
 
@@ -1135,7 +1190,7 @@ def build_browser_assist_task(
     min_visible_items: int = 0,
     task_goal: str = "",
 ) -> dict[str, Any]:
-    """Build the host-browser task description for Agent platforms.
+    """Build the OpenGuanlan visible-page task description for Agent platforms.
 
     The task is declarative: Guanlan asks the host Agent to read visible page
     content only after user permission. Guanlan itself does not automate the
@@ -1500,9 +1555,9 @@ def recommend_browser_assist_adapter(*, platform: str = "", need_extraction: boo
     """Pick the least surprising adapter for Agent-facing plans."""
 
     if need_extraction:
-        return "host-browser"
+        return "openguanlan"
     if platform == "xiaohongshu":
-        return "host-browser"
+        return "openguanlan"
     return "open-cli"
 
 
@@ -1787,9 +1842,10 @@ def _adapter_capabilities(
     can_extract = bool(spec.get("can_extract"))
     can_reuse_existing_session = bool(spec.get("can_reuse_existing_session"))
     cookie_flow_available = adapter_id == "xhs-cli"
-    can_wait_dynamic_ready = bool(can_extract and adapter_id in {"host-browser", "openguanlan", "open-cli", "xhs-cli"})
-    can_scroll_until_min_items = bool(can_extract and adapter_id in {"host-browser", "openguanlan", "open-cli", "xhs-cli"})
-    can_read_private_account_visible_pages = bool(can_extract and adapter_id in {"host-browser", "openguanlan", "open-cli"})
+    native_visible_adapters = {"host-browser", "openguanlan", "openguanlan-bridge", "open-cli", "xhs-cli"}
+    can_wait_dynamic_ready = bool(can_extract and adapter_id in native_visible_adapters)
+    can_scroll_until_min_items = bool(can_extract and adapter_id in native_visible_adapters)
+    can_read_private_account_visible_pages = bool(can_extract and adapter_id in {"host-browser", "openguanlan", "openguanlan-bridge", "open-cli"})
     executable_ok = available if executable_ready is None else executable_ready
     capability_layer = "extractor" if can_extract else "opener" if can_open else "planner"
     score = 0
@@ -1797,7 +1853,7 @@ def _adapter_capabilities(
         score += 20
     if available:
         score += 20
-    if can_open and (adapter_id == "host-browser" or executable_ok):
+    if can_open and (adapter_id in {"host-browser", "openguanlan"} or executable_ok):
         score += 20
     if can_extract:
         score += 25
@@ -1828,7 +1884,7 @@ def _adapter_capabilities(
 
 
 def _resolve_adapter_executable(adapter_id: str, executable: str = "") -> str:
-    if adapter_id == "host-browser":
+    if adapter_id in {"host-browser", "openguanlan"}:
         return ""
     if adapter_id == "open-cli":
         for candidate in ["opencli", executable, "open", "xdg-open", "start"]:
@@ -1872,12 +1928,16 @@ def _openguanlan_browser_profile(*, command_template: str = "") -> dict[str, Any
     openguanlan_path = shutil.which("openguanlan") or ""
     extension_path = Path(__file__).resolve().parent / "browser_bridge" / "extension"
     return {
+        "primary_layer_available": True,
+        "primary_layer_requires_extension": False,
+        "optional_bridge_available": bool(openguanlan_path or template),
         "native_bridge_available": bool(openguanlan_path or template),
         "openguanlan_path": openguanlan_path,
         "extension_path": str(extension_path),
         "extension_manifest_exists": (extension_path / "manifest.json").exists(),
         "template_configured": bool(template),
-        "mode": "openguanlan_native_bridge" if openguanlan_path or template else "packaged_needs_install_entrypoint",
+        "mode": "openguanlan_browser_assist_layer",
+        "optional_bridge_mode": "openguanlan_native_bridge" if openguanlan_path or template else "packaged_needs_install_entrypoint",
         "template_outputs_payload": bool(template and _open_cli_command_supports_payload(template)),
     }
 
@@ -1903,12 +1963,14 @@ def _opencli_setup_guidance(profile: dict[str, Any] | None = None) -> dict[str, 
 def _openguanlan_setup_guidance() -> dict[str, Any]:
     return {
         "guanlan_command": "guanlan browser-assist setup-openguanlan --json",
+        "primary_command": "guanlan browser-assist run \"URL\" --adapter openguanlan --json",
+        "optional_bridge_adapter": "openguanlan-bridge",
         "doctor_command": "openguanlan doctor --json",
         "daemon_command": "openguanlan daemon",
         "extension_path_command": "openguanlan extension path",
         "package_command": "scripts/build_openguanlan_extension.sh",
-        "boundary": "Guanlan-native browser bridge is preferred; OpenCLI is compatibility only.",
-        "default_adapter_remains": "host-browser",
+        "boundary": "OpenGuanlan is the Guanlan browser-assist layer; extension/daemon bridge is optional.",
+        "default_adapter": "openguanlan",
     }
 
 
