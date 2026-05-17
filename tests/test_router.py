@@ -157,6 +157,7 @@ def test_route_plan_detects_finance_layers_and_commands():
     assert "market_quote" in plan.evidence_roles
     assert plan.risk_level == "high"
     assert "社交荐股" in plan.avoid_as_primary
+    assert any(command.startswith("guanlan stock plan") for command in plan.recommended_commands)
     assert any(command.startswith("guanlan stock quote") for command in plan.recommended_commands)
     assert any(command.startswith("guanlan stock detail") for command in plan.recommended_commands)
     assert any("--preset finance" in command for command in plan.recommended_commands)

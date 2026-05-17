@@ -53,6 +53,28 @@ def test_quote_stock_parses_public_quote_payload(monkeypatch):
     assert quote["change_rate"] == "-1.17%"
     assert quote["time"] == "2026-04-30 16:14:22"
     assert "不构成投资建议" in quote["boundary"]
+    assert quote["freshness"]["quote_time"] == "2026-04-30 16:14:22"
+    assert any("guanlan stock detail" in command for command in quote["next_commands"])
+
+
+def test_quote_stock_falls_back_to_sina_quote(monkeypatch):
+    class FakeResponse:
+        content = (
+            'var hq_str_sh600519="贵州茅台,1400.00,1401.17,1384.79,1401.17,1380.00,'
+            '1384.79,1384.80,5275300,731000000,,,,,,,,,,,,,,,,,,,,,2026-04-30,16:14:22,00";'
+        ).encode("gbk")
+
+    monkeypatch.setattr(stockdata, "resolve_symbol", lambda _target: "sh600519")
+    monkeypatch.setattr(stockdata, "_fetch_quote_json", lambda _symbol: (_ for _ in ()).throw(stockdata.StockDataError("腾讯接口不可用")))
+    monkeypatch.setattr(stockdata, "_http_get", lambda *_args, **_kwargs: FakeResponse())
+
+    quote = stockdata.quote_stock("贵州茅台")
+
+    assert quote["source"] == stockdata.SINA_SOURCE_NAME
+    assert quote["source_chain"] == [f"{stockdata.SOURCE_NAME}:failed", f"{stockdata.SINA_SOURCE_NAME}:ok"]
+    assert quote["price"] == "1384.79"
+    assert quote["change_rate"] == "-1.17%"
+    assert "tencent_quote" in quote["fallback_errors"]
 
 
 def test_search_stocks_uses_cleaned_query(monkeypatch):
@@ -69,6 +91,26 @@ def test_search_stocks_uses_cleaned_query(monkeypatch):
     assert calls[0]["query"] == "300750"
     assert data["items"][0]["code"] == "sz300750"
     assert data["items"][0]["name"] == "宁德时代"
+
+
+def test_search_stocks_uses_local_candidate_when_backend_fails(monkeypatch):
+    monkeypatch.setattr(stockdata, "_http_get_json", lambda *_args, **_kwargs: (_ for _ in ()).throw(stockdata.StockDataError("搜索接口不可用")))
+
+    data = stockdata.search_stocks("贵州茅台 股价", limit=5)
+
+    assert data["diagnostics"]["fallback"] is True
+    assert data["items"][0]["code"] == "sh600519"
+    assert data["items"][0]["match_level"] == "local_exact"
+
+
+def test_stock_guide_exposes_agent_first_commands():
+    guide = stockdata.build_stock_guide("宁德时代 股价 财报 公告 最近风险")
+    rendered = stockdata.format_stock_guide_markdown(guide)
+
+    assert guide["recommended_first_tool"] == "guanlan_stock / guanlan stock"
+    assert any(command.startswith("guanlan stock quote") for command in guide["recommended_commands"])
+    assert "公告披露" in rendered
+    assert "不输出买入、卖出或持有建议" in rendered
 
 
 def test_rank_stocks_formats_rows(monkeypatch):
@@ -140,6 +182,15 @@ def test_stock_cli_quote_outputs_markdown(capsys):
     assert "观澜行情" in captured.out
     assert "贵州茅台" in captured.out
     assert "不构成投资建议" in captured.out
+
+
+def test_stock_cli_plan_outputs_agent_guide(capsys):
+    with patch("sys.argv", ["guanlan", "stock", "plan", "宁德时代 股价"]):
+        main()
+
+    captured = capsys.readouterr()
+    assert "观澜股票能力指南" in captured.out
+    assert "guanlan stock quote" in captured.out
 
 
 def test_stock_cli_error_is_user_facing(capsys):

@@ -1111,6 +1111,8 @@ def test_search_quality_summary_suggests_missing_roles():
     assert any("guanlan route" in item for item in summary["guanlan_next_steps"])
     assert any("不要只看开放网页" in item for item in summary["guanlan_next_steps"])
     assert any("不要向 AI 使用者概括为" in item for item in summary["agent_reporting_contract"])
+    assert any("抽风" in item and "崩了" in item for item in summary["agent_reporting_contract"])
+    assert any("定点补证路线" in item for item in summary["agent_reporting_contract"])
     assert any("未完全通过质量画像" in item for item in summary["agent_reporting_contract"])
     assert any("scope gov" in item for item in summary["suggestions"])
     assert summary["agent_decision"]["code"] == "needs_scope_search"
@@ -3620,6 +3622,8 @@ def test_format_search_context_surfaces_quality_guidance_before_web_fallback():
                         ],
                         "agent_reporting_contract": [
                             "不要向 AI 使用者概括为“Guanlan 搜索失败”。",
+                            "不要在面向用户的回答里顺嘴写“Guanlan 崩了/抽风了/挂了/炸了/翻车/拉胯/坏了”。",
+                            "如果只是目标页公开读取超时或源站响应慢，应表述为“已按 Guanlan 定点补证路线读取目标页并保留来源边界”。",
                         ],
                     }
                 },
@@ -3641,6 +3645,8 @@ def test_format_search_context_surfaces_quality_guidance_before_web_fallback():
     assert "观澜补证" in context
     assert "汇报约束" in context
     assert "Guanlan 搜索失败" in context
+    assert "抽风" in context
+    assert "定点补证路线" in context
     assert "web_search/web_fetch" in context
 
 
@@ -3664,6 +3670,8 @@ def test_format_search_trace_includes_reporting_contract_for_quality_warn(monkey
 
     assert "report_as:" in trace
     assert "不要向 AI 使用者概括为" in trace
+    assert "抽风" in trace
+    assert "定点补证路线" in trace
     assert "未完全通过质量画像" in trace
     assert "quality_status:" in trace
     assert "user_facing_status:" in trace

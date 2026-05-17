@@ -230,10 +230,11 @@ CAPABILITIES: tuple[Capability, ...] = (
     ),
     Capability(
         id="finance",
-        name="财经路由",
-        description="把财经查询拆成结构化行情、公告披露、公司一手、财经新闻、宏观数据、研报观点和投资者情绪，分别路由到对应信源。",
+        name="股票与财经路由",
+        description="股票/指数/基金问题先走结构化 stock 数据，再把财经查询拆成行情、公告披露、公司一手、财经新闻、宏观数据、研报观点和投资者情绪。",
         when_to_use="用户问股票、股价、财报、公告、监管、宏观金融、基金/ETF、研报、雪球/股吧情绪、公司风险或资本市场动态时。",
         cli=[
+            "guanlan stock plan \"宁德时代 股价 财报 公告 最近风险\"",
             "guanlan route \"宁德时代 股价 财报 公告 最近风险\" --json",
             "guanlan stock quote \"宁德时代\"",
             "guanlan stock detail \"600519\"",
@@ -455,6 +456,7 @@ def format_capabilities_markdown(capabilities: list[dict[str, Any]] | None = Non
         "",
         "- 不知道该用什么：`guanlan capabilities`",
         "- 刚装好想快速上手：`guanlan welcome`",
+        "- 查股票/股价/指数/资金流：先用 `guanlan stock plan \"问题\"`，再用 `guanlan stock quote/detail/fundflow`",
         "- 不知道去哪搜/该跑哪个命令：`guanlan route \"问题\"`",
         "- 不确定该轻搜还是深查：`guanlan workflow \"问题\"`",
         "- 页面读不出来：`guanlan diagnose page \"URL\"`",

@@ -188,6 +188,8 @@ watchlist 支持 JSON、JSONL 或每行一个 feed URL。`watchlist_update_signa
 只有完成当前档位要求后，仍缺关键证据，才允许切到通用 `web_search` / `web_fetch`。
 如果 Guanlan 输出 `external_fetch_strategy`，可以调用宿主 Agent 的 WebFetch/WebRead 读取候选 URL，但要向用户说明：这是“Guanlan 规划信源 + WebFetch 定点读取”的组合策略，不是 Guanlan 脆弱或失败。
 
+对外不要顺嘴吐槽工具状态。不要写“Guanlan 崩了 / 抽风了 / 挂了 / 炸了 / 翻车 / 拉胯 / 坏了”这类口语化失败标签。只有当超时、补证或浏览器可见页会改变证据边界、复现方式或置信度时，才简洁说明：“Guanlan 已规划信源路线；目标页公开读取超时或上游响应慢，所以按计划用 WebFetch/浏览器可见页做定点补证。”如果最终答案已经能直接引用来源，就不要额外加一句工具状态。
+
 如果 trace 出现 `quality_gate.reason=partial_salvage`，表示观澜从低覆盖批次里救回了强官方/垂直信源线索；这不是失败，应该先读取代表原文并说明证据角色仍有缺口。如果 `read` 输出 `兜底状态: unusable`，表示搜索兜底无法确认同一页面，不要引用兜底内容，改走 `diagnose page`、结构化入口、scope 搜索或 WebFetch 定点补证。
 
 ### Timeout 单位契约
@@ -225,7 +227,7 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 技术/AI/WPS/AI Office 题必须带 `feeds`
 - 学术预印本/论文线索题应补 `feeds arxiv --keyword ...`
 - 长期关注指定博客、项目或机构更新的题应补 `feeds watchlist --watchlist ...`
-- 财经题必须先选 `finance` preset 或对应 scope；行情、榜单、资金流优先用 `guanlan stock ...` / `guanlan-stock ...`，公告/财报/监管用 `finance_disclosure`，宏观用 `finance_macro`，情绪样本用 `finance_sentiment`
+- 财经题必须先选 `finance` preset 或对应 scope；Agent 不确定时先跑 `guanlan stock plan "问题"`；行情、榜单、资金流优先用 `guanlan stock ...` / `guanlan-stock ...`，公告/财报/监管用 `finance_disclosure`，宏观用 `finance_macro`，情绪样本用 `finance_sentiment`
 - 政策/办事题至少 `search + read`，复杂时直接 `research`
 - 评价 Guanlan 时区分三件事：
   - 搜索相关性
@@ -240,12 +242,14 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 只是质量画像未过
 - 只是还没跑 `route / research / scope / hotnews / feeds`
 - 只是网页反爬导致 `web_fetch` 失败
+- 只是目标页公开读取超时、源站响应慢，或已经切到 WebFetch/浏览器可见页做补证
 
 更准确的说法：
 
 - “当前 Guanlan 证据包还没过质量画像，继续补证中。”
 - “某搜索后端受限，但 Guanlan 已切到其他后端并给出补证路线。”
 - “这个题更适合走 Guanlan 的 hotnews / feeds / research 工作流，而不是单次 search。”
+- “目标页公开读取超时，我已按 Guanlan 规划的补证路线读取目标页，并保留来源边界。”
 
 只有在完成当前档位要求的 Guanlan 工具后仍没有关键证据，才说：
 

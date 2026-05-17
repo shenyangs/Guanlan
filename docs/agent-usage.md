@@ -67,6 +67,8 @@
 只有完成当前档位要求的 Guanlan 工具后，仍缺关键证据，才切到通用 `web_search` / `web_fetch`。
 如果 trace 或 context 中出现 `external_fetch_strategy`，可以临时调用宿主平台的 WebFetch/WebRead 读取 Guanlan 推荐 URL。外显时要说清楚：这是 Guanlan 主动规划的“定点补证”策略，不是 Guanlan 搜索失败。
 
+面向用户不要把网络或补证过程口语化成“Guanlan 崩了 / 抽风了 / 挂了 / 炸了 / 翻车 / 拉胯 / 坏了”。只有补证动作会影响证据边界或复现方式时，才说明“目标页公开读取超时或上游响应慢，已按 Guanlan 定点补证路线读取目标页”；否则直接给结论和来源。
+
 如果 trace 中出现 `quality_gate.reason=partial_salvage`，说明 Guanlan 已从低覆盖批次里保留强官方/垂直信源线索；它可作为继续读取和核验的入口，不应汇报成失败。如果 `read` 输出 `兜底状态: unusable`，说明搜索兜底无法确认同一页面，不能引用兜底内容，应改用 `diagnose page`、结构化入口、scope 搜索或 WebFetch 定点补证。
 
 对于体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE/安全公告、科学机构声明、文娱榜单/票房、考试官方信息、WPS/AI Office 官方入口这类高确定性垂直题，先看 `guanlan route` 给出的 direct `guanlan read` 命令。这些是权威入口候选，应该先读取核验，再用 `research/search` 扩大信源面。
@@ -307,9 +309,10 @@ guanlan search "某电影 票房 豆瓣评分" --profile china --scope entertain
 
 文娱、影视、综艺、明星、游戏、票房和评分问题使用文娱 scope。它是软路由，不会只看白名单；重点是让 Agent 分清平台热度、用户评分、产业报道、宣发通稿和粉圈讨论。
 
-财经、股票、行情、资金流向和榜单问题先走结构化数据层，避免把雪球、东方财富等动态行情页当成普通文章硬读。`guanlan stock` 是主 CLI 入口，`guanlan-stock` 是同能力的独立入口；它只整理公开行情证据，不输出买卖建议。
+财经、股票、行情、资金流向和榜单问题先走结构化数据层，避免把雪球、东方财富等动态行情页当成普通文章硬读。`guanlan stock plan "问题"` 是给 Agent 的低成本提醒入口；`guanlan stock` 是主 CLI 入口，`guanlan-stock` 是同能力的独立入口；它只整理公开行情证据，不输出买卖建议。
 
 ```bash
+guanlan stock plan "宁德时代 股价 财报 公告 最近风险"
 guanlan stock quote "贵州茅台"
 guanlan stock detail "600519"
 guanlan stock fundflow "宁德时代"

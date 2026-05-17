@@ -47,6 +47,24 @@ def test_tech_query_reminds_rss_without_forcing_basic_search_heavy():
     assert "feeds" in decision.command_path or any("RSS" in item for item in decision.fallback_policy)
 
 
+def test_stock_quote_lookup_uses_stock_entrypoint_without_overthinking():
+    decision = decide_workflow("贵州茅台 股价", command="search", profile="china")
+
+    assert decision.tier == DIRECT
+    assert decision.recommended_entrypoint == "stock"
+    assert decision.do_not_overthink is True
+    assert "stock quote" in " ".join(decision.command_path)
+
+
+def test_stock_risk_research_starts_with_stock_layer():
+    decision = decide_workflow("宁德时代 股价 财报 公告 最近风险", command="search", profile="china")
+
+    assert decision.tier == GUIDED
+    assert decision.recommended_entrypoint == "stock"
+    assert decision.recommended_read_top >= 5
+    assert decision.command_path[:2] == ["stock plan", "stock detail/quote"]
+
+
 def test_workflow_markdown_is_agent_readable():
     decision = decide_workflow("某公司 档案 风险 舆情", command="search", profile="china")
     text = format_workflow_decision_markdown(decision)

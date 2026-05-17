@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import shlex
 from typing import Any
 
 import requests
@@ -21,6 +22,7 @@ COMMON_HEADERS = {
 }
 
 QUOTE_ENDPOINT = "https://sqt.gtimg.cn"
+SINA_QUOTE_ENDPOINT = "https://hq.sinajs.cn/list="
 SEARCH_ENDPOINT = "https://proxy.finance.qq.com/cgi/cgi-bin/smartbox/search"
 RANK_ENDPOINT = "https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList"
 MARKET_ENDPOINT = "https://proxy.finance.qq.com/cgi/cgi-bin/market/hs/index"
@@ -29,6 +31,7 @@ PLATE_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/stockinfo/
 NEWS_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/news/info/search"
 
 SOURCE_NAME = "腾讯财经公开接口"
+SINA_SOURCE_NAME = "新浪财经公开行情接口"
 EASTMONEY_SOURCE_NAME = "东方财富公开接口"
 
 _A_CODE_PATTERN = re.compile(r"^(?:[56]\d{5}|[031]\d{5}|4\d{5}|8\d{5}|92\d{4})$")
@@ -194,24 +197,47 @@ def resolve_symbol(target: str) -> str:
 
 def quote_stock(target: str) -> dict[str, Any]:
     symbol = resolve_symbol(target)
-    payload = _fetch_quote_json(symbol)
-    arr = payload.get(symbol)
-    if not isinstance(arr, list) or len(arr) < 35:
-        raise StockDataError(f"暂无行情数据：{target}")
-    quote = _quote_arr_to_obj(arr, symbol=symbol)
-    quote["source"] = SOURCE_NAME
+    fallback_errors: dict[str, str] = {}
+    try:
+        payload = _fetch_quote_json(symbol)
+        arr = payload.get(symbol)
+        if not isinstance(arr, list) or len(arr) < 35:
+            raise StockDataError(f"暂无行情数据：{target}")
+        quote = _quote_arr_to_obj(arr, symbol=symbol)
+        quote["source"] = SOURCE_NAME
+        quote["source_chain"] = [f"{SOURCE_NAME}:ok"]
+    except StockDataError as exc:
+        fallback_errors["tencent_quote"] = str(exc)
+        quote = _fetch_sina_quote(symbol)
+        quote["source_chain"] = [f"{SOURCE_NAME}:failed", f"{SINA_SOURCE_NAME}:ok"]
+        quote["fallback_errors"] = fallback_errors
     quote["source_role"] = "market_quote"
     quote["retrieved_at"] = _now()
+    quote["freshness"] = quote_freshness(quote.get("time", ""))
+    quote["next_commands"] = stock_next_commands(target, symbol=symbol, query_context=target)
     quote["boundary"] = "公开行情接口可能延迟；仅作信息核验，不构成投资建议。"
     return quote
 
 
 def search_stocks(keyword: str, *, limit: int = 20) -> dict[str, Any]:
     clean = infer_stock_target(keyword) or keyword
-    payload = _http_get_json(
-        SEARCH_ENDPOINT,
-        params={"stockFlag": "1", "fundFlag": "1", "app": "official_website", "query": clean},
-    )
+    diagnostics: dict[str, Any] = {"backend": SOURCE_NAME, "fallback": False}
+    try:
+        payload = _http_get_json(
+            SEARCH_ENDPOINT,
+            params={"stockFlag": "1", "fundFlag": "1", "app": "official_website", "query": clean},
+        )
+    except StockDataError as exc:
+        items = _local_stock_candidates(keyword, clean)[: max(limit, 0)]
+        return {
+            "query": keyword,
+            "normalized_query": clean,
+            "items": items,
+            "source": "观澜本地股票识别",
+            "retrieved_at": _now(),
+            "diagnostics": {"backend": SOURCE_NAME, "fallback": True, "upstream_error": str(exc)},
+            "boundary": "上游股票搜索不可用时，观澜只使用本地代码/别名识别作定位线索；后续仍需行情、披露和新闻分层核验。",
+        }
     stocks = payload.get("stock") if isinstance(payload, dict) else []
     items: list[dict[str, Any]] = []
     if isinstance(stocks, list):
@@ -233,6 +259,7 @@ def search_stocks(keyword: str, *, limit: int = 20) -> dict[str, Any]:
         "items": items,
         "source": SOURCE_NAME,
         "retrieved_at": _now(),
+        "diagnostics": diagnostics,
         "boundary": "股票名称搜索只用于定位代码；后续行情、披露和新闻仍需分层核验。",
     }
 
@@ -383,6 +410,8 @@ def market_index() -> dict[str, Any]:
         "overview": overview,
         "source": SOURCE_NAME,
         "retrieved_at": _now(),
+        "freshness": quote_freshness((quotes[0] or {}).get("time", "") if quotes else ""),
+        "next_commands": stock_next_commands("大盘 指数 行情", query_context="大盘 指数 行情"),
         "boundary": "市场概览来自公开行情接口，可能有交易日和延迟差异；仅作研究线索。",
     }
 
@@ -408,8 +437,109 @@ def stock_detail(target: str, *, news_limit: int = 12) -> dict[str, Any]:
         "errors": errors,
         "source": SOURCE_NAME,
         "retrieved_at": _now(),
+        "evidence_layers": stock_evidence_layers(),
+        "next_commands": stock_next_commands(target, symbol=symbol, query_context=target),
         "boundary": "结构化行情适合补足动态财经页/WAF导致的缺口；财报公告和监管事项仍应回到披露源核验。",
     }
+
+
+def build_stock_guide(query: str = "") -> dict[str, Any]:
+    """Build a no-network stock workflow guide for agents."""
+    clean_query = " ".join((query or "").split()).strip()
+    inferred = infer_stock_target(clean_query) if clean_query else ""
+    normalized = normalize_symbol(inferred) if inferred else ""
+    target = inferred or clean_query or "股票/指数名称或代码"
+    commands = stock_next_commands(target, symbol=normalized if _looks_like_quote_symbol(normalized) else "", query_context=clean_query)
+    return {
+        "query": clean_query,
+        "inferred_target": inferred,
+        "normalized_symbol": normalized if _looks_like_quote_symbol(normalized) else "",
+        "agent_trigger_terms": [
+            "股票",
+            "股价",
+            "行情",
+            "指数",
+            "大盘",
+            "资金流向",
+            "板块",
+            "财报",
+            "公告",
+            "雪球",
+            "股吧",
+            "研报",
+            "风险",
+        ],
+        "recommended_first_tool": "guanlan_stock / guanlan stock",
+        "recommended_commands": commands,
+        "evidence_layers": stock_evidence_layers(),
+        "workflow": [
+            {"step": 1, "layer": "结构化行情", "command": commands[0], "why": "先拿可解析的价格、涨跌幅、行情时间和数据源，避免动态财经页/WAF。"},
+            {"step": 2, "layer": "个股结构", "command": commands[1] if len(commands) > 1 else "", "why": "需要公司/个股风险时，把行情、资金流、板块和快讯放进一个证据包。"},
+            {"step": 3, "layer": "公告披露", "command": commands[3] if len(commands) > 3 else "", "why": "财报、减持、质押、监管函、问询函必须回到巨潮/交易所/SEC 等披露源。"},
+            {"step": 4, "layer": "扩展研究", "command": commands[2] if len(commands) > 2 else "", "why": "需要判断原因、风险和背景时，再用 finance preset 组织新闻、宏观、研报和情绪样本。"},
+        ],
+        "boundaries": [
+            "股票能力只整理公开行情和证据线索，不输出买入、卖出或持有建议。",
+            "行情必须标注 quote time / retrieved_at；周末、休市和接口延迟时不要误写成实时。",
+            "公告披露、财报、监管和处罚优先于媒体转述；雪球/股吧/微博只作情绪样本。",
+        ],
+        "source_boundary": "公开接口 + 官方/交易所/披露源分层；不读取用户账户、交易权限、持仓或私密数据。",
+    }
+
+
+def stock_evidence_layers() -> list[dict[str, str]]:
+    """Return the stable evidence ladder for stock/finance tasks."""
+    return [
+        {"role": "market_quote", "name": "行情/指数/板块", "primary_command": "guanlan stock quote / index / rank", "boundary": "看时间戳和延迟，不作交易建议。"},
+        {"role": "company_filing", "name": "公告/财报/监管", "primary_command": "guanlan search --scope finance_disclosure", "boundary": "以巨潮、交易所、SEC/HKEX 等披露源为准。"},
+        {"role": "market_news", "name": "财经新闻/事件", "primary_command": "guanlan research --preset finance", "boundary": "新闻用于时间线和背景，需要回链原公告。"},
+        {"role": "macro_data", "name": "宏观/央行/统计局", "primary_command": "guanlan search --scope finance_macro", "boundary": "核对发布机构、统计口径和日期。"},
+        {"role": "analyst_opinion", "name": "研报/机构观点", "primary_command": "guanlan search --scope finance_research", "boundary": "观点层必须和公告、财报、行业数据交叉验证。"},
+        {"role": "sentiment_sample", "name": "雪球/股吧/微博情绪", "primary_command": "guanlan search --scope finance_sentiment", "boundary": "只代表公开样本，不代表事实或总体比例。"},
+    ]
+
+
+def stock_next_commands(target: str, *, symbol: str = "", query_context: str = "") -> list[str]:
+    """Return stock-first next commands that downstream agents can execute."""
+    raw = " ".join((target or symbol or "股票/指数名称或代码").split()).strip()
+    research_raw = " ".join((query_context or raw).split()).strip()
+    q = shlex.quote(raw)
+    rq = shlex.quote(research_raw)
+    commands = [
+        f"guanlan stock quote {q}",
+        f"guanlan stock detail {q}",
+        f"guanlan research {rq} --preset finance --limit 80 --read-top 5 --advisor",
+        f"guanlan search {rq} --scope finance_disclosure --limit 80 --trace",
+        f"guanlan search {rq} --scope finance_sentiment --limit 80 --trace",
+    ]
+    if symbol.startswith(("sh", "sz", "bj")) or any(term in raw for term in ("大盘", "指数", "行情", "板块", "排名")):
+        commands.extend(["guanlan-stock index", "guanlan-stock rank --sort turnover --limit 20"])
+    return commands
+
+
+def quote_freshness(quote_time: str, *, now: dt.datetime | None = None) -> dict[str, Any]:
+    """Diagnose quote freshness without pretending to know exchange truth."""
+    if not quote_time:
+        return {"status": "unknown", "message": "行情时间缺失，不能判断是否最新。"}
+    current = now or dt.datetime.now()
+    try:
+        quote_date = dt.datetime.strptime(str(quote_time)[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return {"status": "unknown", "quote_time": quote_time, "message": "行情时间格式无法解析，需手动核验。"}
+    age_days = (current.date() - quote_date).days
+    if age_days <= 0:
+        status = "same_day"
+        message = "行情日期与当前日期一致；仍需注意交易时段和接口延迟。"
+    elif current.weekday() >= 5 and age_days <= 3:
+        status = "market_closed_or_weekend"
+        message = "当前可能是周末/休市窗口，上一交易日行情属于正常情况；回答时仍需标注行情时间。"
+    elif age_days <= 3:
+        status = "possibly_delayed"
+        message = "行情日期早于当前日期，可能是休市、接口延迟或非交易时段；不要写成实时。"
+    else:
+        status = "stale"
+        message = "行情日期明显偏旧，只能作历史线索，需换源核验。"
+    return {"status": status, "quote_time": quote_time, "current_date": current.strftime("%Y-%m-%d"), "age_days": age_days, "message": message}
 
 
 def format_search_markdown(data: dict[str, Any]) -> str:
@@ -447,6 +577,8 @@ def format_quote_markdown(data: dict[str, Any]) -> str:
         f"- 量比: {data.get('volume_ratio', '')}",
         f"- 换手率: {data.get('turnover_rate', '')}",
     ]
+    _append_freshness(lines, data)
+    _append_agent_next_steps(lines, data)
     lines.extend(_footer(data))
     return "\n".join(lines)
 
@@ -537,6 +669,8 @@ def format_market_index_markdown(data: dict[str, Any]) -> str:
             lines.append(f"- 成交额: {overview.get('amount')}")
         if overview.get("news_title"):
             lines.append(f"- 市场快讯: {overview.get('news_title')}")
+    _append_freshness(lines, data)
+    _append_agent_next_steps(lines, data)
     lines.extend(_footer(data))
     return "\n".join(lines)
 
@@ -556,7 +690,31 @@ def format_detail_markdown(data: dict[str, Any]) -> str:
         lines.extend(["", "## 未取到的结构化部分"])
         for key, value in errors.items():
             lines.append(f"- {key}: {value}")
+    _append_agent_next_steps(lines, data)
     lines.extend(_footer(data))
+    return "\n".join(lines)
+
+
+def format_stock_guide_markdown(data: dict[str, Any]) -> str:
+    lines = [f"# 观澜股票能力指南 / {data.get('query') or '通用'}", ""]
+    if data.get("inferred_target") or data.get("normalized_symbol"):
+        lines.extend(
+            [
+                f"- 识别目标: {data.get('inferred_target') or '未识别'}",
+                f"- 规范代码: {data.get('normalized_symbol') or '未识别'}",
+            ]
+        )
+    lines.extend(["", "## Agent 触发词"])
+    lines.append(", ".join(data.get("agent_trigger_terms") or []))
+    lines.extend(["", "## 先跑这些命令"])
+    for command in data.get("recommended_commands") or []:
+        lines.append(f"- `{command}`")
+    lines.extend(["", "## 证据分层"])
+    for layer in data.get("evidence_layers") or []:
+        lines.append(f"- {layer.get('name')}: `{layer.get('primary_command')}`；{layer.get('boundary')}")
+    lines.extend(["", "## 边界"])
+    for item in data.get("boundaries") or []:
+        lines.append(f"- {item}")
     return "\n".join(lines)
 
 
@@ -566,6 +724,51 @@ def _fetch_quote_json(query_code: str) -> dict[str, Any]:
         return json.loads(response.content.decode("gbk", errors="ignore"))
     except json.JSONDecodeError as exc:
         raise StockDataError("行情接口返回解析失败") from exc
+
+
+def _fetch_sina_quote(symbol: str) -> dict[str, Any]:
+    if not re.fullmatch(r"(?:sh|sz)\d{6}", symbol):
+        raise StockDataError(f"{SINA_SOURCE_NAME} 暂不作为该市场的备用源：{symbol}")
+    response = _http_get(
+        f"{SINA_QUOTE_ENDPOINT}{symbol}",
+        params={},
+        headers={
+            **COMMON_HEADERS,
+            "Referer": "https://finance.sina.com.cn/",
+        },
+    )
+    text = response.content.decode("gbk", errors="ignore")
+    match = re.search(r'"(.*)"', text)
+    if not match or not match.group(1).strip():
+        raise StockDataError(f"{SINA_SOURCE_NAME} 未返回可解析行情：{symbol}")
+    fields = match.group(1).split(",")
+    if len(fields) < 32:
+        raise StockDataError(f"{SINA_SOURCE_NAME} 行情字段不足：{symbol}")
+    price = fields[3]
+    previous_close = fields[2]
+    quote_time = f"{fields[30]} {fields[31]}" if fields[30] and fields[31] else ""
+    return {
+        "symbol": symbol,
+        "market": symbol[:2],
+        "code": symbol[2:],
+        "name": fields[0],
+        "price": price,
+        "change": _number_diff_text(price, previous_close),
+        "change_rate": _number_rate_text(price, previous_close),
+        "previous_close": previous_close,
+        "open": fields[1],
+        "high": fields[4],
+        "low": fields[5],
+        "volume": _volume(fields[8]),
+        "market_value": "",
+        "circulating_value": "",
+        "turnover_rate": "",
+        "pe": "",
+        "pb": "",
+        "volume_ratio": "",
+        "time": quote_time,
+        "source": SINA_SOURCE_NAME,
+    }
 
 
 def _fetch_market_overview() -> dict[str, Any]:
@@ -635,9 +838,9 @@ def _http_get_json(url: str, *, params: dict[str, Any]) -> dict[str, Any]:
         raise StockDataError("接口返回解析失败") from exc
 
 
-def _http_get(url: str, *, params: dict[str, Any]) -> requests.Response:
+def _http_get(url: str, *, params: dict[str, Any], headers: dict[str, str] | None = None) -> requests.Response:
     try:
-        response = requests.get(url, params=params, headers=COMMON_HEADERS, timeout=10)
+        response = requests.get(url, params=params, headers=headers or COMMON_HEADERS, timeout=10)
         response.raise_for_status()
         return response
     except requests.RequestException as exc:
@@ -646,6 +849,39 @@ def _http_get(url: str, *, params: dict[str, Any]) -> requests.Response:
 
 def _looks_like_quote_symbol(value: str) -> bool:
     return bool(re.fullmatch(r"(?:sh|sz|bj)\d{6}|hk\d{5}|us[A-Z]{1,5}", value))
+
+
+def _local_stock_candidates(keyword: str, clean: str) -> list[dict[str, Any]]:
+    symbol = normalize_symbol(clean or keyword)
+    if not _looks_like_quote_symbol(symbol):
+        return []
+    return [
+        {
+            "code": symbol,
+            "name": _symbol_display_name(symbol, keyword),
+            "type": _symbol_type(symbol),
+            "match_field": "local_alias_or_code",
+            "match_level": "local_exact",
+        }
+    ]
+
+
+def _symbol_display_name(symbol: str, fallback: str = "") -> str:
+    normalized = normalize_symbol(symbol)
+    for name, alias in _SYMBOL_ALIASES.items():
+        if normalize_symbol(alias) == normalized and not re.fullmatch(r"(?i)[a-z]{2,8}", name):
+            return name
+    return fallback or normalized
+
+
+def _symbol_type(symbol: str) -> str:
+    if symbol.startswith(("sh", "sz", "bj")):
+        return "LOCAL-A"
+    if symbol.startswith("hk"):
+        return "LOCAL-HK"
+    if symbol.startswith("us"):
+        return "LOCAL-US"
+    return "LOCAL"
 
 
 def _plate_items(raw: Any) -> list[dict[str, str]]:
@@ -691,6 +927,26 @@ def _footer(data: dict[str, Any]) -> list[str]:
     ]
 
 
+def _append_freshness(lines: list[str], data: dict[str, Any]) -> None:
+    freshness = data.get("freshness") or {}
+    if isinstance(freshness, dict) and freshness:
+        lines.extend(["", "## 时效诊断"])
+        if freshness.get("quote_time"):
+            lines.append(f"- 行情时间: {freshness.get('quote_time')}")
+        if freshness.get("status"):
+            lines.append(f"- 状态: {freshness.get('status')}")
+        if freshness.get("message"):
+            lines.append(f"- 提醒: {freshness.get('message')}")
+
+
+def _append_agent_next_steps(lines: list[str], data: dict[str, Any]) -> None:
+    commands = data.get("next_commands") or []
+    if commands:
+        lines.extend(["", "## Agent 下一步"])
+        for command in commands[:5]:
+            lines.append(f"- `{command}`")
+
+
 def _without_footer(text: str) -> str:
     marker = "\n\n## 边界\n"
     if marker in text:
@@ -717,6 +973,24 @@ def _zdf_percent(value: Any) -> str:
     if text.endswith("%"):
         return text if text.startswith("-") or text.startswith("+") else f"+{text}"
     return f"{text}%" if text.startswith("-") else f"+{text}%"
+
+
+def _number_diff_text(value: Any, base: Any) -> str:
+    number = _to_float(value)
+    base_number = _to_float(base)
+    if number is None or base_number is None:
+        return ""
+    diff = number - base_number
+    return f"{diff:+.2f}"
+
+
+def _number_rate_text(value: Any, base: Any) -> str:
+    number = _to_float(value)
+    base_number = _to_float(base)
+    if number is None or base_number in {None, 0}:
+        return ""
+    rate = (number - base_number) / base_number * 100
+    return f"{rate:+.2f}%"
 
 
 def _percent(value: Any) -> str:

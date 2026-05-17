@@ -54,7 +54,8 @@ guanlan search "人工智能 政策 最新" --profile china --limit 80
 2. **信源路由**：政策看官方和党央媒，口碑看社区样本，技术看开发者与 RSS，产业看垂类媒体。
 3. **网页阅读**：把网页转成 Markdown，并提供正文质量、噪声、fallback 和 trace。
 4. **热榜观察**：用 `hotnews` 和 `feeds` 帮 Agent 观察“今天中文互联网在涌动什么”。
-5. **证据包输出**：`research`、`compare`、`timeline`、`dossier`、`recipe`、`archive`、`--format context` 面向 Agent 继续推理。
+5. **股票财经结构化入口**：`guanlan stock` / `guanlan_stock` 先拿行情、资金流、榜单和时效边界，再回到公告、宏观、研报和情绪样本分层核验。
+6. **证据包输出**：`research`、`compare`、`timeline`、`dossier`、`recipe`、`archive`、`--format context` 面向 Agent 继续推理。
 
 ## 典型命令
 
@@ -67,6 +68,10 @@ guanlan search "AI Agent 发展趋势 2025" --profile china --scope tech_dev --l
 
 # 为 WPS/AI Office 赛道找选题线索，品牌、竞品、技术、信创、安全和热点一起看
 guanlan research "WPS AI PPT Agent 办公选题 最近热点" --preset wps_office --limit 80 --read-top 5 --advisor
+
+# 股票/指数/资金流先走结构化入口，不要让 Agent 硬读动态财经页
+guanlan stock plan "宁德时代 股价 财报 公告 最近风险"
+guanlan stock detail "宁德时代"
 
 # 2. 读取网页正文，检查是否干净
 guanlan read "https://example.com/article" --quality-report --trace
@@ -118,7 +123,7 @@ guanlan doctor --install-check
 guanlan status
 ```
 
-看到 `观澜 / Guanlan v0.5.38`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.39`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
 
 ## 给 Agent 复制的安装指令
 

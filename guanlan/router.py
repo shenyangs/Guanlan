@@ -1834,7 +1834,7 @@ def _recommended_commands(
         commands.append(f"guanlan research {quoted} --preset industry{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif finance_intents & set(intents):
         stock_commands = _structured_stock_commands(query, intents)
-        commands.extend(stock_commands[:2])
+        commands.extend(stock_commands[:3])
         commands.extend(direct_reads[: 1 if stock_commands else 3])
         commands.append(f"guanlan research {quoted} --preset finance{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
         if "finance_quote" in intents:
@@ -1844,6 +1844,7 @@ def _recommended_commands(
         if "finance_macro" in intents:
             commands.append(f"guanlan search {quoted}{profile_part} --scope finance_macro --limit {search_limit} --trace")
         if "finance_sentiment" in intents:
+            commands.append("guanlan hotnews hotboard:catalog:finance --limit 30")
             commands.append(f"guanlan search {quoted}{profile_part} --scope finance_sentiment --limit {search_limit} --trace")
         if "finance_research" in intents:
             commands.append(f"guanlan search {quoted}{profile_part} --scope finance_research --limit {search_limit} --trace")
@@ -1981,7 +1982,7 @@ def _structured_stock_commands(query: str, intents: list[str]) -> list[str]:
     if not (looks_symbol or cleaned_target or "finance_quote" in intents):
         return []
     quoted_target = _shell_quote(target)
-    commands = [f"guanlan stock quote {quoted_target}"]
+    commands = [f"guanlan stock plan {quoted_target}", f"guanlan stock quote {quoted_target}"]
     if "finance_quote" in intents or "finance" in intents:
         commands.append(f"guanlan stock detail {quoted_target}")
     if "finance_sentiment" in intents or re.search(r"资金流向|主力|净流入|fund\s*flow", query, flags=re.I):

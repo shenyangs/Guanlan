@@ -38,6 +38,17 @@ _HIGH_IMPACT_INTENTS = {
     "finance_research",
 }
 
+_FINANCE_INTENTS = {
+    "finance",
+    "finance_quote",
+    "finance_company",
+    "finance_disclosure",
+    "finance_news",
+    "finance_macro",
+    "finance_sentiment",
+    "finance_research",
+}
+
 _VERTICAL_INTENTS = {
     "academic",
     "university_admissions",
@@ -160,6 +171,7 @@ def decide_workflow(
     high_impact = risk_level == "high" or bool(set(intents) & _HIGH_IMPACT_INTENTS)
     vertical = bool(set(intents) & _VERTICAL_INTENTS)
     explicit_workflow = command in {"research", "compare", "timeline", "dossier", "investigate"} or explicit_deep
+    finance_task = bool(set(intents) & _FINANCE_INTENTS) or str(scope or "").startswith("finance") or str(preset or "") == "finance"
 
     if command == "compare" or compare_signals:
         return _decision(
@@ -215,6 +227,8 @@ def decide_workflow(
             path.append("hotnews")
         if {"tech", "wps_office"} & set(intents):
             path.append("feeds")
+        if finance_task:
+            path = ["stock plan", "stock detail/quote", "research --preset finance", "scoped finance search"]
         return _decision(
             clean_query,
             INVESTIGATE,
@@ -227,6 +241,56 @@ def decide_workflow(
             max(requested_limit, DEFAULT_RESEARCH_LIMIT),
             max(requested_read_top, 5 if high_impact else 3),
             300,
+            route_data,
+            warnings=list(route_data.get("warnings") or []),
+        )
+    if finance_task:
+        finance_research_intents = {
+            "finance_company",
+            "finance_disclosure",
+            "finance_news",
+            "finance_macro",
+            "finance_sentiment",
+            "finance_research",
+        }
+        quote_lookup = "finance_quote" in intents or _signals(text, ("股价", "行情", "指数", "大盘", "代码", "涨跌幅", "资金流向"))
+        finance_deep = bool(
+            explicit_workflow
+            or deep_signals
+            or freshness
+            or finance_research_intents & set(intents)
+            or ("finance" in intents and not quote_lookup)
+            or _signals(text, ("财报", "公告", "监管", "风险", "研报", "雪球", "股吧", "宏观", "大跌", "为什么"))
+        )
+        if not finance_deep:
+            return _decision(
+                clean_query,
+                DIRECT,
+                "这是财经行情/代码/指数类查找，先走结构化股票入口，避免把动态财经页当普通网页硬读。",
+                intents,
+                risk_level,
+                "stock",
+                ["stock plan", "stock quote", "stock detail optional", "finance search only if more evidence is needed"],
+                1,
+                max(requested_limit, DEFAULT_SEARCH_LIMIT),
+                0,
+                90,
+                route_data,
+                do_not_overthink=True,
+                warnings=list(route_data.get("warnings") or []),
+            )
+        return _decision(
+            clean_query,
+            GUIDED,
+            "这是财经/股票研究任务；先用结构化股票数据拿行情和时间戳，再按公告、宏观、新闻、研报、情绪分层补证。",
+            intents,
+            risk_level,
+            "stock",
+            ["stock plan", "stock detail/quote", "research --preset finance", "scoped finance search"],
+            3,
+            max(requested_limit, DEFAULT_RESEARCH_LIMIT),
+            max(requested_read_top, 5),
+            180,
             route_data,
             warnings=list(route_data.get("warnings") or []),
         )

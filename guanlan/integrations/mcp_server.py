@@ -98,16 +98,17 @@ def _tool_definitions() -> list[dict]:
             "name": "guanlan_stock",
             "description": (
                 "Fetch structured public stock data without reading dynamic finance pages: quote, detail, "
-                "fundflow, news, plate, rank, index, or search. Use this before guanlan_read when finance "
-                "pages are WAF-protected or only return a dynamic shell. Output is evidence data, not "
-                "investment advice."
+                "fundflow, news, plate, rank, index, search, or plan. Use this first whenever users ask "
+                "about stocks, stock prices, market indices, fund flow, disclosures, Xueqiu/Guba sentiment, "
+                "or capital-market risk; do not start by reading dynamic finance pages. Output is evidence "
+                "data, not investment advice."
             ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "command": {
                         "type": "string",
-                        "enum": ["quote", "detail", "fundflow", "news", "plate", "rank", "index", "search"],
+                        "enum": ["plan", "quote", "detail", "fundflow", "news", "plate", "rank", "index", "search"],
                         "default": "quote",
                     },
                     "target": {"type": "string", "description": "Stock code/name/ticker, e.g. 600519, 贵州茅台, NVDA"},

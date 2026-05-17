@@ -14,7 +14,7 @@ from guanlan import stockdata
 def add_stock_parser(subparsers) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
         "stock",
-        help="Fetch structured stock quotes, rankings, fund flow, and market overview",
+        help="Fetch structured stock quotes, rankings, fund flow, market overview, and agent stock plans",
     )
     _add_stock_arguments(parser)
     return parser
@@ -23,7 +23,7 @@ def add_stock_parser(subparsers) -> argparse.ArgumentParser:
 def build_standalone_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="guanlan-stock",
-        description="观澜结构化股票数据：行情、榜单、资金流向和大盘概览",
+        description="观澜结构化股票数据：行情、榜单、资金流向、大盘概览和 Agent 股票任务指南",
     )
     _add_stock_arguments(parser)
     return parser
@@ -32,12 +32,16 @@ def build_standalone_parser() -> argparse.ArgumentParser:
 def _add_stock_arguments(parser: argparse.ArgumentParser) -> None:
     sub = parser.add_subparsers(dest="stock_command", help="Stock data commands")
 
-    p_search = sub.add_parser("search", help="Search stock/index codes by name or symbol")
+    p_plan = sub.add_parser("plan", aliases=["guide"], help="Explain the stock-first workflow for agents")
+    p_plan.add_argument("query", nargs="?", default="", help="Optional stock/finance query")
+    p_plan.add_argument("--json", action="store_true", help="Print JSON")
+
+    p_search = sub.add_parser("search", aliases=["lookup"], help="Search stock/index codes by name or symbol")
     p_search.add_argument("query", help="Stock name, ticker, or noisy finance query")
     p_search.add_argument("--limit", type=int, default=20, help="Maximum number of candidates")
     p_search.add_argument("--json", action="store_true", help="Print JSON")
 
-    p_quote = sub.add_parser("quote", help="Fetch one stock/index quote")
+    p_quote = sub.add_parser("quote", aliases=["price"], help="Fetch one stock/index quote")
     p_quote.add_argument("target", help="Stock code/name/ticker, e.g. 600519, 贵州茅台, NVDA")
     p_quote.add_argument("--json", action="store_true", help="Print JSON")
 
@@ -46,7 +50,7 @@ def _add_stock_arguments(parser: argparse.ArgumentParser) -> None:
     p_detail.add_argument("--news-limit", type=int, default=12, help="Maximum number of news items")
     p_detail.add_argument("--json", action="store_true", help="Print JSON")
 
-    p_fundflow = sub.add_parser("fundflow", help="Fetch fund-flow statistics")
+    p_fundflow = sub.add_parser("fundflow", aliases=["flow", "moneyflow"], help="Fetch fund-flow statistics")
     p_fundflow.add_argument("target", help="Stock code/name/ticker")
     p_fundflow.add_argument("--json", action="store_true", help="Print JSON")
 
@@ -66,14 +70,14 @@ def _add_stock_arguments(parser: argparse.ArgumentParser) -> None:
     p_rank.add_argument("--limit", "--count", dest="limit", type=int, default=20, help="Maximum number of rows, 1-100")
     p_rank.add_argument("--json", action="store_true", help="Print JSON")
 
-    p_index = sub.add_parser("index", help="Fetch A-share market overview")
+    p_index = sub.add_parser("index", aliases=["market", "overview"], help="Fetch A-share market overview")
     p_index.add_argument("--json", action="store_true", help="Print JSON")
 
 
 def run_stock_command(args: argparse.Namespace) -> None:
     command = getattr(args, "stock_command", "") or ""
     if not command:
-        raise SystemExit("请指定 stock 子命令，例如：guanlan stock quote 600519")
+        raise SystemExit("请指定 stock 子命令，例如：guanlan stock plan \"宁德时代 股价\" 或 guanlan stock quote 600519")
     try:
         payload, text = _run_stock_command(args)
     except stockdata.StockDataError as exc:
@@ -87,7 +91,7 @@ def run_stock_command(args: argparse.Namespace) -> None:
 def run_stock_tool(arguments: dict[str, Any] | None = None) -> dict[str, Any] | str:
     """Run the stock data layer for MCP/HTTP surfaces."""
     args = arguments or {}
-    command = str(args.get("command") or "quote")
+    command = _normalize_stock_command(str(args.get("command") or "quote"))
     output_format = str(args.get("format") or "markdown")
     namespace = argparse.Namespace(
         stock_command=command,
@@ -105,7 +109,10 @@ def run_stock_tool(arguments: dict[str, Any] | None = None) -> dict[str, Any] | 
 
 
 def _run_stock_command(args: argparse.Namespace) -> tuple[dict[str, Any], str]:
-    command = args.stock_command
+    command = _normalize_stock_command(str(args.stock_command))
+    if command == "plan":
+        payload = stockdata.build_stock_guide(str(getattr(args, "query", "") or getattr(args, "target", "") or ""))
+        return payload, stockdata.format_stock_guide_markdown(payload)
     if command == "search":
         payload = stockdata.search_stocks(str(args.query), limit=int(args.limit))
         return payload, stockdata.format_search_markdown(payload)
@@ -164,6 +171,19 @@ def _format_plates(payload: dict[str, Any]) -> str:
 
 class StockCommandError(stockdata.StockDataError):
     """CLI-level stock command error."""
+
+
+def _normalize_stock_command(command: str) -> str:
+    aliases = {
+        "guide": "plan",
+        "lookup": "search",
+        "price": "quote",
+        "flow": "fundflow",
+        "moneyflow": "fundflow",
+        "market": "index",
+        "overview": "index",
+    }
+    return aliases.get((command or "").strip().lower(), (command or "").strip().lower())
 
 
 def main(argv: list[str] | None = None) -> None:

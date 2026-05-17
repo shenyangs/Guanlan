@@ -83,6 +83,8 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "cache_ttl=3600" in search_tool["description"]
     assert "do not shrink the evidence pool" in search_tool["description"]
     assert "dynamic finance pages" in stock_tool["description"]
+    assert "stocks" in stock_tool["description"]
+    assert "plan" in stock_tool["inputSchema"]["properties"]["command"]["enum"]
     assert "detail" in stock_tool["inputSchema"]["properties"]["command"]["enum"]
     assert "prompt" in research_tool["inputSchema"]["properties"]["format"]["enum"]
     compare_tool = next(tool for tool in tools if tool["name"] == "guanlan_compare")

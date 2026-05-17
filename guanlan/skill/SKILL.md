@@ -60,6 +60,7 @@ metadata:
 - 在完成当前档位要求的 Guanlan 工具前，不要立刻切 `web_search/web_fetch`。`quality_summary=warn` 通常表示证据包还不完整，不等于 Guanlan 搜索失败。
 - `quality_gate.reason=partial_salvage` 表示观澜保留了强官方/垂直信源线索但仍有覆盖缺口；先读代表原文，不要写成失败。`read` 出现 `兜底状态: unusable` 时，不要引用搜索兜底，改用页面诊断、结构化入口、scope 搜索或 WebFetch 定点补证。
 - 如果 Guanlan 输出 `external_fetch_strategy`，可以调用宿主 Agent 的 WebFetch/WebRead 读取候选 URL；外显时说明这是“Guanlan 规划信源 + WebFetch 定点补证”的搜索策略，不是 Guanlan 脆弱。
+- 面向用户不要写“Guanlan 崩了 / 抽风了 / 挂了 / 炸了 / 翻车 / 拉胯 / 坏了”。只在影响证据边界时说明“目标页公开读取超时或上游响应慢，已按 Guanlan 定点补证路线读取目标页”；否则直接给来源和结论。
 - 做 benchmark 时不要误用：实时题必须带 `hotnews`，技术/AI/WPS/AI Office 题必须带 `feeds` 或 `research --preset tech|wps_office`，政策题不要只测单次泛搜。
 - 如果 Agent/MCP/自动化平台能设置工具 timeout：`search/read/status/doctor` 用 60-90 秒；`hotnews/feeds/pulse/read batch` 和默认 `archive ingest-research` 用 120 秒；`research/compare/timeline/dossier/archive ingest-research --read-top N` 用 180-300 秒；安装/升级/发布 smoke 用 300-600 秒。单位要按宿主字段名换算：`timeout_budget_seconds` 传秒，`timeout_ms` / `timeout_milliseconds` 传毫秒，例如 120 秒 = 120000 ms、300 秒 = 300000 ms；不要把 `timeout=120` 这种裸数字交给下游。
 - 超时只代表网络或上游源未完成，不代表没有证据；优先重试一次、加 `--cache-ttl 3600`，或把 `--read-top` 降到 0/1，不要为了速度把 80 条候选池砍成小样本。
@@ -71,7 +72,7 @@ metadata:
 - 文娱/影视/综艺/明星/游戏/票房/评分/口碑类问题优先用 `route` 或 `research --preset entertainment`；把平台热度、用户评分、产业报道、宣发通稿和粉圈讨论分层看。
 - 欧美娱乐、Hollywood、Taylor Swift、Billboard、Grammy、巡演、新歌专辑等问题优先用 `research --preset global_entertainment --profile english`；英文行业媒体、榜单/奖项和艺人/厂牌一手信息优先于粉丝账号和八卦站。
 - 日韩娱乐、K-pop/J-pop、韩剧日剧、Soompi、Oricon、Naver 等问题优先用 `research --preset jp_kr_entertainment --profile hybrid`；区分本地媒体/榜单、经纪公司口径、英文翻译站和粉丝讨论。
-- 财经、股票、行情、公告、财报、监管、宏观金融、ETF/基金、雪球/股吧情绪和研报问题优先用 `guanlan stock ...` / `guanlan-stock ...` 获取结构化行情、榜单、资金流向和大盘概览，再用 `research --preset finance` 或 `search --scope finance_quote|finance_disclosure|finance_macro|finance_sentiment|finance_research` 扩展证据；把行情、公告披露、监管/宏观、新闻、研报观点和投资者情绪分层看，不输出买卖建议。
+- 财经、股票、行情、公告、财报、监管、宏观金融、ETF/基金、雪球/股吧情绪和研报问题先跑 `guanlan stock plan "问题"`（如果不确定该怎么查），再用 `guanlan stock ...` / `guanlan-stock ...` 获取结构化行情、榜单、资金流向和大盘概览，再用 `research --preset finance` 或 `search --scope finance_quote|finance_disclosure|finance_macro|finance_sentiment|finance_research` 扩展证据；把行情、公告披露、监管/宏观、新闻、研报观点和投资者情绪分层看，不输出买卖建议。
 - CVE/漏洞/补丁/反诈/诈骗短信用 `research --preset cybersecurity` 或 `search --scope cybersecurity --trace`；优先 CVE/NVD/CISA/厂商公告/监管来源。
 - 台风/天气/地震/灾害预警用 `search --scope weather_disaster --trace`；优先官方气象和应急来源，并检查时间戳。
 - 体育、科学新闻、招聘薪资面经、播客、考试备考分别用 `sports`、`science`、`career`、`podcast`、`test_prep` preset/scope，不要停在泛搜索。
@@ -131,6 +132,7 @@ guanlan search "WPS AI PPT Agent 办公选题 最近热点" --profile china --sc
 guanlan search "贵州茅台 公告 财报" --profile china --scope finance_disclosure --limit 80 --trace
 guanlan search "上证指数 今日 行情" --profile china --scope finance_quote --limit 80 --trace
 guanlan search "社融 CPI 降息 央行" --profile china --scope finance_macro --limit 80 --trace
+guanlan stock plan "宁德时代 股价 财报 公告 最近风险"
 guanlan stock quote "贵州茅台"
 guanlan stock detail "600519"
 guanlan stock fundflow "宁德时代"

@@ -317,6 +317,7 @@ def _commands_for_recipe(recipe: ResearchRecipe, query: str, *, profile: str, li
     if recipe.id == "finance-risk":
         commands.extend(
             [
+                f"guanlan stock plan {q}",
                 f"guanlan stock detail {q}",
                 f"guanlan research {q} --preset finance --profile {profile} --limit {limit} --read-top {read_top} --advisor",
                 f"guanlan search {q} --profile {profile} --scope finance_disclosure --limit {limit} --trace",

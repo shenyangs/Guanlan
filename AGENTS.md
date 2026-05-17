@@ -96,6 +96,13 @@ host platform's WebFetch/WebRead tool to read Guanlan-selected candidate URLs. R
 planned the source route, then I used WebFetch to read target pages for extra evidence"; do not frame
 it as Guanlan being fragile or failed.
 
+User-facing wording rule: do not proactively tell users that Guanlan "崩了", "抽风了", "挂了",
+"炸了", "翻车", "拉胯", "坏了", or similar. Tool/network details should be surfaced only when they
+change the evidence boundary or reproducibility. Prefer: "Guanlan planned the source route; the target
+page public read timed out or the upstream was slow, so I used the planned WebFetch/browser-visible
+supplemental read and kept the source boundary." If the final answer can simply cite evidence, do that
+without a side comment about tool status.
+
 Agent routing shortcut rule: when a query clearly matches a dedicated route, go directly to that
 route's `--preset` or `--scope` instead of starting with generic web search. Use `guanlan route
 "query" --json` only when the intent is mixed, ambiguous, or you need to inspect evidence roles and
@@ -166,6 +173,7 @@ guanlan search "影视 综艺 游戏 明星 票房口碑" --profile china --scop
 guanlan search "股票 股价 财报 公告 风险" --profile china --scope finance_disclosure --limit 80 --trace
 guanlan search "上证指数 今日 行情" --profile china --scope finance_quote --limit 80 --trace
 guanlan search "社融 CPI 降息 央行" --profile china --scope finance_macro --limit 80 --trace
+guanlan stock plan "宁德时代 股价 财报 公告 最近风险"
 guanlan stock quote "贵州茅台"
 guanlan stock detail "600519"
 guanlan stock fundflow "宁德时代"
@@ -274,7 +282,7 @@ Safety rules:
 - Use `guanlan research ... --preset entertainment --read-top 0` for film, drama, variety show, music, celebrity, game, box-office, rating, and fandom/public-discussion questions; separate platform metrics, user ratings, industry reports, promotion copy, and fandom samples.
 - Use `guanlan research ... --preset global_entertainment --profile english` for Western entertainment, Hollywood, pop stars, tours, albums, Billboard/Grammy/award questions; prioritize English trade media, charts/awards, and official artist/label statements over fan or tabloid claims.
 - Use `guanlan research ... --preset jp_kr_entertainment --profile hybrid` for Japanese/Korean entertainment, K-pop/J-pop, K-drama/J-drama, Oricon/Soompi/Naver questions; separate local media/charts, agency statements, translation sites, and fandom samples.
-- Use `guanlan stock ...` or `guanlan-stock ...` for structured stock quotes, market overview, rankings, fund flow, plates, and stock news before trying to read dynamic finance pages. Use `guanlan research ... --preset finance`, `search --scope finance_disclosure`, `search --scope finance_quote`, `search --scope finance_macro`, `search --scope finance_sentiment`, or `search --scope finance_research` for broader evidence. Separate quote data, company filings, regulation, news, research opinions, and sentiment samples. Do not output buy/sell/hold advice.
+- Use `guanlan stock ...` or `guanlan-stock ...` for structured stock quotes, market overview, rankings, fund flow, plates, and stock news before trying to read dynamic finance pages. If the Agent does not know how to handle a stock task, run `guanlan stock plan "query"` first. Trigger it for 股票、股价、行情、指数、大盘、资金流向、财报、公告、雪球、股吧、研报、风险 and similar terms. Use `guanlan research ... --preset finance`, `search --scope finance_disclosure`, `search --scope finance_quote`, `search --scope finance_macro`, `search --scope finance_sentiment`, or `search --scope finance_research` for broader evidence. Separate quote data, company filings, regulation, news, research opinions, and sentiment samples. Do not output buy/sell/hold advice.
 - Use `guanlan research ... --preset cybersecurity` or `search --scope cybersecurity --trace` for CVE, vulnerabilities, patches, vendor advisories, phishing, fraud, and suspicious messages; prioritize CVE/NVD/CISA/vendor/regulator sources.
 - Use `guanlan search ... --scope weather_disaster --trace` for typhoon, weather alert, earthquake, disaster, and official safety questions; prioritize official meteorological/emergency sources and check timestamps.
 - Use `guanlan research ... --preset sports`, `--preset science`, `--preset career`, `--preset podcast`, or `--preset test_prep` for sports, science-news verification, job/salary/interview, podcast discovery, and exam-prep questions instead of leaving them as generic web search.
