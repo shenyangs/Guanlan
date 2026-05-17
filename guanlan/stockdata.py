@@ -211,6 +211,8 @@ def quote_stock(target: str) -> dict[str, Any]:
         quote = _fetch_sina_quote(symbol)
         quote["source_chain"] = [f"{SOURCE_NAME}:failed", f"{SINA_SOURCE_NAME}:ok"]
         quote["fallback_errors"] = fallback_errors
+    quote["status"] = "ok"
+    quote["quote_time"] = quote.get("time", "")
     quote["source_role"] = "market_quote"
     quote["retrieved_at"] = _now()
     quote["freshness"] = quote_freshness(quote.get("time", ""))
@@ -767,6 +769,7 @@ def _fetch_sina_quote(symbol: str) -> dict[str, Any]:
         "pb": "",
         "volume_ratio": "",
         "time": quote_time,
+        "quote_time": quote_time,
         "source": SINA_SOURCE_NAME,
     }
 
@@ -828,6 +831,7 @@ def _quote_arr_to_obj(arr: list[Any], *, symbol: str) -> dict[str, str]:
         "pb": _get(arr, 46),
         "volume_ratio": _get(arr, 49 + index_offset),
         "time": _format_quote_time(_get(arr, 30)),
+        "quote_time": _format_quote_time(_get(arr, 30)),
     }
 
 

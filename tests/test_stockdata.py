@@ -52,6 +52,8 @@ def test_quote_stock_parses_public_quote_payload(monkeypatch):
     assert quote["name"] == "贵州茅台"
     assert quote["change_rate"] == "-1.17%"
     assert quote["time"] == "2026-04-30 16:14:22"
+    assert quote["quote_time"] == "2026-04-30 16:14:22"
+    assert quote["status"] == "ok"
     assert "不构成投资建议" in quote["boundary"]
     assert quote["freshness"]["quote_time"] == "2026-04-30 16:14:22"
     assert any("guanlan stock detail" in command for command in quote["next_commands"])
@@ -73,6 +75,7 @@ def test_quote_stock_falls_back_to_sina_quote(monkeypatch):
     assert quote["source"] == stockdata.SINA_SOURCE_NAME
     assert quote["source_chain"] == [f"{stockdata.SOURCE_NAME}:failed", f"{stockdata.SINA_SOURCE_NAME}:ok"]
     assert quote["price"] == "1384.79"
+    assert quote["quote_time"] == "2026-04-30 16:14:22"
     assert quote["change_rate"] == "-1.17%"
     assert "tencent_quote" in quote["fallback_errors"]
 
