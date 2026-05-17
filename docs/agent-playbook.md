@@ -227,7 +227,7 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 技术/AI/WPS/AI Office 题必须带 `feeds`
 - 学术预印本/论文线索题应补 `feeds arxiv --keyword ...`
 - 长期关注指定博客、项目或机构更新的题应补 `feeds watchlist --watchlist ...`
-- 财经题必须先选 `finance` preset 或对应 scope；Agent 不确定时先跑 `guanlan stock plan "问题"`；行情、榜单、资金流优先用 `guanlan stock ...` / `guanlan-stock ...`，公告/财报/监管用 `finance_disclosure`，宏观用 `finance_macro`，情绪样本用 `finance_sentiment`
+- 财经题必须先选 `finance` preset 或对应 scope；Agent 不确定时先跑 `guanlan stock plan "问题"`；股票行情、ETF/基金净值、榜单、资金流优先用 `guanlan stock ...` / `guanlan-stock ...`，公告/财报/基金公告/监管用 `finance_disclosure`，宏观用 `finance_macro`，情绪样本用 `finance_sentiment`
 - 政策/办事题至少 `search + read`，复杂时直接 `research`
 - 评价 Guanlan 时区分三件事：
   - 搜索相关性
@@ -262,7 +262,7 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 多实体对比要拆成单实体检索，再用 `compare` / `dossier` 汇总。
 - 实时题优先 `hotnews`，不要只看 `search`。
 - 实时体育、灾害预警、安全漏洞等垂直题优先读取 Guanlan 推荐的 direct source seeds，再扩大搜索。
-- 财经题不要只看一个搜索结果：行情要先走结构化股票数据并看时间戳，公告/财报要回到披露源，宏观数据要核发布机构，雪球/股吧只作情绪样本。动态财经页或雪球 WAF 读不出正文时，不要反复 `read`，改用 `guanlan stock detail|fundflow|rank|index` 和披露源补证。
+- 财经题不要只看一个搜索结果：行情/ETF/基金净值要先走结构化股票数据并看时间戳，公告/财报/基金公告要回到披露源，宏观数据要核发布机构，雪球/股吧只作情绪样本。动态财经页或雪球 WAF 读不出正文时，不要反复 `read`，改用 `guanlan stock detail|fundflow|rank|index` 和披露源补证。
 - 页面读不出来时，先 `diagnose page`，再按诊断建议切结构化源、scope 搜索、metadata 读取或 archive 流程；不要把搜索兜底内容当原文正文。
 - 公众号链接先看 `read --trace` 是否走到 `wechat_article`；如果已经拿到正文，不要再要求用户授权浏览器或 Cookie。
 - 高频垂直任务先 `recipe run`，把流程讲清楚，再执行对应命令；不要让 Agent 临场发明一套不稳定搜索路径。

@@ -29,15 +29,22 @@ MARKET_ENDPOINT = "https://proxy.finance.qq.com/cgi/cgi-bin/market/hs/index"
 FUNDFLOW_ENDPOINT = "https://proxy.finance.qq.com/cgi/cgi-bin/fundflow/hsfundtab"
 PLATE_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/stockinfo/plateNew"
 NEWS_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/news/info/search"
+FUND_SUGGEST_ENDPOINT = "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx"
+FUND_GZ_ENDPOINT = "https://fundgz.1234567.com.cn/js/{code}.js"
 
 SOURCE_NAME = "腾讯财经公开接口"
 SINA_SOURCE_NAME = "新浪财经公开行情接口"
 EASTMONEY_SOURCE_NAME = "东方财富公开接口"
 
-_A_CODE_PATTERN = re.compile(r"^(?:[56]\d{5}|[031]\d{5}|4\d{5}|8\d{5}|92\d{4})$")
+_A_QUOTE_CODE_PATTERN = re.compile(
+    r"^(?:6\d{5}|688\d{3}|689\d{3}|000\d{3}|001\d{3}|002\d{3}|003\d{3}|300\d{3}|301\d{3}|5\d{5}|159\d{3}|16\d{4}|18\d{4}|4\d{5}|8\d{5}|92\d{4})$"
+)
 _HK_CODE_PATTERN = re.compile(r"^\d{5}$")
 _US_TICKER_PATTERN = re.compile(r"^[A-Z]{1,5}(?:\.[A-Z]{1,3})?$")
-_A_CODE_IN_TEXT = re.compile(r"(?<!\d)([0568134]\d{5}|92\d{4})(?!\d)")
+_A_CODE_IN_TEXT = re.compile(r"(?<!\d)(\d{6}|92\d{4})(?!\d)")
+_FUND_CODE_PATTERN = re.compile(r"^\d{6}$")
+_FUND_TERMS = ("基金", "ETF", "etf", "联接", "LOF", "lof", "QDII", "qdii", "净值", "申购", "赎回")
+_STOCK_LIKE_PREFIXES = ("000", "001", "002", "003", "300", "301", "4", "5", "6", "8", "92", "159", "16", "18")
 _US_STOPWORDS = {
     "AI",
     "API",
@@ -100,6 +107,14 @@ _QUERY_NOISE_TERMS = (
     "财报",
     "公告",
     "风险",
+    "基金",
+    "ETF",
+    "etf",
+    "联接基金",
+    "联接",
+    "净值",
+    "申购",
+    "赎回",
     "资金流向",
     "主力",
     "涨跌幅",
@@ -166,10 +181,10 @@ def normalize_symbol(symbol: str) -> str:
         ticker = compact[2:].split(".", 1)[0].upper()
         return f"us{ticker}"
     lower = compact.lower()
-    if _A_CODE_PATTERN.fullmatch(lower):
+    if _A_QUOTE_CODE_PATTERN.fullmatch(lower):
         if re.fullmatch(r"(?:5|6)\d{5}", lower):
             return f"sh{lower}"
-        if re.fullmatch(r"(?:0|3|1)\d{5}", lower):
+        if re.fullmatch(r"(?:000|001|002|003|300|301|159|16|18)\d{3}", lower):
             return f"sz{lower}"
         if re.fullmatch(r"(?:4\d{5}|8\d{5}|92\d{4})", lower):
             return f"bj{lower}"
@@ -196,6 +211,14 @@ def resolve_symbol(target: str) -> str:
 
 
 def quote_stock(target: str) -> dict[str, Any]:
+    fund_code = _fund_code_candidate(target)
+    if fund_code and _should_prefer_fund(target, fund_code):
+        return _finalize_quote(_fetch_fund_quote(fund_code), target, symbol=f"fund{fund_code}", source_role="fund_nav")
+    if _contains_fund_terms(target):
+        fund_code = _fund_code_from_search(target)
+        if fund_code:
+            return _finalize_quote(_fetch_fund_quote(fund_code), target, symbol=f"fund{fund_code}", source_role="fund_nav")
+
     symbol = resolve_symbol(target)
     fallback_errors: dict[str, str] = {}
     try:
@@ -208,17 +231,20 @@ def quote_stock(target: str) -> dict[str, Any]:
         quote["source_chain"] = [f"{SOURCE_NAME}:ok"]
     except StockDataError as exc:
         fallback_errors["tencent_quote"] = str(exc)
-        quote = _fetch_sina_quote(symbol)
-        quote["source_chain"] = [f"{SOURCE_NAME}:failed", f"{SINA_SOURCE_NAME}:ok"]
-        quote["fallback_errors"] = fallback_errors
-    quote["status"] = "ok"
-    quote["quote_time"] = quote.get("time", "")
-    quote["source_role"] = "market_quote"
-    quote["retrieved_at"] = _now()
-    quote["freshness"] = quote_freshness(quote.get("time", ""))
-    quote["next_commands"] = stock_next_commands(target, symbol=symbol, query_context=target)
-    quote["boundary"] = "公开行情接口可能延迟；仅作信息核验，不构成投资建议。"
-    return quote
+        try:
+            quote = _fetch_sina_quote(symbol)
+            quote["source_chain"] = [f"{SOURCE_NAME}:failed", f"{SINA_SOURCE_NAME}:ok"]
+            quote["fallback_errors"] = fallback_errors
+        except StockDataError as sina_exc:
+            fallback_errors["sina_quote"] = str(sina_exc)
+            fund_code = _fund_code_candidate(target, allow_quote_like=True)
+            if fund_code:
+                quote = _fetch_fund_quote(fund_code)
+                quote["source_chain"] = [f"{SOURCE_NAME}:failed", f"{SINA_SOURCE_NAME}:failed", f"{EASTMONEY_SOURCE_NAME}:ok"]
+                quote["fallback_errors"] = fallback_errors
+                return _finalize_quote(quote, target, symbol=f"fund{fund_code}", source_role="fund_nav")
+            raise StockDataError("; ".join(fallback_errors.values())) from sina_exc
+    return _finalize_quote(quote, target, symbol=symbol, source_role="market_quote")
 
 
 def search_stocks(keyword: str, *, limit: int = 20) -> dict[str, Any]:
@@ -231,14 +257,19 @@ def search_stocks(keyword: str, *, limit: int = 20) -> dict[str, Any]:
         )
     except StockDataError as exc:
         items = _local_stock_candidates(keyword, clean)[: max(limit, 0)]
+        if len(items) < max(limit, 0) and _should_search_funds(keyword, clean, stock_items=items):
+            try:
+                items.extend(_search_funds(clean or keyword, limit=max(limit, 0) - len(items)))
+            except StockDataError:
+                pass
         return {
             "query": keyword,
             "normalized_query": clean,
             "items": items,
-            "source": "观澜本地股票识别",
+            "source": "观澜本地股票识别" if not any(item.get("source") == EASTMONEY_SOURCE_NAME for item in items) else f"观澜本地股票识别 + {EASTMONEY_SOURCE_NAME}",
             "retrieved_at": _now(),
             "diagnostics": {"backend": SOURCE_NAME, "fallback": True, "upstream_error": str(exc)},
-            "boundary": "上游股票搜索不可用时，观澜只使用本地代码/别名识别作定位线索；后续仍需行情、披露和新闻分层核验。",
+            "boundary": "上游股票搜索不可用时，观澜使用本地代码/别名和基金搜索作定位线索；后续仍需行情、净值、披露和新闻分层核验。",
         }
     stocks = payload.get("stock") if isinstance(payload, dict) else []
     items: list[dict[str, Any]] = []
@@ -253,16 +284,22 @@ def search_stocks(keyword: str, *, limit: int = 20) -> dict[str, Any]:
                     "type": str(item.get("type") or ""),
                     "match_field": str((item.get("reportInfo") or {}).get("match_field") or ""),
                     "match_level": str((item.get("reportInfo") or {}).get("match_level") or ""),
+                    "asset_type": _asset_type_from_stock_type(str(item.get("type") or ""), str(item.get("code") or "")),
+                    "source": SOURCE_NAME,
                 }
             )
+    if len(items) < max(limit, 0) and _should_search_funds(keyword, clean, stock_items=items):
+        for fund in _search_funds(clean or keyword, limit=max(limit, 0) - len(items)):
+            if not any(existing.get("code") == fund.get("code") for existing in items):
+                items.append(fund)
     return {
         "query": keyword,
         "normalized_query": clean,
         "items": items,
-        "source": SOURCE_NAME,
+        "source": SOURCE_NAME if not any(item.get("source") == EASTMONEY_SOURCE_NAME for item in items) else f"{SOURCE_NAME} + {EASTMONEY_SOURCE_NAME}",
         "retrieved_at": _now(),
         "diagnostics": diagnostics,
-        "boundary": "股票名称搜索只用于定位代码；后续行情、披露和新闻仍需分层核验。",
+        "boundary": "证券/基金名称搜索只用于定位代码；后续行情、净值、披露、研报和新闻仍需分层核验。",
     }
 
 
@@ -419,11 +456,31 @@ def market_index() -> dict[str, Any]:
 
 
 def stock_detail(target: str, *, news_limit: int = 12) -> dict[str, Any]:
-    symbol = resolve_symbol(target)
+    first_errors: dict[str, str] = {}
+    try:
+        quote = quote_stock(target)
+    except StockDataError as exc:
+        first_errors["quote"] = str(exc)
+        quote = {}
+    if quote and quote.get("asset_type") in {"fund", "etf", "etf_link", "lof", "qdii"}:
+        symbol = str(quote.get("symbol") or quote.get("code") or target)
+        return {
+            "query": target,
+            "symbol": symbol,
+            "quote": quote,
+            "errors": first_errors,
+            "source": quote.get("source") or EASTMONEY_SOURCE_NAME,
+            "retrieved_at": _now(),
+            "evidence_layers": stock_evidence_layers(),
+            "next_commands": stock_next_commands(target, symbol=symbol, query_context=target),
+            "boundary": "基金/ETF 结构化数据适合核验净值、估值、基金类型和更新时间；持仓、费率和风险仍需回到基金公告/招募说明书/基金公司页面核验。",
+        }
+
+    symbol = str(quote.get("symbol") or resolve_symbol(target))
     sections: dict[str, Any] = {}
-    errors: dict[str, str] = {}
+    errors: dict[str, str] = dict(first_errors)
     for key, fn in (
-        ("quote", lambda: quote_stock(symbol)),
+        ("quote", lambda: quote or quote_stock(symbol)),
         ("fundflow", lambda: fundflow(symbol)),
         ("plates", lambda: related_plates(symbol)),
         ("news", lambda: latest_news(symbol, limit=news_limit)),
@@ -450,18 +507,25 @@ def build_stock_guide(query: str = "") -> dict[str, Any]:
     clean_query = " ".join((query or "").split()).strip()
     inferred = infer_stock_target(clean_query) if clean_query else ""
     normalized = normalize_symbol(inferred) if inferred else ""
+    if inferred and _should_prefer_fund(clean_query, _normalize_fund_code(inferred)):
+        normalized = f"fund{_normalize_fund_code(inferred)}"
     target = inferred or clean_query or "股票/指数名称或代码"
-    commands = stock_next_commands(target, symbol=normalized if _looks_like_quote_symbol(normalized) else "", query_context=clean_query)
+    normalized_for_commands = normalized if (_looks_like_quote_symbol(normalized) or _is_fund_symbol(normalized)) else ""
+    commands = stock_next_commands(target, symbol=normalized_for_commands, query_context=clean_query)
     return {
         "query": clean_query,
         "inferred_target": inferred,
-        "normalized_symbol": normalized if _looks_like_quote_symbol(normalized) else "",
+        "normalized_symbol": normalized_for_commands,
         "agent_trigger_terms": [
             "股票",
             "股价",
             "行情",
             "指数",
             "大盘",
+            "ETF",
+            "基金",
+            "净值",
+            "联接基金",
             "资金流向",
             "板块",
             "财报",
@@ -475,15 +539,15 @@ def build_stock_guide(query: str = "") -> dict[str, Any]:
         "recommended_commands": commands,
         "evidence_layers": stock_evidence_layers(),
         "workflow": [
-            {"step": 1, "layer": "结构化行情", "command": commands[0], "why": "先拿可解析的价格、涨跌幅、行情时间和数据源，避免动态财经页/WAF。"},
-            {"step": 2, "layer": "个股结构", "command": commands[1] if len(commands) > 1 else "", "why": "需要公司/个股风险时，把行情、资金流、板块和快讯放进一个证据包。"},
+            {"step": 1, "layer": "结构化行情/净值", "command": commands[0], "why": "先拿可解析的价格、净值、涨跌幅、行情时间和数据源，避免动态财经页/WAF。"},
+            {"step": 2, "layer": "证券/基金结构", "command": commands[1] if len(commands) > 1 else "", "why": "需要个股、ETF 或基金风险时，把行情/净值、类型、资金流或相关线索放进一个证据包。"},
             {"step": 3, "layer": "公告披露", "command": commands[3] if len(commands) > 3 else "", "why": "财报、减持、质押、监管函、问询函必须回到巨潮/交易所/SEC 等披露源。"},
             {"step": 4, "layer": "扩展研究", "command": commands[2] if len(commands) > 2 else "", "why": "需要判断原因、风险和背景时，再用 finance preset 组织新闻、宏观、研报和情绪样本。"},
         ],
         "boundaries": [
-            "股票能力只整理公开行情和证据线索，不输出买入、卖出或持有建议。",
-            "行情必须标注 quote time / retrieved_at；周末、休市和接口延迟时不要误写成实时。",
-            "公告披露、财报、监管和处罚优先于媒体转述；雪球/股吧/微博只作情绪样本。",
+            "股票/ETF/基金能力只整理公开行情、净值和证据线索，不输出买入、卖出或持有建议。",
+            "行情/净值必须标注 quote time / retrieved_at；周末、休市和接口延迟时不要误写成实时。",
+            "公告披露、基金公告、招募说明书、监管和处罚优先于媒体转述；雪球/股吧/微博只作情绪样本。",
         ],
         "source_boundary": "公开接口 + 官方/交易所/披露源分层；不读取用户账户、交易权限、持仓或私密数据。",
     }
@@ -493,6 +557,7 @@ def stock_evidence_layers() -> list[dict[str, str]]:
     """Return the stable evidence ladder for stock/finance tasks."""
     return [
         {"role": "market_quote", "name": "行情/指数/板块", "primary_command": "guanlan stock quote / index / rank", "boundary": "看时间戳和延迟，不作交易建议。"},
+        {"role": "fund_nav", "name": "基金/ETF净值", "primary_command": "guanlan stock quote / detail", "boundary": "基金净值、估算和场内 ETF 行情口径不同，必须标注净值日期或行情时间。"},
         {"role": "company_filing", "name": "公告/财报/监管", "primary_command": "guanlan search --scope finance_disclosure", "boundary": "以巨潮、交易所、SEC/HKEX 等披露源为准。"},
         {"role": "market_news", "name": "财经新闻/事件", "primary_command": "guanlan research --preset finance", "boundary": "新闻用于时间线和背景，需要回链原公告。"},
         {"role": "macro_data", "name": "宏观/央行/统计局", "primary_command": "guanlan search --scope finance_macro", "boundary": "核对发布机构、统计口径和日期。"},
@@ -507,13 +572,27 @@ def stock_next_commands(target: str, *, symbol: str = "", query_context: str = "
     research_raw = " ".join((query_context or raw).split()).strip()
     q = shlex.quote(raw)
     rq = shlex.quote(research_raw)
+    fund_like = _is_fund_symbol(symbol) or bool(_fund_code_candidate(raw) and _should_prefer_fund(raw, _fund_code_candidate(raw) or ""))
     commands = [
         f"guanlan stock quote {q}",
         f"guanlan stock detail {q}",
         f"guanlan research {rq} --preset finance --limit 80 --read-top 5 --advisor",
-        f"guanlan search {rq} --scope finance_disclosure --limit 80 --trace",
-        f"guanlan search {rq} --scope finance_sentiment --limit 80 --trace",
     ]
+    if fund_like:
+        commands.extend(
+            [
+                f"guanlan stock search {q} --limit 20",
+                f"guanlan search {rq} --scope finance_quote --limit 80 --trace",
+                f"guanlan search {rq} --scope finance_research --limit 80 --trace",
+            ]
+        )
+        return commands
+    commands.extend(
+        [
+            f"guanlan search {rq} --scope finance_disclosure --limit 80 --trace",
+            f"guanlan search {rq} --scope finance_sentiment --limit 80 --trace",
+        ]
+    )
     if symbol.startswith(("sh", "sz", "bj")) or any(term in raw for term in ("大盘", "指数", "行情", "板块", "排名")):
         commands.extend(["guanlan-stock index", "guanlan-stock rank --sort turnover --limit 20"])
     return commands
@@ -548,37 +627,57 @@ def format_search_markdown(data: dict[str, Any]) -> str:
     lines = [f"# 观澜股票搜索 / {data.get('query', '')}", ""]
     items = data.get("items") or []
     if not items:
-        lines.append("暂无匹配股票/指数。")
+        lines.append("暂无匹配股票/指数/基金。")
     else:
-        lines.extend(["```csv", "代码,名称,类型,匹配字段,匹配级别"])
+        lines.extend(["```csv", "代码,名称,资产类型,类型,匹配字段,匹配级别"])
         for item in items:
-            lines.append(",".join([item.get("code", ""), item.get("name", ""), item.get("type", ""), item.get("match_field", ""), item.get("match_level", "")]))
+            lines.append(",".join([item.get("code", ""), item.get("name", ""), item.get("asset_type", ""), item.get("type", ""), item.get("match_field", ""), item.get("match_level", "")]))
         lines.append("```")
     lines.extend(_footer(data))
     return "\n".join(lines)
 
 
 def format_quote_markdown(data: dict[str, Any]) -> str:
+    is_fund = data.get("asset_type") in {"fund", "etf", "etf_link", "lof", "qdii"}
+    title = "观澜基金/ETF净值" if is_fund else "观澜行情"
+    price_label = "估算/单位净值" if is_fund else "价格"
     lines = [
-        f"# 观澜行情 / {data.get('name', '')} {data.get('symbol', '')}",
+        f"# {title} / {data.get('name', '')} {data.get('symbol', '')}",
         "",
         f"- 时间: {data.get('time', '')}",
         f"- 代码: {data.get('symbol', '')}",
         f"- 名称: {data.get('name', '')}",
-        f"- 价格: {data.get('price', '')}",
+        f"- {price_label}: {data.get('price', '')}",
         f"- 涨跌幅: {data.get('change_rate', '')}",
-        f"- 昨收价: {data.get('previous_close', '')}",
-        f"- 开盘价: {data.get('open', '')}",
-        f"- 最高价: {data.get('high', '')}",
-        f"- 最低价: {data.get('low', '')}",
-        f"- 总市值: {data.get('market_value', '')}",
-        f"- 流通市值: {data.get('circulating_value', '')}",
-        f"- 市盈率: {data.get('pe', '')}",
-        f"- 市净率: {data.get('pb', '')}",
-        f"- 成交量: {data.get('volume', '')}",
-        f"- 量比: {data.get('volume_ratio', '')}",
-        f"- 换手率: {data.get('turnover_rate', '')}",
     ]
+    if is_fund:
+        lines.extend(
+            [
+                f"- 单位净值: {data.get('net_value', '')}",
+                f"- 净值日期: {data.get('net_value_date', '')}",
+                f"- 估算净值: {data.get('estimated_value', '')}",
+                f"- 估算时间: {data.get('estimate_time', '')}",
+                f"- 基金类型: {data.get('fund_type', '')}",
+                f"- 基金公司: {data.get('fund_company', '')}",
+                f"- 基金经理: {data.get('fund_manager', '')}",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                f"- 昨收价: {data.get('previous_close', '')}",
+                f"- 开盘价: {data.get('open', '')}",
+                f"- 最高价: {data.get('high', '')}",
+                f"- 最低价: {data.get('low', '')}",
+                f"- 总市值: {data.get('market_value', '')}",
+                f"- 流通市值: {data.get('circulating_value', '')}",
+                f"- 市盈率: {data.get('pe', '')}",
+                f"- 市净率: {data.get('pb', '')}",
+                f"- 成交量: {data.get('volume', '')}",
+                f"- 量比: {data.get('volume_ratio', '')}",
+                f"- 换手率: {data.get('turnover_rate', '')}",
+            ]
+        )
     _append_freshness(lines, data)
     _append_agent_next_steps(lines, data)
     lines.extend(_footer(data))
@@ -774,6 +873,88 @@ def _fetch_sina_quote(symbol: str) -> dict[str, Any]:
     }
 
 
+def _fetch_fund_quote(code: str) -> dict[str, Any]:
+    fund_code = _normalize_fund_code(code)
+    if not fund_code:
+        raise StockDataError(f"未识别基金/ETF 代码：{code}")
+    valuation = _fetch_fund_valuation(fund_code)
+    suggestions: list[dict[str, Any]] = []
+    suggestion_error = ""
+    try:
+        suggestions = _search_funds(fund_code, limit=1)
+    except StockDataError as exc:
+        suggestion_error = str(exc)
+    base = suggestions[0] if suggestions else {"code": fund_code, "name": ""}
+    base_info = base.get("base_info") if isinstance(base.get("base_info"), dict) else {}
+    net_value = str(base_info.get("DWJZ") or valuation.get("dwjz") or "")
+    net_value_date = str(base_info.get("FSRQ") or valuation.get("jzrq") or "")
+    estimated_value = str(valuation.get("gsz") or "")
+    estimated_change_rate = _zdf_percent(valuation.get("gszzl")) if valuation.get("gszzl") not in {None, ""} else ""
+    estimate_time = str(valuation.get("gztime") or "")
+    quote_time = estimate_time or net_value_date
+    source_chain = ["天天基金公开估值:ok"]
+    if suggestions:
+        source_chain.append(f"{EASTMONEY_SOURCE_NAME}:fund_search")
+    elif suggestion_error:
+        source_chain.append(f"{EASTMONEY_SOURCE_NAME}:fund_search_failed")
+    return {
+        "symbol": f"fund{fund_code}",
+        "market": "fund",
+        "code": fund_code,
+        "name": str(base.get("name") or valuation.get("name") or ""),
+        "asset_type": str(base.get("asset_type") or _fund_asset_type(str(base.get("name") or valuation.get("name") or ""), str(base.get("fund_type") or ""))),
+        "fund_type": str(base.get("fund_type") or ""),
+        "fund_company": str(base_info.get("JJGS") or ""),
+        "fund_manager": str(base_info.get("JJJL") or ""),
+        "price": estimated_value or net_value,
+        "net_value": net_value,
+        "net_value_date": net_value_date,
+        "estimated_value": estimated_value,
+        "estimated_change_rate": estimated_change_rate,
+        "estimate_time": estimate_time,
+        "change_rate": estimated_change_rate,
+        "previous_close": "",
+        "open": "",
+        "high": "",
+        "low": "",
+        "volume": "",
+        "market_value": "",
+        "circulating_value": "",
+        "turnover_rate": "",
+        "pe": "",
+        "pb": "",
+        "volume_ratio": "",
+        "time": quote_time,
+        "quote_time": quote_time,
+        "source": EASTMONEY_SOURCE_NAME,
+        "source_chain": source_chain,
+        **({"fallback_errors": {"fund_search": suggestion_error}} if suggestion_error else {}),
+        "boundary": "基金/ETF 净值、估算和场内行情口径不同；回答时必须标注净值日期或估算时间，不构成投资建议。",
+    }
+
+
+def _fetch_fund_valuation(code: str) -> dict[str, Any]:
+    response = _http_get(
+        FUND_GZ_ENDPOINT.format(code=code),
+        params={"rt": str(int(dt.datetime.now().timestamp() * 1000))},
+        headers={
+            **COMMON_HEADERS,
+            "Referer": "https://fund.eastmoney.com/",
+        },
+    )
+    text = response.content.decode("utf-8", errors="ignore")
+    match = re.search(r"jsonpgz\((.*)\);?", text)
+    if not match:
+        raise StockDataError(f"基金估值接口未返回可解析数据：{code}")
+    try:
+        payload = json.loads(match.group(1))
+    except json.JSONDecodeError as exc:
+        raise StockDataError(f"基金估值接口解析失败：{code}") from exc
+    if not isinstance(payload, dict) or not payload.get("fundcode"):
+        raise StockDataError(f"基金估值接口无有效数据：{code}")
+    return payload
+
+
 def _fetch_market_overview() -> dict[str, Any]:
     payload = _http_get_json(
         MARKET_ENDPOINT,
@@ -835,9 +1016,9 @@ def _quote_arr_to_obj(arr: list[Any], *, symbol: str) -> dict[str, str]:
     }
 
 
-def _http_get_json(url: str, *, params: dict[str, Any]) -> dict[str, Any]:
+def _http_get_json(url: str, *, params: dict[str, Any], headers: dict[str, str] | None = None) -> dict[str, Any]:
     try:
-        return _http_get(url, params=params).json()
+        return _http_get(url, params=params, headers=headers).json()
     except ValueError as exc:
         raise StockDataError("接口返回解析失败") from exc
 
@@ -855,6 +1036,147 @@ def _looks_like_quote_symbol(value: str) -> bool:
     return bool(re.fullmatch(r"(?:sh|sz|bj)\d{6}|hk\d{5}|us[A-Z]{1,5}", value))
 
 
+def _finalize_quote(quote: dict[str, Any], target: str, *, symbol: str, source_role: str) -> dict[str, Any]:
+    quote["status"] = "ok"
+    quote["symbol"] = str(quote.get("symbol") or symbol)
+    quote["quote_time"] = quote.get("quote_time") or quote.get("time", "")
+    quote["source_role"] = source_role
+    quote["retrieved_at"] = _now()
+    quote["freshness"] = quote_freshness(str(quote.get("quote_time") or quote.get("time") or ""))
+    quote["next_commands"] = stock_next_commands(target, symbol=str(quote.get("symbol") or symbol), query_context=target)
+    quote.setdefault("boundary", "公开行情接口可能延迟；仅作信息核验，不构成投资建议。")
+    return quote
+
+
+def _search_funds(keyword: str, *, limit: int = 20) -> list[dict[str, Any]]:
+    clean = " ".join((keyword or "").split()).strip()
+    if not clean:
+        return []
+    payload = _http_get_json(
+        FUND_SUGGEST_ENDPOINT,
+        params={"m": "1", "key": clean},
+        headers={
+            **COMMON_HEADERS,
+            "Referer": "https://fund.eastmoney.com/",
+        },
+    )
+    raw_items = payload.get("Datas") if isinstance(payload, dict) else []
+    items: list[dict[str, Any]] = []
+    if not isinstance(raw_items, list):
+        return items
+    for item in raw_items[: max(limit, 0)]:
+        if not isinstance(item, dict):
+            continue
+        code = str(item.get("CODE") or item.get("_id") or item.get("FCODE") or "").strip()
+        name = str(item.get("NAME") or item.get("SHORTNAME") or "").strip()
+        base_info = item.get("FundBaseInfo") if isinstance(item.get("FundBaseInfo"), dict) else {}
+        fund_type = str(base_info.get("FTYPE") or item.get("CATEGORYDESC") or "")
+        items.append(
+            {
+                "code": code,
+                "name": name,
+                "type": f"FUND-{fund_type or '基金'}",
+                "match_field": "fund_code_or_name",
+                "match_level": "fund_search",
+                "asset_type": _fund_asset_type(name, fund_type),
+                "fund_type": fund_type,
+                "source": EASTMONEY_SOURCE_NAME,
+                "base_info": base_info,
+            }
+        )
+    return items
+
+
+def _should_search_funds(keyword: str, clean: str, *, stock_items: list[dict[str, Any]]) -> bool:
+    text = f"{keyword} {clean}"
+    if _contains_fund_terms(text):
+        return True
+    code = _normalize_fund_code(clean) or _normalize_fund_code(keyword)
+    return bool(code and (not stock_items or not _is_stock_like_code(code)))
+
+
+def _fund_code_candidate(target: str, *, allow_quote_like: bool = False) -> str:
+    inferred = infer_stock_target(target)
+    for candidate in (inferred, target):
+        code = _normalize_fund_code(candidate)
+        if not code:
+            continue
+        if allow_quote_like or _should_prefer_fund(target, code):
+            return code
+    return ""
+
+
+def _fund_code_from_search(target: str) -> str:
+    try:
+        items = _search_funds(target, limit=8)
+    except StockDataError:
+        return ""
+    if not items:
+        return ""
+    clean_target = _compact_fund_name(target)
+    for item in items:
+        if _compact_fund_name(str(item.get("name") or "")) == clean_target:
+            return _normalize_fund_code(str(item.get("code") or ""))
+    for item in items:
+        name = _compact_fund_name(str(item.get("name") or ""))
+        if clean_target and (clean_target in name or name in clean_target):
+            return _normalize_fund_code(str(item.get("code") or ""))
+    return _normalize_fund_code(str(items[0].get("code") or ""))
+
+
+def _normalize_fund_code(value: str) -> str:
+    text = " ".join((value or "").split()).strip()
+    match = re.search(r"(?<!\d)(\d{6})(?!\d)", text)
+    if not match:
+        return ""
+    return match.group(1)
+
+
+def _should_prefer_fund(target: str, code: str) -> bool:
+    text = str(target or "")
+    if _contains_fund_terms(text):
+        return True
+    return bool(code and not _is_stock_like_code(code))
+
+
+def _contains_fund_terms(text: str) -> bool:
+    return any(term in str(text or "") for term in _FUND_TERMS)
+
+
+def _compact_fund_name(text: str) -> str:
+    return re.sub(r"\s+", "", str(text or "")).strip().lower()
+
+
+def _is_stock_like_code(code: str) -> bool:
+    return any(str(code or "").startswith(prefix) for prefix in _STOCK_LIKE_PREFIXES)
+
+
+def _is_fund_symbol(symbol: str) -> bool:
+    return str(symbol or "").startswith("fund")
+
+
+def _fund_asset_type(name: str, fund_type: str) -> str:
+    text = f"{name} {fund_type}"
+    if "ETF" in text or "etf" in text:
+        return "etf_link" if "联接" in text else "etf"
+    if "LOF" in text or "lof" in text:
+        return "lof"
+    if "QDII" in text or "qdii" in text:
+        return "qdii"
+    return "fund"
+
+
+def _asset_type_from_stock_type(stock_type: str, code: str) -> str:
+    if stock_type.startswith("ZS"):
+        return "index"
+    normalized = normalize_symbol(code)
+    if normalized.startswith(("sh5", "sz159", "sz16", "sz18")):
+        return "etf"
+    if stock_type.startswith("GP"):
+        return "stock"
+    return "security"
+
+
 def _local_stock_candidates(keyword: str, clean: str) -> list[dict[str, Any]]:
     symbol = normalize_symbol(clean or keyword)
     if not _looks_like_quote_symbol(symbol):
@@ -866,6 +1188,8 @@ def _local_stock_candidates(keyword: str, clean: str) -> list[dict[str, Any]]:
             "type": _symbol_type(symbol),
             "match_field": "local_alias_or_code",
             "match_level": "local_exact",
+            "asset_type": _asset_type_from_stock_type(_symbol_type(symbol), symbol),
+            "source": "观澜本地股票识别",
         }
     ]
 

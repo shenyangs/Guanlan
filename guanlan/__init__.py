@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """观澜 / Guanlan — Give your AI Agent eyes to see the entire internet."""
 
-__version__ = "0.5.40"
+__version__ = "0.5.41"
 __author__ = "Guanlan Team"
 
 from guanlan.core import Guanlan

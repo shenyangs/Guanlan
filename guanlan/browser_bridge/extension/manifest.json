@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OpenGuanlan Browser Bridge",
-  "version": "0.5.40",
+  "version": "0.5.41",
   "description": "Read-only Guanlan browser-visible evidence bridge for user-authorized target pages.",
   "permissions": [
     "activeTab",

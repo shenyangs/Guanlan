@@ -72,7 +72,7 @@ metadata:
 - 文娱/影视/综艺/明星/游戏/票房/评分/口碑类问题优先用 `route` 或 `research --preset entertainment`；把平台热度、用户评分、产业报道、宣发通稿和粉圈讨论分层看。
 - 欧美娱乐、Hollywood、Taylor Swift、Billboard、Grammy、巡演、新歌专辑等问题优先用 `research --preset global_entertainment --profile english`；英文行业媒体、榜单/奖项和艺人/厂牌一手信息优先于粉丝账号和八卦站。
 - 日韩娱乐、K-pop/J-pop、韩剧日剧、Soompi、Oricon、Naver 等问题优先用 `research --preset jp_kr_entertainment --profile hybrid`；区分本地媒体/榜单、经纪公司口径、英文翻译站和粉丝讨论。
-- 财经、股票、行情、公告、财报、监管、宏观金融、ETF/基金、雪球/股吧情绪和研报问题先跑 `guanlan stock plan "问题"`（如果不确定该怎么查），再用 `guanlan stock ...` / `guanlan-stock ...` 获取结构化行情、榜单、资金流向和大盘概览，再用 `research --preset finance` 或 `search --scope finance_quote|finance_disclosure|finance_macro|finance_sentiment|finance_research` 扩展证据；把行情、公告披露、监管/宏观、新闻、研报观点和投资者情绪分层看，不输出买卖建议。
+- 财经、股票、行情、ETF/基金净值、公告、财报、基金公告、监管、宏观金融、雪球/股吧情绪和研报问题先跑 `guanlan stock plan "问题"`（如果不确定该怎么查），再用 `guanlan stock ...` / `guanlan-stock ...` 获取结构化行情、净值、榜单、资金流向和大盘概览，再用 `research --preset finance` 或 `search --scope finance_quote|finance_disclosure|finance_macro|finance_sentiment|finance_research` 扩展证据；把行情/净值、公告披露、监管/宏观、新闻、研报观点和投资者情绪分层看，不输出买卖建议。
 - CVE/漏洞/补丁/反诈/诈骗短信用 `research --preset cybersecurity` 或 `search --scope cybersecurity --trace`；优先 CVE/NVD/CISA/厂商公告/监管来源。
 - 台风/天气/地震/灾害预警用 `search --scope weather_disaster --trace`；优先官方气象和应急来源，并检查时间戳。
 - 体育、科学新闻、招聘薪资面经、播客、考试备考分别用 `sports`、`science`、`career`、`podcast`、`test_prep` preset/scope，不要停在泛搜索。
@@ -134,6 +134,7 @@ guanlan search "上证指数 今日 行情" --profile china --scope finance_quot
 guanlan search "社融 CPI 降息 央行" --profile china --scope finance_macro --limit 80 --trace
 guanlan stock plan "宁德时代 股价 财报 公告 最近风险"
 guanlan stock quote "贵州茅台"
+guanlan stock quote "024051"
 guanlan stock detail "600519"
 guanlan stock fundflow "宁德时代"
 guanlan-stock rank --sort turnover --limit 20

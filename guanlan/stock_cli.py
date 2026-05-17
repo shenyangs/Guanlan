@@ -23,7 +23,7 @@ def add_stock_parser(subparsers) -> argparse.ArgumentParser:
 def build_standalone_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="guanlan-stock",
-        description="观澜结构化股票数据：行情、榜单、资金流向、大盘概览和 Agent 股票任务指南",
+        description="观澜结构化股票/ETF/基金数据：行情、净值、榜单、资金流向、大盘概览和 Agent 财经任务指南",
     )
     _add_stock_arguments(parser)
     return parser
@@ -36,17 +36,17 @@ def _add_stock_arguments(parser: argparse.ArgumentParser) -> None:
     p_plan.add_argument("query", nargs="?", default="", help="Optional stock/finance query")
     p_plan.add_argument("--json", action="store_true", help="Print JSON")
 
-    p_search = sub.add_parser("search", aliases=["lookup"], help="Search stock/index codes by name or symbol")
-    p_search.add_argument("query", help="Stock name, ticker, or noisy finance query")
+    p_search = sub.add_parser("search", aliases=["lookup"], help="Search stock/index/ETF/fund codes by name or symbol")
+    p_search.add_argument("query", help="Stock, ETF, fund name/code, ticker, or noisy finance query")
     p_search.add_argument("--limit", type=int, default=20, help="Maximum number of candidates")
     p_search.add_argument("--json", action="store_true", help="Print JSON")
 
-    p_quote = sub.add_parser("quote", aliases=["price"], help="Fetch one stock/index quote")
-    p_quote.add_argument("target", help="Stock code/name/ticker, e.g. 600519, 贵州茅台, NVDA")
+    p_quote = sub.add_parser("quote", aliases=["price"], help="Fetch one stock/index/ETF/fund quote or NAV")
+    p_quote.add_argument("target", help="Stock/ETF/fund code/name/ticker, e.g. 600519, 024051, 贵州茅台, NVDA")
     p_quote.add_argument("--json", action="store_true", help="Print JSON")
 
-    p_detail = sub.add_parser("detail", help="Fetch quote, fund flow, plates, and latest news")
-    p_detail.add_argument("target", help="Stock code/name/ticker")
+    p_detail = sub.add_parser("detail", help="Fetch quote/NAV, fund flow, plates, and latest news when available")
+    p_detail.add_argument("target", help="Stock/ETF/fund code/name/ticker")
     p_detail.add_argument("--news-limit", type=int, default=12, help="Maximum number of news items")
     p_detail.add_argument("--json", action="store_true", help="Print JSON")
 

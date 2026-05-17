@@ -40,6 +40,7 @@ def test_infer_and_normalize_stock_target():
     assert stockdata.normalize_symbol("000001") == "sz000001"
     assert stockdata.normalize_symbol("00700") == "hk00700"
     assert stockdata.normalize_symbol("NVDA") == "usNVDA"
+    assert stockdata.normalize_symbol("024051") == "024051"
 
 
 def test_quote_stock_parses_public_quote_payload(monkeypatch):
@@ -106,6 +107,105 @@ def test_search_stocks_uses_local_candidate_when_backend_fails(monkeypatch):
     assert data["items"][0]["match_level"] == "local_exact"
 
 
+def test_search_stocks_adds_fund_candidates(monkeypatch):
+    def fake_json(url, *, params, headers=None):
+        if url == stockdata.FUND_SUGGEST_ENDPOINT:
+            return {
+                "Datas": [
+                    {
+                        "CODE": "024051",
+                        "NAME": "华宝中证信息技术应用创新产业ETF发起式联接C",
+                        "FundBaseInfo": {
+                            "FTYPE": "指数型-股票",
+                            "DWJZ": 1.2155,
+                            "FSRQ": "2026-05-15",
+                            "JJGS": "华宝基金",
+                            "JJJL": "张放",
+                        },
+                    }
+                ]
+            }
+        return {"stock": []}
+
+    monkeypatch.setattr(stockdata, "_http_get_json", fake_json)
+
+    data = stockdata.search_stocks("024051", limit=5)
+
+    assert data["items"][0]["code"] == "024051"
+    assert data["items"][0]["asset_type"] == "etf_link"
+    assert data["items"][0]["source"] == stockdata.EASTMONEY_SOURCE_NAME
+
+
+def test_quote_stock_fetches_fund_nav_directly(monkeypatch):
+    monkeypatch.setattr(
+        stockdata,
+        "_fetch_fund_valuation",
+        lambda _code: {
+            "fundcode": "024051",
+            "name": "华宝中证信息技术应用创新产业ETF发起式联接C",
+            "jzrq": "2026-05-15",
+            "dwjz": "1.2155",
+            "gsz": "1.2145",
+            "gszzl": "-2.03",
+            "gztime": "2026-05-15 15:00",
+        },
+    )
+    monkeypatch.setattr(
+        stockdata,
+        "_search_funds",
+        lambda _query, limit=1: [
+            {
+                "code": "024051",
+                "name": "华宝中证信息技术应用创新产业ETF发起式联接C",
+                "asset_type": "etf_link",
+                "fund_type": "指数型-股票",
+                "base_info": {"DWJZ": 1.2155, "FSRQ": "2026-05-15", "JJGS": "华宝基金", "JJJL": "张放"},
+            }
+        ],
+    )
+
+    quote = stockdata.quote_stock("024051")
+    rendered = stockdata.format_quote_markdown(quote)
+
+    assert quote["symbol"] == "fund024051"
+    assert quote["source_role"] == "fund_nav"
+    assert quote["asset_type"] == "etf_link"
+    assert quote["net_value"] == "1.2155"
+    assert quote["quote_time"] == "2026-05-15 15:00"
+    assert "观澜基金/ETF净值" in rendered
+
+
+def test_quote_stock_prefers_exact_fund_share_class(monkeypatch):
+    monkeypatch.setattr(
+        stockdata,
+        "_fetch_fund_valuation",
+        lambda code: {
+            "fundcode": code,
+            "name": "华宝中证信息技术应用创新产业ETF发起式联接C",
+            "jzrq": "2026-05-15",
+            "dwjz": "1.2155",
+            "gsz": "1.2145",
+            "gszzl": "-2.03",
+            "gztime": "2026-05-15 15:00",
+        },
+    )
+
+    def fake_search(query, limit=1):
+        if "联接C" in query:
+            return [
+                {"code": "024050", "name": "华宝中证信息技术应用创新产业ETF发起式联接A", "asset_type": "etf_link", "fund_type": "指数型-股票", "base_info": {}},
+                {"code": "024051", "name": "华宝中证信息技术应用创新产业ETF发起式联接C", "asset_type": "etf_link", "fund_type": "指数型-股票", "base_info": {}},
+            ]
+        return [{"code": "024051", "name": "华宝中证信息技术应用创新产业ETF发起式联接C", "asset_type": "etf_link", "fund_type": "指数型-股票", "base_info": {}}]
+
+    monkeypatch.setattr(stockdata, "_search_funds", fake_search)
+
+    quote = stockdata.quote_stock("华宝中证信息技术应用创新产业ETF发起式联接C")
+
+    assert quote["symbol"] == "fund024051"
+    assert quote["name"] == "华宝中证信息技术应用创新产业ETF发起式联接C"
+
+
 def test_stock_guide_exposes_agent_first_commands():
     guide = stockdata.build_stock_guide("宁德时代 股价 财报 公告 最近风险")
     rendered = stockdata.format_stock_guide_markdown(guide)
@@ -114,6 +214,14 @@ def test_stock_guide_exposes_agent_first_commands():
     assert any(command.startswith("guanlan stock quote") for command in guide["recommended_commands"])
     assert "公告披露" in rendered
     assert "不输出买入、卖出或持有建议" in rendered
+
+
+def test_stock_guide_exposes_fund_symbol_for_etf_link():
+    guide = stockdata.build_stock_guide("024051")
+
+    assert guide["normalized_symbol"] == "fund024051"
+    assert "ETF" in guide["agent_trigger_terms"]
+    assert any("--scope finance_quote" in command for command in guide["recommended_commands"])
 
 
 def test_rank_stocks_formats_rows(monkeypatch):

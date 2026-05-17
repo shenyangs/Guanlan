@@ -127,6 +127,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “查影视/综艺/明星/游戏/票房口碑” | `guanlan research "关键词" --preset entertainment --read-top 0` |
 | “查股票/公司财报公告/风险” | 先 `guanlan stock detail "宁德时代"`，再 `guanlan research "宁德时代 股价 财报 公告 最近风险" --preset finance --read-top 5 --advisor` |
 | “查行情/指数/股价” | `guanlan stock quote "上证指数"` 或 `guanlan stock quote "600519"`，再按需 `guanlan search "上证指数 今日 行情" --scope finance_quote --limit 80 --trace` |
+| “查 ETF/基金/联接基金净值” | `guanlan stock quote "024051"` 或 `guanlan stock detail "基金名称"`，再按需 `guanlan search "基金名称 净值 公告 招募说明书" --scope finance_quote --limit 80 --trace` |
 | “查资金流向/榜单/大盘概览” | `guanlan stock fundflow "600519"`、`guanlan-stock rank --sort turnover --limit 20`、`guanlan-stock index` |
 | “页面读出来像脚本/登录墙/兜底” | `guanlan diagnose page "URL"` |
 | “需要生成浏览器可见页补证任务” | `guanlan browser-assist plan "URL" --json` |
@@ -309,11 +310,12 @@ guanlan search "某电影 票房 豆瓣评分" --profile china --scope entertain
 
 文娱、影视、综艺、明星、游戏、票房和评分问题使用文娱 scope。它是软路由，不会只看白名单；重点是让 Agent 分清平台热度、用户评分、产业报道、宣发通稿和粉圈讨论。
 
-财经、股票、行情、资金流向和榜单问题先走结构化数据层，避免把雪球、东方财富等动态行情页当成普通文章硬读。`guanlan stock plan "问题"` 是给 Agent 的低成本提醒入口；`guanlan stock` 是主 CLI 入口，`guanlan-stock` 是同能力的独立入口；它只整理公开行情证据，不输出买卖建议。
+财经、股票、ETF、基金、净值、行情、资金流向和榜单问题先走结构化数据层，避免把雪球、东方财富等动态行情页当成普通文章硬读。`guanlan stock plan "问题"` 是给 Agent 的低成本提醒入口；`guanlan stock` 是主 CLI 入口，`guanlan-stock` 是同能力的独立入口；它只整理公开行情/净值证据，不输出买卖建议。
 
 ```bash
 guanlan stock plan "宁德时代 股价 财报 公告 最近风险"
 guanlan stock quote "贵州茅台"
+guanlan stock quote "024051"
 guanlan stock detail "600519"
 guanlan stock fundflow "宁德时代"
 guanlan-stock rank --sort turnover --limit 20

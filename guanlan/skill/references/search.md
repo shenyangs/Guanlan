@@ -119,6 +119,7 @@ guanlan search "清华大学计算机系研究生招生 导师" --profile china 
 
 # 财经与资本市场
 guanlan stock plan "宁德时代 股价 财报 公告 最近风险"
+guanlan stock quote "024051"
 guanlan stock detail "宁德时代"
 guanlan search "query" --profile china --scope finance
 ```

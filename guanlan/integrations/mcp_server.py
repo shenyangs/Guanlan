@@ -97,9 +97,9 @@ def _tool_definitions() -> list[dict]:
         {
             "name": "guanlan_stock",
             "description": (
-                "Fetch structured public stock data without reading dynamic finance pages: quote, detail, "
+                "Fetch structured public stock, ETF, fund, and market data without reading dynamic finance pages: quote/NAV, detail, "
                 "fundflow, news, plate, rank, index, search, or plan. Use this first whenever users ask "
-                "about stocks, stock prices, market indices, fund flow, disclosures, Xueqiu/Guba sentiment, "
+                "about stocks, ETFs, funds, NAV, stock prices, market indices, fund flow, disclosures, Xueqiu/Guba sentiment, "
                 "or capital-market risk; do not start by reading dynamic finance pages. Output is evidence "
                 "data, not investment advice."
             ),
