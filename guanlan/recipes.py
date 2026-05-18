@@ -88,6 +88,66 @@ _RECIPES: tuple[ResearchRecipe, ...] = (
         boundaries=["社区样本不是总体统计。", "建议必须说明证据缺口和适用人群。"],
     ),
     ResearchRecipe(
+        id="public-opinion-pulse",
+        name="公开舆情/风评回响",
+        description="把社交平台公开讨论、评论样本、媒体报道和时间窗分层，形成谨慎的舆情回响。",
+        when_to_use="用户问某产品/品牌/事件现在风评如何、被夸还是被骂、社媒在讨论什么、声量和争议点时。",
+        preset="public_opinion",
+        scopes=["social_web", "market_review", "business"],
+        evidence_layers=["公开讨论样本", "评论/评分样本", "媒体报道", "平台热度", "时间窗与样本偏差"],
+        boundaries=["公开样本不是民调，也不是全网总体比例。", "输出必须说明平台、时间窗、样本偏差和未覆盖来源。"],
+    ),
+    ResearchRecipe(
+        id="brand-risk-watch",
+        name="品牌负面/危机观察",
+        description="把投诉、负面扩散、媒体报道、官方/公司回应和待核验事实分层。",
+        when_to_use="用户问某品牌/公司是否出现负面、危机、公关风险、投诉爆发、抵制、召回、道歉或澄清时。",
+        preset="crisis",
+        scopes=["social_web", "business", "market_review", "gov"],
+        evidence_layers=["负面信号", "投诉样本", "媒体报道", "官方/公司回应", "扩散平台与时间线", "待核验事实"],
+        boundaries=["不要把单条投诉或爆款帖写成危机定论。", "危机判断必须保留已证实事实、未证实传言和公司回应边界。"],
+    ),
+    ResearchRecipe(
+        id="competitor-watch",
+        name="竞品情报/同类监测",
+        description="把同类对象、官网/价格页、功能更新、评价样本、行业报道和格局判断组织成可复用证据链。",
+        when_to_use="用户问竞品、竞争对手、同类产品、市场格局、功能对比、定价变化或竞品长期监测时。",
+        preset="competitor",
+        scopes=["company_primary", "business", "market_review", "social_web"],
+        evidence_layers=["对象边界", "同类/竞品清单", "公司一手资料", "价格/功能更新", "评价样本", "行业报道", "待追踪变更"],
+        boundaries=["先确认对象边界和同类标准，不凭印象生成竞品清单。", "评价站、社区和榜单只能作样本或线索，不能当市场份额。"],
+    ),
+    ResearchRecipe(
+        id="pricing-watch",
+        name="价格/套餐变化观察",
+        description="优先核验官方价格页、帮助中心、发布说明和历史快照，再补用户反应与媒体报道。",
+        when_to_use="用户问某产品是否涨价/降价、套餐是否变化、订阅价格、付费墙或价格对比时。",
+        preset="pricing_watch",
+        scopes=["company_primary", "market_review", "business"],
+        evidence_layers=["官方价格页", "帮助中心/条款", "发布说明", "历史快照", "用户反应", "媒体报道"],
+        boundaries=["价格必须标注地区、币种、时间和套餐边界。", "过期缓存或社区转述不能替代官方价格页。"],
+    ),
+    ResearchRecipe(
+        id="review-mining",
+        name="评论样本/用户语言挖掘",
+        description="把用户评论拆成痛点、好评、差评、功能诉求、版本/地区边界和代表原话。",
+        when_to_use="用户问评论分析、差评原因、用户反馈、评分下降、功能诉求或想从评论里提炼用户语言时。",
+        preset="review_intel",
+        scopes=["market_review", "social_web", "business"],
+        evidence_layers=["评分/评论样本", "差评主题", "好评主题", "功能诉求", "版本/地区边界", "代表用户语言"],
+        boundaries=["评论样本不是总体比例；不要把刷评、营销样本或单平台评论写成总体结论。", "引用用户原话时要短摘录、保留来源和时间。"],
+    ),
+    ResearchRecipe(
+        id="app-review-pulse",
+        name="应用商店评论/评分观察",
+        description="围绕 App Store、Google Play 与公开应用市场信号，观察评分、版本反馈、差评主题和用户语言。",
+        when_to_use="用户问某 App 的商店评论、评分变化、ASO、版本反馈、差评主题或应用市场口碑时。",
+        preset="app_review",
+        scopes=["market_review", "company_primary", "social_web"],
+        evidence_layers=["应用商店评分", "版本评论", "地区边界", "差评主题", "好评主题", "公开市场信号"],
+        boundaries=["应用商店数据要标注地区、版本、采样时间和平台。", "第三方榜单或下载估计不能当官方经营数据。"],
+    ),
+    ResearchRecipe(
         id="entertainment-pulse",
         name="文娱口碑/热度",
         description="区分榜单票房、平台评分、产业报道、宣发通稿和粉圈讨论。",
@@ -228,6 +288,16 @@ def suggest_recipe(query: str, *, route_plan: dict[str, Any] | None = None) -> R
         return get_recipe("wps-office-radar")
     if "cybersecurity" in intents or any(term in text for term in ("cve", "漏洞", "诈骗", "钓鱼")):
         return get_recipe("security-advisory")
+    if {"crisis_watch"} & intents or any(term in text for term in ("公关危机", "负面舆情", "投诉爆发", "抵制", "召回", "道歉", "澄清", "pr crisis", "backlash")):
+        return get_recipe("brand-risk-watch")
+    if {"app_review"} & intents or any(term in text for term in ("app store 评论", "应用商店评论", "google play 评论", "应用评分", "aso")):
+        return get_recipe("app-review-pulse")
+    if {"review_intel"} & intents or any(term in text for term in ("评论分析", "评论挖掘", "用户评论", "差评", "好评", "评分下降")):
+        return get_recipe("review-mining")
+    if {"public_opinion"} & intents or any(term in text for term in ("舆情", "风评", "声量", "社媒", "被骂", "被夸", "social sentiment")):
+        return get_recipe("public-opinion-pulse")
+    if {"pricing_watch"} & intents or any(term in text for term in ("定价变化", "价格变化", "价格调整", "涨价", "降价", "套餐变化", "pricing change")):
+        return get_recipe("pricing-watch")
     if any(
         term in text
         for term in (
@@ -246,6 +316,8 @@ def suggest_recipe(query: str, *, route_plan: dict[str, Any] | None = None) -> R
         )
     ):
         return get_recipe("trajectory-map")
+    if {"competitor_watch"} & intents or any(term in text for term in ("竞品情报", "竞品监控", "竞争对手", "竞对", "同类产品")):
+        return get_recipe("competitor-watch")
     if "tech" in intents or any(term in text for term in ("github", "开源", "技术", "ai", "llm")):
         return get_recipe("tech-radar")
     return get_recipe("product-reputation")
@@ -363,6 +435,63 @@ def _commands_for_recipe(recipe: ResearchRecipe, query: str, *, profile: str, li
                 f"guanlan pulse {q} --format context",
             ]
         )
+    elif recipe.id == "public-opinion-pulse":
+        commands.extend(
+            [
+                f"guanlan pulse {q} --profile {profile} --limit {limit} --format context",
+                f"guanlan research {q} --preset public_opinion --profile {profile} --limit {limit} --read-top {read_top} --advisor",
+                f"guanlan search {q} --profile {profile} --scope social_web --limit {limit} --trace",
+                f"guanlan search {q} --profile {profile} --scope market_review --limit {limit} --trace",
+                f"guanlan hotnews today --limit {limit} --trends",
+            ]
+        )
+    elif recipe.id == "brand-risk-watch":
+        commands.extend(
+            [
+                f"guanlan hotnews today --limit {limit} --trends",
+                f"guanlan pulse {q} --profile {profile} --limit {limit} --format context",
+                f"guanlan research {q} --preset crisis --profile {profile} --limit {limit} --read-top {max(read_top, 5)} --advisor",
+                f"guanlan search {q} --profile {profile} --scope social_web --limit {limit} --trace",
+                f"guanlan timeline {q} --limit {limit} --format context",
+            ]
+        )
+    elif recipe.id == "competitor-watch":
+        commands.extend(
+            [
+                f"guanlan research {q} --preset competitor --profile {profile} --limit {limit} --read-top {max(read_top, 5)} --advisor",
+                f"guanlan dossier {q} --focus '定位 竞品 功能 定价 口碑 风险 待追踪' --limit {limit} --format context",
+                f"guanlan search {q} --profile {profile} --scope company_primary --limit {limit} --trace",
+                f"guanlan search {q} --profile {profile} --scope market_review --limit {limit} --trace",
+                f"guanlan compare {q} '主要同类对象' --focus '定位 功能 定价 用户反馈 渠道 风险' --limit {limit} --format context",
+            ]
+        )
+    elif recipe.id == "pricing-watch":
+        commands.extend(
+            [
+                f"guanlan research {q} --preset pricing_watch --profile {profile} --limit {limit} --read-top {max(read_top, 5)}",
+                f"guanlan search {q} --profile {profile} --scope company_primary --limit {limit} --trace",
+                f"guanlan search {q} --profile {profile} --scope market_review --limit {limit} --trace",
+                f"guanlan timeline {q} --limit {limit} --format context",
+            ]
+        )
+    elif recipe.id == "review-mining":
+        commands.extend(
+            [
+                f"guanlan research {q} --preset review_intel --profile {profile} --limit {limit} --read-top {read_top} --advisor",
+                f"guanlan search {q} --profile {profile} --scope market_review --limit {limit} --trace",
+                f"guanlan pulse {q} --profile {profile} --limit {limit} --format context",
+            ]
+        )
+    elif recipe.id == "app-review-pulse":
+        commands.extend(
+            [
+                f"guanlan research {q} --preset app_review --profile {profile} --limit {limit} --read-top {read_top} --advisor",
+                f"guanlan search {q} --profile {profile} --scope market_review --limit {limit} --trace",
+                f"guanlan search {q} --site apps.apple.com --profile {profile} --limit {limit}",
+                f"guanlan search {q} --site play.google.com --profile {profile} --limit {limit}",
+                f"guanlan pulse {q} --profile {profile} --limit {limit} --format context",
+            ]
+        )
     elif recipe.id == "security-advisory":
         commands.extend(
             [
@@ -415,7 +544,7 @@ def _default_read_top(recipe: ResearchRecipe, requested: int | None) -> int:
         return max(int(requested), 0)
     if recipe.id in {"university-advisor", "academic-indexing"}:
         return 0
-    if recipe.id in {"finance-risk", "security-advisory", "wps-office-radar"}:
+    if recipe.id in {"finance-risk", "security-advisory", "wps-office-radar", "brand-risk-watch", "competitor-watch", "pricing-watch"}:
         return 5
     return 3
 
@@ -423,7 +552,7 @@ def _default_read_top(recipe: ResearchRecipe, requested: int | None) -> int:
 def _default_timeout_budget_seconds(recipe: ResearchRecipe) -> int:
     if recipe.id == "trajectory-map":
         return 300
-    if recipe.id in {"finance-risk", "entertainment-pulse", "security-advisory", "tech-radar", "wps-office-radar"}:
+    if recipe.id in {"finance-risk", "entertainment-pulse", "security-advisory", "tech-radar", "wps-office-radar", "public-opinion-pulse", "brand-risk-watch", "competitor-watch", "pricing-watch", "review-mining", "app-review-pulse"}:
         return 240
     return 180
 

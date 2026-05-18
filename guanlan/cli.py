@@ -241,6 +241,21 @@ def main():
     p_workflow.add_argument("--read-top", type=int, default=None, help="Optional read count to plan for")
     p_workflow.add_argument("--json", action="store_true", help="Print workflow decision JSON instead of Markdown")
 
+    # ── agent ──
+    p_agent = sub.add_parser("agent", help="Auto-plan the smallest safe Guanlan command chain for agents")
+    p_agent.add_argument("query", nargs="?", default="", help="User need to turn into an agent command plan")
+    p_agent.add_argument("--mode", choices=["auto", "quick", "deep", "fresh"], default="auto",
+                         help="Planning bias: auto keeps defaults, quick stays light, deep investigates, fresh adds hot signals")
+    p_agent.add_argument("--preset", default="general", help="Optional research preset context")
+    p_agent.add_argument("--site", default="", help="User-requested site, if any")
+    p_agent.add_argument("--sites", default="", help="Comma-separated user-requested sites")
+    p_agent.add_argument("--scope", default="", help="User-requested scope, if any")
+    p_agent.add_argument("--profile", choices=VALID_PROFILES, default="china", help="Region profile")
+    p_agent.add_argument("--limit", type=int, default=DEFAULT_SEARCH_LIMIT, help="Candidate pool size to plan for")
+    p_agent.add_argument("--read-top", type=int, default=None, help="Optional read count to plan for")
+    p_agent.add_argument("--max-commands", type=int, default=5, help="Maximum commands to include in the shortlist")
+    p_agent.add_argument("--json", action="store_true", help="Print agent plan JSON instead of Markdown")
+
     # ── diagnose ──
     p_diagnose = sub.add_parser("diagnose", help="Diagnose why a URL is readable, weak, blocked, or only a fallback")
     diagnose_sub = p_diagnose.add_subparsers(dest="diagnose_command", help="Diagnosis commands")
@@ -964,6 +979,12 @@ def main():
                                 help="Region profile for live probes")
     p_quality_live.add_argument("--strict", action="store_true",
                                 help="Exit non-zero if live smoke reports failures")
+    p_quality_live.add_argument("--record-history", action="store_true",
+                                help="Append this live smoke run to the local JSONL trend history")
+    p_quality_live.add_argument("--history-path", default=None,
+                                help="Optional JSONL path for live smoke history")
+    p_quality_live.add_argument("--trend-window", type=int, default=10,
+                                help="Number of recent live smoke runs to summarize")
     p_quality_live.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
     p_quality_perf = quality_sub.add_parser("performance", help="Run deterministic performance regression guards")
     p_quality_perf.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
@@ -1072,6 +1093,8 @@ def _dispatch_command(args):
         _cmd_route(args)
     elif args.command == "workflow":
         _cmd_workflow(args)
+    elif args.command == "agent":
+        _cmd_agent(args)
     elif args.command == "diagnose":
         _cmd_diagnose(args)
     elif args.command == "browser-assist":
@@ -1649,6 +1672,33 @@ def _cmd_workflow(args):
         print(json.dumps(decision.to_dict(), ensure_ascii=False, indent=2))
     else:
         print(format_workflow_decision_markdown(decision))
+
+
+def _cmd_agent(args):
+    """Build a compact auto-plan for agent callers."""
+
+    from guanlan.workflow_decider import build_agent_plan, format_agent_plan_markdown
+
+    if not args.query:
+        print("Error: query is required", file=sys.stderr)
+        sys.exit(2)
+    preset_context = None if args.preset in {"", "general"} else args.preset
+    plan = build_agent_plan(
+        args.query,
+        mode=args.mode,
+        preset=preset_context,
+        scope=args.scope or None,
+        site=args.site or None,
+        sites=[s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
+        profile=args.profile or None,
+        limit=max(args.limit, 1),
+        read_top=max(args.read_top, 0) if args.read_top is not None else None,
+        max_commands=max(args.max_commands, 1),
+    )
+    if args.json:
+        print(json.dumps(plan.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(format_agent_plan_markdown(plan))
 
 
 def _cmd_diagnose(args):
@@ -3016,6 +3066,9 @@ def _cmd_quality(args):
             limit=max(args.limit, 1),
             timeout_budget=max(args.timeout_budget, 1),
             profile=args.profile,
+            history_path=args.history_path,
+            trend_window=max(args.trend_window, 1),
+            record_history=bool(args.record_history),
         )
         report["contract"]["blocking"] = bool(args.strict)
         if args.format == "json":
@@ -3385,7 +3438,7 @@ def _install_openguanlan_deps():
     else:
         print("  -- openguanlan is bundled with Guanlan 0.5.30+.")
         print("  -- Reinstall/upgrade Guanlan, then refresh your shell path:")
-        print("     uv tool install --force --upgrade guanlan && hash -r")
+        print("     uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan && hash -r")
     print("  Optional bridge manual browser step:")
     print("     open chrome://extensions and Load unpacked the directory from `openguanlan extension path`")
     print("  Optional bridge adapter:")
@@ -4470,16 +4523,36 @@ def _github_get_with_retry(url, timeout=10, retries=3, sleeper=time.sleep):
 def _cmd_check_update():
     """Check for newer versions when a public release repo is configured."""
     from guanlan import __version__
-    from guanlan.update_check import format_update_notice, get_update_info
+    from guanlan.update_check import (
+        UpdateInfo,
+        format_update_notice,
+        get_update_info,
+        is_newer_version,
+        pypi_version_surfaces,
+    )
 
     print(f"当前版本: v{__version__}")
+    pypi_surfaces = pypi_version_surfaces(timeout=3.0)
+    pypi_latest = str(pypi_surfaces.get("latest") or "").strip()
+    if pypi_latest:
+        print(f"PyPI 最新: v{pypi_latest}")
+        json_latest = str(pypi_surfaces.get("pypi_json") or "").strip()
+        simple_latest = str(pypi_surfaces.get("pypi_simple") or "").strip()
+        if json_latest and simple_latest and json_latest != simple_latest:
+            print(f"PyPI JSON/simple 暂不一致: json=v{json_latest}, simple=v{simple_latest}；按较高公开版本判断。")
+
     repo = os.environ.get("GUANLAN_UPDATE_REPO", "").strip()
     if not repo:
-        info = get_update_info(__version__, timeout=3.0)
+        info = UpdateInfo(__version__, pypi_latest) if pypi_latest and is_newer_version(pypi_latest, __version__) else None
+        if not info:
+            info = get_update_info(__version__, timeout=3.0)
         if info:
             print(format_update_notice(info))
             return "update_available"
-        print("✅ 已是最新版本，或暂时无法访问 PyPI。")
+        if pypi_latest:
+            print("✅ 当前版本不低于 PyPI 公开最新版本。")
+        else:
+            print("✅ 已是最新版本，或暂时无法访问 PyPI。")
         return "up_to_date"
 
     release_url = f"https://api.github.com/repos/{repo}/releases/latest"
@@ -4489,12 +4562,25 @@ def _cmd_check_update():
     resp, err, attempts = _github_get_with_retry(release_url, timeout=10, retries=3)
     if err:
         print(f"[!] 无法检查更新（{_update_error_text(err)}，已重试 {attempts} 次）")
+        if pypi_latest and is_newer_version(pypi_latest, __version__):
+            print("已改用 PyPI 公开版本面判断。")
+            print(format_update_notice(UpdateInfo(__version__, pypi_latest)))
+            return "update_available"
+        if pypi_latest:
+            print("✅ PyPI 显示当前已是最新版本。")
+            return "up_to_date"
         return "error"
 
     if resp.status_code == 200:
         data = resp.json()
         latest = data.get("tag_name", "").lstrip("v")
         body = data.get("body", "")
+        if latest:
+            print(f"GitHub 最新: v{latest}")
+        if latest and pypi_latest and latest != pypi_latest:
+            public_latest = latest if is_newer_version(latest, pypi_latest) else pypi_latest
+            print(f"[!] GitHub/PyPI 公开版本暂不一致；按较高版本 v{public_latest} 判断。")
+            latest = public_latest
 
         if latest and latest != __version__:
             print(f"最新版本: v{latest} ← 有更新！")
@@ -4514,6 +4600,13 @@ def _cmd_check_update():
     release_err = _classify_github_response_error(resp)
     if release_err == "rate_limit":
         print("[!] 无法检查更新（GitHub API 速率限制，请稍后重试）")
+        if pypi_latest and is_newer_version(pypi_latest, __version__):
+            print("已改用 PyPI 公开版本面判断。")
+            print(format_update_notice(UpdateInfo(__version__, pypi_latest)))
+            return "update_available"
+        if pypi_latest:
+            print("✅ PyPI 显示当前已是最新版本。")
+            return "up_to_date"
         return "error"
 
     # No releases yet, fall back to latest main commit.

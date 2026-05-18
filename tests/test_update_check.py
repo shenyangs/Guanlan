@@ -19,8 +19,9 @@ def test_format_update_notice_mentions_safe_upgrade_paths():
 
     assert "当前 v0.1.14" in notice
     assert "最新 v0.2.4" in notice
-    assert "uv tool install --force --upgrade guanlan" in notice
+    assert "uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan" in notice
     assert "只有 --force 可能重装旧锁定版本" in notice
+    assert "update-check.json" in notice
     assert "brew update" in notice
     assert "pipx install --force guanlan" in notice
     assert "which -a guanlan" in notice
@@ -32,7 +33,7 @@ def test_format_compact_update_notice_mentions_upgrade_and_install_check():
 
     assert "当前 v0.4.3" in notice
     assert "最新 v0.4.4" in notice
-    assert "uv tool install --force --upgrade guanlan" in notice
+    assert "uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan" in notice
     assert "guanlan doctor --install-check" in notice
 
 
@@ -47,7 +48,7 @@ def test_doctor_prints_update_notice_when_newer_version_available(capsys):
 
     captured = capsys.readouterr()
     assert "版本提醒" in captured.out
-    assert "uv tool install --force --upgrade guanlan" in captured.out
+    assert "uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan" in captured.out
     assert "guanlan doctor --trace" in captured.out
 
 
@@ -84,7 +85,7 @@ def test_install_check_reports_duplicate_paths_and_stale_version():
     assert "多个 guanlan 路径" in text
     assert "当前优先" in text
     assert "以下路径看起来不是公开最新版本" in text
-    assert "uv tool install --force --upgrade guanlan" in text
+    assert "uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan" in text
 
 
 def test_install_check_reports_shadowed_homebrew_path():
@@ -122,6 +123,37 @@ def test_cached_update_info_reuses_local_cache(tmp_path, monkeypatch):
         cached = update_check.cached_update_info("0.4.3", timeout=0.01, ttl_seconds=3600)
 
     assert cached == UpdateInfo(current="0.4.3", latest="0.4.4")
+
+
+def test_latest_pypi_version_uses_highest_visible_surface(monkeypatch):
+    class Response:
+        def __init__(self, status_code, payload=None, text=""):
+            self.status_code = status_code
+            self._payload = payload or {}
+            self.text = text
+
+        def json(self):
+            return self._payload
+
+    def fake_get(url, **_kwargs):
+        if url == update_check.PYPI_JSON_URL:
+            return Response(200, {"info": {"version": "0.5.13"}})
+        if url == update_check.PYPI_SIMPLE_URL:
+            return Response(
+                200,
+                text=(
+                    '<a href="https://files.pythonhosted.org/guanlan-0.5.13.tar.gz">guanlan-0.5.13.tar.gz</a>'
+                    '<a href="https://files.pythonhosted.org/guanlan-0.5.43-py3-none-any.whl">guanlan-0.5.43-py3-none-any.whl</a>'
+                ),
+            )
+        raise AssertionError(url)
+
+    monkeypatch.setenv("GUANLAN_UPDATE_CHECK", "1")
+    monkeypatch.setattr(update_check.requests, "get", fake_get)
+
+    assert update_check.latest_pypi_json_version() == "0.5.13"
+    assert update_check.latest_pypi_simple_version() == "0.5.43"
+    assert update_check.latest_pypi_version() == "0.5.43"
 
 
 def test_doctor_install_check_cli(capsys):

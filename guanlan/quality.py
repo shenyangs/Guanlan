@@ -18,6 +18,7 @@ from guanlan.limits import (
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
 )
+from guanlan.live_smoke_history import attach_live_smoke_trend
 from guanlan.search_quality import (
     LOW_RELEVANCE_RESULT_STATUS,
     UNSAFE_RESULT_STATUS,
@@ -419,7 +420,15 @@ def run_backend_fixture_checks() -> dict[str, Any]:
     }
 
 
-def run_live_smoke_checks(limit: int = 5, timeout_budget: int = 180, profile: str = "china") -> dict[str, Any]:
+def run_live_smoke_checks(
+    limit: int = 5,
+    timeout_budget: int = 180,
+    profile: str = "china",
+    *,
+    history_path: str | Path | None = None,
+    trend_window: int = 10,
+    record_history: bool = False,
+) -> dict[str, Any]:
     """Run optional live probes and annotate them with an outer timeout budget."""
 
     report = run_quality_checks(mode="live", limit=max(limit, 1), coverage=False)
@@ -441,6 +450,12 @@ def run_live_smoke_checks(limit: int = 5, timeout_budget: int = 180, profile: st
         "fail": sum(1 for item in checks if item.get("status") == "fail"),
         "scenario_groups": _live_scenario_group_summary(checks),
     }
+    attach_live_smoke_trend(
+        report,
+        history_path=history_path,
+        trend_window=trend_window,
+        record_history=record_history,
+    )
     return report
 
 
@@ -458,6 +473,20 @@ def format_quality_report(report: dict[str, Any]) -> str:
     ]
     for item in report.get("checks") or []:
         lines.append(f"- [{item.get('status')}] {item.get('id')}: {item.get('message')}")
+    trend = report.get("live_trend_report") or {}
+    if trend:
+        lines.extend(
+            [
+                "",
+                "## live smoke 趋势",
+                f"- 最近运行数: {trend.get('runs_considered', 0)}",
+                f"- 新失败/告警: {len(trend.get('new_failures') or [])}",
+                f"- 已恢复: {len(trend.get('recovered') or [])}",
+                f"- 持续失败/告警: {len(trend.get('persistent_failures') or [])}",
+                f"- 疑似公网/上游波动: {trend.get('likely_network_or_upstream', 0)}",
+                f"- 阻断发版: {'是' if trend.get('blocking') else '否'}",
+            ]
+        )
     lines.extend(["", "## 内置评估场景"])
     for scenario in report.get("evaluation_scenarios") or []:
         lines.append(f"- {scenario.get('id')}: {scenario.get('query')}")

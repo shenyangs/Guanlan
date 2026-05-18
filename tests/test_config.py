@@ -70,6 +70,29 @@ class TestConfig:
         assert masked["exa_api_key"] == "super-se..."
         assert masked["normal_setting"] == "visible"
 
+    def test_to_dict_masks_cookie_session_and_auth_material(self, tmp_config):
+        sensitive_values = {
+            "xhs_cookie": "a=11111111; b=22222222",
+            "bilibili_sessdata": "sessdata-secret-value",
+            "bilibili_csrf": "csrf-secret-value",
+            "twitter_ct0": "ct0-secret-value",
+            "auth_header": "Bearer abcdefghijklmnop",
+            "browser_state": "visible-state-not-credential",
+        }
+        for key, value in sensitive_values.items():
+            tmp_config.set(key, value)
+        tmp_config.set("normal_setting", "visible")
+
+        masked = tmp_config.to_dict()
+
+        assert masked["xhs_cookie"] == "a=111111..."
+        assert masked["bilibili_sessdata"] == "sessdata..."
+        assert masked["bilibili_csrf"] == "csrf-sec..."
+        assert masked["twitter_ct0"] == "ct0-secr..."
+        assert masked["auth_header"] == "Bearer a..."
+        assert masked["browser_state"] == "visible-state-not-credential"
+        assert masked["normal_setting"] == "visible"
+
     def test_save_creates_file_with_restricted_permissions(self, tmp_path):
         import stat
         import sys

@@ -69,6 +69,64 @@ EVALUATION_SCENARIOS: list[dict[str, Any]] = [
         "expected_roles": ["company_primary", "industry_report", "user_sample"],
     },
     {
+        "id": "tech_ai_agent_not_wps_near_miss",
+        "query": "DeepSeek-V4 智能体 Agent 最新",
+        "profile": "china",
+        "preset": "tech",
+        "expected_gain": "纯 AI Agent/智能体热点进入科技/AI 发现层，不因 Agent/skill/token 等词误进 WPS Office。",
+        "checks": ["uses_tech_scope", "avoids_wps_false_positive", "requires_rss_discovery"],
+        "expected_intents_any": ["tech"],
+        "forbidden_intents": ["wps_office"],
+        "expected_scopes_any": ["developer", "tech_dev", "community_sample"],
+        "expected_command_contains": ["feeds curated"],
+        "forbidden_command_contains": ["--preset wps_office"],
+    },
+    {
+        "id": "fictional_university_near_miss",
+        "query": "魔法学院 漫画 导师 角色",
+        "profile": "china",
+        "preset": "entertainment",
+        "expected_gain": "漫画/小说/角色语境里的“导师/学院”不应误触高校招生导师工作流。",
+        "checks": ["uses_entertainment_scope", "avoids_university_false_positive"],
+        "expected_intents_any": ["entertainment"],
+        "forbidden_intents": ["university_admissions"],
+        "expected_scopes_any": ["entertainment", "social_web"],
+        "forbidden_command_contains": ["--preset university", "--scope university"],
+    },
+    {
+        "id": "sports_venue_rental_near_miss",
+        "query": "学校 体育馆 出租 招租",
+        "profile": "china",
+        "preset": "general",
+        "expected_gain": "场馆出租/招租是本地信息或开放网页查找，不应因为体育馆误进赛事体育路线。",
+        "checks": ["avoids_sports_false_positive", "keeps_light_search"],
+        "forbidden_intents": ["sports"],
+        "forbidden_command_contains": ["--preset sports", "--scope sports"],
+    },
+    {
+        "id": "finance_macro_not_stock_near_miss",
+        "query": "2026 recession GDP inflation",
+        "profile": "english",
+        "preset": "finance",
+        "expected_gain": "宏观经济查询进入 finance_macro/research，不走股票代码或个股行情入口。",
+        "checks": ["uses_macro_finance_scope", "avoids_stock_entrypoint"],
+        "expected_intents_any": ["finance_macro"],
+        "expected_scopes_any": ["finance_macro", "global_official"],
+        "expected_command_contains": ["--scope finance_macro"],
+        "forbidden_command_contains": ["guanlan stock"],
+    },
+    {
+        "id": "podcast_discovery_positive",
+        "query": "AI 创业 播客 小宇宙 推荐",
+        "profile": "china",
+        "preset": "podcast",
+        "expected_gain": "播客发现任务走 podcast/curated-sources，不被 AI 创业词牵引成普通科技搜索。",
+        "checks": ["uses_podcast_scope", "keeps_audio_source_discovery"],
+        "expected_intents_any": ["podcast"],
+        "expected_scopes_any": ["podcast"],
+        "expected_command_contains": ["curated-sources"],
+    },
+    {
         "id": "academic_indexing",
         "query": "EI会议 投稿 检索 收录 要求",
         "profile": "china",
@@ -238,6 +296,55 @@ BENCHMARK_TASKS: list[dict[str, Any]] = [
     {"id": "local_llm_003", "category": "local_llm", "query": "LM Studio 本地模型 RAG 导入 中文网页", "expected_source_family": "agent_context"},
     {"id": "local_llm_004", "category": "local_llm", "query": "本地模型 读取网页 生成引用证据", "expected_source_family": "agent_context"},
     {"id": "local_llm_005", "category": "local_llm", "query": "无联网大模型 获取今日热点 上下文", "expected_source_family": "agent_context"},
+    {
+        "id": "policy_near_miss_001",
+        "category": "policy",
+        "case_type": "near_miss",
+        "query": "site:gov.cn 工信部 人工智能 政策 2026",
+        "expected_source_family": "official",
+        "expected_intents_any": ["policy"],
+        "expected_command_contains": ["--site gov.cn"],
+        "forbidden_command_contains": ["feeds curated"],
+    },
+    {
+        "id": "tech_near_miss_001",
+        "category": "tech",
+        "case_type": "near_miss",
+        "query": "DeepSeek-V4 智能体 Agent 最新",
+        "expected_source_family": "developer",
+        "expected_intents_any": ["tech"],
+        "forbidden_intents": ["wps_office"],
+        "expected_command_contains": ["feeds curated"],
+    },
+    {
+        "id": "finance_near_miss_001",
+        "category": "finance",
+        "case_type": "near_miss",
+        "query": "2026 recession GDP inflation",
+        "expected_source_family": "finance",
+        "expected_intents_any": ["finance_macro"],
+        "expected_command_contains": ["--scope finance_macro"],
+        "forbidden_command_contains": ["guanlan stock"],
+    },
+    {
+        "id": "entertainment_near_miss_001",
+        "category": "entertainment",
+        "case_type": "near_miss",
+        "query": "魔法学院 漫画 导师 角色",
+        "expected_source_family": "entertainment",
+        "expected_intents_any": ["entertainment"],
+        "forbidden_intents": ["university_admissions"],
+        "forbidden_command_contains": ["--scope university", "--preset university"],
+    },
+    {
+        "id": "sports_negative_001",
+        "category": "sports",
+        "case_type": "negative",
+        "query": "学校 体育馆 出租 招租",
+        "expected_source_family": "general",
+        "forbidden_intents": ["sports"],
+        "forbidden_command_contains": ["--scope sports", "--preset sports"],
+    },
 ]
 
 
@@ -395,6 +502,7 @@ def _score_route_plan(scenario: dict[str, Any], plan: dict[str, Any], *, limit: 
     scopes = set(plan.get("preferred_scopes") or []) | set(plan.get("fallback_scopes") or [])
     roles = set(plan.get("evidence_roles") or [])
     commands = [str(item) for item in plan.get("recommended_commands") or []]
+    command_blob = "\n".join(commands)
     checks: list[dict[str, Any]] = []
 
     expected_intents = set(scenario.get("expected_intents") or [])
@@ -439,6 +547,56 @@ def _score_route_plan(scenario: dict[str, Any], plan: dict[str, Any], *, limit: 
             warn=True,
         )
     )
+    expected_intents_any = set(scenario.get("expected_intents_any") or [])
+    if expected_intents_any:
+        checks.append(
+            _benchmark_check(
+                "expected_intents_any",
+                bool(expected_intents_any & intents),
+                f"expected any intent {sorted(expected_intents_any)} in route {sorted(intents)}",
+            )
+        )
+    for intent in scenario.get("forbidden_intents") or []:
+        checks.append(
+            _benchmark_check(
+                f"forbidden_intent:{intent}",
+                str(intent) not in intents,
+                f"forbidden intent {intent} should not appear in {sorted(intents)}",
+            )
+        )
+    expected_scopes_any = set(scenario.get("expected_scopes_any") or [])
+    if expected_scopes_any:
+        checks.append(
+            _benchmark_check(
+                "expected_scopes_any",
+                bool(expected_scopes_any & scopes),
+                f"expected any scope {sorted(expected_scopes_any)} in route {sorted(scopes)}",
+            )
+        )
+    for scope in scenario.get("forbidden_scopes") or []:
+        checks.append(
+            _benchmark_check(
+                f"forbidden_scope:{scope}",
+                str(scope) not in scopes,
+                f"forbidden scope {scope} should not appear in {sorted(scopes)}",
+            )
+        )
+    for needle in scenario.get("expected_command_contains") or []:
+        checks.append(
+            _benchmark_check(
+                f"expected_command:{needle}",
+                str(needle) in command_blob,
+                f"expected command fragment {needle!r}",
+            )
+        )
+    for needle in scenario.get("forbidden_command_contains") or []:
+        checks.append(
+            _benchmark_check(
+                f"forbidden_command:{needle}",
+                str(needle) not in command_blob,
+                f"forbidden command fragment {needle!r}",
+            )
+        )
     return checks
 
 
@@ -703,6 +861,7 @@ def _score_suite_task(task: dict[str, Any], plan: dict[str, Any], decision: dict
     intents = set(plan.get("primary_intents") or []) | set(plan.get("secondary_intents") or [])
     scopes = set(plan.get("preferred_scopes") or []) | set(plan.get("fallback_scopes") or [])
     roles = set(plan.get("evidence_roles") or [])
+    commands = "\n".join(str(item) for item in plan.get("recommended_commands") or [])
     category = str(task.get("category") or "")
     checks = [
         _benchmark_check("pool_floor", int(plan.get("limit") or 0) >= min(limit, 80), f"route limit={plan.get('limit')}, expected >= {min(limit, 80)}"),
@@ -720,6 +879,20 @@ def _score_suite_task(task: dict[str, Any], plan: dict[str, Any], decision: dict
         checks.append(_benchmark_check("authority_path", bool(scopes & {"gov", "party_central", "local_official", "academic"}), f"scopes={sorted(scopes)}"))
     if category in {"reputation", "entertainment"}:
         checks.append(_benchmark_check("sample_boundary", bool(scopes & {"social_web", "entertainment", "community_sample"}) or bool({"user_sample", "fan_discussion", "user_review"} & roles), f"scopes={sorted(scopes)}, roles={sorted(roles)}"))
+    expected_intents_any = set(task.get("expected_intents_any") or [])
+    if expected_intents_any:
+        checks.append(_benchmark_check("task_expected_intents_any", bool(expected_intents_any & intents), f"expected any intent {sorted(expected_intents_any)} in {sorted(intents)}"))
+    for intent in task.get("forbidden_intents") or []:
+        checks.append(_benchmark_check(f"task_forbidden_intent:{intent}", str(intent) not in intents, f"forbidden intent {intent} should not appear in {sorted(intents)}"))
+    expected_scopes_any = set(task.get("expected_scopes_any") or [])
+    if expected_scopes_any:
+        checks.append(_benchmark_check("task_expected_scopes_any", bool(expected_scopes_any & scopes), f"expected any scope {sorted(expected_scopes_any)} in {sorted(scopes)}"))
+    for scope in task.get("forbidden_scopes") or []:
+        checks.append(_benchmark_check(f"task_forbidden_scope:{scope}", str(scope) not in scopes, f"forbidden scope {scope} should not appear in {sorted(scopes)}"))
+    for needle in task.get("expected_command_contains") or []:
+        checks.append(_benchmark_check(f"task_expected_command:{needle}", str(needle) in commands, f"expected command fragment {needle!r}"))
+    for needle in task.get("forbidden_command_contains") or []:
+        checks.append(_benchmark_check(f"task_forbidden_command:{needle}", str(needle) not in commands, f"forbidden command fragment {needle!r}"))
     return checks
 
 

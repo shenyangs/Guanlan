@@ -238,10 +238,12 @@ def test_serve_cli_can_print_random_token(capsys):
 def test_benchmark_task_pool_has_realistic_category_coverage():
     tasks = evaluation.list_benchmark_tasks()
     categories = {task["category"] for task in tasks}
+    case_types = {task.get("case_type") for task in tasks if task.get("case_type")}
 
     assert len(tasks) >= 40
     assert {"policy", "local", "ecommerce", "tech", "reputation", "hot", "academic", "local_llm"} <= categories
-    assert len(evaluation.list_benchmark_tasks(category="policy")) == 5
+    assert {"negative", "near_miss"} <= case_types
+    assert len(evaluation.list_benchmark_tasks(category="policy")) >= 6
 
 
 def test_eval_tasks_cli_outputs_json(capsys):
@@ -252,7 +254,7 @@ def test_eval_tasks_cli_outputs_json(capsys):
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
 
-    assert len(payload) == 5
+    assert len(payload) >= 6
     assert payload[0]["category"] == "policy"
 
 
@@ -295,8 +297,25 @@ def test_eval_benchmark_covers_academic_and_agent_pool():
     ids = {case["id"] for case in report["cases"]}
     assert "academic_indexing" in ids
     assert "wps_office_market_radar" in ids
+    assert "tech_ai_agent_not_wps_near_miss" in ids
+    assert "fictional_university_near_miss" in ids
+    assert "finance_macro_not_stock_near_miss" in ids
     assert report["summary"]["fail"] == 0
     assert report["summary"]["score"] >= 80
+
+
+def test_eval_suite_enforces_optional_positive_negative_near_miss_assertions():
+    report = evaluation.run_eval_suite(limit=80)
+    cases = {case["id"]: case for case in report["cases"]}
+
+    for case_id in {
+        "policy_near_miss_001",
+        "tech_near_miss_001",
+        "finance_near_miss_001",
+        "entertainment_near_miss_001",
+    }:
+        assert cases[case_id]["status"] != "fail"
+        assert any("task_" in check["id"] for check in cases[case_id]["checks"])
 
 
 def test_route_chart_explains_scopes_and_evidence_roles():

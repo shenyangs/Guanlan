@@ -18,6 +18,7 @@
 
 - 用户或 Agent 不知道观澜有哪些能力时，先运行 `guanlan capabilities`；MCP 模式下调用 `guanlan_capabilities`。
 - 新用户问“装好了怎么用”时，先运行 `guanlan welcome`，再按用户目标选择具体能力。
+- 如果 Agent 只是“不知道该跑哪个观澜命令”，先运行 `guanlan agent "用户需求" --json`；MCP 模式下调用 `guanlan_agent`。它会返回 `primary_command` 和少量 `agent_next_steps`，不用浏览完整命令面。
 - 先读公开信息，不主动读取浏览器 Cookie。
 - 先搜索和阅读，不自动发布、评论、点赞、私信。
 - 输出结论时保留来源链接。
@@ -36,7 +37,7 @@
 - 如果 `diagnose page` 输出 `browser_assist.recommended=true`，先请求用户授权，再使用 OpenGuanlan 浏览器补证层打开目标 URL 并只读取目标页面的浏览器可见内容作为补证；如需登录、验证或切换账号，让用户自己在浏览器里完成。OpenGuanlan 的默认形态就是 Guanlan 的 browser-assist 契约，复用宿主 Agent 浏览器，不要求浏览器扩展、daemon、OpenCLI、Playwright 或独立浏览器 profile。本次可见页补证不要读取 Cookie、Token、钥匙串、localStorage、sessionStorage、浏览器数据库/profile 或无关个人资料。私信、订单、后台、账号页只有在它们就是目标页且用户单独明确授权目标、用途、风险和只读范围时才读取，并标记 `private_account_evidence=true`；如果仍需 Cookie 或其他凭据材料，必须另行说明平台、用途和风险并获得用户明确同意，凭据材料不进入 browser-visible payload，也不要执行任何写操作。授权后先用 `guanlan browser-assist adapters --check` 查看当前适配器的只读自检结果，用 `guanlan browser-assist sessions "URL" --json` 获取同一目标页会话契约，再用 `guanlan browser-assist run "URL" --adapter openguanlan --json` 取得执行契约；可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库。`openguanlan-bridge` 只是可选扩展桥，只有用户明确需要独立 Chrome/Chromium 桥时才使用。`open-cli` 默认是 opener；检测到 OpenCLI 浏览器桥或配置了可输出 browser-visible JSON/JSONL 的命令模板时会升级为 extractor。`browser-use` / `xhs-cli` 等外部适配器必须由用户预先配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
 - 浏览器补证适配器分为 `extractor` 和 `opener`：`extractor` 能产出可入库的可见页 JSON/JSONL，`opener` 只负责打开 URL。`guanlan browser-assist adapters --check` 会返回 `can_open`、`can_extract_visible_text`、`can_reuse_existing_session`、`can_wait_dynamic_ready`、`can_scroll_until_min_items`、`can_read_private_account_visible_pages`、`credential_material_access_allowed`、`cookie_flow_available`、`capability_score`、`risk_score`；如果只有 opener 可用，仍需宿主 Agent 浏览器提取可见正文。小红书、知乎、公众号会带平台专项字段模板，入库保留 `browser_visible_v2` 与 `session_dependent` 边界。
 - 浏览器补证不要把固定 sleep 当作就绪证据；优先等待标题/正文、结果数增长、DOM 稳定或相关网络响应。UI 文本、`aria-label`、`placeholder` 和 `title` 可能随语言变化，selector 失败时输出 `selector_or_locale_mismatch` 或 `skipped_reason`。列表、评论、搜索页需要样本池时用 `--min-visible-items`，并输出 `requested_min_items`、`collected_count`、`partial_reason`。
-- 高频垂直任务用 `guanlan recipe list` / `guanlan recipe run <recipe> "问题"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`entertainment-pulse`、`security-advisory`、`tech-radar`、`wps-office-radar`。
+- 高频垂直任务用 `guanlan recipe list` / `guanlan recipe run <recipe> "问题"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`public-opinion-pulse`、`brand-risk-watch`、`competitor-watch`、`pricing-watch`、`review-mining`、`app-review-pulse`、`entertainment-pulse`、`security-advisory`、`tech-radar`、`wps-office-radar`。
 
 ## 信源矩阵与公开基准
 
@@ -49,6 +50,8 @@
 
 ## 轻重分流
 
+- 最低选择成本入口是 `guanlan agent "关键词" --json`。它只做本地规划，不联网；执行 `primary_command` 后，再根据质量信号决定是否跑 `agent_next_steps`。
+- 需要强调速度时用 `--mode quick`，需要最新热点/三天内情报时用 `--mode fresh`，需要深查或可复用证据包时用 `--mode deep`。
 - 不确定该轻搜还是深查时，先跑 `guanlan workflow "关键词" --json`。它只做本地判断，不联网，不会改变基础搜索行为。
 - `direct`：简单官网、链接、事实入口和轻量资料，直接 `search -> read optional`，不要过度规划。
 - `guided`：政策、财经、安全、技术、WPS/AI Office、热点、口碑等需要信源分层的问题，走 `route -> research -> scoped search`，科技和 WPS/AI Office 题补 RSS，热点题补 hotnews。
@@ -140,7 +143,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “生成浏览器补证会话契约” | `guanlan browser-assist sessions "URL" --json` |
 | “兼容宿主浏览器执行契约” | `guanlan browser-assist run "URL" --adapter host-browser --json` |
 | “用户授权后把浏览器可见页补证入库” | `guanlan archive add-browser-note --from-json browser-notes.jsonl` |
-| “按固定流程查高校/财经/口碑/安全/技术/WPS 选题” | `guanlan recipe list`，再 `guanlan recipe run wps-office-radar "WPS AI 选题线索"` |
+| “按固定流程查高校/财经/口碑/舆情/竞品/评论/安全/技术/WPS 选题” | `guanlan recipe list`，再 `guanlan recipe run public-opinion-pulse "某产品 最近风评"` |
 | “查公告/财报/监管/问询函” | `guanlan search "贵州茅台 公告 财报" --scope finance_disclosure --limit 80 --trace` |
 | “查宏观金融/央行/统计局数据” | `guanlan search "社融 CPI 降息 央行" --scope finance_macro --limit 80 --trace` |
 | “查雪球/股吧/投资者情绪” | `guanlan search "某股票 雪球 股吧 情绪" --scope finance_sentiment --limit 80 --trace` |
@@ -339,6 +342,9 @@ guanlan recipe list
 guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"
 guanlan recipe run university-advisor "南京师范大学中北学院 计算机 导师 招生"
 guanlan recipe run wps-office-radar "WPS AI PPT Agent 办公选题 最近热点"
+guanlan recipe run public-opinion-pulse "某产品 最近风评 被夸还是被骂"
+guanlan recipe run competitor-watch "某产品 竞品 功能 定价 口碑"
+guanlan recipe run app-review-pulse "某 App 应用商店评论 差评主题"
 ```
 
 ```bash

@@ -26,7 +26,7 @@
 推荐使用 `uv` 从 PyPI 安装或升级到最新版本：
 
 ```bash
-uv tool install --force --upgrade guanlan
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 guanlan version
 guanlan doctor
 ```
@@ -66,9 +66,17 @@ guanlan version
 如果仍然拿到旧版本，说明 Homebrew tap 尚未同步到最新发布，或 Agent 正在调用 PATH 里的旧二进制；改用 PyPI/uv 安装路径并检查 `which -a guanlan`：
 
 ```bash
-uv tool install --force --upgrade guanlan
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 which -a guanlan
 guanlan version
+```
+
+如果某个 Agent 说 PyPI 比 GitHub 旧，先直接核对 PyPI 安装源，不要用搜索结果或缓存页面判断：
+
+```bash
+curl -fsSL -H 'Cache-Control: no-cache' https://pypi.org/pypi/guanlan/json \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["version"])'
+python3 -m pip index versions guanlan --index-url https://pypi.org/simple
 ```
 
 如果必须直接安装 GitHub main：

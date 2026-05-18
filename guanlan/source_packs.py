@@ -94,6 +94,39 @@ SOURCE_PACKS: dict[str, tuple[SourcePackEntry, ...]] = {
         SourcePackEntry("股吧", "guba.eastmoney.com", "finance_sentiment", "sentiment_sample", "sample", 0.2, 0.88, 0.9),
         SourcePackEntry("格隆汇", "gelonghui.com", "finance_research", "market_opinion", "vertical", 0.46, 0.36, 0.82, "KGoRAk1el6"),
     ),
+    "public_opinion_research": (
+        SourcePackEntry("微博", "weibo.com", "social_web", "public_discussion_signal", "sample", 0.46, 0.9, 0.9, "KqndgxeLl9"),
+        SourcePackEntry("知乎", "zhihu.com", "social_web", "question_answer_sample", "sample", 0.44, 0.86, 0.78),
+        SourcePackEntry("小红书", "xiaohongshu.com", "social_web", "consumer_note_sample", "sample", 0.43, 0.9, 0.86),
+        SourcePackEntry("B站", "bilibili.com", "social_web", "video_attention_signal", "sample", 0.43, 0.78, 0.88, "74KvxwokxM"),
+        SourcePackEntry("豆瓣", "douban.com", "social_web", "review_sample", "sample", 0.4, 0.86, 0.62),
+        SourcePackEntry("黑猫投诉", "tousu.sina.com.cn", "social_web", "complaint_sample", "sample", 0.3, 0.82, 0.76),
+        SourcePackEntry("车质网", "12365auto.com", "social_web", "complaint_sample", "vertical", 0.42, 0.78, 0.72),
+        SourcePackEntry("V2EX", "v2ex.com", "tech_dev", "developer_discussion", "sample", 0.34, 0.88, 0.86, "wWmoORe4EO"),
+        SourcePackEntry("Reddit", "reddit.com", "community_sample", "community_discussion", "sample", 0.24, 0.9, 0.78),
+        SourcePackEntry("Hacker News", "news.ycombinator.com", "community_sample", "developer_discussion", "sample", 0.28, 0.88, 0.82),
+    ),
+    "market_review_research": (
+        SourcePackEntry("Apple App Store", "apps.apple.com", "market_review", "app_store_review", "core", 0.5, 0.78, 0.78),
+        SourcePackEntry("Google Play", "play.google.com", "market_review", "app_store_review", "core", 0.5, 0.78, 0.78),
+        SourcePackEntry("G2", "g2.com", "market_review", "saas_review_sample", "core", 0.34, 0.82, 0.66),
+        SourcePackEntry("Capterra", "capterra.com", "market_review", "saas_review_sample", "core", 0.34, 0.8, 0.64),
+        SourcePackEntry("Trustpilot", "trustpilot.com", "market_review", "consumer_review_sample", "vertical", 0.32, 0.82, 0.66),
+        SourcePackEntry("Trustradius", "trustradius.com", "market_review", "saas_review_sample", "vertical", 0.34, 0.78, 0.62),
+        SourcePackEntry("七麦数据", "qimai.cn", "market_review", "app_market_signal", "vertical", 0.38, 0.62, 0.76),
+        SourcePackEntry("点点数据", "diandian.com", "market_review", "app_market_signal", "vertical", 0.38, 0.62, 0.76),
+        SourcePackEntry("Product Hunt", "producthunt.com", "market_review", "product_launch_signal", "sample", 0.36, 0.78, 0.82),
+    ),
+    "competitive_watch_research": (
+        SourcePackEntry("Product Hunt", "producthunt.com", "market_review", "product_launch_signal", "sample", 0.36, 0.78, 0.82),
+        SourcePackEntry("G2", "g2.com", "market_review", "saas_review_sample", "core", 0.34, 0.82, 0.66),
+        SourcePackEntry("Capterra", "capterra.com", "market_review", "saas_review_sample", "core", 0.34, 0.8, 0.64),
+        SourcePackEntry("36氪", "36kr.com", "business", "industry_report", "core", 0.54, 0.38, 0.8, "Q1Vd5Ko85R"),
+        SourcePackEntry("虎嗅", "huxiu.com", "business", "industry_analysis", "core", 0.52, 0.38, 0.76, "pQvNBrJvNE"),
+        SourcePackEntry("钛媒体", "tmtpost.com", "business", "industry_analysis", "core", 0.52, 0.36, 0.76, "Y3QeLAGo7k"),
+        SourcePackEntry("晚点 LatePost", "latepost.com", "business", "industry_report", "core", 0.58, 0.3, 0.72, "KGoRlY5dl6"),
+        SourcePackEntry("Similarweb", "similarweb.com", "industry_analysis", "traffic_signal", "vertical", 0.38, 0.42, 0.68),
+    ),
     "entertainment_research": (
         SourcePackEntry("豆瓣电影", "movie.douban.com", "entertainment", "rating_sample", "core", 0.36, 0.88, 0.68, "Lwkvlxyvz1"),
         SourcePackEntry("豆瓣", "douban.com", "entertainment", "review_sample", "core", 0.34, 0.86, 0.62),
@@ -195,7 +228,7 @@ SOURCE_PACKS: dict[str, tuple[SourcePackEntry, ...]] = {
 SCOPE_PACKS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     "party_central": (("policy_research", ("core",)),),
     "gov": (("policy_research", ("core",)),),
-    "business": (("tech_research", ("core", "vertical")),),
+    "business": (("tech_research", ("core", "vertical")), ("competitive_watch_research", ("core",))),
     "ecommerce": (("tech_research", ("core",)),),
     "tech_dev": (("tech_research", ("core", "vertical")), ("developer_research", ("core", "vertical", "sample"))),
     "wps_office": (("wps_office_research", ("core", "vertical", "sample")),),
@@ -206,18 +239,20 @@ SCOPE_PACKS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     "finance_sentiment": (("finance_research", ("sample",)),),
     "finance_research": (("finance_research", ("core", "vertical")),),
     "entertainment": (("entertainment_research", ("core", "vertical", "sample")),),
-    "social_web": (("entertainment_research", ("sample",)), ("developer_research", ("sample",))),
+    "social_web": (("public_opinion_research", ("sample", "vertical")), ("entertainment_research", ("sample",)), ("developer_research", ("sample",))),
+    "market_review": (("market_review_research", ("core", "vertical", "sample")),),
+    "industry_analysis": (("tech_research", ("vertical",)), ("competitive_watch_research", ("vertical",))),
     "university": (("university_official", ("core",)),),
     "company_primary": (("tech_research", ("core",)),),
     "developer": (("developer_research", ("core", "vertical")),),
     "science": (("tech_research", ("vertical",)),),
-    "industry_analysis": (("tech_research", ("vertical",)),),
     "community_sample": (("developer_research", ("sample",)),),
 }
 
 SCOPE_ENTRY_SCOPE_ALLOW: dict[str, set[str]] = {
     "finance": {"finance_news", "finance_quote", "finance_research"},
-    "social_web": {"entertainment", "tech_dev", "finance_sentiment"},
+    "social_web": {"social_web", "entertainment", "tech_dev", "finance_sentiment"},
+    "industry_analysis": {"industry_analysis"},
 }
 
 INTENT_PACKS: dict[str, tuple[str, ...]] = {
@@ -237,9 +272,15 @@ INTENT_PACKS: dict[str, tuple[str, ...]] = {
     "finance_macro": ("finance_research",),
     "finance_sentiment": ("finance_research",),
     "finance_research": ("finance_research",),
+    "public_opinion": ("public_opinion_research",),
+    "crisis_watch": ("public_opinion_research", "market_review_research", "tech_research"),
+    "competitor_watch": ("competitive_watch_research", "market_review_research", "tech_research"),
+    "pricing_watch": ("competitive_watch_research", "market_review_research"),
+    "review_intel": ("market_review_research", "public_opinion_research"),
+    "app_review": ("market_review_research",),
     "entertainment": ("entertainment_research",),
-    "reputation": ("entertainment_research", "developer_research"),
-    "purchase_advice": ("entertainment_research", "developer_research"),
+    "reputation": ("public_opinion_research", "market_review_research", "entertainment_research", "developer_research"),
+    "purchase_advice": ("public_opinion_research", "market_review_research", "entertainment_research", "developer_research"),
     "career": ("developer_research",),
     "cybersecurity": ("developer_research",),
     "university_admissions": ("university_official",),
@@ -250,6 +291,12 @@ INTENT_SCOPE_FILTERS: dict[str, set[str]] = {
     "ecommerce": {"ecommerce"},
     "global_industry": {"company_primary", "industry_analysis", "business"},
     "industry": {"business", "ecommerce", "finance_news", "finance_research"},
+    "public_opinion": {"social_web", "market_review", "community_sample"},
+    "crisis_watch": {"social_web", "market_review", "business"},
+    "competitor_watch": {"business", "industry_analysis", "market_review"},
+    "pricing_watch": {"company_primary", "market_review"},
+    "review_intel": {"market_review", "social_web"},
+    "app_review": {"market_review"},
     "science": {"science"},
     "tech": {"tech_dev", "developer", "business"},
 }
@@ -296,7 +343,15 @@ def _recommended_sites_for_intent(intent: str) -> list[str]:
     allowed_scopes = INTENT_SCOPE_FILTERS.get(str(intent))
     sites: list[str] = []
     for pack_id in INTENT_PACKS.get(str(intent), ()):
-        entries = pack_entries(pack_id, tiers=("core", "vertical"))
+        tiers = ("core", "vertical", "sample") if str(intent) in {
+            "public_opinion",
+            "crisis_watch",
+            "review_intel",
+            "app_review",
+            "reputation",
+            "purchase_advice",
+        } else ("core", "vertical")
+        entries = pack_entries(pack_id, tiers=tiers)
         if allowed_scopes:
             entries = tuple(entry for entry in entries if entry.scope_id in allowed_scopes)
         sites.extend(entry.domain for entry in sorted(entries, key=lambda item: (-item.authority, -item.freshness)))

@@ -35,14 +35,17 @@ PyPI, Homebrew tap, website deploy, and local installer verification all succeed
 
 Install/update rule: after installing or upgrading Guanlan, always do a full reinstall, not an
 incremental upgrade, before configuring MCP, optional channels, or auth. Prefer one clean path:
-`uv tool install --force --upgrade guanlan`; if the user explicitly wants Homebrew, run
+`uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan`; if the user explicitly wants Homebrew, run
 `brew update && brew reinstall shenyangs/tap/guanlan`; for pipx, run `pipx install --force guanlan`.
 For uv, `--force` alone is not enough because it can reinstall the previously locked version; include
-`--upgrade`.
+`--upgrade` and `--refresh`.
 Then refresh shell command lookup with `hash -r` when available, run `command -v guanlan` and
 `which -a guanlan` (or the platform equivalent), and run `guanlan version`. If the version does not
 match README/release notes, stop and report the path/version mismatch instead of configuring MCP or
-using the tool. If Homebrew is stale, switch to the uv path.
+using the tool. If an Agent reports PyPI as older than GitHub, verify with direct PyPI JSON and pip's
+index source instead of search-result snippets or cached app text:
+`curl -fsSL -H 'Cache-Control: no-cache' https://pypi.org/pypi/guanlan/json | python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["version"])'`
+and `python3 -m pip index versions guanlan --index-url https://pypi.org/simple`. If Homebrew is stale, switch to the uv path.
 
 Post-update smoke rule: after a full reinstall, run `guanlan capabilities`, `guanlan doctor --install-check`, `guanlan doctor --trace`,
 `guanlan search "人工智能 政策" --profile china --limit 5 --trace`, and
@@ -59,7 +62,7 @@ it as a smoke sample, not as a research-grade evidence pool. Persuade the Agent/
 
 Source registry rule: use `guanlan sources list/show/explain` when the Agent needs to explain source identity, authority/sample/freshness values, risk tags, or why a route prefers official/vertical/community sources. This is read-only metadata and must not be reported as actual search results.
 
-Workflow decision rule: use `guanlan workflow "query"` when the Agent is unsure whether a request should stay on a light search/read path or upgrade to research/investigate. Keep simple lookups direct; do not run `investigate` for basic website/link/fact searches. Use `guanlan investigate "query" --limit 80 --format context` only when the user explicitly needs deep research, cross-source evidence, comparison, timeline, dossier, high-impact verification, or a reusable evidence packet.
+Workflow decision rule: use `guanlan agent "query" --json` (or MCP `guanlan_agent`) when the Agent is unsure which Guanlan command to run and wants the smallest safe command chain; execute its `primary_command` first, inspect `quality_tripwires`, and only continue through `agent_next_steps` when quality signals or the user need justify it. If a tripwire fires, run `silent_repair_commands` before answering and present the result as an evidence-bound补证, not as Guanlan failure. Use `guanlan workflow "query"` when the Agent specifically needs the light/heavy decision contract without a command shortlist. Keep simple lookups direct; do not run `investigate` for basic website/link/fact searches. Use `guanlan investigate "query" --limit 80 --format context` only when the user explicitly needs deep research, cross-source evidence, comparison, timeline, dossier, high-impact verification, or a reusable evidence packet.
 
 Page diagnosis rule: use `guanlan diagnose page "URL"` when `guanlan read` returns a weak body,
 dynamic shell, login/WAF/access gate, or search-fallback-only context. A page diagnosis is not a
@@ -83,6 +86,7 @@ supplemental reading.
 
 Recipe rule: use `guanlan recipe list` and `guanlan recipe run <recipe> "query"` when a task matches
 a repeated research pattern, such as university advisors, finance risk, product reputation,
+public opinion, brand risk, competitor watch, pricing watch, review mining, app review,
 entertainment pulse, security advisory, or tech radar. Recipes are explicit workflow templates; they
 do not replace search/read/research, and they should not be treated as final answers.
 
@@ -160,6 +164,7 @@ When using Guanlan as an agent, prefer this minimal command set:
 ```bash
 guanlan capabilities
 guanlan welcome
+guanlan agent "query" --json
 guanlan search "query" --limit 80
 guanlan search "中文问题" --profile china --limit 80
 guanlan search "政策或产业问题" --profile china --scope party_central
@@ -202,6 +207,12 @@ guanlan recipe list
 guanlan recipe run finance-risk "宁德时代 股价 财报 公告 最近风险"
 guanlan recipe run university-advisor "南京师范大学中北学院 计算机 导师 招生"
 guanlan recipe run trajectory-map "Cursor 发展历程 竞品格局"
+guanlan recipe run public-opinion-pulse "某产品 最近风评 被夸还是被骂"
+guanlan recipe run brand-risk-watch "某品牌 负面 投诉 道歉 澄清"
+guanlan recipe run competitor-watch "某产品 竞品 功能 定价 口碑"
+guanlan recipe run pricing-watch "某产品 定价变化 套餐调整"
+guanlan recipe run review-mining "某产品 用户评论 差评 好评 反馈"
+guanlan recipe run app-review-pulse "某 App 应用商店评论 差评主题"
 guanlan investigate "复杂研究需求" --limit 80 --format context
 guanlan investigate "复杂研究需求" --budget deep --dry-run
 guanlan sources explain "中文研究需求"

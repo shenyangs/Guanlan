@@ -75,6 +75,29 @@ def test_recipe_plan_builds_wps_office_radar_workflow():
     assert suggest_recipe("AI 笔记 知识库 Agent 办公选题").id == "wps-office-radar"
 
 
+def test_recipe_plan_builds_market_intelligence_workflows():
+    opinion = build_recipe_plan("public-opinion-pulse", "某产品 最近风评 被夸还是被骂")
+    risk = build_recipe_plan("brand-risk-watch", "某品牌 负面舆情 投诉 道歉 澄清")
+    competitor = build_recipe_plan("competitor-watch", "某产品 竞品 功能 定价 口碑")
+    app_review = build_recipe_plan("app-review-pulse", "某 App 应用商店评论 差评主题")
+
+    assert opinion["recipe"]["id"] == "public-opinion-pulse"
+    assert any("guanlan pulse" in command for command in opinion["commands"])
+    assert any("--scope social_web" in command for command in opinion["commands"])
+    assert "公开样本不是民调，也不是全网总体比例。" in opinion["boundaries"]
+    assert any("guanlan timeline" in command for command in risk["commands"])
+    assert any("guanlan compare" in command for command in competitor["commands"])
+    assert any("--scope company_primary" in command for command in competitor["commands"])
+    assert any("--site apps.apple.com" in command for command in app_review["commands"])
+    assert suggest_recipe("某品牌 公关危机 负面舆情 投诉爆发").id == "brand-risk-watch"
+    assert suggest_recipe("某 App Store 评论 差评 评分变化").id == "app-review-pulse"
+    assert suggest_recipe("某产品 竞品监控 定价变化 用户反馈").id in {
+        "competitor-watch",
+        "pricing-watch",
+        "review-mining",
+    }
+
+
 def test_page_diagnosis_marks_dynamic_shell_without_network():
     payload = diagnose_page(
         "https://xueqiu.com/snowman/provider/zz/gp_detail?symbol=SH600519",

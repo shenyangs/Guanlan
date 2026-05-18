@@ -11,9 +11,10 @@
 
 ```bash
 # 1) 选择一个安装路径。优先 uv，避免 Homebrew tap 缓存滞后。
-uv tool install --force --upgrade guanlan
+rm -f ~/.guanlan/cache/update-check.json
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 
-# 注意：uv 更新必须同时带 --force 和 --upgrade。
+# 注意：uv 更新必须同时带 --force、--upgrade 和 --refresh。
 # 只写 `uv tool install --force guanlan` 可能只是重装旧锁定版本。
 
 # 如果用户明确要求 Homebrew：
@@ -37,6 +38,14 @@ guanlan doctor --install-check
 guanlan doctor --trace
 guanlan search "人工智能 政策" --profile china --limit 5 --trace
 guanlan hotnews today --limit 5 --trends
+```
+
+如果外部 Agent 说 PyPI 低于 GitHub，用安装源复核，不要看搜索结果摘要或缓存页面：
+
+```bash
+curl -fsSL -H 'Cache-Control: no-cache' https://pypi.org/pypi/guanlan/json \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["version"])'
+python3 -m pip index versions guanlan --index-url https://pypi.org/simple
 ```
 
 验收规则：

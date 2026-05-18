@@ -15,6 +15,9 @@ def test_source_packs_are_selective_and_exclude_low_value_categories():
     assert "policy_research" in SOURCE_PACKS
     assert "tech_research" in SOURCE_PACKS
     assert "finance_research" in SOURCE_PACKS
+    assert "public_opinion_research" in SOURCE_PACKS
+    assert "market_review_research" in SOURCE_PACKS
+    assert "competitive_watch_research" in SOURCE_PACKS
     assert "entertainment_research" in SOURCE_PACKS
     assert "developer_research" in SOURCE_PACKS
     assert "university_official" in SOURCE_PACKS
@@ -43,6 +46,9 @@ def test_vertical_packs_extend_search_scopes_with_curated_domains():
     ecommerce = resolve_scope("ecommerce")
     university = resolve_scope("university")
     wps_office = resolve_scope("wps_office")
+    social_web = resolve_scope("social_web")
+    market_review = resolve_scope("market_review")
+    industry_analysis = resolve_scope("industry_analysis")
 
     assert "jiqizhixin.com" in tech.domains
     assert "qbitai.com" in tech.domains
@@ -66,6 +72,12 @@ def test_vertical_packs_extend_search_scopes_with_curated_domains():
     assert "lingxi.wps.cn" in wps_office.domains
     assert "openai.com" in wps_office.domains
     assert "simonwillison.net" in wps_office.domains
+    assert "tousu.sina.com.cn" in social_web.domains
+    assert "12365auto.com" in social_web.domains
+    assert "apps.apple.com" in market_review.domains
+    assert "play.google.com" in market_review.domains
+    assert "qimai.cn" in market_review.domains
+    assert "similarweb.com" in industry_analysis.domains
 
 
 def test_classify_domain_uses_source_pack_domains():
@@ -78,6 +90,8 @@ def test_classify_domain_uses_source_pack_domains():
     assert classify_domain("cls.cn")["matched_scope"] == "finance_news"
     assert classify_domain("movie.douban.com", preferred_scope="entertainment")["matched_scope"] == "entertainment"
     assert classify_domain("buaa.edu.cn")["matched_scope"] == "university"
+    assert classify_domain("apps.apple.com")["matched_scope"] == "market_review"
+    assert classify_domain("play.google.com")["matched_scope"] == "market_review"
 
 
 def test_source_pack_recommendations_feed_router_without_overwriting_main_route():
@@ -100,3 +114,11 @@ def test_source_pack_recommendations_feed_router_without_overwriting_main_route(
     ecommerce_plan = build_route_plan("跨境电商 独立站 出海 产业趋势", profile="china")
     assert ecommerce_plan.target_sites[0] == "ebrun.com"
     assert any("hotboard:snapshots:3adq0LMvng" in command for command in ecommerce_plan.recommended_commands)
+
+    opinion_sites = recommended_sites_for_intents(["public_opinion"], limit=5)
+    assert "weibo.com" in opinion_sites
+    assert "zhihu.com" in opinion_sites
+
+    app_sites = recommended_sites_for_intents(["app_review"], limit=4)
+    assert "apps.apple.com" in app_sites
+    assert "play.google.com" in app_sites

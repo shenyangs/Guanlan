@@ -38,6 +38,16 @@ Guanlan 不是“单次泛搜引擎”，而是给 Agent 用的中文互联网�
 
 不要把 “每次都至少 3 个工具” 写死成硬 KPI。更稳的规则是按场景分档：
 
+### 自动挡入口
+
+当 Agent 只是卡在“该用哪个 Guanlan 命令”时，先跑：
+
+```bash
+guanlan agent "用户需求" --json
+```
+
+它不会联网，只会把本地 route/workflow 结果压成 `primary_command` 和少量 `agent_next_steps`。默认先执行 `primary_command`；只有质量信号不足、用户要求更深结论，或任务是热点/技术/WPS/AI Office 等需要补线索的场景，才继续执行后续命令。`--mode quick` 适合快速线索，`--mode fresh` 会把 hotnews/feeds 放进短链路，`--mode deep` 直接进入可复用证据包工作流。
+
 ### 结果池纪律
 
 `--limit 30` 以下只适合 smoke test。严肃搜索、研究、对比、时间线和档案任务，应尽量保持默认 80 条候选池；如果用户或评测脚本给了很小的 limit，Agent 可以先执行，但必须把它当“小样本线索”，并建议补跑 `--limit 80` 后再下结论。

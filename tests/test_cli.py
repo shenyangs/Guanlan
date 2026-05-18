@@ -150,6 +150,18 @@ class TestCLI:
         assert "分流层级: direct" in captured.out
         assert "不要过度思考: 是" in captured.out
 
+    def test_agent_command_returns_primary_command_json(self, capsys):
+        with patch("sys.argv", ["guanlan", "agent", "WPS AI 灵犀 最近热点", "--mode", "fresh", "--json"]):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        commands = [item["command"] for item in data["agent_next_steps"]]
+        assert data["primary_command"].startswith("guanlan research")
+        assert "--preset wps_office" in data["primary_command"]
+        assert "guanlan hotnews today --limit 80 --trends" in commands
+        assert "guanlan feeds curated --category ai --limit 80" in commands
+
     def test_route_json_includes_workflow_decision(self, capsys):
         with patch("sys.argv", ["guanlan", "route", "人工智能 政策 最新", "--json"]):
             main()
@@ -707,7 +719,7 @@ class TestCLI:
         captured = capsys.readouterr()
         assert captured.out.strip() == "[]"
         assert "版本提醒" in captured.err
-        assert "uv tool install --force --upgrade guanlan" in captured.err
+        assert "uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan" in captured.err
 
     def test_hotnews_default_limit_is_expanded(self, capsys, monkeypatch):
         calls = []

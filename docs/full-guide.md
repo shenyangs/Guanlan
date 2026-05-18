@@ -66,7 +66,7 @@ brew update && brew tap shenyangs/tap && brew reinstall shenyangs/tap/guanlan
 ```
 
 ```bash
-uv tool install --force --upgrade guanlan
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 ```
 
 ```bash
@@ -171,14 +171,14 @@ brew tap shenyangs/tap
 brew reinstall shenyangs/tap/guanlan
 
 如果当前环境没有 Homebrew，请改用 PyPI + uv：
-uv tool install --force --upgrade guanlan
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 
 如果没有 uv，请先按当前系统安装 uv，然后再安装观澜。
 安装完成后请运行：
 guanlan version
 guanlan doctor
 
-如果 `guanlan version` 不是 README 标注的当前版本，请不要继续配置 MCP 或可选渠道，先改用 `uv tool install --force --upgrade guanlan` 重新安装。
+如果 `guanlan version` 不是 README 标注的当前版本，请不要继续配置 MCP 或可选渠道，先改用 `uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan` 重新安装。
 
 安全要求：不要读取浏览器 Cookie，不要触发登录授权，不要请求钥匙串权限。
 ```
@@ -215,7 +215,7 @@ brew reinstall shenyangs/tap/guanlan
 或（PyPI + `uv`）：
 
 ```bash
-uv tool install --force --upgrade guanlan
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 ```
 
 或（PyPI + `pipx`）：
@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.5.43`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.6.0`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -244,7 +244,7 @@ guanlan version
 如果仍然不是当前版本，请临时改用 PyPI + `uv`：
 
 ```bash
-uv tool install --force --upgrade guanlan
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 guanlan version
 ```
 
@@ -252,7 +252,7 @@ guanlan version
 `guanlan` 可执行文件、旧 Homebrew 公式或旧 pipx/uv tool 入口继续被 Agent 调用。
 
 ```bash
-uv tool install --force --upgrade guanlan
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 ```
 
 注意：`uv tool install --force guanlan` 只保证重装，可能继续使用旧的锁定版本；更新时必须带
@@ -286,14 +286,14 @@ guanlan hotnews today --limit 5 --trends
 ```
 
 如果 `guanlan version` 不是 README 标注的当前版本，或 `which -a guanlan` 显示 Agent 会优先
-调用旧路径，请不要继续配置 MCP 或可选渠道，先改用 `uv tool install --force --upgrade guanlan` 重新安装。
+调用旧路径，请不要继续配置 MCP 或可选渠道，先改用 `uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan` 重新安装。
 
 ### Agent / 开发者安装
 
 推荐直接从 PyPI 安装：
 
 ```bash
-uv tool install --force --upgrade guanlan
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 guanlan version
 guanlan doctor
 ```
@@ -406,6 +406,7 @@ guanlan configure --from-browser chrome
 | `guanlan install --env=auto --dry-run` | 预演安装步骤，不做实际改动。 |
 | `guanlan welcome` | 重新查看首次安装后的简短使用介绍和 Agent 说法示例。 |
 | `guanlan capabilities` | 展示观澜能力地图：何时用 search/route/research/advisor/hotnews 等能力。 |
+| `guanlan agent "关键词" --json` | Agent 自动挡：本地规划一条 `primary_command` 和少量 `agent_next_steps`，避免在完整命令面里猜。 |
 | `guanlan doctor` | 健康检查，默认跳过敏感登录态探测。 |
 | `guanlan doctor --trace` | 展示诊断路径，帮助定位是否存在敏感探测风险。 |
 | `guanlan doctor --check-config` | 扫描本地配置中可能误存的明文 Cookie、Token、Key 或代理凭据。 |
@@ -457,6 +458,10 @@ guanlan configure --from-browser chrome
 | `guanlan research "关键词" --advisor` | 在证据包后追加助理视角规则，帮助 Agent 基于证据生成建议。 |
 | `guanlan research "关键词" --advisor --advisor-style risk` | 按风险/决策/策略等风格生成更自然的 Agent 作答骨架。 |
 | `guanlan recipe run trajectory-map "Cursor 发展历程 竞品格局"` | 对产品、公司、技术概念或人物生成对象脉络/同类格局研究链路，串起 `research/timeline/dossier/compare`。 |
+| `guanlan recipe run public-opinion-pulse "某产品 最近风评"` | 把公开讨论、评论样本、媒体报道和时间窗分层，避免把单个平台热帖当全网舆情。 |
+| `guanlan recipe run brand-risk-watch "某品牌 负面 投诉 道歉 澄清"` | 观察品牌负面、公关风险、投诉扩散和公司/官方回应，保留已证实与待核验边界。 |
+| `guanlan recipe run competitor-watch "某产品 竞品 功能 定价 口碑"` | 组织竞品、价格页、功能更新、评价样本和行业报道，形成可追踪的竞品证据链。 |
+| `guanlan recipe run app-review-pulse "某 App 应用商店评论 差评主题"` | 分析应用商店评分、版本评论、地区边界和差评主题。 |
 | `guanlan compare "A" "B" --focus "价格 口碑" --limit 80` | 对多个对象分别建证据包，再按官方/媒体/用户样本/近期动态/风险维度做对比。 |
 | `guanlan timeline "某政策 最新进展" --limit 80` | 从宽候选池里抽取带日期的事件线索，并把无日期但可能重要的证据单列出来。 |
 | `guanlan dossier "某公司" --focus "业务 口碑 风险" --limit 80` | 生成一个实体研究档案：信源概览、分面证据、近期时间线、待核验问题和下一步命令。 |
@@ -538,8 +543,9 @@ guanlan configure --from-browser chrome
 
 ## 0.5.0 级上层工作流
 
-`workflow`、`investigate`、`sources` 和 `eval suite` 是上层增强，不接管基础搜索。
+`agent`、`workflow`、`investigate`、`sources` 和 `eval suite` 是上层增强，不接管基础搜索。
 
+- `agent`：低选择成本自动挡，不联网；输出主命令和短链路，`quick/fresh/deep` 分别偏速度、热点和深查。
 - `workflow`：本地轻重分流，判断 direct/guided/investigate。
 - `investigate`：显式深查，支持 `--budget light|standard|deep` 和 `--dry-run`。
 - `sources`：只读信源矩阵，解释来源身份、角色、风险和适用边界；`audit/export` 用来治理口径漂移。

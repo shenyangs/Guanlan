@@ -11,6 +11,8 @@ from typing import Any, Optional
 
 import yaml
 
+from guanlan.sensitive import is_sensitive_key, mask_sensitive_value
+
 
 class Config:
     """Manages 观澜 / Guanlan configuration."""
@@ -102,8 +104,8 @@ class Config:
         """Return config as dict (masks sensitive values)."""
         masked = {}
         for k, v in self.data.items():
-            if any(s in k.lower() for s in ("key", "token", "password", "proxy")):
-                masked[k] = f"{str(v)[:8]}..." if v else None
+            if is_sensitive_key(k):
+                masked[k] = mask_sensitive_value(v)
             else:
                 masked[k] = v
         return masked

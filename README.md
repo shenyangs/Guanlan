@@ -43,8 +43,9 @@
 如果你只想先用起来：
 
 ```bash
-uv tool install --force --upgrade guanlan
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 guanlan version
+guanlan agent "人工智能 政策 最新" --json
 guanlan search "人工智能 政策 最新" --profile china --limit 80
 ```
 
@@ -61,6 +62,7 @@ guanlan search "人工智能 政策 最新" --profile china --limit 80
 
 ```bash
 # 1. 搜中文网页，默认建议给 Agent 足够候选池
+guanlan agent "WPS AI 灵犀 最近热点" --mode fresh --json
 guanlan search "新质生产力 政策 原文" --profile china --limit 80 --trace
 
 # scope 默认是软收敛：优先看这类信源，质量不足时自动混入开放网页
@@ -84,6 +86,8 @@ guanlan wechat-exporter account-search "公众号名称" --json
 
 # 3. 做一份 Agent 可直接使用的研究证据包
 guanlan research "某产品 用户评价 值不值得买" --preset reputation --advisor --format context
+guanlan recipe run public-opinion-pulse "某产品 最近风评 被夸还是被骂"
+guanlan recipe run competitor-watch "某产品 竞品 功能 定价 口碑"
 
 # 4. 看今日中文互联网水势
 guanlan hotnews today --limit 80 --trends
@@ -112,7 +116,7 @@ brew reinstall shenyangs/tap/guanlan
 ### uv
 
 ```bash
-uv tool install --force --upgrade guanlan
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 ```
 
 ### pipx
@@ -129,7 +133,7 @@ guanlan doctor --install-check
 guanlan status
 ```
 
-看到 `观澜 / Guanlan v0.5.43`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.6.0`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
 
 ## 给 Agent 复制的安装指令
 
@@ -137,7 +141,7 @@ guanlan status
 请帮我安装观澜 CLI，并验证基础功能可用。
 
 优先使用：
-uv tool install --force --upgrade guanlan
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 
 安装完成后运行：
 guanlan version

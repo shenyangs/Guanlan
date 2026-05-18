@@ -11,7 +11,9 @@ End with a single command path that reports the public latest version and passes
 Prefer direct PyPI JSON through `curl`, because some Python installations have local certificate chain issues:
 
 ```bash
-curl -sS https://pypi.org/pypi/guanlan/json | rg -o '"version":\s*"[0-9]+\.[0-9]+\.[0-9]+"' -m 1
+curl -fsSL -H 'Cache-Control: no-cache' https://pypi.org/pypi/guanlan/json \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["version"])'
+python3 -m pip index versions guanlan --index-url https://pypi.org/simple
 ```
 
 If that fails, use Homebrew tap as a second public surface:
@@ -35,7 +37,7 @@ Default path:
 
 ```bash
 rm -f ~/.guanlan/cache/update-check.json
-uv tool install --force --upgrade --refresh --index-url https://pypi.org/simple guanlan
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 hash -r || true
 command -v guanlan
 which -a guanlan

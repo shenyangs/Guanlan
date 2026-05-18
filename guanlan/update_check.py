@@ -20,6 +20,7 @@ from pathlib import Path
 import requests
 
 PYPI_JSON_URL = "https://pypi.org/pypi/guanlan/json"
+PYPI_SIMPLE_URL = "https://pypi.org/simple/guanlan/"
 DEFAULT_TIMEOUT_SECONDS = 1.2
 DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60
 
@@ -39,6 +40,13 @@ def _version_key(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in parts[:4])
 
 
+def _highest_version(versions: list[str]) -> str | None:
+    cleaned = [version.strip().lstrip("v") for version in versions if version and version.strip()]
+    if not cleaned:
+        return None
+    return max(cleaned, key=_version_key)
+
+
 def is_newer_version(latest: str, current: str) -> bool:
     """Return whether latest appears newer than current."""
     return _version_key(latest) > _version_key(current)
@@ -55,12 +63,12 @@ def update_checks_enabled() -> bool:
     return True
 
 
-def latest_pypi_version(timeout: float = DEFAULT_TIMEOUT_SECONDS) -> str | None:
-    """Fetch the latest Guanlan version from PyPI. Return None on failure."""
+def latest_pypi_json_version(timeout: float = DEFAULT_TIMEOUT_SECONDS) -> str | None:
+    """Fetch the latest Guanlan version from PyPI JSON. Return None on failure."""
     if not update_checks_enabled():
         return None
     try:
-        resp = requests.get(PYPI_JSON_URL, timeout=timeout)
+        resp = requests.get(PYPI_JSON_URL, headers=_no_cache_headers(), timeout=timeout)
         if resp.status_code != 200:
             return None
         data = resp.json()
@@ -68,6 +76,46 @@ def latest_pypi_version(timeout: float = DEFAULT_TIMEOUT_SECONDS) -> str | None:
         return latest or None
     except Exception:
         return None
+
+
+def latest_pypi_simple_version(timeout: float = DEFAULT_TIMEOUT_SECONDS) -> str | None:
+    """Fetch the highest Guanlan version visible in the PyPI simple index."""
+    if not update_checks_enabled():
+        return None
+    try:
+        resp = requests.get(PYPI_SIMPLE_URL, headers=_no_cache_headers(), timeout=timeout)
+        if resp.status_code != 200:
+            return None
+        versions = re.findall(r"guanlan-([0-9][A-Za-z0-9.]*)(?:-py3-none-any\.whl|\.tar\.gz)", resp.text or "")
+        return _highest_version(versions)
+    except Exception:
+        return None
+
+
+def latest_pypi_version(timeout: float = DEFAULT_TIMEOUT_SECONDS) -> str | None:
+    """Fetch the latest Guanlan version from PyPI release surfaces.
+
+    PyPI JSON is the primary source, but the simple index is the source pip/uv
+    resolve from. Taking the highest visible version avoids stale JSON/cache
+    reads or fragile HTML snippets being mistaken for the current public latest.
+    """
+    per_surface_timeout = _per_surface_timeout(timeout)
+    json_latest = latest_pypi_json_version(timeout=per_surface_timeout)
+    simple_latest = latest_pypi_simple_version(timeout=per_surface_timeout)
+    return _highest_version([item for item in [json_latest, simple_latest] if item])
+
+
+def pypi_version_surfaces(timeout: float = DEFAULT_TIMEOUT_SECONDS) -> dict[str, str]:
+    """Return a small public-version report for humans and agents."""
+    per_surface_timeout = _per_surface_timeout(timeout)
+    json_latest = latest_pypi_json_version(timeout=per_surface_timeout)
+    simple_latest = latest_pypi_simple_version(timeout=per_surface_timeout)
+    latest = _highest_version([item for item in [json_latest, simple_latest] if item])
+    return {
+        "pypi_json": json_latest or "",
+        "pypi_simple": simple_latest or "",
+        "latest": latest or "",
+    }
 
 
 def get_update_info(current: str, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> UpdateInfo | None:
@@ -84,8 +132,9 @@ def format_update_notice(info: UpdateInfo) -> str:
         [
             f"版本提醒：当前 v{info.current}，{info.source} 最新 v{info.latest}。",
             "建议先做全量更新，再配置 MCP、可选渠道或登录态。不要混用旧的全局 guanlan：",
-            "  uv tool install --force --upgrade guanlan",
-            "  # uv 必须带 --upgrade；只有 --force 可能重装旧锁定版本。",
+            "  rm -f ~/.guanlan/cache/update-check.json",
+            "  uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan",
+            "  # uv 必须带 --upgrade 和 --refresh；只有 --force 可能重装旧锁定版本。",
             "  # 如果使用 Homebrew：",
             "  brew update && brew reinstall shenyangs/tap/guanlan",
             "  # 如果使用 pipx：",
@@ -108,7 +157,7 @@ def format_compact_update_notice(info: UpdateInfo) -> str:
     return "\n".join(
         [
             f"版本提醒：当前 v{info.current}，{info.source} 最新 v{info.latest}。",
-            "建议更新：uv tool install --force --upgrade guanlan",
+            "建议更新：uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan",
             "可运行 `guanlan doctor --install-check` 检查路径和版本漂移。",
         ]
     )
@@ -196,7 +245,7 @@ def run_install_check(
         if stale_paths:
             recommendations.append("以下路径看起来不是公开最新版本：" + "、".join(stale_paths))
         recommendations.append("升级后运行 `hash -r`，再核对 `command -v guanlan`、`which -a guanlan`、`guanlan version`。")
-        recommendations.append("建议只保留一个主安装入口；若 Homebrew 滞后，先切到 `uv tool install --force --upgrade guanlan`。")
+        recommendations.append("建议只保留一个主安装入口；若 Homebrew 滞后，先切到 `uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan`。")
     if not recommendations:
         recommendations.append("安装路径和版本未发现明显风险，可以继续配置 MCP 或 Agent。")
 
@@ -254,7 +303,8 @@ def format_install_check(report: dict[str, object]) -> str:
             "```bash",
             "guanlan version",
             "which -a guanlan",
-            "uv tool install --force --upgrade guanlan",
+            "rm -f ~/.guanlan/cache/update-check.json",
+            "uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan",
             "brew update && brew reinstall shenyangs/tap/guanlan",
             "pipx install --force guanlan",
             "hash -r",
@@ -381,6 +431,21 @@ def _cache_ttl_seconds(ttl_seconds: int | None = None) -> int:
         except ValueError:
             return DEFAULT_CACHE_TTL_SECONDS
     return DEFAULT_CACHE_TTL_SECONDS
+
+
+def _no_cache_headers() -> dict[str, str]:
+    return {
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "User-Agent": "guanlan-update-check",
+    }
+
+
+def _per_surface_timeout(timeout: float) -> float:
+    try:
+        return max(float(timeout) / 2, 0.2)
+    except Exception:
+        return DEFAULT_TIMEOUT_SECONDS / 2
 
 
 def _update_cache_path() -> Path:

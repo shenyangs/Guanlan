@@ -28,6 +28,7 @@ class AgentTool:
 CORE_AGENT_TOOLS: tuple[AgentTool, ...] = (
     AgentTool("guanlan_status", ("cli", "mcp", "http"), "stable", "guanlan status", "install_and_runtime_diagnostics", "/health"),
     AgentTool("guanlan_capabilities", ("cli", "mcp"), "stable", "guanlan capabilities", "tool_selection"),
+    AgentTool("guanlan_agent", ("cli", "mcp"), "stable", "guanlan agent", "low_choice_auto_plan"),
     AgentTool("guanlan_search", ("cli", "mcp", "http"), "stable", "guanlan search", "broad_search", "/search", 80),
     AgentTool("guanlan_route", ("cli", "mcp", "http"), "stable", "guanlan route", "source_routing", "/route", 80),
     AgentTool("guanlan_browser_assist_plan", ("cli", "mcp", "http"), "stable", "guanlan browser-assist plan", "browser_visible_evidence_plan", "/browser-assist/plan"),

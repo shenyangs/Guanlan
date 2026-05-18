@@ -170,7 +170,10 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "钓鱼",
             "诈骗",
             "短信链接",
+            "诈骗短信",
             "反诈",
+            "骗局",
+            "欺诈",
             "木马",
             "勒索",
             "phishing",
@@ -241,10 +244,14 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "法律",
             "诉讼",
             "判决",
+            "判例",
             "合同",
             "律师",
             "侵权",
             "司法解释",
+            "劳动仲裁",
+            "仲裁",
+            "加班费",
             "工伤",
             "竞业",
             "劳动争议",
@@ -509,6 +516,10 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "演唱会",
             "游戏",
             "手游",
+            "steam",
+            "dlc",
+            "销量",
+            "黑神话",
             "动漫",
             "二次元",
             "漫画",
@@ -548,6 +559,12 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "黑猫",
             "车质网",
             "真实车主",
+            "透明度",
+            "基金会",
+            "慈善",
+            "公益",
+            "捐款",
+            "善款",
             "sentiment",
             "boycott",
             "complaint",
@@ -558,6 +575,148 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
         "sites": ("zhihu.com", "weibo.com", "xiaohongshu.com", "bilibili.com"),
         "roles": ("user_sample", "community_discussion", "vertical_report"),
         "warning": "社交和社区材料适合发现样本线索，不代表总体比例。",
+    },
+    {
+        "intent": "public_opinion",
+        "terms": (
+            "舆情",
+            "舆论",
+            "风评",
+            "声量",
+            "口碑监测",
+            "社媒",
+            "社交媒体",
+            "评论区",
+            "讨论热度",
+            "正负面",
+            "被骂",
+            "被夸",
+            "social listening",
+            "social sentiment",
+            "brand sentiment",
+        ),
+        "scopes": ("social_web", "business", "market_review"),
+        "fallback": ("finance_sentiment", "community_sample", "entertainment"),
+        "sites": ("weibo.com", "zhihu.com", "xiaohongshu.com", "bilibili.com", "douban.com"),
+        "roles": ("public_discussion", "sentiment_sample", "review_sample", "media_report"),
+        "warning": "舆情/风评只能代表当前公开样本池，必须说明平台偏差、样本量和时间窗。",
+    },
+    {
+        "intent": "crisis_watch",
+        "terms": (
+            "公关危机",
+            "危机预警",
+            "舆情危机",
+            "负面舆情",
+            "负面新闻",
+            "集体投诉",
+            "投诉爆发",
+            "抵制",
+            "翻车",
+            "下架",
+            "召回",
+            "道歉",
+            "澄清",
+            "危机处理",
+            "crisis watch",
+            "pr crisis",
+            "backlash",
+            "boycott",
+        ),
+        "scopes": ("social_web", "business", "market_review", "gov"),
+        "fallback": ("party_central", "local_official", "company_primary"),
+        "sites": ("weibo.com", "tousu.sina.com.cn", "zhihu.com", "xiaohongshu.com", "12315.cn"),
+        "roles": ("risk_signal", "complaint_sample", "media_report", "official_response", "company_statement"),
+        "warning": "危机/负面监测要区分投诉样本、媒体报道、官方回应和平台扩散，不要把单个爆款帖写成总体事实。",
+    },
+    {
+        "intent": "competitor_watch",
+        "terms": (
+            "竞品情报",
+            "竞品监控",
+            "竞品分析",
+            "竞争对手",
+            "竞对",
+            "同类产品",
+            "替代品",
+            "市场格局",
+            "功能对比",
+            "产品对比",
+            "竞争格局",
+            "competitive intelligence",
+            "competitor tracking",
+            "competitive landscape",
+        ),
+        "scopes": ("company_primary", "business", "market_review", "social_web"),
+        "fallback": ("industry_analysis", "developer", "finance_news"),
+        "sites": ("producthunt.com", "g2.com", "capterra.com", "trustpilot.com", "36kr.com", "huxiu.com"),
+        "roles": ("company_primary", "pricing_page", "release_note", "industry_report", "review_sample", "user_sample"),
+        "warning": "竞品情报应先核验公司一手资料和产品页，再用媒体/评价/社区样本补充，不要凭印象生成竞品清单。",
+    },
+    {
+        "intent": "pricing_watch",
+        "terms": (
+            "定价变化",
+            "价格变化",
+            "价格调整",
+            "涨价",
+            "降价",
+            "套餐变化",
+            "订阅变化",
+            "价格页",
+            "付费墙",
+            "pricing change",
+            "price change",
+            "plan changes",
+        ),
+        "scopes": ("company_primary", "market_review", "business"),
+        "fallback": ("global_news", "community_sample", "developer"),
+        "sites": ("producthunt.com", "g2.com", "capterra.com", "trustpilot.com"),
+        "roles": ("pricing_page", "release_note", "customer_reaction", "media_report"),
+        "warning": "价格/套餐变化要优先官方价格页、公告或帮助中心；社区和评价站只能作用户反应样本。",
+    },
+    {
+        "intent": "review_intel",
+        "terms": (
+            "评论分析",
+            "评论挖掘",
+            "用户评论",
+            "差评",
+            "好评",
+            "评分变化",
+            "评分下滑",
+            "用户反馈",
+            "评价样本",
+            "review mining",
+            "customer reviews",
+            "user reviews",
+        ),
+        "scopes": ("market_review", "social_web", "business"),
+        "fallback": ("company_primary", "community_sample"),
+        "sites": ("apps.apple.com", "play.google.com", "g2.com", "capterra.com", "trustpilot.com", "zhihu.com", "weibo.com"),
+        "roles": ("review_sample", "rating_signal", "complaint_sample", "feature_request", "user_language"),
+        "warning": "评论样本适合提炼用户语言和问题簇，不代表真实用户总体比例；需要保留平台和版本边界。",
+    },
+    {
+        "intent": "app_review",
+        "terms": (
+            "app store 评论",
+            "appstore 评论",
+            "应用商店评论",
+            "应用评论",
+            "ios 评论",
+            "安卓评论",
+            "google play 评论",
+            "play store reviews",
+            "app reviews",
+            "aso",
+            "应用评分",
+        ),
+        "scopes": ("market_review", "company_primary", "social_web"),
+        "fallback": ("business", "community_sample"),
+        "sites": ("apps.apple.com", "play.google.com", "qimai.cn", "diandian.com"),
+        "roles": ("app_store_review", "rating_signal", "version_feedback", "user_language", "app_market_signal"),
+        "warning": "应用商店评论要区分版本、地区、评分样本和用户原话；不要把榜单/下载估计当成官方经营数据。",
     },
     {
         "intent": "wps_office",
@@ -641,6 +800,11 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "压榨",
             "market size",
             "report",
+            "companion robot",
+            "pet companion",
+            "昇腾",
+            "910b",
+            "910c",
             "中标",
             "招标",
             *_ROBOTICS_AI_TERMS,
@@ -662,6 +826,12 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "发布",
             "上线",
             "pricing",
+            "valuation",
+            "users",
+            "revenue",
+            "acquisition",
+            "layoffs",
+            "guidance",
             "release notes",
             "release note",
             "changelog",
@@ -699,6 +869,10 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "funding",
             "analyst report",
             "market size",
+            "valuation",
+            "revenue",
+            "users",
+            "acquisition",
             "report",
             "red sea",
             "shipping",
@@ -732,6 +906,14 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "本地生活",
             "餐馆",
             "茶饮",
+            "二手",
+            "二手价格",
+            "闲鱼",
+            "转转",
+            "回收价",
+            "中古",
+            "resale",
+            "second hand",
         ),
         "scopes": ("ecommerce", "business"),
         "fallback": ("social_web", "finance"),
@@ -777,7 +959,50 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
     },
     {
         "intent": "tech",
-        "terms": ("技术", "开源", "框架", "github", "sdk", "api", "部署", "bug", "benchmark", "选型", "开发者", "mcp", "教程", "rag", "reranker", "ollama", "本地模型", "联网搜索", "自动加字幕", "剪映", *_ROBOTICS_AI_TERMS),
+        "terms": (
+            "技术",
+            "开源",
+            "框架",
+            "github",
+            "sdk",
+            "api",
+            "部署",
+            "bug",
+            "benchmark",
+            "选型",
+            "开发者",
+            "mcp",
+            "教程",
+            "rag",
+            "reranker",
+            "ollama",
+            "本地模型",
+            "联网搜索",
+            "自动加字幕",
+            "剪映",
+            "product hunt",
+            "ai agent",
+            "智能体",
+            "大模型",
+            "deepseek",
+            "llama",
+            "昇腾",
+            "910b",
+            "910c",
+            "gpu",
+            "figma",
+            "firefly",
+            "ai tool",
+            "ai工具",
+            "ai陪伴",
+            "ai 陪伴",
+            "ai companion",
+            "companion ai",
+            "personality ai",
+            "小冰",
+            "aip",
+            *_ROBOTICS_AI_TERMS,
+        ),
         "scopes": ("tech_dev",),
         "fallback": ("business", "social_web"),
         "sites": ("github.com", "v2ex.com", "juejin.cn", "segmentfault.com"),
@@ -1040,6 +1265,9 @@ _DOMAIN_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("policy", ("regulation", "policy", "compliance", "law", "standard")),
     ("company", ("pricing", "release notes", "docs", "official blog", "investor relations")),
     ("reviews", ("review", "reviews", "reddit", "g2", "trustpilot", "capterra")),
+    ("public_opinion", ("舆情", "舆论", "风评", "声量", "社媒", "评论区", "social sentiment")),
+    ("competitive_intel", ("竞品", "竞对", "竞争对手", "竞品情报", "竞品监控", "competitive landscape")),
+    ("app_reviews", ("app store 评论", "应用商店评论", "google play 评论", "应用评分", "aso")),
     ("entertainment", ("文娱", "娱乐", "影视", "电影", "剧集", "综艺", "明星", "票房", "豆瓣", "猫眼", "游戏", "动漫", "漫画", "番剧", "轻小说", "二次元", "bangumi", "pixiv")),
     ("western_entertainment", ("欧美娱乐", "西方娱乐", "好莱坞", "hollywood", "billboard", "grammy", "taylor swift", "hbo", "deadline", "variety", "奥斯卡")),
     ("jp_kr_entertainment", ("日韩娱乐", "韩娱", "日娱", "韩媒", "日媒", "韩网", "k-pop", "kpop", "j-pop", "jpop", "oricon", "soompi")),
@@ -1101,6 +1329,9 @@ def build_route_plan(
     clean_query = " ".join((query or "").split())
     text = clean_query.lower()
     profile = _resolve_query_profile(clean_query, profile)
+    site_operator = _extract_site_operator(clean_query)
+    if site_operator and not site:
+        site = site_operator
     matched_rules: list[dict[str, Any]] = []
     reasons: list[str] = []
     for rule in _INTENT_RULES:
@@ -1119,6 +1350,33 @@ def build_route_plan(
                 + list(wps_analysis.get("ambiguous_ai_terms") or [])
             )
             reasons.append(f"wps_office_semantic:{','.join(summary_terms[:4])}")
+
+    if _should_demote_broad_legal(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "legal_judicial"]
+        reasons = [reason for reason in reasons if not reason.startswith("legal_judicial:")]
+    if _should_demote_broad_finance_sentiment(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "finance_sentiment"]
+        reasons = [reason for reason in reasons if not reason.startswith("finance_sentiment:")]
+    if _should_demote_charity_finance(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") not in {"finance", "finance_quote"}]
+        reasons = [
+            reason
+            for reason in reasons
+            if not (reason.startswith("finance:") or reason.startswith("finance_quote:"))
+        ]
+    if _should_demote_secondhand_company_primary(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "company_primary"]
+        reasons = [reason for reason in reasons if not reason.startswith("company_primary:")]
+    if _should_demote_broad_entertainment(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "entertainment"]
+        reasons = [reason for reason in reasons if not reason.startswith("entertainment:")]
+    if _should_demote_fictional_university(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "university_admissions"]
+        reasons = [reason for reason in reasons if not reason.startswith("university_admissions:")]
+    if _should_demote_sports_venue_rental(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "sports"]
+        reasons = [reason for reason in reasons if not reason.startswith("sports:")]
+    matched_rules = _prioritize_sample_intelligence_rules(matched_rules)
 
     if preset and preset not in {"", "general"}:
         preset_rule = _preset_rule(str(preset))
@@ -1230,6 +1488,12 @@ def build_route_plan(
             "career",
             "podcast",
             "test_prep",
+            "public_opinion",
+            "crisis_watch",
+            "competitor_watch",
+            "pricing_watch",
+            "review_intel",
+            "app_review",
             "entertainment",
             "global_entertainment",
             "jp_kr_entertainment",
@@ -1278,6 +1542,8 @@ def build_route_plan(
         if profile == "china" and "wechat-rss" not in recommended_feeds:
             recommended_feeds.append("wechat-rss")
     recommended_feeds = _unique(recommended_feeds)
+    if site or sites:
+        recommended_feeds = []
     recommended_commands = _recommended_commands(
         clean_query,
         intents=primary + secondary,
@@ -1287,8 +1553,9 @@ def build_route_plan(
         target_sites=target_sites,
         profile=profile,
         read_top=read_top,
+        explicit_site_filter=bool(site or sites),
     )
-    read_default = 5 if {"policy", "official_position", "tech", "wps_office", "industry", "global_entertainment", "jp_kr_entertainment", "cybersecurity", "weather_disaster", "science", "sports", "career", "podcast", "test_prep", *finance_intents} & set(primary + secondary) else 3
+    read_default = 5 if {"policy", "official_position", "tech", "wps_office", "industry", "public_opinion", "crisis_watch", "competitor_watch", "pricing_watch", "review_intel", "app_review", "global_entertainment", "jp_kr_entertainment", "cybersecurity", "weather_disaster", "science", "sports", "career", "podcast", "test_prep", *finance_intents} & set(primary + secondary) else 3
     if {"standards_compliance", "medical_health", "legal_judicial", "cybersecurity", "weather_disaster"} & set(primary + secondary):
         read_default = 5
     if "reputation" in primary + secondary and not high_risk:
@@ -1410,6 +1677,28 @@ def _preset_rule(preset: str) -> dict[str, Any] | None:
         "regulation": "global_policy",
         "official": "official_position",
         "local": "local",
+        "public_opinion": "public_opinion",
+        "public-opinion": "public_opinion",
+        "opinion": "public_opinion",
+        "sentiment": "public_opinion",
+        "crisis": "crisis_watch",
+        "crisis_watch": "crisis_watch",
+        "crisis-watch": "crisis_watch",
+        "competitor": "competitor_watch",
+        "competitor_watch": "competitor_watch",
+        "competitor-watch": "competitor_watch",
+        "competitive": "competitor_watch",
+        "pricing_watch": "pricing_watch",
+        "pricing-watch": "pricing_watch",
+        "price_watch": "pricing_watch",
+        "price-watch": "pricing_watch",
+        "review_intel": "review_intel",
+        "review-intel": "review_intel",
+        "review_mining": "review_intel",
+        "review-mining": "review_intel",
+        "app_review": "app_review",
+        "app-review": "app_review",
+        "aso": "app_review",
         "reputation": "reputation",
         "global_reputation": "global_reputation",
         "reviews": "global_reputation",
@@ -1532,6 +1821,24 @@ def _query_variants(query: str, intents: list[str], domains: list[str]) -> list[
         variants.append(f"{query} 评价 体验 吐槽")
     if "global_reputation" in intents:
         variants.append(f"{query} review reddit hacker news complaints")
+    if "public_opinion" in intents:
+        variants.append(f"{query} 舆情 风评 声量 正负面")
+        variants.append(f"{query} 微博 知乎 小红书 B站 评论")
+    if "crisis_watch" in intents:
+        variants.append(f"{query} 负面 投诉 道歉 澄清")
+        variants.append(f"{query} 媒体报道 官方回应 用户投诉")
+    if "competitor_watch" in intents:
+        variants.append(f"{query} 竞品 对比 定价 功能 更新")
+        variants.append(f"{query} 官网 pricing changelog review")
+    if "pricing_watch" in intents:
+        variants.append(f"{query} 官方 定价 套餐 价格调整")
+        variants.append(f"{query} pricing plans changelog release notes")
+    if "review_intel" in intents:
+        variants.append(f"{query} 用户评论 差评 好评 反馈")
+        variants.append(f"{query} reviews complaints rating feedback")
+    if "app_review" in intents:
+        variants.append(f"{query} App Store 评论 Google Play 评分")
+        variants.append(f"{query} 应用商店 版本 差评 用户反馈")
     if "purchase_advice" in intents:
         variants.append(f"{query} 优缺点 值不值得买")
     if "global_entertainment" in intents:
@@ -1620,6 +1927,16 @@ def _avoid_as_primary(intents: list[str]) -> list[str]:
         avoid.extend(["社交/内容平台", "英文社区样本", "商业软文", "SEO 聚合页"])
     if "reputation" in intents or "global_reputation" in intents or "purchase_advice" in intents:
         avoid.extend(["单条爆款帖", "疑似营销内容", "无来源二手汇总", "单一 review 站点评分"])
+    if "public_opinion" in intents:
+        avoid.extend(["单个平台热帖", "未标注时间窗的情绪判断", "把样本声量写成总体民意"])
+    if "crisis_watch" in intents:
+        avoid.extend(["情绪化标题党", "无原文截图的爆料", "把单条投诉写成危机定论", "未核验道歉/澄清截图"])
+    if "competitor_watch" in intents:
+        avoid.extend(["凭印象列竞品", "无来源功能表", "过期价格截图", "把评价站排名当市场份额"])
+    if "pricing_watch" in intents:
+        avoid.extend(["过期价格页缓存", "社区转述价格", "无官方页面的套餐变化", "地区/币种未标注价格"])
+    if "review_intel" in intents or "app_review" in intents:
+        avoid.extend(["刷评样本", "无版本/地区边界的评分", "把评论比例写成真实用户比例", "下载量估算冒充官方数据"])
     if "entertainment" in intents:
         avoid.extend(["单平台热搜", "粉圈控评", "宣发通稿", "无来源搬运", "刷分/水军样本"])
     if "global_entertainment" in intents:
@@ -1667,6 +1984,7 @@ def _recommended_commands(
     target_sites: list[str],
     profile: str | None,
     read_top: int | None,
+    explicit_site_filter: bool = False,
 ) -> list[str]:
     """Build a small command shortlist for agents after routing."""
     commands: list[str] = []
@@ -1687,6 +2005,11 @@ def _recommended_commands(
         scopes=preferred_scopes,
         limit=3,
     )
+
+    if explicit_site_filter and target_sites:
+        commands.append(f"guanlan search {quoted} --site {target_sites[0]}{profile_part} --limit {search_limit} --trace")
+        commands.append('guanlan read "URL" --quality-report --trace')
+        return _unique(commands)
 
     if (
         "hot_trend" in intents
@@ -1740,6 +2063,33 @@ def _recommended_commands(
         commands.append(f"guanlan research {quoted}{profile_part} --scope sports --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "global_reputation" in intents:
         commands.append(f"guanlan research {quoted} --preset global_reputation{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 3)}")
+    elif "crisis_watch" in intents:
+        if profile != "english":
+            commands.append(f"guanlan hotnews today --limit {hotnews_limit} --trends")
+        commands.append(f"guanlan pulse {quoted}{profile_part} --limit {pulse_limit} --format context")
+        commands.append(f"guanlan research {quoted} --preset crisis{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)} --advisor")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope social_web --limit {search_limit} --trace")
+    elif "public_opinion" in intents:
+        commands.append(f"guanlan pulse {quoted}{profile_part} --limit {pulse_limit} --format context")
+        commands.append(f"guanlan research {quoted} --preset public_opinion{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 3)} --advisor")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope social_web --limit {search_limit} --trace")
+    elif "competitor_watch" in intents:
+        commands.append(f"guanlan research {quoted} --preset competitor{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)} --advisor")
+        commands.append(f"guanlan dossier {quoted} --focus \"定位 竞品 功能 定价 口碑 风险\" --limit {research_limit} --format context")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope company_primary --limit {search_limit} --trace")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope market_review --limit {search_limit} --trace")
+    elif "pricing_watch" in intents:
+        commands.append(f"guanlan research {quoted} --preset pricing_watch{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope company_primary --limit {search_limit} --trace")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope market_review --limit {search_limit} --trace")
+    elif "app_review" in intents:
+        commands.append(f"guanlan research {quoted} --preset app_review{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 3)} --advisor")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope market_review --limit {search_limit} --trace")
+        commands.append(f"guanlan pulse {quoted}{profile_part} --limit {pulse_limit} --format context")
+    elif "review_intel" in intents:
+        commands.append(f"guanlan research {quoted} --preset review_intel{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 3)} --advisor")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope market_review --limit {search_limit} --trace")
+        commands.append(f"guanlan pulse {quoted}{profile_part} --limit {pulse_limit} --format context")
     elif "entertainment" in intents:
         if profile != "english":
             commands.append(f"guanlan hotnews weibo --limit {hotnews_limit}")
@@ -1892,6 +2242,11 @@ def _needs_hotboard_route(intents: list[str]) -> bool:
             "entertainment",
             "reputation",
             "purchase_advice",
+            "public_opinion",
+            "crisis_watch",
+            "competitor_watch",
+            "review_intel",
+            "app_review",
             "industry",
             "ecommerce",
             "finance",
@@ -1911,6 +2266,21 @@ def _structured_stock_commands(query: str, intents: list[str]) -> list[str]:
     finance_quote_like = bool({"finance", "finance_quote", "finance_sentiment"} & set(intents))
     if not finance_quote_like:
         return []
+    if "finance_macro" in intents and "finance_quote" not in intents:
+        quote_terms = (
+            "股票",
+            "股价",
+            "行情",
+            "代码",
+            "涨跌",
+            "资金流向",
+            "stock price",
+            "share price",
+            "ticker",
+            "earnings",
+        )
+        if not _contains_any(query.lower(), quote_terms):
+            return []
     try:
         from guanlan.stockdata import infer_stock_target, normalize_symbol
     except Exception:
@@ -1938,6 +2308,11 @@ def _shell_quote(value: str) -> str:
     return f'"{escaped}"'
 
 
+def _extract_site_operator(query: str) -> str:
+    match = re.search(r"\bsite:([A-Za-z0-9.-]+\.[A-Za-z]{2,})", query or "", re.IGNORECASE)
+    return match.group(1).lower() if match else ""
+
+
 def _is_reading_discovery(text: str) -> bool:
     return any(term in text for term in ("值得读", "好文章", "技术文章", "技术博客", "阅读", "精品源", "rss", "opml"))
 
@@ -1952,6 +2327,18 @@ def _route_explanations(intents: list[str], scopes: list[str], sites: list[str])
         output.append(f"补充平台定向站点: {', '.join(sites[:4])}。")
     if "purchase_advice" in intents:
         output.append("购买/选型问题需要官方信息、垂类评测和用户样本三角验证。")
+    if "public_opinion" in intents:
+        output.append("舆情/风评问题需要把公开讨论、评论样本、媒体报道和时间窗分开看；样本不是民调。")
+    if "crisis_watch" in intents:
+        output.append("危机监测需要先看负面信号和投诉扩散，再核验媒体报道、官方/公司回应与事实边界。")
+    if "competitor_watch" in intents:
+        output.append("竞品观察需要先确认对象边界和同类对象，再核验官网/价格页/更新记录/评价样本。")
+    if "pricing_watch" in intents:
+        output.append("价格观察优先官方价格页、帮助中心或发布说明；社区转述只能作反应样本。")
+    if "review_intel" in intents:
+        output.append("评论挖掘适合提取用户语言、痛点和功能诉求，但必须保留平台/地区/版本偏差。")
+    if "app_review" in intents:
+        output.append("应用评论需要区分 App Store/Google Play 等应用商店评分、版本评论和第三方榜单估算。")
     if "company_primary" in intents:
         output.append("英文产品/公司问题优先核验公司一手资料，再补媒体和社区样本。")
     if "global_policy" in intents:
@@ -2081,6 +2468,210 @@ def _confidence(rules: list[dict[str, Any]], **kwargs: Any) -> float:
 
 def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
     return any(term.lower() in text for term in terms)
+
+
+def _should_demote_broad_legal(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Avoid routing brand/product complaint monitoring into legal search only."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "legal_judicial" not in intents:
+        return False
+    if not {"reputation", "public_opinion", "crisis_watch", "review_intel"} & intents:
+        return False
+    strong_legal_terms = (
+        "法律",
+        "诉讼",
+        "判决",
+        "判例",
+        "合同",
+        "律师",
+        "侵权",
+        "司法解释",
+        "劳动仲裁",
+        "仲裁",
+        "加班费",
+        "工伤",
+        "竞业",
+        "版权",
+        "著作权",
+        "许可证",
+        "法院",
+        "裁判文书",
+        "条例",
+        "lawsuit",
+        "court",
+        "legal",
+    )
+    return not _contains_any(text, strong_legal_terms)
+
+
+def _should_demote_charity_finance(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Keep charity/foundation transparency queries out of stock/fund routing."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if not {"finance", "finance_quote"} & intents:
+        return False
+    charity_terms = ("基金会", "慈善", "公益", "善款", "捐款", "捐赠")
+    if not _contains_any(text, charity_terms):
+        return False
+    capital_market_terms = (
+        "股票",
+        "股价",
+        "基金净值",
+        "etf",
+        "行情",
+        "大盘",
+        "财报",
+        "公告",
+        "雪球",
+        "股吧",
+        "研报",
+        "投资者",
+        "看多",
+        "看空",
+        "净值",
+        "收益率",
+        "申购",
+        "赎回",
+    )
+    return not _contains_any(text, capital_market_terms)
+
+
+def _should_demote_sports_venue_rental(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Avoid treating sports venue rental/local listings as sports news."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "sports" not in intents:
+        return False
+    venue_terms = ("体育馆", "场馆", "运动场", "篮球馆", "羽毛球馆")
+    rental_terms = ("出租", "招租", "租赁", "场地", "招商")
+    return _contains_any(text, venue_terms) and _contains_any(text, rental_terms)
+
+
+def _should_demote_secondhand_company_primary(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Second-hand price lookups should not inherit generic company-site routing."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "company_primary" not in intents:
+        return False
+    secondhand_terms = ("二手", "闲鱼", "转转", "回收价", "中古", "second hand", "resale")
+    price_terms = ("价格", "报价", "多少钱", "行情", "估价", "price")
+    if not (_contains_any(text, secondhand_terms) and _contains_any(text, price_terms)):
+        return False
+    official_terms = ("官网", "官方", "发布", "上线", "订阅", "会员", "pricing", "release notes", "official")
+    return not _contains_any(text, official_terms)
+
+
+def _should_demote_broad_finance_sentiment(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Keep generic 舆情 queries out of the stock workflow unless finance is explicit."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "finance_sentiment" not in intents:
+        return False
+    if not {"public_opinion", "crisis_watch", "review_intel", "app_review", "reputation"} & intents:
+        return False
+    finance_terms = (
+        "股票",
+        "股价",
+        "基金",
+        "etf",
+        "行情",
+        "大盘",
+        "财报",
+        "公告",
+        "雪球",
+        "股吧",
+        "研报",
+        "投资者",
+        "看多",
+        "看空",
+        "爆仓",
+        "stock",
+    )
+    return not _contains_any(text, finance_terms)
+
+
+def _should_demote_broad_entertainment(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Avoid letting generic 评分/评论 terms steal App review routing."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "entertainment" not in intents or "app_review" not in intents:
+        return False
+    entertainment_terms = (
+        "电影",
+        "电视剧",
+        "剧集",
+        "综艺",
+        "明星",
+        "演员",
+        "票房",
+        "排片",
+        "播放量",
+        "音乐",
+        "专辑",
+        "演唱会",
+        "游戏",
+        "手游",
+        "动漫",
+        "漫画",
+        "番剧",
+        "二次元",
+        "豆瓣",
+        "猫眼",
+        "taptap",
+        "k-pop",
+        "hollywood",
+    )
+    return not _contains_any(text, entertainment_terms)
+
+
+def _should_demote_fictional_university(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Keep fiction/comic character queries with 导师/学院 out of admissions routing."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "university_admissions" not in intents:
+        return False
+    fiction_terms = (
+        "漫画",
+        "动漫",
+        "番剧",
+        "轻小说",
+        "小说",
+        "剧情",
+        "角色",
+        "人物",
+        "同人",
+        "二次元",
+        "魔法学院",
+        "游戏角色",
+        "npc",
+    )
+    if not _contains_any(text, fiction_terms):
+        return False
+    admissions_anchors = (
+        "研究生招生",
+        "博士招生",
+        "硕士招生",
+        "招生目录",
+        "招生简章",
+        "研究生院",
+        "院系",
+        "推免",
+        "复试",
+        "考研",
+        "计算机系",
+        "高校",
+        "大学",
+        "edu.cn",
+        "官网",
+    )
+    return not _contains_any(text, admissions_anchors)
+
+
+def _prioritize_sample_intelligence_rules(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    priority = {
+        "app_review": 0,
+        "crisis_watch": 0,
+        "competitor_watch": 0,
+        "pricing_watch": 0,
+        "review_intel": 1,
+        "public_opinion": 8,
+    }
+    ordered = sorted(enumerate(rules), key=lambda item: (priority.get(str(item[1].get("intent") or ""), 10), item[0]))
+    return [rule for _, rule in ordered]
 
 
 def _resolve_query_profile(query: str, profile: str | None) -> str | None:

@@ -4,6 +4,8 @@
 import json
 from unittest.mock import patch
 
+import pytest
+
 from guanlan import quality
 
 
@@ -113,6 +115,8 @@ def test_quality_cli_live_smoke_is_non_blocking_by_default(capsys):
     assert payload["contract"]["timeout_budget_seconds"] == 180
     assert payload["contract"]["timeout_budget_ms"] == 180000
     assert any("timeout_ms" in item for item in payload["contract"]["timeout_unit_contract"])
+    assert payload["live_trend_report"]["runs_considered"] == 1
+    assert payload["live_trend_report"]["blocking"] is False
     assert payload["summary"]["fail"] == 1
 
 
@@ -133,3 +137,72 @@ def test_live_smoke_contract_exposes_scenario_groups():
     assert "scenario_groups" in report["network_summary"]
     groups = report["network_summary"]["scenario_groups"]
     assert {"policy", "finance", "university", "reputation"} <= set(groups)
+
+
+def test_live_smoke_history_records_and_summarizes_trends(tmp_path):
+    history_path = tmp_path / "live-smoke-history.jsonl"
+
+    reports = [
+        {
+            "mode": "live",
+            "summary": {"total": 2, "pass": 1, "warn": 1, "fail": 0, "score": 75},
+            "checks": [
+                {"id": "live_policy", "scenario_group": "policy", "status": "warn", "message": "upstream timeout"},
+                {"id": "live_feeds", "scenario_group": "feeds", "status": "pass", "message": "ok"},
+            ],
+        },
+        {
+            "mode": "live",
+            "summary": {"total": 2, "pass": 1, "warn": 1, "fail": 0, "score": 75},
+            "checks": [
+                {"id": "live_policy", "scenario_group": "policy", "status": "pass", "message": "ok"},
+                {"id": "live_feeds", "scenario_group": "feeds", "status": "warn", "message": "backend cache stale"},
+            ],
+        },
+    ]
+
+    with patch("guanlan.quality.run_quality_checks", side_effect=[dict(item) for item in reports]):
+        quality.run_live_smoke_checks(history_path=history_path, record_history=True)
+        report = quality.run_live_smoke_checks(history_path=history_path, record_history=True)
+
+    trend = report["live_trend_report"]
+    assert history_path.exists()
+    assert len(history_path.read_text(encoding="utf-8").splitlines()) == 2
+    assert trend["runs_considered"] == 2
+    assert trend["new_failures"] == ["live_feeds"]
+    assert trend["recovered"] == ["live_policy"]
+    assert trend["likely_network_or_upstream"] == 1
+    assert "live smoke 趋势" in quality.format_quality_report(report)
+
+
+def test_quality_cli_live_smoke_records_history_without_changing_strict_exit(tmp_path, capsys):
+    from guanlan.cli import main
+
+    history_path = tmp_path / "history.jsonl"
+    fake_report = {
+        "mode": "live",
+        "summary": {"total": 1, "pass": 0, "warn": 0, "fail": 1, "score": 0},
+        "checks": [{"id": "live_timeout", "scenario_group": "policy", "status": "fail", "message": "network timeout"}],
+    }
+    argv = [
+        "guanlan",
+        "quality",
+        "live-smoke",
+        "--format",
+        "json",
+        "--strict",
+        "--record-history",
+        "--history-path",
+        str(history_path),
+    ]
+    with patch("guanlan.quality.run_quality_checks", return_value=fake_report):
+        with patch("sys.argv", argv):
+            with pytest.raises(SystemExit) as exc:
+                main()
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exc.value.code == 1
+    assert history_path.exists()
+    assert payload["contract"]["blocking"] is True
+    assert payload["live_trend_report"]["recorded"] is True

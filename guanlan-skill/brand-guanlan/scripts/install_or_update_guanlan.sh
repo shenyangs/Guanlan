@@ -63,7 +63,7 @@ rm -f "${HOME}/.guanlan/cache/update-check.json" || true
 case "$MODE" in
   uv)
     command -v uv >/dev/null 2>&1 || { echo "uv not found" >&2; exit 1; }
-    run uv tool install --force --upgrade --refresh --index-url https://pypi.org/simple guanlan
+    run uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
     ;;
   brew|homebrew)
     command -v brew >/dev/null 2>&1 || { echo "brew not found" >&2; exit 1; }

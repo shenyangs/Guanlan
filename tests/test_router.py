@@ -19,6 +19,31 @@ def test_route_plan_detects_purchase_reputation_need():
     assert any("社交" in warning or "购买" in warning for warning in plan.warnings)
 
 
+def test_route_plan_detects_public_opinion_competitor_and_app_review_needs():
+    opinion = build_route_plan("某产品 最近舆情 风评 被夸还是被骂", profile="china")
+    crisis = build_route_plan("某品牌 公关危机 负面舆情 投诉爆发 道歉 澄清", profile="china")
+    competitor = build_route_plan("某产品 竞品情报 竞争对手 定价变化 功能对比", profile="china")
+    app_review = build_route_plan("某 App Store 评论 差评 评分变化 ASO", profile="china")
+
+    assert "public_opinion" in opinion.primary_intents + opinion.secondary_intents
+    assert "social_web" in opinion.preferred_scopes
+    assert "market_review" in opinion.preferred_scopes
+    assert "public_discussion" in opinion.evidence_roles
+    assert any("guanlan pulse" in command for command in opinion.recommended_commands)
+    assert "crisis_watch" in crisis.primary_intents + crisis.secondary_intents
+    assert "risk_signal" in crisis.evidence_roles
+    assert any("guanlan pulse" in command for command in crisis.recommended_commands)
+    assert any("hotnews today" in command for command in crisis.recommended_commands)
+    assert "competitor_watch" in competitor.primary_intents + competitor.secondary_intents
+    assert "company_primary" in competitor.preferred_scopes
+    assert "market_review" in competitor.preferred_scopes
+    assert any("guanlan dossier" in command for command in competitor.recommended_commands)
+    assert "app_review" in app_review.primary_intents + app_review.secondary_intents
+    assert "market_review" in app_review.preferred_scopes
+    assert "apps.apple.com" in app_review.target_sites
+    assert any("--scope market_review" in command for command in app_review.recommended_commands)
+
+
 def test_route_plan_detects_policy_and_avoids_social_primary():
     plan = build_route_plan("人工智能 监管 政策 最新通知", profile="china")
 
@@ -131,6 +156,38 @@ def test_route_plan_detects_security_weather_sports_science_gaps():
     assert "sports" in sports.preferred_scopes
     assert "science" in science.primary_intents + science.secondary_intents
     assert "science" in science.preferred_scopes
+
+
+def test_route_plan_handles_long_tail_agent_auto_regressions():
+    legal = build_route_plan("劳动仲裁 加班费 证据 判例 最新", profile="china")
+    fraud = build_route_plan("收到ETC短信 链接 骗局 怎么办", profile="china")
+    charity = build_route_plan("某基金会 捐款 去向 透明度 查询", profile="china")
+    game = build_route_plan("黑神话悟空 DLC 爆料 销量 Steam", profile="china")
+    venue_rental = build_route_plan("学校 体育馆 出租 招租 江苏 常州", profile="china")
+    secondhand = build_route_plan("V100 326 二手价格", profile="china")
+
+    assert "legal_judicial" in legal.primary_intents + legal.secondary_intents
+    assert "cybersecurity" in fraud.primary_intents + fraud.secondary_intents
+    assert "reputation" in charity.primary_intents + charity.secondary_intents
+    assert "finance" not in charity.primary_intents + charity.secondary_intents
+    assert not any(command.startswith("guanlan stock") for command in charity.recommended_commands)
+    assert "entertainment" in game.primary_intents + game.secondary_intents
+    assert "sports" not in venue_rental.primary_intents + venue_rental.secondary_intents
+    assert "ecommerce" in secondhand.primary_intents + secondhand.secondary_intents
+    assert "company_primary" not in secondhand.primary_intents + secondhand.secondary_intents
+
+
+def test_route_plan_handles_telemetry_ai_company_terms():
+    figma_ai = build_route_plan("Firefly Boards Figma AI 可编辑", profile="china")
+    product_hunt = build_route_plan("Product Hunt AI工具 2026", profile="china")
+    character = build_route_plan("Character.ai valuation users 2025 2026 Google acquisition", profile="china")
+    macro = build_route_plan("2026 recession GDP inflation", profile="china")
+
+    assert "tech" in figma_ai.primary_intents + figma_ai.secondary_intents
+    assert "tech" in product_hunt.primary_intents + product_hunt.secondary_intents
+    assert "company_primary" in character.primary_intents + character.secondary_intents
+    assert "global_industry" in character.primary_intents + character.secondary_intents
+    assert "finance_macro" in macro.primary_intents + macro.secondary_intents
 
 
 def test_route_plan_recommends_direct_reads_for_live_nba_lookup():
@@ -348,11 +405,14 @@ def test_route_plan_detects_wps_lingxi_claw_semantics_without_wps_prefix():
 def test_route_plan_detects_ai_office_adjacent_but_not_generic_skill_query():
     adjacent = build_route_plan("AI 笔记 知识库 Agent", profile="china")
     generic = build_route_plan("Python token skill", profile="china")
+    pure_agent = build_route_plan("DeepSeek-V4 智能体 Agent 最新", profile="china")
 
     assert "wps_office" in adjacent.primary_intents + adjacent.secondary_intents
     assert "ai_office_adjacent" in adjacent.wps_lanes
     assert any("AI 笔记 AI 知识库 KaaS" in query for query in adjacent.query_variants)
     assert "wps_office" not in generic.primary_intents + generic.secondary_intents
+    assert "wps_office" not in pure_agent.primary_intents + pure_agent.secondary_intents
+    assert "tech" in pure_agent.primary_intents + pure_agent.secondary_intents
 
 
 def test_route_plan_covers_wps_product稿_details_without_overrouting_generic_terms():
@@ -444,6 +504,18 @@ def test_source_card_marks_wps_office_layers():
     assert community.scope_id == "wps_office"
     assert community.sample_value > community.authority_score
     assert "sample_bias" in community.risk_tags
+
+
+def test_source_card_marks_app_store_reviews_as_samples():
+    app_store = source_card_for_domain("apps.apple.com")
+    google_play = source_card_for_domain("play.google.com")
+
+    assert app_store.scope_id == "market_review"
+    assert "app_store_review" in app_store.content_roles
+    assert app_store.sample_value > app_store.authority_score
+    assert "region_version_dependent" in app_store.risk_tags
+    assert google_play.scope_id == "market_review"
+    assert "version_feedback" in google_play.content_roles
 
 
 def test_route_cli_outputs_json(capsys):

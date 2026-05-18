@@ -475,10 +475,21 @@ def analyze_wps_semantics(query: str) -> dict[str, Any]:
     ambiguous_matches = [term for term in WPS_AMBIGUOUS_AI_TERMS if _term_matches(text, compact, term)]
     context_matches = [term for term in WPS_CONTEXT_TERMS if _term_matches(text, compact, term)]
     agent_context_matches = [term for term in WPS_AGENT_CONTEXT_TERMS if _term_matches(text, compact, term)]
+    agent_like_matches = [
+        term
+        for term in ambiguous_matches
+        if term.lower() not in {"智能体", "工具调用", "tool calling"}
+    ]
+    trigger_context_matches = [term for term in agent_context_matches if term != "智能体"]
+    distinct_context_matches = [
+        term
+        for term in trigger_context_matches
+        if term.lower().replace(" ", "") not in {item.lower().replace(" ", "") for item in ambiguous_matches}
+    ]
 
     has_brand = bool(brand_matches)
     has_vertical = bool(vertical_matches)
-    has_contextual_ai = bool(ambiguous_matches and agent_context_matches)
+    has_contextual_ai = bool(ambiguous_matches and trigger_context_matches and (agent_like_matches or distinct_context_matches))
     has_lane_signal = bool({"wps_ai", "lingxi", "ai_office_adjacent"} & set(lane_matches))
     is_wps_office = bool(has_brand or has_vertical or has_contextual_ai or has_lane_signal)
 

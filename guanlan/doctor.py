@@ -13,6 +13,7 @@ from guanlan.channel_catalog import get_channel_metadata
 from guanlan.channels import get_all_channels
 from guanlan.config import Config
 from guanlan.profiles import get_profile
+from guanlan.sensitive import SENSITIVE_KEY_TERMS
 
 
 @contextmanager
@@ -74,18 +75,7 @@ def _readiness(status: str, metadata: dict[str, Any]) -> str:
     return "unknown"
 
 
-_SENSITIVE_KEY_SEGMENTS = {
-    "auth",
-    "cookie",
-    "cookies",
-    "key",
-    "passwd",
-    "password",
-    "proxy",
-    "secret",
-    "session",
-    "token",
-}
+_SENSITIVE_KEY_SEGMENTS = set(SENSITIVE_KEY_TERMS)
 
 _SENSITIVE_VALUE_PATTERNS: tuple[tuple[str, str], ...] = (
     ("GitHub token", r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),

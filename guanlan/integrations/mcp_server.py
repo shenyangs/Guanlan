@@ -54,13 +54,38 @@ def _tool_definitions() -> list[dict]:
             "name": "guanlan_capabilities",
             "description": (
                 "Show Guanlan's capability map: when to use search, route, read, research, advisor, "
-                "hotnews, pulse, archive, local-LLM prompt, status, and their safety boundaries. "
+                "hotnews, pulse, archive, local-LLM prompt, agent auto-plan, status, and their safety boundaries. "
                 "Call this first when the user asks what Guanlan can do or which Guanlan tool to use."
             ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "format": {"type": "string", "enum": ["markdown", "json"], "default": "markdown"},
+                },
+            },
+        },
+        {
+            "name": "guanlan_agent",
+            "description": (
+                "Auto-plan the smallest safe Guanlan command chain for an agent. Use this when the "
+                "agent is unsure which Guanlan tool or CLI command to run; it returns a primary_command "
+                "and a short agent_next_steps list without searching the web."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string"},
+                    "mode": {"type": "string", "enum": ["auto", "quick", "deep", "fresh"], "default": "auto"},
+                    "preset": {"type": "string", "default": "general"},
+                    "scope": {"type": "string"},
+                    "site": {"type": "string"},
+                    "sites": {"type": "array", "items": {"type": "string"}},
+                    "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
+                    "limit": {"type": "integer", "default": DEFAULT_SEARCH_LIMIT, "minimum": 1, "maximum": MAX_RESEARCH_LIMIT},
+                    "read_top": {"type": "integer", "minimum": 0, "maximum": 10},
+                    "max_commands": {"type": "integer", "default": 5, "minimum": 1, "maximum": 10},
+                    "format": {"type": "string", "enum": ["markdown", "json"], "default": "json"},
                 },
             },
         },
@@ -651,6 +676,25 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         if str(args.get("format") or "markdown") == "json":
             return list_capabilities()
         return format_capabilities_markdown()
+
+    if name == "guanlan_agent":
+        from guanlan.workflow_decider import build_agent_plan, format_agent_plan_markdown
+
+        plan = build_agent_plan(
+            str(args.get("query", "")).strip(),
+            mode=str(args.get("mode") or "auto"),
+            preset=None if args.get("preset") in {None, "", "general"} else str(args.get("preset")),
+            scope=args.get("scope") or None,
+            site=args.get("site") or None,
+            sites=args.get("sites") or None,
+            profile=args.get("profile") or "china",
+            limit=int(args.get("limit") or DEFAULT_SEARCH_LIMIT),
+            read_top=int(args["read_top"]) if args.get("read_top") is not None else None,
+            max_commands=int(args.get("max_commands") or 5),
+        )
+        if str(args.get("format") or "json") == "markdown":
+            return format_agent_plan_markdown(plan)
+        return plan.to_dict()
 
     if name == "guanlan_search":
         from guanlan.webtools import (

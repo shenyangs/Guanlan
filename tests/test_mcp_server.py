@@ -32,6 +32,7 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert core_agent_tool_names() <= names
     assert "guanlan_status" in names
     assert "guanlan_capabilities" in names
+    assert "guanlan_agent" in names
     assert "guanlan_search" in names
     assert "guanlan_stock" in names
     assert "guanlan_route" in names
@@ -65,6 +66,7 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "backend" in hotnews_tool["inputSchema"]["properties"]
     assert "newsnow_base_url" in hotnews_tool["inputSchema"]["properties"]
     search_tool = next(tool for tool in tools if tool["name"] == "guanlan_search")
+    agent_tool = next(tool for tool in tools if tool["name"] == "guanlan_agent")
     stock_tool = next(tool for tool in tools if tool["name"] == "guanlan_stock")
     route_tool = next(tool for tool in tools if tool["name"] == "guanlan_route")
     workflow_tool = next(tool for tool in tools if tool["name"] == "guanlan_workflow")
@@ -88,6 +90,8 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "prompt" in search_tool["inputSchema"]["properties"]["format"]["enum"]
     assert "cache_ttl=3600" in search_tool["description"]
     assert "do not shrink the evidence pool" in search_tool["description"]
+    assert "primary_command" in agent_tool["description"]
+    assert "mode" in agent_tool["inputSchema"]["properties"]
     assert "dynamic finance pages" in stock_tool["description"]
     assert "stocks" in stock_tool["description"]
     assert "plan" in stock_tool["inputSchema"]["properties"]["command"]["enum"]
@@ -258,6 +262,19 @@ def test_mcp_workflow_keeps_basic_search_light():
     assert payload["tier"] == "direct"
     assert payload["recommended_entrypoint"] == "search"
     assert payload["do_not_overthink"] is True
+
+
+def test_mcp_agent_returns_low_choice_plan():
+    payload = mcp_server._run_tool(
+        "guanlan_agent",
+        {"query": "WPS AI 灵犀 最近热点", "mode": "fresh", "format": "json"},
+    )
+    commands = [item["command"] for item in payload["agent_next_steps"]]
+
+    assert payload["primary_command"].startswith("guanlan research")
+    assert "--preset wps_office" in payload["primary_command"]
+    assert "guanlan hotnews today --limit 80 --trends" in commands
+    assert "guanlan feeds curated --category ai --limit 80" in commands
 
 
 def test_mcp_investigate_uses_investigation_module(monkeypatch):

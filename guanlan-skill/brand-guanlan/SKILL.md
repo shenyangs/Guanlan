@@ -14,7 +14,7 @@ Use Guanlan as a Chinese-web evidence router, not as a one-shot search box. For 
 Prefer one clean install path. For most agents, use `uv`:
 
 ```bash
-uv tool install --force --upgrade --refresh --index-url https://pypi.org/simple guanlan
+uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan
 hash -r || true
 command -v guanlan
 which -a guanlan
@@ -36,7 +36,9 @@ If `guanlan version` is lower than public PyPI/Homebrew or README, stop before c
 
 ```bash
 rm -f ~/.guanlan/cache/update-check.json
-curl -sS https://pypi.org/pypi/guanlan/json | rg -o '"version":\s*"[0-9]+\.[0-9]+\.[0-9]+"' -m 1
+curl -fsSL -H 'Cache-Control: no-cache' https://pypi.org/pypi/guanlan/json \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["version"])'
+python3 -m pip index versions guanlan --index-url https://pypi.org/simple
 ```
 
 For a repeatable full install/update smoke, run:
