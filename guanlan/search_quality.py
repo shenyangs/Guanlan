@@ -13,6 +13,8 @@ import re
 import urllib.parse
 from typing import Any, Protocol
 
+from guanlan.query_semantics import semantic_alias_terms, semantic_groups
+
 LOW_RELEVANCE_RESULT_STATUS = "low_relevance"
 UNSAFE_RESULT_STATUS = "unsafe_filtered"
 
@@ -26,6 +28,32 @@ LOW_VALUE_SAMPLE_DOMAINS = {
     "wenku.baidu.com",
     "baijiahao.baidu.com",
 }
+
+DICTIONARY_DRIFT_DOMAINS = {
+    "baike.baidu.com",
+    "hanyu.baidu.com",
+    "dict.baidu.com",
+    "hxdic.net",
+    "iciba.com",
+    "dict.cn",
+    "youdao.com",
+    "cidian.911cha.com",
+}
+
+DICTIONARY_DRIFT_TERMS = (
+    "释义",
+    "基本解释",
+    "详细解释",
+    "拼音",
+    "部首",
+    "组词",
+    "词典",
+    "汉典",
+    "爱词霸",
+    "百科",
+    "字义",
+    "意思",
+)
 
 SEO_TITLE_TERMS = (
     "客服电话",
@@ -295,6 +323,7 @@ def query_relevance_terms(query: str) -> list[str]:
         if len(term) < 2:
             continue
         terms.extend(expand_relevance_term(term))
+    terms.extend(semantic_alias_terms(query))
     return unique_keep_order(terms)
 
 
@@ -360,7 +389,22 @@ def query_relevance_groups(query: str) -> list[dict[str, Any]]:
     for name, aliases in CJK_RELEVANCE_GROUPS:
         if any(alias.lower() in text for alias in aliases):
             groups.append({"name": name, "aliases": list(aliases)})
-    return groups
+    groups.extend(semantic_groups(query))
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for group in groups:
+        name = str(group.get("name") or "")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        deduped.append(
+            {
+                "name": name,
+                "aliases": unique_keep_order([str(alias) for alias in group.get("aliases", []) if str(alias)]),
+                "required": bool(group.get("required", False)),
+            }
+        )
+    return deduped
 
 
 def matched_relevance_groups(batch: list[SearchResultLike], groups: list[dict[str, Any]]) -> set[str]:
@@ -383,10 +427,10 @@ def official_salvage_summary(
     requested_scope = str(quality.get("requested_scope") or "")
     route_intents = {str(item) for item in quality.get("route_intents", []) if str(item)}
     policy_like = (
-        intent in {"policy", "local", "official_position"}
+        intent in {"policy", "local", "official_position", "standards_compliance", "legal_judicial", "medical_health"}
         or intent.startswith("scope:gov")
         or requested_scope in {"gov", "party_central", "local_official"}
-        or bool({"policy", "official_position", "local", "ecommerce"} & route_intents)
+        or bool({"policy", "official_position", "local", "ecommerce", "standards_compliance", "legal_judicial", "medical_health"} & route_intents)
     )
     if not policy_like or not groups:
         return {"salvaged_count": 0, "items": [], "reason": ""}
@@ -399,7 +443,7 @@ def official_salvage_summary(
         requested_required = {
             str(group.get("name"))
             for group in groups
-            if str(group.get("name")) in CJK_REQUIRED_TOPIC_GROUPS
+            if bool(group.get("required", False)) or str(group.get("name")) in CJK_REQUIRED_TOPIC_GROUPS
         }
         if requested_required and not requested_required <= matched:
             continue
@@ -457,16 +501,24 @@ def backend_pollution_summary(query: str, batch: list[SearchResultLike]) -> dict
     """Detect low-value Q&A/SEO pollution without treating it as final truth."""
     if not batch:
         return {"enabled": False, "severity": "none", "polluted_count": 0, "ratio": 0.0}
+    semantic_aliases = [alias.lower() for alias in semantic_alias_terms(query)]
     samples: list[dict[str, str]] = []
     polluted_count = 0
     for item in batch:
         domain = (getattr(item, "domain", "") or _domain(getattr(item, "url", ""))).lower().removeprefix("www.")
-        text = collapse_ws(f"{getattr(item, 'title', '')} {getattr(item, 'snippet', '')}").lower()
+        title = collapse_ws(getattr(item, "title", ""))
+        title_compact = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "", title)
+        text = collapse_ws(f"{title} {getattr(item, 'snippet', '')}").lower()
         reasons: list[str] = []
         if domain in LOW_VALUE_SAMPLE_DOMAINS:
             reasons.append(f"low_value_domain:{domain}")
         if any(term.lower() in text for term in SEO_TITLE_TERMS):
             reasons.append("seo_or_service_phone_title")
+        if domain in DICTIONARY_DRIFT_DOMAINS or any(term.lower() in text for term in DICTIONARY_DRIFT_TERMS):
+            if len(collapse_ws(query)) >= 4 and len(title_compact) <= 3:
+                reasons.append("dictionary_definition_drift")
+            elif semantic_aliases and not any(alias in text for alias in semantic_aliases):
+                reasons.append("dictionary_definition_drift")
         if reasons:
             polluted_count += 1
             if len(samples) < 5:

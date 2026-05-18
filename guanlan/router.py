@@ -20,6 +20,7 @@ from guanlan.limits import (
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
 )
+from guanlan.query_semantics import analyze_query_semantics, semantic_query_variants
 from guanlan.source_seeds import direct_source_read_commands
 from guanlan.wps_semantics import (
     WPS_OFFICE_TERMS,
@@ -1332,6 +1333,7 @@ def build_route_plan(
     site_operator = _extract_site_operator(clean_query)
     if site_operator and not site:
         site = site_operator
+    semantic_analysis = analyze_query_semantics(clean_query)
     matched_rules: list[dict[str, Any]] = []
     reasons: list[str] = []
     for rule in _INTENT_RULES:
@@ -1350,6 +1352,17 @@ def build_route_plan(
                 + list(wps_analysis.get("ambiguous_ai_terms") or [])
             )
             reasons.append(f"wps_office_semantic:{','.join(summary_terms[:4])}")
+    if semantic_analysis.get("intent_hints"):
+        for intent in reversed(list(semantic_analysis.get("intent_hints") or [])):
+            if any(str(rule.get("intent") or "") == intent for rule in matched_rules):
+                continue
+            semantic_rule = next((rule for rule in _INTENT_RULES if str(rule.get("intent") or "") == intent), None)
+            if semantic_rule:
+                matched_rules.insert(0, semantic_rule)
+        if semantic_analysis.get("matched_rules"):
+            reasons.append(
+                "query_semantic:" + ",".join(str(item) for item in list(semantic_analysis.get("matched_rules") or [])[:4])
+            )
 
     if _should_demote_broad_legal(text, matched_rules):
         matched_rules = [rule for rule in matched_rules if rule.get("intent") != "legal_judicial"]
@@ -1438,6 +1451,8 @@ def build_route_plan(
         preferred_scopes = [scope_id for scope_id in preferred_scopes if scope_id in policy_primary]
         fallback_scopes = _unique(fallback_scopes + overflow)
     target_sites = _unique(_flatten(rule.get("sites", ()) for rule in matched_rules))
+    if semantic_analysis.get("preferred_sites"):
+        target_sites = _unique(list(semantic_analysis.get("preferred_sites") or []) + target_sites)
     if site:
         target_sites.insert(0, site)
     if sites:
@@ -1812,6 +1827,7 @@ def _detect_freshness(text: str) -> str:
 
 def _query_variants(query: str, intents: list[str], domains: list[str]) -> list[str]:
     variants = [query]
+    variants.extend(semantic_query_variants(query, limit=4))
     finance_intents = {"finance", "finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"}
     if "policy" in intents:
         variants.append(f"{query} 政策 原文 通知")
@@ -1988,7 +2004,9 @@ def _recommended_commands(
 ) -> list[str]:
     """Build a small command shortlist for agents after routing."""
     commands: list[str] = []
-    quoted = _shell_quote(query)
+    semantic_variants = semantic_query_variants(query, limit=1)
+    command_query = semantic_variants[0] if semantic_variants else query
+    quoted = _shell_quote(command_query)
     profile_part = f" --profile {profile}" if profile in {"china", "english", "hybrid"} else ""
     effective_read_top = 5 if read_top is None else max(read_top, 0)
     reading_discovery = _is_reading_discovery(query.lower())
@@ -2019,18 +2037,20 @@ def _recommended_commands(
     ):
         commands.append(f"guanlan hotnews today --limit {hotnews_limit}")
 
+    academic_like = "academic" in intents and _prefer_academic_route(query)
+
     if "university_admissions" in intents:
         commands.append(f"guanlan research {quoted} --preset university{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
         commands.append(f"guanlan search {quoted}{profile_part} --scope university --limit {search_limit}")
-    elif "academic" in intents:
+    elif academic_like:
         academic_read_top = max(effective_read_top, 5)
         commands.append(f"guanlan research {quoted} --preset academic{profile_part} --limit {research_limit} --read-top {academic_read_top}")
-    elif "standards_compliance" in intents and not (profile == "english" and "global_policy" in intents):
-        commands.append(f"guanlan research {quoted}{profile_part} --scope global_official --limit {research_limit} --read-top {max(effective_read_top, 5)}")
-        commands.append(f"guanlan search {quoted}{profile_part} --scope gov --limit {search_limit}")
     elif "medical_health" in intents:
         commands.append(f"guanlan research {quoted}{profile_part} --scope global_official --limit {research_limit} --read-top {max(effective_read_top, 5)}")
         commands.append(f"guanlan search {quoted}{profile_part} --scope academic --limit {search_limit}")
+    elif "standards_compliance" in intents and not (profile == "english" and "global_policy" in intents):
+        commands.append(f"guanlan research {quoted}{profile_part} --scope global_official --limit {research_limit} --read-top {max(effective_read_top, 5)}")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope gov --limit {search_limit}")
     elif "legal_judicial" in intents:
         commands.append(f"guanlan research {quoted}{profile_part} --scope gov --limit {research_limit} --read-top {max(effective_read_top, 5)}")
         commands.append(f"guanlan search {quoted}{profile_part} --scope global_official --limit {search_limit}")
@@ -2315,6 +2335,30 @@ def _extract_site_operator(query: str) -> str:
 
 def _is_reading_discovery(text: str) -> bool:
     return any(term in text for term in ("值得读", "好文章", "技术文章", "技术博客", "阅读", "精品源", "rss", "opml"))
+
+
+def _prefer_academic_route(query: str) -> bool:
+    text = query.lower()
+    academic_terms = (
+        "ei",
+        "sci",
+        "ssci",
+        "scopus",
+        "compendex",
+        "engineering village",
+        "投稿",
+        "收录",
+        "检索",
+        "会议",
+        "期刊",
+        "paper",
+        "preprint",
+        "arxiv",
+        "预印本",
+        "proceedings",
+        "cfp",
+    )
+    return _contains_any(text, academic_terms)
 
 
 def _route_explanations(intents: list[str], scopes: list[str], sites: list[str]) -> list[str]:

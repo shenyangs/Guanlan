@@ -1,0 +1,20 @@
+{"id":"stress_001","category":"policy","query":"新质生产力","profile":"china","expected_intents_any":["policy"]}
+{"id":"stress_002","category":"industry","query":"谷子经济","profile":"china","expected_intents_any":["industry","ecommerce"]}
+{"id":"stress_003","category":"medical","query":"CAR-T疗法","profile":"china","expected_intents_any":["medical_health"]}
+{"id":"stress_004","category":"tech","query":"向量数据库","profile":"china","expected_intents_any":["tech"]}
+{"id":"stress_005","category":"policy","query":"预制菜国标","profile":"china","expected_intents_any":["policy","standards_compliance"]}
+{"id":"stress_006","category":"industry","query":"红海危机","profile":"china","expected_intents_any":["global_industry","industry"]}
+{"id":"stress_007","category":"policy","query":"设备更新万亿","profile":"china","expected_intents_any":["policy"]}
+{"id":"stress_008","category":"entertainment","query":"chiikawa","profile":"china","expected_intents_any":["entertainment"]}
+{"id":"stress_009","category":"finance","query":"REITs扩容","profile":"china","expected_intents_any":["finance"]}
+{"id":"stress_010","category":"policy","query":"数据出境安全评估","profile":"china","expected_intents_any":["standards_compliance","policy"]}
+{"id":"stress_011","category":"public_opinion","query":"淄博烧烤现象","profile":"china","expected_intents_any":["public_opinion","local","industry"]}
+{"id":"stress_012","category":"tech","query":"Prompt Engineering","profile":"china","expected_intents_any":["tech"]}
+{"id":"stress_013","category":"medical","query":"医保谈判2025","profile":"china","expected_intents_any":["policy","medical_health"]}
+{"id":"stress_014","category":"tech","query":"图神经网络","profile":"china","expected_intents_any":["tech"]}
+{"id":"stress_015","category":"industry","query":"露营经济退潮","profile":"china","expected_intents_any":["industry","ecommerce"]}
+{"id":"stress_016","category":"company","query":"台积电亚利桑那","profile":"china","expected_intents_any":["company_primary","global_industry"]}
+{"id":"stress_017","category":"policy","query":"劳动法新规灵活用工","profile":"china","expected_intents_any":["policy","legal_judicial"]}
+{"id":"stress_018","category":"tech","query":"大模型微调LoRA","profile":"china","expected_intents_any":["tech"]}
+{"id":"stress_019","category":"industry","query":"酱香拿铁营销","profile":"china","expected_intents_any":["industry","ecommerce","reputation"]}
+{"id":"stress_020","category":"industry","query":"胖东来模式","profile":"china","expected_intents_any":["industry","ecommerce","reputation"]}

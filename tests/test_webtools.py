@@ -191,6 +191,59 @@ def test_wps_semantic_quality_profile_catches_adjacent_office_but_not_generic_ai
     assert generic["intent"] != "wps_office"
 
 
+def test_search_quality_profile_generalizes_stress_report_fragile_queries():
+    cases = [
+        ("设备更新万亿", "policy"),
+        ("数据出境安全评估", "standards_compliance"),
+        ("劳动法新规灵活用工", "policy"),
+        ("医保谈判2025", "medical_health"),
+        ("台积电亚利桑那", "company"),
+        ("酱香拿铁营销", "industry"),
+        ("胖东来模式", "industry"),
+        ("chiikawa", "entertainment"),
+        ("CAR-T疗法", "medical_health"),
+        ("向量数据库", "tech"),
+        ("图神经网络", "tech"),
+        ("Prompt Engineering", "tech"),
+    ]
+
+    for query, intent in cases:
+        quality = webtools.detect_search_quality_profile(query, profile="china")
+        assert quality["intent"] == intent
+        assert any(reason.startswith("semantic:") for reason in quality["reasons"])
+
+
+def test_search_query_shape_rewrites_fragile_compounds_and_proper_nouns():
+    cases = {
+        "设备更新万亿": ("大规模设备更新", "工信部"),
+        "数据出境安全评估": ("网信办", "申报"),
+        "台积电亚利桑那": ("TSMC", "Arizona fab"),
+        "酱香拿铁营销": ("瑞幸", "茅台"),
+        "胖东来模式": ("零售模式", "商超"),
+        "医保谈判2025": ("国家医保局", "药品目录"),
+        "chiikawa": ("吉伊卡哇", "ちいかわ"),
+        "CAR-T疗法": ("NMPA", "CDE"),
+        "向量数据库": ("Milvus", "Qdrant"),
+        "Prompt Engineering": ("OpenAI", "Anthropic"),
+    }
+
+    for query, needles in cases.items():
+        shape = webtools._analyze_search_query_shape(query, quality=webtools.detect_search_quality_profile(query, profile="china"))
+        assert shape["rewritten"] is True
+        assert "semantic_compound" in shape["rewrite_reasons"]
+        assert all(needle in shape["backend_query"] for needle in needles)
+
+
+def test_direct_source_seeds_cover_medical_and_health_policy_queries():
+    car_t = direct_source_seeds("CAR-T疗法", intents=["medical_health"], scopes=["medical_health"])
+    insurance = direct_source_seeds("医保谈判2025", intents=["medical_health", "policy"], scopes=["medical_health"])
+
+    assert any("nmpa.gov.cn" in item["url"] for item in car_t)
+    assert any("cde.org.cn" in item["url"] for item in car_t)
+    assert any("clinicaltrials.gov" in item["url"] for item in car_t)
+    assert any("nhsa.gov.cn" in item["url"] for item in insurance)
+
+
 def test_direct_source_seeds_cover_vertical_lookups_without_treating_dev_tasks_as_scores():
     nba_seeds = direct_source_seeds(
         "NBA季后赛2026年首轮战绩比分",
@@ -1203,6 +1256,39 @@ def test_search_quality_gate_detects_low_value_baidu_pollution():
     ]
 
     gate = webtools._assess_backend_batch_quality("人工智能 政策", batch, {"intent": "policy"})
+
+    assert gate["usable"] is False
+    assert "low_value_domain_pollution" in gate["reason"]
+    assert gate["pollution"]["severity"] == "high"
+    assert gate["pollution"]["polluted_count"] == 3
+
+
+def test_search_quality_gate_detects_dictionary_definition_drift():
+    batch = [
+        webtools.SearchResult(
+            title="胖_百度百科",
+            url="https://baike.baidu.com/item/%E8%83%96/1",
+            snippet="胖，汉语一级字，基本解释为人体脂肪多。",
+            source="bing",
+            rank=1,
+        ),
+        webtools.SearchResult(
+            title="酱_汉典",
+            url="https://www.hydcd.com/zidian/hz/12345.htm",
+            snippet="酱的拼音、部首、组词和详细解释。",
+            source="bing",
+            rank=2,
+        ),
+        webtools.SearchResult(
+            title="劳动_爱词霸",
+            url="https://www.iciba.com/word?w=%E5%8A%B3%E5%8A%A8",
+            snippet="劳动的意思、读音、用法和英译。",
+            source="bing",
+            rank=3,
+        ),
+    ]
+
+    gate = webtools._assess_backend_batch_quality("胖东来模式", batch, {"intent": "industry"})
 
     assert gate["usable"] is False
     assert "low_value_domain_pollution" in gate["reason"]

@@ -244,11 +244,13 @@ def direct_source_seeds(
         seeds.extend(_security_seeds(query))
     if _matches_vertical(intent_set, scope_set, "science") and _contains_any(text, ("nasa", "esa", "jwst", "韦伯", "天文", "外星生命", "science", "nature")):
         seeds.extend(_science_seeds(query))
+    if _matches_vertical(intent_set, scope_set, "medical_health") or _contains_any(text, ("car-t", "疗法", "适应症", "医保谈判", "药品目录", "nmpa", "cde", "clinical")):
+        seeds.extend(_medical_health_seeds(query))
     if _matches_vertical(intent_set, scope_set, "global_entertainment") or _contains_any(text, ("billboard", "grammy", "hollywood", "taylor swift")):
         seeds.extend(_global_entertainment_seeds(query))
     if _matches_vertical(intent_set, scope_set, "jp_kr_entertainment") or _contains_any(text, ("k-pop", "kpop", "j-pop", "jpop", "oricon", "soompi", "blackpink", "bts")):
         seeds.extend(_jp_kr_entertainment_seeds(query))
-    if _matches_vertical(intent_set, scope_set, "entertainment") and _contains_any(text, ("票房", "豆瓣", "评分", "电影", "综艺", "剧集", "游戏", "动漫", "漫画", "番剧", "轻小说", "二次元", "manga", "anime")):
+    if _matches_vertical(intent_set, scope_set, "entertainment") and _contains_any(text, ("票房", "豆瓣", "评分", "电影", "综艺", "剧集", "游戏", "动漫", "漫画", "番剧", "轻小说", "二次元", "manga", "anime", "chiikawa", "吉伊卡哇", "ちいかわ")):
         seeds.extend(_china_entertainment_seeds(query))
     if _matches_vertical(intent_set, scope_set, "academic") and _contains_any(text, ("ei", "sci", "scopus", "compendex", "投稿", "收录", "会议", "期刊", "论文", "paper", "preprint", "arxiv", "预印本")):
         seeds.extend(_academic_seeds(query))
@@ -563,6 +565,42 @@ def _science_seeds(query: str) -> list[dict[str, Any]]:
     ]
 
 
+def _medical_health_seeds(query: str) -> list[dict[str, Any]]:
+    seeds = [
+        _seed("medical:nmpa", "国家药监局", "https://www.nmpa.gov.cn/", "国家药监局官方入口，适合核验药品审批、说明书、适应症和监管公告。", scope="medical_health", source_type="政府/部委", role="regulator_notice", trust=5),
+        _seed("medical:cde", "国家药监局药审中心", "https://www.cde.org.cn/", "CDE 官方入口，适合核验临床试验、审评进展和药品技术审评线索。", scope="medical_health", source_type="政府/部委", role="clinical_guideline", trust=5),
+        _seed("medical:who", "WHO", "https://www.who.int/", "WHO 官方入口，适合核验国际公共卫生、疾病和治疗指导背景。", scope="medical_health", source_type="英文官方/监管", role="clinical_guideline", trust=5),
+    ]
+    text = _norm(query)
+    if _contains_any(text, ("car-t", "疗法", "适应症", "clinical")):
+        seeds.append(
+            _seed(
+                "medical:clinicaltrials",
+                "ClinicalTrials.gov",
+                _search_url("https://clinicaltrials.gov/search", query, param="term"),
+                "ClinicalTrials.gov 公开检索入口，适合核验 CAR-T 等疗法的临床试验和适应症线索。",
+                scope="medical_health",
+                source_type="学术/论文检索",
+                role="peer_review",
+                trust=4,
+            )
+        )
+    if _contains_any(text, ("医保", "谈判", "药品目录")):
+        seeds.append(
+            _seed(
+                "medical:nhsa",
+                "国家医保局",
+                "https://www.nhsa.gov.cn/",
+                "国家医保局官方入口，适合核验医保谈判、药品目录调整和支付政策。",
+                scope="medical_health",
+                source_type="政府/部委",
+                role="official_primary",
+                trust=5,
+            )
+        )
+    return seeds
+
+
 def _global_entertainment_seeds(query: str) -> list[dict[str, Any]]:
     return [
         _seed("global_ent:billboard_charts", "Billboard Charts", "https://www.billboard.com/charts/", "Billboard 榜单入口，适合核验欧美音乐榜单和排名。", scope="global_entertainment", source_type="欧美文娱/音乐产业", role="chart_metric", trust=4),
@@ -586,7 +624,7 @@ def _china_entertainment_seeds(query: str) -> list[dict[str, Any]]:
         _seed("ent:maoyan_boxoffice", "猫眼专业版票房", "https://piaofang.maoyan.com/dashboard", "猫眼专业版票房入口，适合核验票房和市场热度口径。", scope="entertainment", source_type="文娱/内容平台", role="box_office_metric", trust=4),
         _seed("ent:taptap", "TapTap", "https://www.taptap.cn/", "TapTap 游戏条目和玩家样本入口，适合游戏口碑核验。", scope="entertainment", source_type="文娱/内容平台", role="user_sample", trust=3, read_ready=False),
     ]
-    if _contains_any(_norm(query), ("动漫", "漫画", "番剧", "轻小说", "二次元", "魔女", "学园", "治愈", "日常", "manga", "anime")):
+    if _contains_any(_norm(query), ("动漫", "漫画", "番剧", "轻小说", "二次元", "魔女", "学园", "治愈", "日常", "manga", "anime", "chiikawa", "吉伊卡哇", "ちいかわ")):
         seeds.extend(
             [
                 _seed("ent:bangumi_subject", "Bangumi 条目搜索", f"https://bgm.tv/subject_search/{encoded}?cat=1", "Bangumi 条目搜索入口，适合发现漫画/动画条目、标签和公开口碑线索。", scope="entertainment", source_type="文娱/内容平台", role="catalog_entry", trust=4, read_ready=False),

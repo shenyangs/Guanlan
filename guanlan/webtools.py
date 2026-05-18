@@ -41,6 +41,10 @@ from guanlan.limits import (
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
 )
+from guanlan.query_semantics import (
+    analyze_query_semantics,
+    semantic_query_variants,
+)
 from guanlan.router import build_route_plan, format_route_plan_markdown
 from guanlan.search_quality import (
     LOW_RELEVANCE_RESULT_STATUS as _LOW_RELEVANCE_RESULT_STATUS,
@@ -2857,7 +2861,7 @@ def _duckduckgo_recovery_query_variants(
 ) -> list[str]:
     normalized = _collapse_ws(query).strip()
     lowered = normalized.lower()
-    variants: list[str] = []
+    variants: list[str] = list(semantic_query_variants(normalized, limit=4))
     if lowered in {"c++", '"c++"'}:
         variants.extend(["C++ programming language", "C plus plus language"])
     if normalized == "苹果" and effective_scope in {"ecommerce", "tech_dev", "social_web"}:
@@ -3085,7 +3089,7 @@ def _try_bing_generic_recovery(
 def _bing_cjk_query_variants(query: str, *, quality: dict[str, Any] | None = None) -> list[str]:
     normalized = _collapse_ws(query)
     terms = _query_relevance_terms(normalized)
-    variants: list[str] = []
+    variants: list[str] = list(semantic_query_variants(normalized, limit=4))
     if terms:
         variants.append(" ".join(terms))
     if "固态电池" in normalized:
@@ -7670,6 +7674,8 @@ def detect_search_quality_profile(
     intent = "general"
     matched_terms: list[str] = []
     wps_analysis = analyze_wps_semantics(query)
+    semantic_analysis = analyze_query_semantics(query)
+    semantic_quality_intent = str(semantic_analysis.get("quality_intent") or "")
 
     explicit_scope = (scope or "").strip()
     if explicit_scope:
@@ -7710,9 +7716,15 @@ def detect_search_quality_profile(
     ordered_candidates = list(priority_order) + [
         key for key in _QUALITY_INTENT_PROFILES if key not in priority_order
     ]
+    if semantic_quality_intent in _QUALITY_INTENT_PROFILES:
+        ordered_candidates = [semantic_quality_intent] + [
+            key for key in ordered_candidates if key != semantic_quality_intent
+        ]
     for candidate in ordered_candidates:
         data = _QUALITY_INTENT_PROFILES[candidate]
         terms = [term for term in data["terms"] if _quality_term_matches(text, str(term))]
+        if candidate == semantic_quality_intent and semantic_analysis.get("matched_rules"):
+            terms = list(semantic_analysis.get("matched_terms") or semantic_analysis.get("alias_terms") or terms)
         if candidate == "wps_office" and wps_analysis.get("is_wps_office") and not terms:
             terms = (
                 list(wps_analysis.get("brand_terms") or [])
@@ -7727,6 +7739,10 @@ def detect_search_quality_profile(
             intent = candidate
             matched_terms = terms
             reasons.append(f"matched_terms:{','.join(terms[:4])}")
+            if semantic_analysis.get("matched_rules"):
+                reasons.append(
+                    "semantic:" + ",".join(str(item) for item in list(semantic_analysis.get("matched_rules") or [])[:4])
+                )
             if candidate == "entertainment" and _is_acg_entertainment_query(text):
                 reasons.append("acg_disambiguation:entertainment")
             break
@@ -8331,6 +8347,7 @@ def _analyze_search_query_shape(
     notes: list[str] = []
     reasons: list[str] = []
     relevance_terms = _query_relevance_terms(clean_query)
+    semantic_analysis = analyze_query_semantics(clean_query)
     entities = _query_shape_entities(clean_query)
     is_meaningless = _looks_like_meaningless_query(clean_query)
     if is_meaningless:
@@ -8361,11 +8378,15 @@ def _analyze_search_query_shape(
         effective_scope=effective_scope,
         quality=quality,
         entities=entities,
+        semantic_analysis=semantic_analysis,
     )
     if expanded != backend_query:
         backend_query = expanded
         notes.append("query 偏短、偏歧义或缺少任务约束，已自动补充更贴近意图的词。")
         reasons.append("expanded_query")
+    if semantic_analysis.get("matched_rules"):
+        notes.append("检测到固定短语/品牌/年份事件语义，已补实体别名和高信号限定词。")
+        reasons.append("semantic_compound")
 
     if len(entities) >= 4:
         notes.append("检测到多实体查询；单次搜索只适合先取线索，后续更适合 compare/dossier 分步整理。")
@@ -8385,6 +8406,7 @@ def _analyze_search_query_shape(
         "multi_entity": len(entities) >= 4,
         "rewritten": bool(reasons),
         "rewrite_reasons": reasons,
+        "semantic_rules": list(semantic_analysis.get("matched_rules") or []),
         "notes": notes,
     }
 
@@ -8419,12 +8441,14 @@ def _expand_search_query(
     effective_scope: str | None = None,
     quality: dict[str, Any] | None = None,
     entities: list[str] | None = None,
+    semantic_analysis: dict[str, Any] | None = None,
 ) -> str:
     quality = quality or {}
     entities = entities or []
+    semantic_analysis = semantic_analysis or {}
     normalized = _collapse_ws(query).strip()
     lowered = normalized.lower()
-    additions: list[str] = []
+    additions: list[str] = list(semantic_analysis.get("rewrite_terms") or [])
     intent = str(quality.get("intent") or "")
     is_wps_scope = effective_scope == "wps_office" or intent == "wps_office"
     wps_subroute = _wps_office_subroute(normalized) if is_wps_scope else "general"
@@ -8471,10 +8495,12 @@ def _expand_search_query(
     if not additions:
         return normalized
     max_additions = 5 if is_short_wps_brand_query else 4
+    if semantic_analysis.get("matched_rules"):
+        max_additions = max(max_additions, 6)
     return f"{normalized} {' '.join(additions[:max_additions])}".strip()
 
 
-def _query_shape_entities(query: str) -> list[str]:
+def _query_shape_entities(query: str, *, semantic_analysis: dict[str, Any] | None = None) -> list[str]:
     tokens = re.split(r"[\s,，。；;、/|()（）]+", _collapse_ws(query))
     entities: list[str] = []
     for token in tokens:

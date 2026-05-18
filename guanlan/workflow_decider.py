@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from guanlan.limits import DEFAULT_RESEARCH_LIMIT, DEFAULT_SEARCH_LIMIT
+from guanlan.query_semantics import semantic_query_variants
 from guanlan.router import RoutePlan, build_route_plan
 
 DIRECT = "direct"
@@ -719,6 +720,11 @@ def quote_query(query: str) -> str:
     return shlex.quote(query)
 
 
+def _agent_query_for_commands(query: str) -> str:
+    variants = semantic_query_variants(query, limit=1)
+    return variants[0] if variants else query
+
+
 def _select_primary_agent_command(
     query: str,
     decision: WorkflowDecision,
@@ -1185,39 +1191,43 @@ def _agent_scoped_search_fallback(query: str, decision: WorkflowDecision, *, pro
 
 
 def _generated_research_command(query: str, decision: WorkflowDecision, *, profile: str | None) -> str:
+    effective_query = _agent_query_for_commands(query)
     profile_part = f" --profile {profile}" if profile in {"china", "english", "hybrid"} else ""
     preset = _preset_from_intents(decision.route_intents)
     preset_part = f" --preset {preset}" if preset else ""
     advisor = " --advisor" if decision.risk_level != "low" or {"wps_office", "reputation", "purchase_advice"} & set(decision.route_intents) else ""
     return (
-        f"guanlan research {quote_query(query)}{preset_part}{profile_part} "
+        f"guanlan research {quote_query(effective_query)}{preset_part}{profile_part} "
         f"--limit {max(decision.recommended_limit, DEFAULT_RESEARCH_LIMIT)} "
         f"--read-top {max(decision.recommended_read_top, 3)}{advisor}"
     )
 
 
 def _generated_tech_research_command(query: str, decision: WorkflowDecision, *, profile: str | None) -> str:
+    effective_query = _agent_query_for_commands(query)
     profile_part = f" --profile {profile}" if profile in {"china", "english", "hybrid"} else ""
     advisor = " --advisor" if decision.risk_level != "low" else ""
     return (
-        f"guanlan research {quote_query(query)} --preset tech{profile_part} "
+        f"guanlan research {quote_query(effective_query)} --preset tech{profile_part} "
         f"--limit {max(decision.recommended_limit, DEFAULT_RESEARCH_LIMIT)} "
         f"--read-top {max(decision.recommended_read_top, 5)}{advisor}"
     )
 
 
 def _generated_search_command(query: str, decision: WorkflowDecision, *, profile: str | None, scope: str | None) -> str:
+    effective_query = _agent_query_for_commands(query)
     profile_part = f" --profile {profile}" if profile in {"china", "english", "hybrid"} else ""
     scope_part = f" --scope {scope}" if scope else ""
     if not scope_part:
         scope_hint = _scope_from_intents(decision.route_intents)
         scope_part = f" --scope {scope_hint}" if scope_hint else ""
-    return f"guanlan search {quote_query(query)}{profile_part}{scope_part} --limit {max(decision.recommended_limit, DEFAULT_SEARCH_LIMIT)} --trace"
+    return f"guanlan search {quote_query(effective_query)}{profile_part}{scope_part} --limit {max(decision.recommended_limit, DEFAULT_SEARCH_LIMIT)} --trace"
 
 
 def _generated_open_search_command(query: str, decision: WorkflowDecision, *, profile: str | None) -> str:
+    effective_query = _agent_query_for_commands(query)
     profile_part = f" --profile {profile}" if profile in {"china", "english", "hybrid"} else ""
-    return f"guanlan search {quote_query(query)}{profile_part} --limit {max(decision.recommended_limit, DEFAULT_SEARCH_LIMIT)} --trace"
+    return f"guanlan search {quote_query(effective_query)}{profile_part} --limit {max(decision.recommended_limit, DEFAULT_SEARCH_LIMIT)} --trace"
 
 
 def _first_command(commands: list[str], kind: str) -> str:
