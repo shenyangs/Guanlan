@@ -141,7 +141,7 @@ guanlan hotnews today --brief
 | 视频 | YouTube、B站字幕与元信息读取 | 可用 |
 | 开发者社区 | V2EX 热门、节点、帖子与回复 | 可用 |
 | 微博 | 热搜、搜索、用户与话题读取 | best-effort，按环境和授权波动 |
-| 微信公众号 | 搜索与文章阅读的轻量路径 | backend-ready / unverified / best-effort，不承诺端到端稳定 |
+| 微信公众号 | 公开文章专项读取、热文线索和可选授权 exporter 适配 | backend-ready / unverified / best-effort；exporter 需用户自配服务和环境变量 auth key |
 | 小红书 | 搜索、笔记读取等能力，依赖外部后端和登录态 | opt-in，现实可用性取决于登录态和后端 |
 | 抖音 | 视频解析与内容提取路径 | 可选 |
 | Twitter/X | 推文、搜索、时间线等能力，依赖 Cookie 或外部 CLI | 可选 |
@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.5.41`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.42`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -472,6 +472,8 @@ guanlan configure --from-browser chrome
 | `guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80` | 读取本机显式 RSS/Atom 清单，适合长期观察指定博客、机构公告、项目更新和内容源。 |
 | `guanlan feeds baidu-rss --limit 80` | 读取动态百度实时热点 RSS，补充热榜词和热度信号。 |
 | `guanlan feeds wechat-rss --limit 80` | 读取动态微信热门文章 RSS，补充公众号热文线索。 |
+| `guanlan wechat-exporter status --probe` | 检查用户自配公众号导出服务；只读当前 shell 环境变量，不读取浏览器 Cookie、credentials 或 IndexedDB。 |
+| `guanlan wechat-exporter articles "fakeid" --json` | 用户授权 exporter 后查询公众号历史文章，输出标注为授权账号/会话依赖证据。 |
 | `guanlan feeds curated-sources --keyword AI` | 从公开 OPML 中检索精品 RSS 源目录。 |
 | `guanlan feeds list` | 查看 RSS 信源定位、内容方向、质量口径和路由建议。 |
 | `guanlan hotnews today --trends` | 多源热榜归并成趋势簇，观察中文互联网当日水势。 |

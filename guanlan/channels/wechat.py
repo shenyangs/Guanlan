@@ -6,6 +6,7 @@ Search: Exa web_search with includeDomains mp.weixin.qq.com / WechatSogou (optio
 """
 
 import importlib.util
+import os
 import shutil
 import subprocess
 
@@ -40,6 +41,7 @@ class WeChatChannel(Channel):
     description = "微信公众号文章"
     backends = [
         "wechat-rss public hot articles",
+        "WeChat exporter (optional user-configured)",
         "Exa via mcporter (backend-ready)",
         "WechatSogou (optional)",
         "Camoufox (optional)",
@@ -55,6 +57,7 @@ class WeChatChannel(Channel):
         has_exa = _exa_available()
         has_wechat_sogou = _wechat_sogou_available()
         has_wechat_rss = importlib.util.find_spec("feedparser") is not None
+        has_wechat_exporter = bool(os.environ.get("GUANLAN_WECHAT_EXPORTER_BASE_URL"))
         has_camoufox = False
         try:
             import camoufox  # noqa: F401
@@ -62,10 +65,12 @@ class WeChatChannel(Channel):
         except ImportError:
             pass
 
-        if has_exa or has_wechat_sogou or has_camoufox:
+        if has_exa or has_wechat_sogou or has_camoufox or has_wechat_exporter:
             ready = []
             if has_wechat_rss:
                 ready.append("wechat-rss")
+            if has_wechat_exporter:
+                ready.append("WeChat exporter")
             if has_exa:
                 ready.append("Exa")
             if has_wechat_sogou:
@@ -75,6 +80,7 @@ class WeChatChannel(Channel):
             return "warn", (
                 f"backend-ready / unverified / best-effort：已检测到 {'、'.join(ready)}。"
                 "这只代表公众号搜索/阅读/热文线索路径已具备后端，不代表端到端稳定可用；"
+                "WeChat exporter 只使用用户配置的服务和环境变量 auth key；"
                 "遇到验证码、登录墙、反爬或正文缺失时，请降级为普通网页搜索、同题转载页或手动授权路径。"
             )
         if has_wechat_rss:

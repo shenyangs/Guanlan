@@ -2921,6 +2921,41 @@ def test_read_url_uses_wechat_article_extractor_before_jina(monkeypatch):
     assert "html(false" not in packet["content"]
 
 
+def test_read_url_wechat_extractor_keeps_nested_article_and_drops_chrome(monkeypatch):
+    html = """
+    <html>
+      <head>
+        <script>var msg_title = "嵌套公众号正文"; var nickname = "观澜测试号"; var ct = "1778700000";</script>
+      </head>
+      <body>
+        <div id="js_article">
+          <div class="rich_media_meta_list">作者 二维码 分享</div>
+          <div id="js_content" class="rich_media_content">
+            <section><p>第一段正文里有嵌套 section 和 div，用来模拟公众号常见排版结构，也说明公开文章读取应当优先保留主体内容，而不是被外层标题栏、二维码或底部互动按钮污染。</p></section>
+            <div><p>第二段正文继续展开品牌舆情、传播节点、媒体引用和证据边界，包含足够多的中文正文、标点和上下文，使质量画像判断它是一篇真实文章，而不是登录提示或页面壳。</p></div>
+            <p>第三段正文补充公开文章的来源上下文、发布时间和后续归档方式，强调该路径只读取公开 HTML，不触碰 Cookie、credentials、IndexedDB 或公众号后台。</p>
+            <div id="js_pc_qr_code">微信扫一扫 二维码</div>
+          </div>
+          <div id="js_article_bottom_bar">点赞 评论 分享</div>
+        </div>
+      </body>
+    </html>
+    """
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: _FakeResponse(html))
+
+    packet = webtools.read_url_with_trace("https://mp.weixin.qq.com/s/nested", backend="auto")
+
+    assert packet["trace"]["selected_backend"] == "wechat_article"
+    assert "嵌套公众号正文" in packet["content"]
+    assert "观澜测试号" in packet["content"]
+    assert "第一段正文里有嵌套 section" in packet["content"]
+    assert "第二段正文继续展开品牌舆情" in packet["content"]
+    assert "微信扫一扫" not in packet["content"]
+    assert "点赞 评论 分享" not in packet["content"]
+    assert "wechat_public_article_html" in packet["content"]
+
+
 def test_read_url_uses_search_context_when_reading_is_blocked(monkeypatch):
     monkeypatch.setattr(webtools, "_read_with_jina", lambda url: "请先登录后查看")
     monkeypatch.setattr(webtools, "_read_direct", lambda url: "访问受限，请完成安全验证")

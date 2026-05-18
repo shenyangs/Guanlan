@@ -310,6 +310,44 @@ def main():
     p_browser_assist_run.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_browser_assist_run.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
 
+    # ── wechat-exporter ──
+    p_wechat_exporter = sub.add_parser(
+        "wechat-exporter",
+        help="Use an optional user-configured WeChat article exporter service",
+    )
+    wechat_exporter_sub = p_wechat_exporter.add_subparsers(dest="wechat_exporter_command", help="WeChat exporter commands")
+    p_wechat_exporter_status = wechat_exporter_sub.add_parser("status", help="Show exporter configuration and safety boundary")
+    p_wechat_exporter_status.add_argument("--base-url", default="", help="Exporter base URL; otherwise read GUANLAN_WECHAT_EXPORTER_BASE_URL")
+    p_wechat_exporter_status.add_argument("--auth-env", default="GUANLAN_WECHAT_EXPORTER_AUTH_KEY", help="Environment variable holding X-Auth-Key")
+    p_wechat_exporter_status.add_argument("--probe", action="store_true", help="Probe /api/public/v1/authkey without printing credentials")
+    p_wechat_exporter_status.add_argument("--json", action="store_true", help="Print JSON")
+    p_wechat_exporter_download = wechat_exporter_sub.add_parser("download", help="Download one public WeChat article through the configured exporter")
+    p_wechat_exporter_download.add_argument("url", nargs="?", default="", help="mp.weixin.qq.com article URL")
+    p_wechat_exporter_download.add_argument("--format", choices=["html", "markdown", "text", "json"], default="markdown", help="Exporter output format")
+    p_wechat_exporter_download.add_argument("--base-url", default="", help="Exporter base URL; otherwise read GUANLAN_WECHAT_EXPORTER_BASE_URL")
+    p_wechat_exporter_download.add_argument("--auth-env", default="GUANLAN_WECHAT_EXPORTER_AUTH_KEY", help="Optional environment variable holding X-Auth-Key")
+    p_wechat_exporter_download.add_argument("--json", action="store_true", help="Wrap output as JSON")
+    p_wechat_exporter_accounts = wechat_exporter_sub.add_parser("account-search", aliases=["accounts"], help="Search official accounts using an authorized exporter")
+    p_wechat_exporter_accounts.add_argument("keyword", nargs="?", default="", help="Official account keyword")
+    p_wechat_exporter_accounts.add_argument("--begin", type=int, default=0, help="Start offset")
+    p_wechat_exporter_accounts.add_argument("--size", type=int, default=20, help="Page size, max 20")
+    p_wechat_exporter_accounts.add_argument("--base-url", default="", help="Exporter base URL; otherwise read GUANLAN_WECHAT_EXPORTER_BASE_URL")
+    p_wechat_exporter_accounts.add_argument("--auth-env", default="GUANLAN_WECHAT_EXPORTER_AUTH_KEY", help="Environment variable holding X-Auth-Key")
+    p_wechat_exporter_accounts.add_argument("--json", action="store_true", help="Print JSON")
+    p_wechat_exporter_articles = wechat_exporter_sub.add_parser("articles", help="List articles for one official account fakeid using an authorized exporter")
+    p_wechat_exporter_articles.add_argument("fakeid", nargs="?", default="", help="Official account fakeid")
+    p_wechat_exporter_articles.add_argument("--keyword", default="", help="Optional article title keyword")
+    p_wechat_exporter_articles.add_argument("--begin", type=int, default=0, help="Start offset")
+    p_wechat_exporter_articles.add_argument("--size", type=int, default=20, help="Page size, max 20")
+    p_wechat_exporter_articles.add_argument("--base-url", default="", help="Exporter base URL; otherwise read GUANLAN_WECHAT_EXPORTER_BASE_URL")
+    p_wechat_exporter_articles.add_argument("--auth-env", default="GUANLAN_WECHAT_EXPORTER_AUTH_KEY", help="Environment variable holding X-Auth-Key")
+    p_wechat_exporter_articles.add_argument("--json", action="store_true", help="Print JSON")
+    p_wechat_exporter_account_by_url = wechat_exporter_sub.add_parser("account-by-url", help="Resolve an official account from an article URL using an authorized exporter")
+    p_wechat_exporter_account_by_url.add_argument("url", nargs="?", default="", help="mp.weixin.qq.com article URL")
+    p_wechat_exporter_account_by_url.add_argument("--base-url", default="", help="Exporter base URL; otherwise read GUANLAN_WECHAT_EXPORTER_BASE_URL")
+    p_wechat_exporter_account_by_url.add_argument("--auth-env", default="GUANLAN_WECHAT_EXPORTER_AUTH_KEY", help="Environment variable holding X-Auth-Key")
+    p_wechat_exporter_account_by_url.add_argument("--json", action="store_true", help="Print JSON")
+
     # ── search ──
     p_search = sub.add_parser("search", help="Search the web for agent-ready results")
     p_search.add_argument("query", nargs="?", default="", help="Search query")
@@ -1038,6 +1076,8 @@ def _dispatch_command(args):
         _cmd_diagnose(args)
     elif args.command == "browser-assist":
         _cmd_browser_assist(args)
+    elif args.command == "wechat-exporter":
+        _cmd_wechat_exporter(args)
     elif args.command == "search":
         _cmd_search(args)
     elif args.command == "feedback":
@@ -1740,6 +1780,141 @@ def _cmd_browser_assist(args):
             plan["browser_assist_task"]["platform"] = args.platform
     output_format = "json" if args.json else args.format
     print(json.dumps(plan, ensure_ascii=False, indent=2) if output_format == "json" else format_browser_assist_markdown(plan))
+
+
+def _cmd_wechat_exporter(args):
+    """Run optional user-configured WeChat article exporter commands."""
+
+    if not getattr(args, "wechat_exporter_command", None):
+        print("Error: wechat-exporter command is required (try: guanlan wechat-exporter status)", file=sys.stderr)
+        sys.exit(2)
+    from guanlan.wechat_exporter import (
+        account_by_url,
+        download_article,
+        exporter_status,
+        list_articles,
+        search_accounts,
+    )
+
+    try:
+        command = args.wechat_exporter_command
+        if command == "status":
+            payload = exporter_status(
+                base_url=args.base_url or None,
+                auth_key_env=args.auth_env,
+                probe=bool(args.probe),
+            )
+            print(json.dumps(payload, ensure_ascii=False, indent=2) if args.json else _format_wechat_exporter_status_markdown(payload))
+            return
+        if command == "download":
+            if not args.url:
+                print("Error: URL is required", file=sys.stderr)
+                sys.exit(2)
+            payload = download_article(
+                args.url,
+                output_format=args.format,
+                base_url=args.base_url or None,
+                auth_key_env=args.auth_env,
+            )
+            if args.json or args.format == "json":
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            else:
+                print(str(payload.get("content") or ""))
+            return
+        if command in {"account-search", "accounts"}:
+            if not args.keyword:
+                print("Error: keyword is required", file=sys.stderr)
+                sys.exit(2)
+            payload = search_accounts(
+                args.keyword,
+                begin=max(args.begin, 0),
+                size=max(args.size, 1),
+                base_url=args.base_url or None,
+                auth_key_env=args.auth_env,
+            )
+            print(json.dumps(payload, ensure_ascii=False, indent=2) if args.json else _format_wechat_exporter_records_markdown(payload, record_key="list"))
+            return
+        if command == "articles":
+            if not args.fakeid:
+                print("Error: fakeid is required", file=sys.stderr)
+                sys.exit(2)
+            payload = list_articles(
+                args.fakeid,
+                begin=max(args.begin, 0),
+                size=max(args.size, 1),
+                keyword=args.keyword or "",
+                base_url=args.base_url or None,
+                auth_key_env=args.auth_env,
+            )
+            print(json.dumps(payload, ensure_ascii=False, indent=2) if args.json else _format_wechat_exporter_records_markdown(payload, record_key="articles"))
+            return
+        if command == "account-by-url":
+            if not args.url:
+                print("Error: URL is required", file=sys.stderr)
+                sys.exit(2)
+            payload = account_by_url(args.url, base_url=args.base_url or None, auth_key_env=args.auth_env)
+            print(json.dumps(payload, ensure_ascii=False, indent=2) if args.json else _format_wechat_exporter_records_markdown(payload, record_key="list"))
+            return
+        print(f"Error: unknown wechat-exporter command: {command}", file=sys.stderr)
+        sys.exit(2)
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _format_wechat_exporter_status_markdown(payload: dict) -> str:
+    lines = [
+        "# 观澜 WeChat Exporter 适配器",
+        "",
+        f"- 状态: {payload.get('status')}",
+        f"- Base URL: {payload.get('base_url') or '-'}",
+        f"- Base URL 环境变量: `{payload.get('base_url_env')}`",
+        f"- Auth Key 环境变量: `{payload.get('auth_key_env')}`",
+        f"- Auth Key: {'已配置' if payload.get('auth_key_configured') else '未配置'}",
+        f"- 边界: {payload.get('boundary')}",
+        "",
+        "## 能力",
+    ]
+    lines.extend(f"- {item}" for item in payload.get("capabilities") or [])
+    setup = payload.get("setup") or []
+    if setup:
+        lines.append("")
+        lines.append("## 配置")
+        lines.extend(f"- `{item}`" for item in setup)
+    if payload.get("probe"):
+        lines.append("")
+        lines.append("## 探测")
+        lines.append(f"- status: {payload['probe'].get('status')}")
+        if payload["probe"].get("error"):
+            lines.append(f"- error: {payload['probe'].get('error')}")
+    return "\n".join(lines)
+
+
+def _format_wechat_exporter_records_markdown(payload: dict, *, record_key: str) -> str:
+    records = payload.get(record_key) or []
+    lines = [
+        "# 观澜 WeChat Exporter 结果",
+        "",
+        f"- operation: {payload.get('operation') or '-'}",
+        f"- boundary: {payload.get('boundary') or '-'}",
+        "",
+    ]
+    if not isinstance(records, list) or not records:
+        lines.append("暂无记录。")
+        return "\n".join(lines)
+    for idx, item in enumerate(records[:20], 1):
+        if not isinstance(item, dict):
+            lines.append(f"{idx}. {item}")
+            continue
+        title = item.get("title") or item.get("nickname") or item.get("alias") or item.get("fakeid") or "未命名"
+        url = item.get("link") or item.get("url") or ""
+        summary = item.get("digest") or item.get("signature") or item.get("author_name") or ""
+        lines.append(f"{idx}. {title}")
+        if url:
+            lines.append(f"   {url}")
+        if summary:
+            lines.append(f"   {summary}")
+    return "\n".join(lines)
 
 
 def _format_browser_assist_session_markdown(contract: dict) -> str:

@@ -210,6 +210,12 @@ guanlan eval suite run chinese-web-v1
 guanlan eval suite run chinese-web-live --mode live
 guanlan quality performance
 guanlan read "https://example.com/article" --max-chars 12000
+guanlan read "https://mp.weixin.qq.com/s/ARTICLE_ID" --trace --max-chars 12000
+guanlan wechat-exporter status
+guanlan wechat-exporter status --probe --json
+guanlan wechat-exporter account-search "公众号名称" --json
+guanlan wechat-exporter articles "fakeid" --size 20 --json
+guanlan wechat-exporter download "https://mp.weixin.qq.com/s/ARTICLE_ID" --format markdown
 guanlan read "https://example.com/article" --quality-report
 guanlan read "https://example.com/article" --strict --trace
 guanlan feeds arxiv --keyword "AI Agent" --limit 80
@@ -292,7 +298,8 @@ Safety rules:
 - Use `guanlan hotnews tophub:*`, `guanlan hotnews uapis:*`, `guanlan hotnews vvhan:*`, or `guanlan hotnews hotboard:*` only as optional external hotboard expansion. Keep the `external_backend`, cache/staleness, and cost metadata in mind; do not treat third-party aggregate lists as authoritative facts.
 - For technology/AI/developer routing, always include one RSS discovery pass. `guanlan research ... --preset tech` does this automatically; when a query matches AI/WPS/Agent/large-model semantics, research also internally includes an AI vertical selected-dynamics source as a discovery layer. This is not a new user command and does not replace original URLs, official docs, code repositories, announcements, or product pages. If you only run `route` or `search`, also run `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80` as a second pass.
 - Use `guanlan read ... --quality-report` when deciding whether a page body is clean enough for downstream reasoning; use `--strict` when noisy page chrome would be harmful; use `--extract metadata` or `--extract links` for source/date/link checks.
-- `guanlan read` has a native WeChat article extractor for `mp.weixin.qq.com` article URLs. For public WeChat article links, try normal `read` first; it should expose `selected_backend=wechat_article` in trace when the article body is directly readable. Only move to `diagnose page` or user-authorized browser-visible evidence when the WeChat extractor, Jina, and direct HTML path still return weak/blocked content.
+- `guanlan read` has a native WeChat article extractor for `mp.weixin.qq.com` article URLs. For public WeChat article links, try normal `read` first; it should expose `selected_backend=wechat_article` in trace when the article body is directly readable. This path extracts public article HTML only and must not read Cookie, Token, credentials, IndexedDB, localStorage, browser profile, or公众号后台 pages. Only move to `diagnose page` or user-authorized browser-visible evidence when the WeChat extractor, Jina, and direct HTML path still return weak/blocked content.
+- Use `guanlan wechat-exporter ...` only when the user has explicitly configured a WeChat article exporter service. It reads `GUANLAN_WECHAT_EXPORTER_BASE_URL` and optional `GUANLAN_WECHAT_EXPORTER_AUTH_KEY` from the current environment; never ask the user to paste the auth key into prompts, logs, README, docs, commits, or release notes. Treat account search, article history, reading metrics, comments, and batch download as `wechat_exporter_authorized_account_api` or `wechat_exporter_download` evidence with session/auth-key expiry boundaries. Do not use wxdown-service, mitmproxy, credentials, Cookie, or browser storage unless the user separately authorizes the target platform, purpose, risk, and read-only scope.
 - Use `guanlan feeds watchlist --watchlist PATH --limit 80` when the Agent needs to observe a user-maintained RSS/Atom set, project/blog watchlist, or explicit long-term source pool. The watchlist file may be JSON, JSONL, or plain text with one feed URL per line. Treat `watchlist_update_signal` as source-update evidence with `user_watchlist` / `feed_dependent` boundaries, not as whole-web discovery.
 - Use `guanlan archive verify` before relying on archive as memory/RAG/Wiki; use `archive context` or `archive wiki context` when a local model needs evidence-bound context from stored materials.
 - Use `guanlan archive wiki build` only as a local sidecar export over existing archive records; it must not be treated as whole-web truth or cloud sync.

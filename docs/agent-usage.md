@@ -23,7 +23,8 @@
 - 输出结论时保留来源链接。
 - 失败时降级，不要硬撞平台风控。
 - 默认候选池按研究任务放大：搜索/研究/归档检索默认 80 条，热榜默认 80 条，读取失败后的搜索兜底默认 20 条。
-- 公众号文章链接先用普通 `guanlan read`；`--trace` 里看到 `selected_backend=wechat_article` 时，说明已走公众号专项公开正文提取。只有专项提取、Jina 和 direct HTML 都弱或被挡时，才转 `diagnose page` 或请求用户授权浏览器可见页补证。
+- 公众号文章链接先用普通 `guanlan read`；`--trace` 里看到 `selected_backend=wechat_article` 时，说明已走公众号专项公开正文提取。这个路径只读公开文章 HTML，不读取 Cookie、credentials、IndexedDB 或公众号后台。只有专项提取、Jina 和 direct HTML 都弱或被挡时，才转 `diagnose page` 或请求用户授权浏览器可见页补证。
+- 如果用户已经配置公众号导出服务，才使用 `guanlan wechat-exporter status --probe`、`account-search`、`articles` 或 `download`。`GUANLAN_WECHAT_EXPORTER_AUTH_KEY` 只能来自当前 shell 环境，不能写入提示词、日志、README、commit 或 release note；文章历史、阅读量、评论等都要标注为授权账号/会话依赖证据。
 - 学术论文/预印本发现用 `guanlan feeds arxiv --keyword "..." --limit 80` 补线索；`preprint_record` 只是预印本/论文候选，不等同同行评议结论。遇到 `preprint_search_entrypoint`、`api_unavailable` 或 `feed_status=error` 时，使用返回的 arXiv 搜索入口或 `research --preset academic` 继续补证。
 - 长期观察指定博客、项目、机构公告或用户维护源池时，用 `guanlan feeds watchlist --watchlist PATH --limit 80`。watchlist 支持 JSON、JSONL 或每行一个 RSS/Atom URL；`watchlist_update_signal` 要标注为用户源池更新，不代表全网发现。
 - Agent 调用时应尽量多取结果再筛选：普通任务保持 80，复杂研究可设到 80-100；只有用户明确要求“小样本/快速看一下”时才降低 limit。
@@ -179,6 +180,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “读这个链接” | `guanlan read "URL"` |
 | “Jina 读不了/读取不完整” | `guanlan read "URL" --backend direct` |
 | “读公众号文章链接” | `guanlan read "https://mp.weixin.qq.com/s/..." --trace --max-chars 12000`，若 `selected_backend=wechat_article` 则优先使用该正文 |
+| “查某公众号历史文章” | 用户配置 exporter 后：`guanlan wechat-exporter status --probe`，再 `guanlan wechat-exporter account-search "公众号名称" --json` / `guanlan wechat-exporter articles "fakeid" --json` |
 | “页面噪声太多，宁可少给” | `guanlan read "URL" --strict --trace` |
 | “只核验标题/发布时间/链接” | `guanlan read "URL" --backend direct --extract metadata` 或 `--extract links` |
 | “只读原文，不要兜底搜索” | `guanlan read "URL" --no-fallback-search` |

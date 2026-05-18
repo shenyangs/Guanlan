@@ -92,7 +92,9 @@ guanlan diagnose page "URL"
 
 页面诊断会说明它是可读正文、动态壳、访问门槛、搜索兜底还是弱正文，并给出下一步命令。诊断不是浏览器接管，也不会读取 Cookie；它只是帮 Agent 判断“这个页面还能不能当证据”。
 
-公众号文章先用普通 `read`。`mp.weixin.qq.com` 文章链接在 `auto` 模式下会优先尝试公众号专项提取；`--trace` 中出现 `selected_backend=wechat_article` 时，表示正文来自公开文章 HTML 的标题、作者、发布时间和正文块。只有这条路径、Jina 和 direct HTML 都失败或正文弱时，才进入页面诊断或请求用户授权浏览器可见页补证。
+公众号文章先用普通 `read`。`mp.weixin.qq.com` 文章链接在 `auto` 模式下会优先尝试公众号专项提取；`--trace` 中出现 `selected_backend=wechat_article` 时，表示正文来自公开文章 HTML 的标题、作者、发布时间和正文块。这条路径不读取 Cookie、credentials、IndexedDB 或公众号后台。只有这条路径、Jina 和 direct HTML 都失败或正文弱时，才进入页面诊断或请求用户授权浏览器可见页补证。
+
+如果用户已经自配公众号导出服务，才使用 `guanlan wechat-exporter status --probe`、`account-search`、`articles` 或 `download`。它只读取当前 shell 里的 `GUANLAN_WECHAT_EXPORTER_BASE_URL` / `GUANLAN_WECHAT_EXPORTER_AUTH_KEY`，auth key 不写进提示词、日志、文档、commit 或 release note。公众号历史文章、阅读量、评论等输出要标注为授权账号/会话依赖证据。
 
 如果诊断输出 `browser_assist.recommended=true`，说明公开读取不足但目标页可能仍有样本价值。Agent 必须先问用户是否允许使用宿主浏览器读取目标页可见内容；如页面需要登录、验证或切换账号，应让用户自己在浏览器里完成。允许后，Agent 只能读取目标页可见文本、标题、URL、作者和时间，本次可见页补证不读取 Cookie、Token、钥匙串、浏览器数据库、localStorage、sessionStorage、浏览器 profile 或无关个人资料。若任务目标本身是私信、订单、后台或账号页，需要用户对该目标页、用途、风险和只读范围单独明确授权，并标记 `private_account_evidence=true`；如果仍需 Cookie 或其他凭据材料，必须另行说明平台、用途和风险并获得用户明确同意，且凭据材料不得进入 browser-visible payload。不执行点赞、评论、关注、发帖、私信、下单或提交表单。
 
@@ -264,7 +266,7 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
 - 实时体育、灾害预警、安全漏洞等垂直题优先读取 Guanlan 推荐的 direct source seeds，再扩大搜索。
 - 财经题不要只看一个搜索结果：行情/ETF/基金净值要先走结构化股票数据并看时间戳，公告/财报/基金公告要回到披露源，宏观数据要核发布机构，雪球/股吧只作情绪样本。动态财经页或雪球 WAF 读不出正文时，不要反复 `read`，改用 `guanlan stock detail|fundflow|rank|index` 和披露源补证。
 - 页面读不出来时，先 `diagnose page`，再按诊断建议切结构化源、scope 搜索、metadata 读取或 archive 流程；不要把搜索兜底内容当原文正文。
-- 公众号链接先看 `read --trace` 是否走到 `wechat_article`；如果已经拿到正文，不要再要求用户授权浏览器或 Cookie。
+- 公众号链接先看 `read --trace` 是否走到 `wechat_article`；如果已经拿到正文，不要再要求用户授权浏览器或 Cookie。用户自配 exporter 后，再用 `wechat-exporter` 查历史文章或下载结果。
 - 高频垂直任务先 `recipe run`，把流程讲清楚，再执行对应命令；不要让 Agent 临场发明一套不稳定搜索路径。
 - 技术题优先 `research --preset tech` 或 `search + feeds`；WPS/AI Office 选题优先 `research --preset wps_office` 或 `recipe run wps-office-radar`，不要只看品牌稿或社区搜索结果。
 - `source_type` 只作辅助，不要把它当唯一真相；结合 domain、authority_score、evidence_role 一起判断。

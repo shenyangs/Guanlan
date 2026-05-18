@@ -170,7 +170,18 @@ guanlan search "搜索关键词" --backend wechat-sogou --limit 80
 guanlan read "https://mp.weixin.qq.com/s/ARTICLE_ID" --trace --max-chars 12000
 ```
 
-如果 trace 显示 `selected_backend=wechat_article`，优先使用该正文，不需要浏览器授权或 Cookie。只有公众号专项提取、Jina 和 direct HTML 都弱/被挡时，才使用 `guanlan diagnose page "URL"`，再按诊断决定是否请求用户授权浏览器可见页补证。
+如果 trace 显示 `selected_backend=wechat_article`，优先使用该正文，不需要浏览器授权或 Cookie。这个路径只读公开文章 HTML，不读取 Cookie、credentials、IndexedDB 或公众号后台。只有公众号专项提取、Jina 和 direct HTML 都弱/被挡时，才使用 `guanlan diagnose page "URL"`，再按诊断决定是否请求用户授权浏览器可见页补证。
+
+用户已经自配公众号导出服务时，才使用授权 exporter 适配器：
+
+```bash
+guanlan wechat-exporter status --probe
+guanlan wechat-exporter account-search "公众号名称" --json
+guanlan wechat-exporter articles "fakeid" --size 20 --json
+guanlan wechat-exporter download "https://mp.weixin.qq.com/s/ARTICLE_ID" --format markdown
+```
+
+`GUANLAN_WECHAT_EXPORTER_AUTH_KEY` 只能来自当前 shell 环境；不要把 auth key 写进提示词、日志、README、commit 或 release note。文章历史、阅读量和评论等属于授权账号/会话依赖证据，必须标注边界。
 
 ### 可选：通过 Exa
 

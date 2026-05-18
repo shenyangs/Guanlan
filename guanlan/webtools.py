@@ -10155,7 +10155,7 @@ def _read_wechat_article(url: str) -> str:
         or _wechat_js_string(raw, "nickname")
     )
     published = _wechat_meta(raw, ("article:published_time", "pubdate", "publishdate", "date")) or _wechat_timestamp(raw)
-    text = _extract_article_text(raw)
+    text = _extract_wechat_article_text(raw)
     if not text or len(_collapse_ws(text)) < 120:
         raise RuntimeError("wechat article body is weak or unavailable")
     lines: list[str] = []
@@ -10168,9 +10168,92 @@ def _read_wechat_article(url: str) -> str:
         lines.append(f"Published: {published}")
     if author or published:
         lines.append("")
+    lines.append("Evidence Boundary: wechat_public_article_html; no cookie, token, credential, or browser storage access")
+    lines.append("")
     lines.append("Markdown Content:")
     lines.append(text)
     return "\n".join(lines)
+
+
+def _extract_wechat_article_text(raw: str) -> str:
+    """Extract public WeChat article body with a WeChat-specific container first."""
+    fragment = _wechat_article_fragment(raw)
+    if fragment:
+        cleaned = _clean_wechat_article_fragment(fragment)
+        text = _extract_article_text(cleaned)
+        if _text_body_score(text) >= 120:
+            return text
+    return _extract_article_text(raw)
+
+
+def _wechat_article_fragment(raw: str) -> str:
+    """Prefer the public WeChat article containers instead of whole-page chrome."""
+    candidates: list[str] = []
+    attr_patterns = (
+        r"(?:id|class)=['\"][^'\"]*(?:js_content|rich_media_content)[^'\"]*['\"]",
+        r"(?:id|class)=['\"][^'\"]*(?:js_article|img-content|img_content)[^'\"]*['\"]",
+    )
+    for attr_pattern in attr_patterns:
+        candidates.extend(_extract_balanced_tags_by_attr(raw, attr_pattern))
+    if not candidates:
+        return ""
+    return max(candidates, key=_content_score)
+
+
+def _clean_wechat_article_fragment(fragment: str) -> str:
+    cleaned = re.sub(r"<!--.*?-->", " ", fragment or "", flags=re.S)
+    cleaned = re.sub(r"<(script|style|noscript|svg|canvas|iframe)[^>]*>.*?</\1>", " ", cleaned, flags=re.S | re.I)
+    wechat_noise_attr = (
+        r"(?:js_article_bottom_bar|js_pc_qr_code|js_profile_qrcode|js_comment|js_toobar|"
+        r"js_reward|js_share|js_related|js_tags_preview|js_album|profile_inner|"
+        r"rich_media_tool|rich_media_meta_list|qr_code|qrcode|comment|reward|"
+        r"share|copyright_logo|wx_profile_card)"
+    )
+    cleaned = _remove_blocks_by_attr(cleaned, wechat_noise_attr)
+    cleaned = re.sub(
+        r"<img\b([^>]*)>",
+        lambda match: _wechat_image_placeholder(match.group(1)),
+        cleaned,
+        flags=re.S | re.I,
+    )
+    return cleaned
+
+
+def _wechat_image_placeholder(attrs_fragment: str) -> str:
+    attrs = _html_attrs(attrs_fragment)
+    alt = _collapse_ws(attrs.get("alt") or attrs.get("data-alt") or attrs.get("title") or "")
+    if alt and len(alt) <= 80 and not _is_noise_content_line(alt):
+        return f"\n[图片: {alt}]\n"
+    return " "
+
+
+def _extract_balanced_tags_by_attr(raw: str, attr_pattern: str) -> list[str]:
+    fragments: list[str] = []
+    start_re = re.compile(r"<(?P<tag>article|main|section|div)\b(?P<attrs>[^>]*)>", flags=re.S | re.I)
+    for match in start_re.finditer(raw or ""):
+        attrs = match.group("attrs") or ""
+        if not re.search(attr_pattern, attrs, flags=re.S | re.I):
+            continue
+        fragment = _extract_balanced_tag(raw, match.start(), match.end(), match.group("tag"))
+        if fragment:
+            fragments.append(fragment)
+    return fragments
+
+
+def _extract_balanced_tag(raw: str, start: int, start_end: int, tag: str) -> str:
+    token_re = re.compile(rf"<\s*(/?)\s*{re.escape(tag)}\b[^>]*>", flags=re.S | re.I)
+    depth = 1
+    for token in token_re.finditer(raw or "", start_end):
+        closing = bool(token.group(1))
+        if closing:
+            depth -= 1
+            if depth <= 0:
+                return raw[start : token.end()]
+            continue
+        if token.group(0).rstrip().endswith("/>"):
+            continue
+        depth += 1
+    return raw[start:]
 
 
 def _html_title(raw: str) -> str:
@@ -10419,6 +10502,17 @@ def _drop_noise_blocks(body: str) -> str:
     previous = None
     cleaned = body
     # Repeat a few times because shallow regex removal can expose nested noisy blocks.
+    for _ in range(4):
+        previous = cleaned
+        cleaned = re.sub(pattern, " ", cleaned, flags=re.S | re.I)
+        if cleaned == previous:
+            break
+    return cleaned
+
+
+def _remove_blocks_by_attr(body: str, attr_pattern: str) -> str:
+    pattern = rf"<(div|section|aside|footer|header|nav|ul|ol|p)\b[^>]*(?:id|class|role)=['\"][^'\"]*{attr_pattern}[^'\"]*['\"][^>]*>.*?</\1>"
+    cleaned = body
     for _ in range(4):
         previous = cleaned
         cleaned = re.sub(pattern, " ", cleaned, flags=re.S | re.I)

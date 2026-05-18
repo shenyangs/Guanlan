@@ -52,7 +52,7 @@ guanlan search "人工智能 政策 最新" --profile china --limit 80
 
 1. **中文网页搜索**：公开网页搜索、去重、排序、来源标注，默认给 Agent 足够大的候选池。
 2. **信源路由**：政策看官方和党央媒，口碑看社区样本，技术看开发者与 RSS，产业看垂类媒体。
-3. **网页阅读**：把网页转成 Markdown，并提供正文质量、噪声、fallback 和 trace。
+3. **网页阅读**：把网页转成 Markdown；公众号文章优先走公开专项抽取，并提供正文质量、噪声、fallback 和 trace。
 4. **热榜观察**：用 `hotnews` 和 `feeds` 帮 Agent 观察“今天中文互联网在涌动什么”。
 5. **股票财经结构化入口**：`guanlan stock` / `guanlan_stock` 先拿股票行情、指数、ETF/基金净值、资金流、榜单和时效边界，再回到公告、宏观、研报和情绪样本分层核验。
 6. **证据包输出**：`research`、`compare`、`timeline`、`dossier`、`recipe`、`archive`、`--format context` 面向 Agent 继续推理。
@@ -76,6 +76,11 @@ guanlan stock detail "宁德时代"
 
 # 2. 读取网页正文，检查是否干净
 guanlan read "https://example.com/article" --quality-report --trace
+guanlan read "https://mp.weixin.qq.com/s/ARTICLE_ID" --trace --max-chars 12000
+
+# 用户自配公众号导出服务后，才使用授权 exporter 适配器
+guanlan wechat-exporter status --probe
+guanlan wechat-exporter account-search "公众号名称" --json
 
 # 3. 做一份 Agent 可直接使用的研究证据包
 guanlan research "某产品 用户评价 值不值得买" --preset reputation --advisor --format context
@@ -124,7 +129,7 @@ guanlan doctor --install-check
 guanlan status
 ```
 
-看到 `观澜 / Guanlan v0.5.41`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.5.42`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
 
 ## 给 Agent 复制的安装指令
 
