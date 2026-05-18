@@ -145,6 +145,20 @@ with `research` or `search + read`, not with a single generic search pass. Do no
 `quality_summary=warn` as “Guanlan search failed”; that usually means “the evidence packet is not
 complete enough yet.”
 
+Routing regression rule: automatic routing changes must be covered by deterministic positive,
+negative, and near-miss cases before they are trusted. Add high-error or tricky Agent queries to
+`tests/fixtures/routing_regression_cases.jsonl` with expected and forbidden intents/scopes/command
+fragments, then run `tests/test_routing_regression_cases.py`. For vertical benchmark changes, use
+the optional `expected_*` and `forbidden_*` fields in `guanlan/evaluation.py`; do not rely only on
+one happy-path query per category.
+
+Live smoke trend rule: `guanlan quality live-smoke` is an optional公网漂移探针, not a default release
+blocker. Scheduled or repeated checks may use `--record-history --trend-window N` (and optionally
+`--history-path PATH`) to write JSONL under `~/.guanlan/quality/live-smoke-history.jsonl` and inspect
+`live_trend_report` for new, recovered, persistent, or likely network/upstream failures. `--strict`
+still controls only the current run's exit behavior; trends are evidence for diagnosis, not proof
+that the topic has no results.
+
 Agent timeout budget rule: Guanlan may touch multiple public web/RSS/hotnews sources in one command,
 and weak networks can make some upstreams slow before Guanlan falls back or marks stale cache. If an
 agent platform, MCP client, or automation runner lets you set a tool timeout, use these outer budgets:
@@ -220,6 +234,7 @@ guanlan sources audit
 guanlan eval suite run chinese-web-v1
 guanlan eval suite run chinese-web-live --mode live
 guanlan quality performance
+guanlan quality live-smoke --record-history --trend-window 10
 guanlan read "https://example.com/article" --max-chars 12000
 guanlan read "https://mp.weixin.qq.com/s/ARTICLE_ID" --trace --max-chars 12000
 guanlan wechat-exporter status

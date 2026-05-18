@@ -45,6 +45,7 @@
 - 查某个来源身份时，用 `guanlan sources show gov.cn` 或 `guanlan sources list --scope finance_disclosure`。
 - 做离线评测时，用 `guanlan eval suite run chinese-web-v1`；它是 100 题 deterministic suite，不联网，不把网络波动当失败。
 - 做真实任务样本复测时，用 `guanlan eval suite run chinese-web-live --mode live`；报告会区分路由、候选池、RSS/热榜调用、时间窗口和网络/上游问题。
+- 需要长期观察公网/源站/后端漂移时，用 `guanlan quality live-smoke --record-history --trend-window 10`；输出里的 `live_trend_report` 只作趋势诊断，不把网络波动当无结果。
 - 治理信源口径时，用 `guanlan sources audit`；它只做本地元数据体检，不联网、不自动改写。
 - 给本地模型/RAG 做长期记忆时，先用 `archive verify`，再显式 `guanlan archive embed --backend local`；语义侧车不替代 FTS。
 
@@ -87,6 +88,8 @@
 - 实时体育、灾害预警、安全漏洞等垂直题必须读取 Guanlan 推荐的 direct source seeds。
 - 技术/AI/WPS/AI Office 题必须补 `feeds`，或直接走 `research --preset tech` / `research --preset wps_office`。
 - 政策/办事题优先 `search + read` 或 `research`，不要只测单次泛搜。
+- 自动挡或路由规则变更必须补 `tests/fixtures/routing_regression_cases.jsonl`，同时覆盖 positive、negative、near-miss；断言要包含 `expected_*` 和 `forbidden_*`，不能只保留 happy path。
+- 垂类 benchmark 可在 `guanlan/evaluation.py` 的任务里声明 `expected_intents_any`、`expected_scopes_any`、`expected_command_contains`、`forbidden_intents`、`forbidden_command_contains`，用于防止关键词误路由。
 
 ## Agent 外层超时建议
 
@@ -239,6 +242,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “拿评估集比较搜索质量” | `guanlan eval scenarios --format jsonl` |
 | “发版前检查观澜契约” | `guanlan eval benchmark` |
 | “导出真实任务评测池” | `guanlan eval tasks --format jsonl` |
+| “观察公网/源站漂移趋势” | `guanlan quality live-smoke --record-history --trend-window 10` |
 | “发版前检查稳健性” | `guanlan quality robustness` |
 
 CLI 是默认主路径；命令轻重不确定时先跑 `guanlan workflow "用户需求"`，信源不确定时再跑 `guanlan route "用户需求"`，按 `recommended_commands` 起手。若当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_capabilities`、`guanlan_search`、`guanlan_workflow`、`guanlan_route`、`guanlan_read`、`guanlan_research`、`guanlan_compare`、`guanlan_timeline`、`guanlan_dossier`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_feeds`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
@@ -587,6 +591,8 @@ guanlan doctor --profile china --trace
 ```bash
 guanlan doctor --check-config
 ```
+
+`doctor --check-config` 和配置展示只输出路径、风险类型或打码值；Cookie、session、csrf、auth、ct0、bearer、secret、token、key、proxy 等字段都应被视为敏感材料。Agent 不要把原始配置值贴进提示词、日志、文档或 issue。
 
 需要解释搜索排序时，使用 `--trace`。它会展示评分因子、query_quality、query_strategy、topic 信息、缓存状态、后端顺序和时效性判断，适合排查“为什么 A 在 B 前面”。
 

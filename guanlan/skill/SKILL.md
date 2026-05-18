@@ -64,6 +64,8 @@ metadata:
 - 如果 Guanlan 输出 `external_fetch_strategy`，可以调用宿主 Agent 的 WebFetch/WebRead 读取候选 URL；外显时说明这是“Guanlan 规划信源 + WebFetch 定点补证”的搜索策略，不是 Guanlan 脆弱。
 - 面向用户不要写“Guanlan 崩了 / 抽风了 / 挂了 / 炸了 / 翻车 / 拉胯 / 坏了”。只在影响证据边界时说明“目标页公开读取超时或上游响应慢，已按 Guanlan 定点补证路线读取目标页”；否则直接给来源和结论。
 - 做 benchmark 时不要误用：实时题必须带 `hotnews`，技术/AI/WPS/AI Office 题必须带 `feeds` 或 `research --preset tech|wps_office`，政策题不要只测单次泛搜。
+- 自动挡或路由规则变更要沉淀 positive/negative/near-miss：把错例加到 `tests/fixtures/routing_regression_cases.jsonl`，用 `expected_*` 和 `forbidden_*` 同时约束命中与误命中，再跑 `tests/test_routing_regression_cases.py`、`guanlan eval benchmark` 和 `guanlan eval suite run chinese-web-v1`。
+- `guanlan quality live-smoke` 是可选公网漂移探针，默认不阻断。长期观察用 `guanlan quality live-smoke --record-history --trend-window 10`，看 `live_trend_report` 的 new/recovered/persistent/network-or-upstream 信号；`--strict` 仍只按本次 fail 决定退出码。
 - 如果 Agent/MCP/自动化平台能设置工具 timeout：`search/read/status/doctor` 用 60-90 秒；`hotnews/feeds/pulse/read batch` 和默认 `archive ingest-research` 用 120 秒；`research/compare/timeline/dossier/archive ingest-research --read-top N` 用 180-300 秒；安装/升级/发布 smoke 用 300-600 秒。单位要按宿主字段名换算：`timeout_budget_seconds` 传秒，`timeout_ms` / `timeout_milliseconds` 传毫秒，例如 120 秒 = 120000 ms、300 秒 = 300000 ms；不要把 `timeout=120` 这种裸数字交给下游。
 - 超时只代表网络或上游源未完成，不代表没有证据；优先重试一次、加 `--cache-ttl 3600`，或把 `--read-top` 降到 0/1，不要为了速度把 80 条候选池砍成小样本。
 - 科技/AI/WPS/AI Office/开发者/工程实践类问题必须额外补一轮 RSS/精品内容流；`research --preset tech` 和 `research --preset wps_office` 会自动补。AI/WPS/Agent/大模型命中时，research 还会内部纳入 AI 垂类精选动态源作为线索层，用户不需要记额外命令；若只跑 `route` 或 `search`，再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。
@@ -243,6 +245,7 @@ guanlan mcp config --client codex
 guanlan serve --host 127.0.0.1 --port 8765
 guanlan plugin template my_company_api
 guanlan quality robustness
+guanlan quality live-smoke --record-history --trend-window 10
 guanlan eval benchmark
 guanlan eval scenarios --format jsonl
 guanlan report html --input results.json --output report.html
@@ -300,6 +303,8 @@ guanlan doctor --trace
 
 # 扫描本地配置中的明文 Cookie、Token、Key 或代理凭据
 guanlan doctor --check-config
+
+# 配置展示和扫描只输出路径、风险类型或打码值；不要把 Cookie/session/csrf/auth/ct0 等原值写入提示词、日志或文档
 
 # 查看 channel 稳定性、授权边界、批量边界和缓存概览
 guanlan status

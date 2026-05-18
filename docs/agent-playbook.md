@@ -246,6 +246,34 @@ Agent 应该把这些入口当作下一步要读的权威候选，而不是把�
   - 质量画像是否严格
   - Agent 是否用对了 Guanlan 工作流
 
+### 自动挡回归集
+
+自动挡不能靠“看起来挺聪明”发布。每次修路由或工作流选择，都要把新发现的错例沉淀到 `tests/fixtures/routing_regression_cases.jsonl`，并写成机器可断言的 `expected_*` / `forbidden_*`。
+
+- `positive`：应该命中某垂类，例如 WPS AI、台风、CVE、高校导师。
+- `negative`：不该误进某垂类，例如“体育馆出租”不该进 sports。
+- `near_miss`：长得像但语义不同，例如“魔法学院 漫画 导师 角色”不该进 university，“DeepSeek-V4 智能体 Agent 最新”不该进 wps_office。
+
+新增样本后运行：
+
+```bash
+uv run pytest tests/test_routing_regression_cases.py -q
+guanlan eval benchmark
+guanlan eval suite run chinese-web-v1
+```
+
+评测结论要看 `expected_*` 和 `forbidden_*` 是否都满足；只看一条 happy path 不算覆盖自动挡风险。
+
+### Live Smoke 趋势
+
+`guanlan quality live-smoke` 是可选公网探针，默认不阻断。长期观察公网/源站/后端漂移时，用历史趋势：
+
+```bash
+guanlan quality live-smoke --record-history --trend-window 10
+```
+
+它会在输出里带 `live_trend_report`，区分 `new_failures`、`recovered`、`persistent_failures` 和 `likely_network_or_upstream`。这只是诊断线索，不等于“没有资料”；`--strict` 仍只按本次 `summary.fail` 决定退出码。
+
 ## 汇报规则
 
 以下情况不要对用户说 “Guanlan 搜索失败”：
