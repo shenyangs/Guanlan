@@ -14,6 +14,7 @@ from typing import Any
 
 from guanlan.limits import DEFAULT_RESEARCH_LIMIT
 from guanlan.workflow_decider import timeout_budget_ms, timeout_unit_contract
+from guanlan.wps_semantics import is_wps_office_semantic_query
 
 
 @dataclass(frozen=True)
@@ -119,12 +120,30 @@ _RECIPES: tuple[ResearchRecipe, ...] = (
     ResearchRecipe(
         id="wps-office-radar",
         name="WPS/AI Office 选题雷达",
-        description="以金山办公/WPS 为锚点，外扩办公 AI、PPT、Agent、文档协作、SaaS、信创、安全和竞品热点。",
-        when_to_use="用户问金山办公、WPS、WPS AI、WPS 365、AI Office、办公 Agent、PPT 生成、文档协作、信创办公或办公安全选题时。",
+        description="以金山办公/WPS 为锚点，外扩 WPS AI、WPS 灵犀/Claw、AI PPT/HTML素材、WPS笔记、AI 知识库/KaaS、WPS for Pad/鸿蒙、Agent/skill/MCP、AI 泛办公和竞品热点。",
+        when_to_use="用户问金山办公、WPS、WPS AI、WPS 灵犀、灵犀 Claw、WPS 365、AI Office、办公 Agent、AI PPT、HTML素材、WPS笔记、AI 知识库、WPS for Pad、鸿蒙办公、文档协作、信创办公或办公安全选题时。",
         preset="wps_office",
         scopes=["wps_office", "business", "tech_dev", "social_web", "cybersecurity"],
-        evidence_layers=["金山办公/WPS 官方", "办公 AI/PPT/文档协作/SaaS 竞品", "AI/科技媒体和 RSS", "信创/安全/政企约束", "用户/社区样本", "热点/公众号/热榜线索"],
-        boundaries=["不要把任务缩成品牌稿检索；垂直赛道和竞品线索同样重要。", "社区和热榜只作选题/情绪样本，关键事实要回到官方、行业媒体或原文。"],
+        evidence_layers=[
+            "风险预警：会员/积分/隐私/数据安全/幻觉/格式错乱/产品混淆",
+            "灵犀/Claw：办公智能体、数字员工、MCP/skill、工具调用、执行型 AI、AI 工时/定价",
+            "WPS AI：AI 写作/伴写2.0、AI 阅读/PDF问答、AI 数据/写公式/条件格式、AI 设计、AI PPT/HTML素材、移动办公",
+            "灵犀使用场景：AI创作、AI搜索/深度搜索/信息溯源、AI阅读/多文件解读、数据分析、划词工具栏、截图问答、微信小程序、语音文档对话",
+            "泛办公机会：AI 笔记/WPS笔记/龙虾直写、AI 知识库、OCR/文档解析/MonkeyOCR、KaaS/知识广场、WPS for Pad/iPadOS、鸿蒙/小艺/分布式协同、WPS云文档政务民生案例",
+            "WPS 365/企业大脑：AI Docs、AI Hub、Copilot Pro、智能搜索、团队考试/知识自测/知识检测、数字资产保护与合规管理",
+            "GEO/AI 问答认知：WPS 与 WPS AI 分开诊断，覆盖 Office 替代、国产办公软件、AI 写文档、AI 做 PPT、AI 总结 PDF、办公智能体等真实问法",
+            "C 端传播输出：心智建立、重点战役、社区机会、风险告警四层分开写",
+            "竞品/行业动态：Copilot、Google Workspace、飞书/钉钉/WorkBuddy、AI PPT 工具",
+            "AI/科技媒体和 RSS：curated、ai-vertical、wechat-rss 作为发现层，不替代原文",
+            "高质量 AI/大佬内容：仅作趋势和选题线索，关键事实回读原文或官方资料",
+            "用户/社区样本：知乎、小红书、微博、B站、V2EX、WPS 社区等公开语言和情绪样本",
+        ],
+        boundaries=[
+            "不要把任务缩成品牌稿检索；垂直赛道、竞品线索、Agent/AI Office 趋势同样重要。",
+            "社区、热榜和大佬内容只作选题/情绪/趋势样本，关键事实必须回到 WPS 官方、竞品官方、行业媒体或原文。",
+            "显性 WPS/灵犀事实优先官方和行业源；Agent、MCP、skill、AI 大佬内容不能替代 WPS 产品事实。",
+            "GEO 诊断中 WPS 办公软件品牌和 WPS AI 智能办公能力品牌要分开评估，避免把普通办公软件认知与 AI 办公能力认知混在一起。",
+        ],
     ),
     ResearchRecipe(
         id="trajectory-map",
@@ -183,7 +202,7 @@ def suggest_recipe(query: str, *, route_plan: dict[str, Any] | None = None) -> R
         term in text for term in ("电影", "综艺", "明星", "票房", "k-pop", "演唱会")
     ):
         return get_recipe("entertainment-pulse")
-    if "wps_office" in intents or any(
+    if "wps_office" in intents or is_wps_office_semantic_query(query) or any(
         term in text
         for term in (
             "金山办公",
@@ -192,10 +211,15 @@ def suggest_recipe(query: str, *, route_plan: dict[str, Any] | None = None) -> R
             "wps ai",
             "wps365",
             "wps 365",
+            "wps灵犀",
+            "灵犀 claw",
             "ai office",
             "office ai",
             "办公ai",
             "ai办公",
+            "ai ppt",
+            "ai笔记",
+            "ai 知识库",
             "ppt生成",
             "协同办公",
             "信创办公",

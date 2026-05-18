@@ -30,6 +30,11 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
+from guanlan.claim_ledger import (
+    build_claim_ledger,
+    format_claim_ledger_context,
+    format_claim_ledger_markdown,
+)
 from guanlan.limits import (
     DEFAULT_FEEDS_LIMIT,
     DEFAULT_READ_FALLBACK_LIMIT,
@@ -68,6 +73,13 @@ from guanlan.source_seeds import (
     is_live_sports_lookup,
 )
 from guanlan.source_taxonomy import source_card_for_domain
+from guanlan.wps_semantics import (
+    WPS_OFFICE_TERMS,
+    analyze_wps_semantics,
+    wps_office_subroute,
+    wps_route_query_variants,
+    wps_semantic_summary,
+)
 
 _UA = "Mozilla/5.0 (compatible; Guanlan/1.4)"
 _TIMEOUT = 20
@@ -217,63 +229,12 @@ _ROBOTICS_AI_TERMS = (
     "humanoid",
     "robotics",
 )
-_WPS_OFFICE_TERMS = (
-    "金山办公",
-    "金山文档",
-    "wps",
-    "wps ai",
-    "wpsai",
-    "wps365",
-    "wps 365",
-    "wps office",
-    "kingsoft office",
-    "kdocs",
-    "wps灵犀",
-    "wps 灵犀",
-    "办公ai",
-    "ai办公",
-    "智能办公",
-    "ai office",
-    "office ai",
-    "办公套件",
-    "办公软件",
-    "协同办公",
-    "文档协作",
-    "云文档",
-    "智能文档",
-    "智能表格",
-    "多维表格",
-    "ppt生成",
-    "生成ppt",
-    "ai ppt",
-    "ppt ai",
-    "演示文稿",
-    "presentation ai",
-    "pdf编辑",
-    "企业云盘",
-    "国产化办公",
-    "国产办公",
-    "信创办公",
-    "政企办公",
-    "办公安全",
-    "办公agent",
-    "office agent",
-    "文档agent",
-    "ppt agent",
-)
+_WPS_OFFICE_TERMS = tuple(WPS_OFFICE_TERMS)
 
 
 def _wps_office_subroute(query: str) -> str:
     """Classify WPS market queries into distinct topic lanes."""
-    text = _collapse_ws(query).lower()
-    compact = text.replace(" ", "")
-    if "灵犀" in query or "lingxi" in compact or "claw" in compact:
-        return "lingxi"
-    if "wps365" in compact or "wps 365" in text or "365.wps" in compact:
-        return "wps365"
-    if "wpsai" in compact or "wps ai" in text or "aippt" in compact or "ai ppt" in text:
-        return "wps_ai"
-    return "general"
+    return wps_office_subroute(query)
 
 
 _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
@@ -4832,6 +4793,7 @@ def build_research_packet(
         ),
     }
     packet["evidence_audit"] = build_evidence_audit(packet)
+    packet["claim_ledger"] = build_claim_ledger(packet)
     if advisor:
         packet["advisor"] = build_advisor_view(packet, style=advisor_style)
     return packet
@@ -4906,6 +4868,10 @@ def format_research_markdown(packet: dict[str, Any]) -> str:
     audit = packet.get("evidence_audit")
     if isinstance(audit, dict):
         lines.extend(["", format_evidence_audit_markdown(audit)])
+
+    claim_ledger = packet.get("claim_ledger")
+    if isinstance(claim_ledger, dict):
+        lines.extend(["", format_claim_ledger_markdown(claim_ledger)])
 
     advisor = packet.get("advisor")
     if isinstance(advisor, dict):
@@ -5021,6 +4987,11 @@ def format_research_prompt(packet: dict[str, Any], style: str = "deep") -> str:
     if isinstance(audit, dict):
         lines.append("### 证据审计")
         lines.append(format_evidence_audit_context(audit))
+        lines.append("")
+    claim_ledger = packet.get("claim_ledger")
+    if isinstance(claim_ledger, dict):
+        lines.append("### 事实台账")
+        lines.append(format_claim_ledger_context(claim_ledger))
         lines.append("")
     selected = packet.get("selected_evidence") or packet.get("results", [])[:8]
     lines.append(format_search_context(selected, title="精选代表证据"))
@@ -7698,6 +7669,7 @@ def detect_search_quality_profile(
     reasons: list[str] = []
     intent = "general"
     matched_terms: list[str] = []
+    wps_analysis = analyze_wps_semantics(query)
 
     explicit_scope = (scope or "").strip()
     if explicit_scope:
@@ -7741,6 +7713,13 @@ def detect_search_quality_profile(
     for candidate in ordered_candidates:
         data = _QUALITY_INTENT_PROFILES[candidate]
         terms = [term for term in data["terms"] if _quality_term_matches(text, str(term))]
+        if candidate == "wps_office" and wps_analysis.get("is_wps_office") and not terms:
+            terms = (
+                list(wps_analysis.get("brand_terms") or [])
+                + list(wps_analysis.get("vertical_terms") or [])
+                + list(wps_analysis.get("ambiguous_ai_terms") or [])
+                + list(wps_analysis.get("context_terms") or [])
+            )
         if terms:
             if candidate == "university_admissions" and _should_prefer_entertainment_over_university(text):
                 reasons.append(f"skip:{candidate}:acg_disambiguation")
@@ -7774,6 +7753,8 @@ def detect_search_quality_profile(
         "requested_scope": explicit_scope,
         "guidance": data.get("guidance", "先看来源类型、topic 和时效性，再决定是否扩大搜索。"),
         "reasons": reasons,
+        "wps_lanes": list(wps_analysis.get("lanes") or []) if intent == "wps_office" else [],
+        "wps_semantic_matches": wps_semantic_summary(query) if intent == "wps_office" else {},
     }
 
 
@@ -8837,29 +8818,37 @@ def build_query_strategy(
     elif {"industry"} & set(intents):
         add("industry_report", f"{clean_query} 行业 趋势 公司 案例", "产业/商业问题补行业材料")
     if "wps_office" in intents or requested_scope == "wps_office":
-        wps_subroute = _wps_office_subroute(clean_query)
-        if wps_subroute == "wps_ai":
-            add("topic_radar", f"{clean_query} AI PPT 职场效率 文档写作 表格分析 个人办公 选题", "WPS AI 更适合先接个人效率、AI PPT 和职场内容选题")
-            add("competitive_context", f"{clean_query} Gamma Canva Tome Beautiful.ai Adobe Express PPT 生成 对比", "补 AI PPT/演示生成竞品和替代工作流")
-            add("tool_roundup", f"{clean_query} 国产 AI PPT 工具 横评 实测 榜单 效率场景", "补非品牌的 AI PPT 工具横评和可借势热点")
-            add("scenario_signal", f"{clean_query} 打工人 汇报 总结 简历 论文 课程 职场内容 热点", "补个人办公和职场内容使用场景")
-        elif wps_subroute == "lingxi":
-            add("topic_radar", f"{clean_query} 原生 Office 智能体 对话式办公 灵犀 Claw 同屏交互", "WPS 灵犀更适合先接办公智能体和 Agent 交互形态")
-            add("competitive_context", f"{clean_query} Microsoft Copilot 飞书 钉钉 企业微信 AI Agent 对比", "补办公 Agent、协同平台和竞品叙事")
-            add("scenario_signal", f"{clean_query} 多智能体 自动化 电脑操作 文档协作 工作流 办公入口", "补 Agent 工作流和可包装的用户任务")
-        elif wps_subroute == "wps365":
-            add("topic_radar", f"{clean_query} 企业大脑 组织协同 AI Office 政企 金融 行业落地", "WPS 365 更适合先接企业大脑、组织协同和行业落地选题")
-            add("competitive_context", f"{clean_query} Microsoft 365 Copilot Google Workspace 飞书 钉钉 企业微信", "补企业协同和 AI Office 平台竞争")
-            add("scenario_signal", f"{clean_query} 办公智能体 知识库 数字资产管理 多维表格 协同平台", "补 ToB 办公平台和组织工作流场景")
-        else:
-            add("topic_radar", f"{clean_query} 行业热点 选题 办公智能体 AI Agent AI PPT 文档协作", "品牌市场选题要先把 WPS 锚点接到 AI/科技/办公行业热点")
-            add("competitive_context", f"{clean_query} Adobe Acrobat PDF Spaces Microsoft Copilot Google Workspace Notion Canva Gamma 飞书 企业微信", "补竞品、替代工作流和横向产品热点，避免只看自身官宣")
-            add("scenario_signal", f"{clean_query} 企业 AI 上下文 知识库 多维表格 移动办公 自动化", "补企业办公落地场景和可包装的用户问题")
+        wps_analysis = analyze_wps_semantics(clean_query)
+        wps_lanes = set(wps_analysis.get("lanes") or [])
+        for variant in wps_route_query_variants(clean_query)[:5]:
+            add("topic_radar", variant, "补 WPS/AI Office 语义 lane 的高信号选题词")
         add("company_primary", f"{clean_query} 金山办公 WPS AI WPS 365 官方 发布 产品 文档", "WPS/AI Office 选题先锚定金山办公和 WPS 一手材料")
-        add("industry_report", f"{clean_query} 办公 AI PPT 文档协作 SaaS 信创 行业 趋势 案例", "外扩办公 AI、PPT、文档协作、SaaS、信创和行业趋势")
+        add("industry_report", f"{clean_query} 办公 AI PPT 文档协作 SaaS 信创 行业 趋势 案例 移动办公 平板办公 鸿蒙", "外扩办公 AI、PPT、文档协作、SaaS、信创、移动办公和行业趋势")
         add("user_sample", f"{clean_query} 用户评价 体验 吐槽 知乎 小红书 B站 V2EX", "补公开用户与社区样本，避免只有品牌口径")
         add("developer_discussion", f"{clean_query} Agent API 插件 自动化 文档协作 开发者", "补 Agent、API、插件和自动化开发者视角")
         add("security_advisory", f"{clean_query} 安全 权限 数据合规 信创 等保 国产化", "补政企办公、安全合规和信创约束")
+        if "wps_ai" in wps_lanes:
+            add("scenario_signal", f"{clean_query} AI伴写2.0 AI写文档 AI润色 AI总结 AI阅读PDF AI处理表格 AIPPT HTML素材", "WPS AI 线补四助手、AIPPT、HTML素材、文档问答和个人办公场景")
+            add("competitive_context", f"{clean_query} Gamma Canva Tome Beautiful.ai Adobe Express Microsoft Copilot AI PPT 对比", "补 AI PPT/演示生成竞品和替代工作流")
+            add("tool_roundup", f"{clean_query} 国产 AI PPT 工具 HTML素材 代码嵌入 交互式演示 横评 实测 榜单 效率场景", "补非品牌的 AI PPT 工具、交互式演示和可借势热点")
+        if {"lingxi", "claw_agent"} & wps_lanes:
+            add("agent_radar", f"{clean_query} AI办公全能伙伴 演示智能体 表格智能体 文档智能体 语音文档对话 深度搜索 多文件解读 信息溯源 思维导图", "灵犀/Claw 线补办公智能体、多文件阅读、语音文档和搜索溯源交互")
+            add("developer_discussion", f"{clean_query} 灵犀 Claw 数字员工 MCP skill CLI 工具调用 电脑操作 长周期运行 AI记忆 端侧大模型 虚拟机沙箱", "Claw/Agent 线补工具调用、系统操作、长期任务、本地端侧和记忆语境")
+            add("pricing_risk", f"{clean_query} AI工时 积分定价 会员套娃 大会员白买 隐私 数据安全 幻觉", "执行型 AI 需要同步观察定价、会员、隐私和幻觉风险")
+            add("competitive_context", f"{clean_query} Microsoft 365 Copilot 飞书 钉钉 企业微信 腾讯 WorkBuddy Claude Code GitHub Codex Cursor", "补办公 Agent、协同平台和执行型 AI 竞品叙事")
+        if "ai_office_adjacent" in wps_lanes:
+            add("scenario_signal", f"{clean_query} AI 笔记 WPS笔记 龙虾直写 AI 知识库 KaaS AI Docs AI Hub Copilot Pro MonkeyOCR", "泛办公线补 AI 笔记、知识库、KaaS、OCR 和企业大脑机会")
+            add("platform_signal", f"{clean_query} WPS for Pad iPadOS App Store 国际版 鸿蒙 HarmonyOS 小艺 分布式协同 跨端续写", "补 Pad、鸿蒙、移动端和跨端协同产品线索")
+            add("competitive_context", f"{clean_query} Notion AI Mem 飞书知识库 Microsoft Copilot Google Workspace AI Docs 办公 Agent 对比", "补知识库/笔记/协作产品的竞品语境")
+        wps_subroute = _wps_office_subroute(clean_query)
+        if wps_subroute == "wps365":
+            add("topic_radar", f"{clean_query} 企业大脑 组织协同 AI Office 政企 金融 行业落地", "WPS 365 更适合先接企业大脑、组织协同和行业落地选题")
+            add("competitive_context", f"{clean_query} Microsoft 365 Copilot Google Workspace 飞书 钉钉 企业微信", "补企业协同和 AI Office 平台竞争")
+            add("scenario_signal", f"{clean_query} 办公智能体 知识库 数字资产管理 多维表格 协同平台", "补 ToB 办公平台和组织工作流场景")
+        elif not wps_lanes or wps_subroute == "general":
+            add("topic_radar", f"{clean_query} 行业热点 选题 办公智能体 AI Agent AI PPT 文档协作", "品牌市场选题要先把 WPS 锚点接到 AI/科技/办公行业热点")
+            add("competitive_context", f"{clean_query} Adobe Acrobat PDF Spaces Microsoft Copilot Google Workspace Notion Canva Gamma 飞书 企业微信", "补竞品、替代工作流和横向产品热点，避免只看自身官宣")
+            add("scenario_signal", f"{clean_query} 企业 AI 上下文 知识库 多维表格 移动办公 自动化 政务服务 WPS云文档 一键分享", "补企业办公、移动办公、政务民生和可包装的用户问题")
     if "global_industry" in intents:
         add("industry_report", f"{clean_query} market analysis competitive landscape analyst report", "英文产业问题补分析和市场结构材料")
         add("company_context", f"{clean_query} investor relations annual report official", "补公司一手资料和投资者关系材料")
@@ -8905,7 +8894,7 @@ def build_query_strategy(
         "time_window": time_window,
         "intent": quality.get("intent") or (intents[0] if intents else "general"),
         "roles": roles,
-        "variants": variants[:10],
+        "variants": variants[:14],
         "search_quality_v2": {
             "prefer_broad_pool": True,
             "minimum_recommended_limit": DEFAULT_RESEARCH_LIMIT,

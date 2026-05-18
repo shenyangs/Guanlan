@@ -219,6 +219,13 @@ def _tool_definitions() -> list[dict]:
                     "platform": {"type": "string"},
                     "max_pages": {"type": "integer", "default": 3, "minimum": 1, "maximum": 20},
                     "max_chars_per_page": {"type": "integer", "default": 3000, "minimum": 1, "maximum": 20000},
+                    "min_visible_items": {
+                        "type": "integer",
+                        "default": 0,
+                        "minimum": 0,
+                        "maximum": 500,
+                        "description": "Minimum visible list/comment/search items the host Agent should try to collect before marking partial.",
+                    },
                     "task_goal": {"type": "string"},
                     "force": {"type": "boolean", "default": True},
                     "format": {"type": "string", "enum": ["markdown", "json"], "default": "json"},
@@ -248,6 +255,13 @@ def _tool_definitions() -> list[dict]:
                     "platform": {"type": "string"},
                     "max_pages": {"type": "integer", "default": 3, "minimum": 1, "maximum": 20},
                     "max_chars_per_page": {"type": "integer", "default": 3000, "minimum": 1, "maximum": 20000},
+                    "min_visible_items": {
+                        "type": "integer",
+                        "default": 0,
+                        "minimum": 0,
+                        "maximum": 500,
+                        "description": "Minimum visible list/comment/search items the host Agent should try to collect before marking partial.",
+                    },
                     "task_goal": {"type": "string"},
                     "format": {"type": "string", "enum": ["markdown", "json"], "default": "json"},
                 },
@@ -526,6 +540,14 @@ def _tool_definitions() -> list[dict]:
                     "featured": {"type": "boolean", "default": False},
                     "min_score": {"type": "integer", "minimum": 0, "maximum": 100},
                     "keyword": {"type": "string"},
+                    "watchlist": {
+                        "type": "string",
+                        "description": "Optional JSON/JSONL/plain-text RSS watchlist path for source=watchlist.",
+                    },
+                    "watchlist_path": {
+                        "type": "string",
+                        "description": "Alias for watchlist; kept for MCP clients that prefer explicit *_path names.",
+                    },
                     "time_filter": {"type": "string", "enum": ["1d", "3d", "1w", "1m", "3m"]},
                     "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "context"},
                     "compact": {
@@ -743,6 +765,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             else None,
             max_pages=max(int(args.get("max_pages") or 3), 1),
             max_chars_per_page=max(int(args.get("max_chars_per_page") or 3000), 1),
+            min_visible_items=max(int(args.get("min_visible_items") or 0), 0),
             task_goal=str(args.get("task_goal") or ""),
             force=bool(args.get("force", True)),
         )
@@ -772,6 +795,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             platform=str(args.get("platform") or ""),
             max_pages=max(int(args.get("max_pages") or 3), 1),
             max_chars_per_page=max(int(args.get("max_chars_per_page") or 3000), 1),
+            min_visible_items=max(int(args.get("min_visible_items") or 0), 0),
             task_goal=str(args.get("task_goal") or ""),
         )
         if str(args.get("format") or "json") == "json":
@@ -823,6 +847,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         from guanlan.webtools import (
             build_research_packet,
             format_advisor_context,
+            format_claim_ledger_context,
             format_evidence_audit_context,
             format_research_markdown,
             format_research_prompt,
@@ -854,6 +879,8 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             )
             if isinstance(packet.get("evidence_audit"), dict):
                 text += "\n\n" + format_evidence_audit_context(packet["evidence_audit"])
+            if isinstance(packet.get("claim_ledger"), dict):
+                text += "\n\n" + format_claim_ledger_context(packet["claim_ledger"])
             if isinstance(packet.get("advisor"), dict):
                 text += "\n\n" + format_advisor_context(packet["advisor"])
             return text
@@ -1062,6 +1089,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             min_score=int(args["min_score"]) if args.get("min_score") is not None else None,
             keyword=args.get("keyword") or None,
             time_filter=args.get("time_filter") or None,
+            watchlist_path=args.get("watchlist_path") or args.get("watchlist") or None,
         )
         source_titles = {
             "curated": "精品内容流",

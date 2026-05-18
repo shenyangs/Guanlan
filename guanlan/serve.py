@@ -77,6 +77,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 else None,
                 max_pages=max(_int(payload.get("max_pages"), 3), 1),
                 max_chars_per_page=max(_int(payload.get("max_chars_per_page"), 3000), 1),
+                min_visible_items=max(_int(payload.get("min_visible_items"), 0), 0),
                 task_goal=str(payload.get("task_goal") or ""),
                 force=bool(payload.get("force", True)),
             )
@@ -100,6 +101,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 platform=str(payload.get("platform") or ""),
                 max_pages=max(_int(payload.get("max_pages"), 3), 1),
                 max_chars_per_page=max(_int(payload.get("max_chars_per_page"), 3000), 1),
+                min_visible_items=max(_int(payload.get("min_visible_items"), 0), 0),
                 task_goal=str(payload.get("task_goal") or ""),
             )
         if method == "POST" and route == "/search":
@@ -258,6 +260,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 min_score=_optional_int(query_args.get("min_score") or query_args.get("minScore")),
                 keyword=query_args.get("keyword") or None,
                 time_filter=query_args.get("time_filter") or query_args.get("timeFilter") or None,
+                watchlist_path=query_args.get("watchlist_path") or query_args.get("watchlist") or None,
             )
             return 200, {"items": compact_feed_items(items) if _bool(query_args.get("compact")) else items}
         if method == "POST" and route == "/archive/search":

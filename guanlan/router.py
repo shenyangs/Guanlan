@@ -21,6 +21,13 @@ from guanlan.limits import (
     DEFAULT_SEARCH_LIMIT,
 )
 from guanlan.source_seeds import direct_source_read_commands
+from guanlan.wps_semantics import (
+    WPS_OFFICE_TERMS,
+    analyze_wps_semantics,
+    wps_office_subroute,
+    wps_route_query_variants,
+    wps_semantic_summary,
+)
 
 _ROBOTICS_AI_TERMS = (
     "具身智能",
@@ -43,70 +50,12 @@ _ROBOTICS_AI_TERMS = (
     "robotics",
 )
 
-_WPS_OFFICE_TERMS = (
-    "金山办公",
-    "金山文档",
-    "金山协作",
-    "wps",
-    "wps ai",
-    "wpsai",
-    "wps365",
-    "wps 365",
-    "wps office",
-    "kingsoft office",
-    "kdocs",
-    "wps灵犀",
-    "wps 灵犀",
-    "办公ai",
-    "ai办公",
-    "智能办公",
-    "ai office",
-    "office ai",
-    "office suite",
-    "productivity suite",
-    "办公套件",
-    "办公软件",
-    "协同办公",
-    "文档协作",
-    "内容协作",
-    "云文档",
-    "智能文档",
-    "智能表格",
-    "智能表单",
-    "多维表格",
-    "ppt生成",
-    "生成ppt",
-    "ai ppt",
-    "ppt ai",
-    "演示文稿",
-    "presentation ai",
-    "文字处理",
-    "电子表格",
-    "pdf编辑",
-    "企业云盘",
-    "数字资产管理",
-    "国产化办公",
-    "国产办公",
-    "信创办公",
-    "政企办公",
-    "办公安全",
-    "办公agent",
-    "office agent",
-    "文档agent",
-    "ppt agent",
-)
+_WPS_OFFICE_TERMS = tuple(WPS_OFFICE_TERMS)
 
 
 def _wps_office_subroute(query: str) -> str:
     """Classify WPS market queries into distinct topic lanes."""
-    text = query.lower().replace(" ", "")
-    if "灵犀" in query or "lingxi" in text or "claw" in text:
-        return "lingxi"
-    if "wps365" in text or "wps365" in query.lower() or "wps 365" in query.lower() or "365.wps" in text:
-        return "wps365"
-    if "wpsai" in text or "wps ai" in query.lower() or "aippt" in text or "ai ppt" in query.lower():
-        return "wps_ai"
-    return "general"
+    return wps_office_subroute(query)
 
 
 @dataclass
@@ -132,6 +81,8 @@ class RoutePlan:
     warnings: list[str] = field(default_factory=list)
     explain: list[str] = field(default_factory=list)
     confidence: float = 0.4
+    wps_lanes: list[str] = field(default_factory=list)
+    wps_semantic_matches: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -1157,6 +1108,17 @@ def build_route_plan(
         if hits:
             matched_rules.append(rule)
             reasons.append(f"{rule['intent']}: {','.join(hits[:4])}")
+    wps_analysis = analyze_wps_semantics(clean_query)
+    if wps_analysis.get("is_wps_office") and not any(rule["intent"] == "wps_office" for rule in matched_rules):
+        wps_rule = _preset_rule("wps_office")
+        if wps_rule:
+            matched_rules.append(wps_rule)
+            summary_terms = (
+                list(wps_analysis.get("brand_terms") or [])
+                + list(wps_analysis.get("vertical_terms") or [])
+                + list(wps_analysis.get("ambiguous_ai_terms") or [])
+            )
+            reasons.append(f"wps_office_semantic:{','.join(summary_terms[:4])}")
 
     if preset and preset not in {"", "general"}:
         preset_rule = _preset_rule(str(preset))
@@ -1358,6 +1320,8 @@ def build_route_plan(
         warnings=_unique(warnings),
         explain=_unique(reasons + _domain_reasons(domains) + _route_explanations(primary, preferred_scopes, target_sites)),
         confidence=_confidence(matched_rules, scope=scope, site=site, sites=sites),
+        wps_lanes=list(wps_analysis.get("lanes") or []) if "wps_office" in primary + secondary else [],
+        wps_semantic_matches=wps_semantic_summary(clean_query) if "wps_office" in primary + secondary else {},
     )
     return plan
 
@@ -1589,28 +1553,7 @@ def _query_variants(query: str, intents: list[str], domains: list[str]) -> list[
     if "company_primary" in intents:
         variants.append(f"{query} official docs pricing release notes")
     if "wps_office" in intents:
-        subroute = _wps_office_subroute(query)
-        if subroute == "wps_ai":
-            variants.append(f"{query} AI PPT 职场效率 文档写作 表格分析 个人办公 选题")
-            variants.append(f"{query} Gamma Canva Tome Beautiful.ai Adobe Express PPT 生成 对比")
-            variants.append(f"{query} 国产 AI PPT 工具 横评 实测 榜单 效率场景")
-            variants.append(f"{query} 打工人 汇报 总结 简历 论文 职场内容 热点")
-        elif subroute == "lingxi":
-            variants.append(f"{query} 原生 Office 智能体 对话式办公 灵犀 Claw 同屏交互")
-            variants.append(f"{query} AI Agent 多智能体 自动化 文档协作 电脑操作")
-            variants.append(f"{query} Microsoft Copilot 飞书 钉钉 企业微信 Agent 对比")
-        elif subroute == "wps365":
-            variants.append(f"{query} 企业大脑 组织协同 AI Office 政企 金融 行业落地")
-            variants.append(f"{query} 办公智能体 知识库 数字资产管理 协同平台 选题")
-            variants.append(f"{query} Microsoft 365 Copilot Google Workspace 飞书 钉钉 企业微信")
-        else:
-            variants.append(f"{query} 行业热点 选题 办公智能体 AI Agent AI PPT 文档协作")
-            variants.append(f"{query} Adobe Acrobat PDF Spaces Microsoft Copilot Google Workspace Notion Canva Gamma 飞书 企业微信")
-            variants.append(f"{query} 企业 AI 上下文 知识库 多维表格 移动办公 自动化")
-        variants.append(f"{query} 金山办公 WPS AI WPS 365 官方 发布")
-        variants.append(f"{query} 办公 AI PPT 文档协作 SaaS 信创 行业 趋势")
-        variants.append(f"{query} 用户评价 体验 吐槽 知乎 小红书 B站")
-        variants.append(f"{query} Agent API 文档 协同 安全 国产化")
+        variants.extend(wps_route_query_variants(query))
     if "tech" in intents:
         variants.append(f"{query} github issue 文档 实践")
     if "cybersecurity" in intents:

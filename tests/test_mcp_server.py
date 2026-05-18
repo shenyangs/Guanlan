@@ -70,6 +70,8 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     workflow_tool = next(tool for tool in tools if tool["name"] == "guanlan_workflow")
     diagnose_tool = next(tool for tool in tools if tool["name"] == "guanlan_page_diagnose")
     browser_assist_tool = next(tool for tool in tools if tool["name"] == "guanlan_browser_assist_plan")
+    browser_assist_run_tool = next(tool for tool in tools if tool["name"] == "guanlan_browser_assist_run")
+    feeds_tool = next(tool for tool in tools if tool["name"] == "guanlan_feeds")
     recipe_tool = next(tool for tool in tools if tool["name"] == "guanlan_recipe")
     investigate_tool = next(tool for tool in tools if tool["name"] == "guanlan_investigate")
     assert "evidence roles" in route_tool["description"]
@@ -77,6 +79,10 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "dynamic shell" in diagnose_tool["description"]
     assert "OpenGuanlan visible-page evidence task" in browser_assist_tool["description"]
     assert "format" in browser_assist_tool["inputSchema"]["properties"]
+    assert "min_visible_items" in browser_assist_tool["inputSchema"]["properties"]
+    assert "min_visible_items" in browser_assist_run_tool["inputSchema"]["properties"]
+    assert "watchlist" in feeds_tool["inputSchema"]["properties"]
+    assert "watchlist_path" in feeds_tool["inputSchema"]["properties"]
     assert "stable multi-step workflow" in recipe_tool["description"]
     assert "workflow_decision" in investigate_tool["description"]
     assert "prompt" in search_tool["inputSchema"]["properties"]["format"]["enum"]
@@ -291,6 +297,7 @@ def test_mcp_browser_assist_plan_returns_task():
         {
             "url": "https://www.xiaohongshu.com/explore/demo",
             "signals": ["access_gate"],
+            "min_visible_items": 12,
             "format": "json",
         },
     )
@@ -299,6 +306,7 @@ def test_mcp_browser_assist_plan_returns_task():
     assert payload["browser_assist_task"]["read_only"] is True
     assert payload["browser_assist_task"]["status"] == "requires_user_approval"
     assert payload["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
+    assert payload["browser_assist_task"]["sufficiency_contract"]["requested_min_items"] == 12
     assert "read_cookies" in payload["browser_assist_task"]["forbidden_actions"]
 
 
@@ -505,9 +513,11 @@ def test_mcp_hotnews_json_can_return_compact_brief(monkeypatch):
 
 
 def test_mcp_feeds_json_can_return_compact_rows(monkeypatch):
-    monkeypatch.setattr(
-        "guanlan.feeds.fetch_feed_source",
-        lambda *_args, **_kwargs: [
+    seen = {}
+
+    def fake_fetch(*_args, **kwargs):
+        seen.update(kwargs)
+        return [
             {
                 "title": "高分 AI 文章",
                 "url": "https://example.com/a",
@@ -516,13 +526,26 @@ def test_mcp_feeds_json_can_return_compact_rows(monkeypatch):
                 "summary": "值得读",
                 "evidence_role": "reading_discovery_signal",
             }
-        ],
+        ]
+
+    monkeypatch.setattr(
+        "guanlan.feeds.fetch_feed_source",
+        fake_fetch,
     )
 
-    payload = mcp_server._run_tool("guanlan_feeds", {"source": "curated", "format": "json", "compact": True})
+    payload = mcp_server._run_tool(
+        "guanlan_feeds",
+        {
+            "source": "curated",
+            "format": "json",
+            "compact": True,
+            "watchlist_path": "/tmp/feeds.json",
+        },
+    )
 
     assert payload[0]["title"] == "高分 AI 文章"
     assert payload[0]["evidence_role"] == "reading_discovery_signal"
+    assert seen["watchlist_path"] == "/tmp/feeds.json"
 
 
 def test_mcp_feeds_lists_curated_sources(monkeypatch):

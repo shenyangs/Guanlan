@@ -42,6 +42,7 @@ def test_vertical_packs_extend_search_scopes_with_curated_domains():
     community = resolve_scope("community_sample")
     ecommerce = resolve_scope("ecommerce")
     university = resolve_scope("university")
+    wps_office = resolve_scope("wps_office")
 
     assert "jiqizhixin.com" in tech.domains
     assert "qbitai.com" in tech.domains
@@ -62,6 +63,9 @@ def test_vertical_packs_extend_search_scopes_with_curated_domains():
     assert "testerhome.com" in tech.domains
     assert "buaa.edu.cn" in university.domains
     assert "whu.edu.cn" in university.domains
+    assert "lingxi.wps.cn" in wps_office.domains
+    assert "openai.com" in wps_office.domains
+    assert "simonwillison.net" in wps_office.domains
 
 
 def test_classify_domain_uses_source_pack_domains():

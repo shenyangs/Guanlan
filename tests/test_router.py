@@ -291,6 +291,9 @@ def test_route_plan_detects_wps_office_market_radar():
 
     assert "wps_office" in intents
     assert "wps_office" in plan.preferred_scopes
+    assert "wps_ai" in plan.wps_lanes
+    assert "claw_agent" in plan.wps_lanes
+    assert "WPS AI" in plan.wps_semantic_matches["brand_terms"]
     assert "business" in plan.preferred_scopes
     assert "tech_dev" in plan.preferred_scopes
     assert "wps.cn" in plan.target_sites
@@ -318,11 +321,55 @@ def test_route_plan_detects_wps_office_market_radar():
 def test_route_plan_separates_wps_subroute_query_variants():
     lingxi = build_route_plan("WPS 灵犀", profile="china")
     wps365 = build_route_plan("WPS 365", profile="china")
+    wps = build_route_plan("WPS", profile="china")
 
+    assert any("Office 替代" in query for query in wps.query_variants)
+    assert any("国产办公软件" in query for query in wps.query_variants)
+    assert any("Microsoft Office" in query for query in wps.query_variants)
+    assert "lingxi" in lingxi.wps_lanes
+    assert any("AI办公全能伙伴" in query for query in lingxi.query_variants)
+    assert any("语音文档对话" in query for query in lingxi.query_variants)
     assert any("原生 Office 智能体" in query for query in lingxi.query_variants)
     assert any("Microsoft Copilot" in query for query in lingxi.query_variants)
     assert any("企业大脑" in query for query in wps365.query_variants)
     assert any("Microsoft 365 Copilot" in query for query in wps365.query_variants)
+
+
+def test_route_plan_detects_wps_lingxi_claw_semantics_without_wps_prefix():
+    plan = build_route_plan("灵犀 Claw MCP skill 数字员工", profile="china")
+    intents = plan.primary_intents + plan.secondary_intents
+
+    assert "wps_office" in intents
+    assert {"lingxi", "claw_agent"} <= set(plan.wps_lanes)
+    assert any("MCP skill 工具调用" in query for query in plan.query_variants)
+    assert any("AI替你干活" in query for query in plan.query_variants)
+
+
+def test_route_plan_detects_ai_office_adjacent_but_not_generic_skill_query():
+    adjacent = build_route_plan("AI 笔记 知识库 Agent", profile="china")
+    generic = build_route_plan("Python token skill", profile="china")
+
+    assert "wps_office" in adjacent.primary_intents + adjacent.secondary_intents
+    assert "ai_office_adjacent" in adjacent.wps_lanes
+    assert any("AI 笔记 AI 知识库 KaaS" in query for query in adjacent.query_variants)
+    assert "wps_office" not in generic.primary_intents + generic.secondary_intents
+
+
+def test_route_plan_covers_wps_product稿_details_without_overrouting_generic_terms():
+    html = build_route_plan("WPS HTML素材 代码嵌入 交互式演示", profile="china")
+    pad = build_route_plan("WPS for Pad iPadOS App Store 国际版", profile="china")
+    note = build_route_plan("WPS笔记 龙虾直写 MCP CLI", profile="china")
+    generic_mobile = build_route_plan("App Store iCloud Apple Pencil 最新", profile="china")
+    generic_gov = build_route_plan("政务服务 交通出行 实时共享", profile="china")
+
+    assert "wps_office" in html.primary_intents + html.secondary_intents
+    assert any("HTML素材" in query and "交互式演示" in query for query in html.query_variants)
+    assert "wps_office" in pad.primary_intents + pad.secondary_intents
+    assert any("WPS for Pad iPadOS App Store 国际版" in query for query in pad.query_variants)
+    assert "wps_office" in note.primary_intents + note.secondary_intents
+    assert any("WPS笔记" in query and "龙虾直写" in query for query in note.query_variants)
+    assert "wps_office" not in generic_mobile.primary_intents + generic_mobile.secondary_intents
+    assert "wps_office" not in generic_gov.primary_intents + generic_gov.secondary_intents
 
 
 def test_route_plan_detects_embodied_ai_industry_need():

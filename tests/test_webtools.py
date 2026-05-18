@@ -181,6 +181,16 @@ def test_short_wps_brand_query_expands_to_market_radar_terms():
     assert "表格分析" in shape["backend_query"]
 
 
+def test_wps_semantic_quality_profile_catches_adjacent_office_but_not_generic_ai():
+    adjacent = webtools.detect_search_quality_profile("AI 笔记 知识库 Agent", profile="china")
+    generic = webtools.detect_search_quality_profile("Python token skill", profile="china")
+
+    assert adjacent["intent"] == "wps_office"
+    assert "ai_office_adjacent" in adjacent["wps_lanes"]
+    assert "claw_agent" in adjacent["wps_lanes"]
+    assert generic["intent"] != "wps_office"
+
+
 def test_direct_source_seeds_cover_vertical_lookups_without_treating_dev_tasks_as_scores():
     nba_seeds = direct_source_seeds(
         "NBA季后赛2026年首轮战绩比分",
@@ -196,9 +206,12 @@ def test_direct_source_seeds_cover_vertical_lookups_without_treating_dev_tasks_a
     assert any("CVE-2026-12345" in item["url"] for item in security_seeds)
     assert any("wps.cn" in item["url"] for item in wps_seeds)
     assert any("365.wps.cn" in item["url"] for item in wps_seeds)
+    assert any("lingxi.wps.cn" in item["url"] for item in wps_seeds)
     assert is_live_sports_lookup("NBA季后赛2026年首轮战绩比分", intents=["sports"])
     assert not is_live_sports_lookup("NBA API 开源项目 教程", intents=["tech", "sports"])
     assert is_wps_office_lookup("WPS AI PPT Agent 办公选题", intents=["wps_office"])
+    assert is_wps_office_lookup("AI PPT 工具 横评", intents=[])
+    assert not is_wps_office_lookup("Python token skill", intents=[])
 
 
 def test_direct_source_seeds_include_arxiv_for_academic_preprint_queries():
@@ -880,14 +893,27 @@ def test_wps_subroute_query_strategy_separates_market_lanes():
         route_plan=webtools.build_route_plan("WPS 365", scope="wps_office").to_dict(),
         quality={"requested_scope": "wps_office"},
     )
+    adjacent = webtools.build_query_strategy(
+        "AI知识库 KaaS MonkeyOCR",
+        route_plan=webtools.build_route_plan("AI知识库 KaaS MonkeyOCR", scope="wps_office").to_dict(),
+        quality={"requested_scope": "wps_office"},
+    )
 
+    assert any("AI伴写2.0" in item["query"] for item in wps_ai["variants"])
+    assert any("PDF文档问答" in item["query"] for item in wps_ai["variants"])
     assert any("职场效率" in item["query"] for item in wps_ai["variants"])
     assert any("Gamma Canva" in item["query"] for item in wps_ai["variants"])
     assert any("国产 AI PPT 工具 横评" in item["query"] for item in wps_ai["variants"])
+    assert any("AI办公全能伙伴" in item["query"] for item in lingxi["variants"])
+    assert any("语音文档对话" in item["query"] for item in lingxi["variants"])
+    assert any("MCP skill" in item["query"] for item in lingxi["variants"])
     assert any("原生 Office 智能体" in item["query"] for item in lingxi["variants"])
     assert any("Microsoft Copilot" in item["query"] for item in lingxi["variants"])
     assert any("企业大脑" in item["query"] for item in wps365["variants"])
     assert any("Microsoft 365 Copilot" in item["query"] for item in wps365["variants"])
+    assert any("AI 笔记 AI 知识库 KaaS" in item["query"] for item in adjacent["variants"])
+    assert any("MonkeyOCR" in item["query"] for item in adjacent["variants"])
+    assert any("企业大脑" in item["query"] or "AI Docs" in item["query"] for item in adjacent["variants"])
 
 
 def test_wps_ranker_marks_institution_rollout_and_downranks_download_noise():
@@ -4339,8 +4365,14 @@ def test_evidence_audit_flags_general_structured_claim_differences(monkeypatch):
 
     categories = {item["category"] for item in packet["evidence_audit"]["claim_differences"]}
     assert {"price", "parameter_count", "percentage_metric"} <= categories
+    ledger = packet["claim_ledger"]
+    assert ledger["mode"] == "claim_ledger_v1"
+    assert ledger["conflict_count"] >= 3
+    assert {"price", "parameter_count", "percentage_metric"} <= set(ledger["category_counts"])
+    assert any(claim["conflict_set"] for claim in ledger["claims"] if claim["category"] == "price")
     md = webtools.format_research_markdown(packet)
     assert "结构化事实差异" in md
+    assert "## 事实台账" in md
     assert "$2/million" in md
     assert "$3/million" in md
 

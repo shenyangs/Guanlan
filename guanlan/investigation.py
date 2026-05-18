@@ -149,6 +149,7 @@ def format_investigation_context(packet: dict[str, Any]) -> str:
 
     from guanlan.webtools import (
         format_advisor_context,
+        format_claim_ledger_context,
         format_evidence_audit_context,
         format_search_context,
     )
@@ -159,6 +160,8 @@ def format_investigation_context(packet: dict[str, Any]) -> str:
         lines.append("\n## 工作流分流\n" + json.dumps(packet["workflow_decision"], ensure_ascii=False, indent=2))
     if isinstance(packet.get("evidence_audit"), dict):
         lines.append(format_evidence_audit_context(packet["evidence_audit"]))
+    if isinstance(packet.get("claim_ledger"), dict):
+        lines.append(format_claim_ledger_context(packet["claim_ledger"]))
     if isinstance(packet.get("advisor"), dict):
         lines.append(format_advisor_context(packet["advisor"]))
     if packet.get("open_questions"):

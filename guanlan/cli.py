@@ -2188,6 +2188,7 @@ def _cmd_research(args):
     from guanlan.webtools import (
         build_research_packet,
         format_advisor_context,
+        format_claim_ledger_context,
         format_evidence_audit_context,
         format_freshness_guard_markdown,
         format_research_markdown,
@@ -2237,6 +2238,9 @@ def _cmd_research(args):
         if isinstance(packet.get("evidence_audit"), dict):
             print()
             print(format_evidence_audit_context(packet["evidence_audit"]))
+        if isinstance(packet.get("claim_ledger"), dict):
+            print()
+            print(format_claim_ledger_context(packet["claim_ledger"]))
         if isinstance(packet.get("freshness_guard"), dict):
             print()
             print(format_freshness_guard_markdown(packet["freshness_guard"]))

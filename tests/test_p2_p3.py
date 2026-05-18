@@ -42,6 +42,7 @@ def test_serve_dispatch_browser_assist_plan_is_read_only():
         {
             "url": "https://www.xiaohongshu.com/explore/demo",
             "signals": ["access_gate"],
+            "min_visible_items": 9,
         },
     )
 
@@ -50,6 +51,7 @@ def test_serve_dispatch_browser_assist_plan_is_read_only():
     assert body["browser_assist_task"]["task_type"] == "open_and_read_visible_page"
     assert body["browser_assist_task"]["read_only"] is True
     assert body["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
+    assert body["browser_assist_task"]["sufficiency_contract"]["requested_min_items"] == 9
     assert "cookies_without_separate_explicit_authorization" in body["browser_assist_task"]["must_not_access"]
     assert body["browser_assist_task"]["conditional_access"]["cookies"] == "not_part_of_browser_visible_payload; requires_separate_credential_flow"
     assert body["browser_assist_task"]["conditional_access"]["target_private_account_visible_pages"] == "allowed_only_after_targeted_explicit_user_authorization"
@@ -61,13 +63,31 @@ def test_serve_dispatch_browser_assist_run_returns_adapter_contract():
         "/browser-assist/run",
         {
             "url": "https://www.xiaohongshu.com/explore/demo",
+            "min_visible_items": 7,
         },
     )
 
     assert status == 200
     assert body["adapter"] == "openguanlan"
     assert body["status"] == "requires_host_browser_execution"
+    assert body["plan"]["browser_assist_task"]["sufficiency_contract"]["requested_min_items"] == 7
     assert body["contract"]["safety"]["cookie_access_requires_separate_explicit_authorization"] is True
+
+
+def test_serve_dispatch_feeds_passes_watchlist_path(monkeypatch):
+    seen = {}
+
+    def fake_fetch(*_args, **kwargs):
+        seen.update(kwargs)
+        return [{"title": "Watch", "url": "https://example.com/feed", "evidence_role": "watchlist_update_signal"}]
+
+    monkeypatch.setattr("guanlan.feeds.fetch_feed_source", fake_fetch)
+
+    status, body = serve.dispatch_request("GET", "/feeds?source=watchlist&watchlist=/tmp/feeds.json&limit=5")
+
+    assert status == 200
+    assert body["items"][0]["title"] == "Watch"
+    assert seen["watchlist_path"] == "/tmp/feeds.json"
 
 
 def test_serve_dispatch_search_uses_webtools(monkeypatch):

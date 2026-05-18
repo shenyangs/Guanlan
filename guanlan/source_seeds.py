@@ -12,6 +12,12 @@ import re
 import urllib.parse
 from typing import Any
 
+from guanlan.wps_semantics import (
+    WPS_BRAND_TERMS,
+    WPS_UNAMBIGUOUS_VERTICAL_TERMS,
+    is_wps_office_semantic_query,
+)
+
 _LIVE_SPORTS_TERMS = (
     "比分",
     "赛果",
@@ -210,49 +216,8 @@ _US_TICKER_STOPWORDS = {
     "USD",
     "XML",
 }
-_WPS_OFFICE_BRAND_TERMS = (
-    "金山办公",
-    "金山文档",
-    "wps",
-    "wps ai",
-    "wpsai",
-    "wps365",
-    "wps 365",
-    "wps office",
-    "kingsoft office",
-    "kdocs",
-    "wps灵犀",
-    "wps 灵犀",
-)
-_WPS_OFFICE_VERTICAL_TERMS = (
-    "办公ai",
-    "ai办公",
-    "智能办公",
-    "ai office",
-    "office ai",
-    "办公套件",
-    "办公软件",
-    "协同办公",
-    "文档协作",
-    "云文档",
-    "智能文档",
-    "智能表格",
-    "多维表格",
-    "ppt生成",
-    "生成ppt",
-    "ai ppt",
-    "ppt ai",
-    "演示文稿",
-    "presentation ai",
-    "企业云盘",
-    "信创办公",
-    "政企办公",
-    "办公安全",
-    "办公agent",
-    "office agent",
-    "文档agent",
-    "ppt agent",
-)
+_WPS_OFFICE_BRAND_TERMS = tuple(WPS_BRAND_TERMS)
+_WPS_OFFICE_VERTICAL_TERMS = tuple(WPS_UNAMBIGUOUS_VERTICAL_TERMS)
 
 
 def direct_source_seeds(
@@ -383,14 +348,11 @@ def is_wps_office_lookup(
     scopes: list[str] | None = None,
 ) -> bool:
     """Detect WPS/AI Office research tasks that benefit from official entry seeds."""
-    text = _norm(query)
     intent_set = {str(item) for item in intents or [] if str(item)}
     scope_set = {str(item) for item in scopes or [] if str(item)}
     if _matches_vertical(intent_set, scope_set, "wps_office"):
         return True
-    if _contains_any(text, _WPS_OFFICE_BRAND_TERMS):
-        return True
-    if _contains_any(text, _WPS_OFFICE_VERTICAL_TERMS) and _contains_any(text, ("办公", "office", "文档", "ppt", "agent", "信创", "saas")):
+    if is_wps_office_semantic_query(query):
         return True
     return False
 
@@ -519,6 +481,16 @@ def _wps_office_seeds(query: str) -> list[dict[str, Any]]:
             "WPS 365",
             "https://365.wps.cn/",
             "WPS 365 官方入口，适合核验政企协作、AI Office、文档协作和企业办公套件定位。",
+            scope="wps_office",
+            source_type="办公软件/AI Office/SaaS",
+            role="product_primary",
+            trust=5,
+        ),
+        _seed(
+            "wps:lingxi",
+            "WPS 灵犀",
+            "https://lingxi.wps.cn/",
+            "WPS 灵犀官方入口，适合核验 AI 原生办公、办公智能体、灵犀 Claw 和移动/跨端 AI 办公定位。",
             scope="wps_office",
             source_type="办公软件/AI Office/SaaS",
             role="product_primary",

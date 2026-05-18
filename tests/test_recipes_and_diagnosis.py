@@ -61,13 +61,18 @@ def test_recipe_plan_builds_wps_office_radar_workflow():
     assert plan["recipe"]["id"] == "wps-office-radar"
     assert plan["read_top"] == 5
     assert plan["timeout_budget_seconds"] == 240
-    assert "AI/科技媒体和 RSS" in plan["recipe"]["evidence_layers"]
+    assert any("AI/科技媒体和 RSS" in layer for layer in plan["recipe"]["evidence_layers"])
+    assert any("灵犀/Claw" in layer for layer in plan["recipe"]["evidence_layers"])
+    assert any("AI 笔记" in layer for layer in plan["recipe"]["evidence_layers"])
+    assert any("GEO/AI 问答认知" in layer for layer in plan["recipe"]["evidence_layers"])
+    assert any("心智建立" in layer for layer in plan["recipe"]["evidence_layers"])
     assert any("--preset wps_office" in command for command in plan["commands"])
     assert any("--scope wps_office" in command for command in plan["commands"])
     assert any("feeds curated" in command for command in plan["commands"])
     assert any("hotnews today" in command for command in plan["commands"])
     assert "不要把任务缩成品牌稿检索" in rendered
     assert suggest_recipe("WPS AI PPT Agent 办公选题 最近热点").id == "wps-office-radar"
+    assert suggest_recipe("AI 笔记 知识库 Agent 办公选题").id == "wps-office-radar"
 
 
 def test_page_diagnosis_marks_dynamic_shell_without_network():
