@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.6.2`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.6.3`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -432,6 +432,10 @@ guanlan configure --from-browser chrome
 | `guanlan search "关键词" --format context` | 输出紧凑的 LLM-friendly 证据表格。 |
 | `guanlan search "关键词" --format prompt` | 输出可直接喂给本地模型的完整 Prompt。 |
 | `guanlan search "关键词" --source-chart` | 追加 ASCII 来源/域名分布图，快速判断信息面是否偏斜。 |
+| `guanlan search "OpenAI API release notes" --backend anysearch --limit 80 --trace` | 显式调用 AnySearch 外部搜索后端；无 key 时走匿名免费额度，有 key 时走用户自己的额度。 |
+| `guanlan configure anysearch-key <key>` | 保存用户明确提供的 AnySearch API key；不要读取浏览器 Cookie 或控制台页面来自动获取。 |
+| `guanlan configure anysearch-auto fallback` | 默认策略；AnySearch 在英文、技术、学术、金融、安全等强适配任务里作为匿名兜底后端。 |
+| `guanlan configure anysearch-auto off` | 关闭 AnySearch 自动路由，仅保留显式 `--backend anysearch`。 |
 | `guanlan search "关键词" --backend plugin:my_company_api` | 显式调用本地自定义只读搜索 backend。 |
 | `guanlan search "关键词" --scope party_central` | 在党央媒与中央重点媒体白名单内搜索。 |
 | `guanlan search "关键词" --scope ecommerce` | 在电商/零售垂类媒体白名单内搜索。 |

@@ -377,7 +377,7 @@ def main():
     p_search.add_argument("--list-scopes", action="store_true",
                           help="List curated search scopes and exit")
     p_search.add_argument("--backend", default="auto",
-                          help="Search backend: auto, duckduckgo, bing, baidu, wechat-sogou, or plugin:name")
+                          help="Search backend: auto, duckduckgo, bing, baidu, anysearch, wechat-sogou, or plugin:name")
     p_search.add_argument("--profile", choices=VALID_PROFILES, default="",
                           help="Region profile: global, china, english, or hybrid")
     p_search.add_argument("--network", choices=["auto", "current", "direct", "proxy"], default="auto",
@@ -432,7 +432,7 @@ def main():
     p_research.add_argument("--scope", default="",
                             help="Curated China source scope, e.g. party_central, local_official, ecommerce, wps_office")
     p_research.add_argument("--search-backend", default="auto",
-                            help="Search backend: auto, duckduckgo, bing, baidu, wechat-sogou, or plugin:name")
+                            help="Search backend: auto, duckduckgo, bing, baidu, anysearch, wechat-sogou, or plugin:name")
     p_research.add_argument("--read-backend", choices=["auto", "jina", "direct"],
                             default="auto", help="Read backend for selected evidence")
     p_research.add_argument("--read-top", type=int, default=None,
@@ -604,7 +604,7 @@ def main():
     p_pulse.add_argument("--scope", default="",
                          help="Curated China source scope")
     p_pulse.add_argument("--backend", default="auto",
-                         help="Search backend: auto, duckduckgo, bing, baidu, wechat-sogou, or plugin:name")
+                         help="Search backend: auto, duckduckgo, bing, baidu, anysearch, wechat-sogou, or plugin:name")
     p_pulse.add_argument("--profile", choices=VALID_PROFILES, default="china",
                          help="Region profile")
     p_pulse.add_argument("--read-top", type=int, default=0,
@@ -3871,6 +3871,39 @@ def _cmd_configure(args):
         config.set("newsnow_base_url", value.rstrip("/"))
         print("✅ NewsNow BASE_URL configured!")
         print("  Example: guanlan hotnews newsnow:36kr-quick --limit 80")
+
+    elif args.key == "anysearch-key":
+        config.set("anysearch_api_key", value)
+        print("✅ AnySearch API key configured.")
+        print("  Guanlan will use it only when you choose `--backend anysearch` or enable `anysearch-auto`.")
+
+    elif args.key == "anysearch-auto":
+        from guanlan.anysearch import ANYSEARCH_AUTO_MODES
+
+        normalized = value.strip().lower()
+        if normalized not in ANYSEARCH_AUTO_MODES:
+            print("Expected anysearch-auto value: off, fallback, or preferred")
+            return
+        config.set("anysearch_auto", normalized)
+        print(f"✅ AnySearch auto mode set to {normalized}.")
+        if normalized == "off":
+            print("  Guanlan will not add AnySearch to automatic backend routing.")
+        elif normalized == "fallback":
+            print("  Guanlan may use AnySearch after default backends when query fit or quality signals justify it.")
+        else:
+            print("  Guanlan may prioritize AnySearch for English, technical, academic, finance, security, or broad agent-search tasks.")
+
+    elif args.key == "anysearch-anonymous-auto":
+        normalized = value.strip().lower()
+        if normalized in {"on", "true", "1", "yes"}:
+            config.set("anysearch_anonymous_auto", True)
+            print("✅ AnySearch anonymous auto mode enabled.")
+            print("  Queries may be sent to api.anysearch.com without a user API key when anysearch-auto is enabled.")
+        elif normalized in {"off", "false", "0", "no"}:
+            config.set("anysearch_anonymous_auto", False)
+            print("✅ AnySearch anonymous auto mode disabled.")
+        else:
+            print("Expected anysearch-anonymous-auto value: on or off")
 
     elif args.key == "telemetry":
         normalized = value.strip().lower()

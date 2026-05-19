@@ -22,6 +22,7 @@ class Config:
 
     # Feature → required config keys
     FEATURE_REQUIREMENTS = {
+        "anysearch": ["anysearch_api_key"],
         "exa_search": ["exa_api_key"],
         "twitter_xreach": ["twitter_auth_token", "twitter_ct0"],  # compatibility key used by bird CLI
         "groq_whisper": ["groq_api_key"],

@@ -299,6 +299,7 @@ Safety rules:
 - Do not run `guanlan doctor --auth-check` unless the user wants deep auth checks.
 - Do not post, comment, like, follow, or send messages automatically.
 - Prefer public search/read/hotnews first, then ask for authorization only when needed.
+- AnySearch is optional external search and anonymous fallback is enabled by default only for strong-fit routes. Use `guanlan configure anysearch-auto off` or `guanlan configure anysearch-anonymous-auto off` to opt out. Do not read browser Cookie, Token, password, console pages, or browser storage to obtain an AnySearch key; save a key only when the user provides it or confirms an AnySearch-returned auto-registration key.
 - Use `guanlan welcome` when a new user asks how to start using Guanlan with their agent.
 - Use `guanlan capabilities` when the user asks what Guanlan can do, which Guanlan command/tool to use, or why the tool is relevant.
 - Use `guanlan route "query"` when deciding which source pools, sites, evidence roles, and caveats fit a request; route plans are soft guidance, not hard filters.

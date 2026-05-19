@@ -681,6 +681,25 @@ backends:
 
 插件脚本接收 `query limit` 两个参数，输出 JSON 数组，字段至少包含 `title` 和 `url`。
 
+AnySearch 是可选外部搜索后端，不替代 Guanlan 的默认中文信源链路。默认会以匿名免费额度作为路由兜底增强：只有英文、技术、学术、金融、安全、API/MCP/GitHub/CVE/论文等强适配任务，且默认后端需要补强时，才自动加入 AnySearch。显式使用时可以运行：
+
+```bash
+guanlan search "OpenAI API release notes" --backend anysearch --limit 80 --trace
+guanlan configure anysearch-key <YOUR_ANYSEARCH_API_KEY>
+guanlan configure anysearch-auto off
+```
+
+激活策略：
+
+- `--backend anysearch`：用户显式选择，立即使用；无 key 时走 AnySearch 匿名免费额度。
+- `anysearch-auto=fallback`：默认模式；强适配任务会优先跑快速公开基线，再用 AnySearch 匿名额度补强；当候选池已足够时，会跳过较慢的 DuckDuckGo HTML 兜底。
+- `anysearch-auto=preferred`：在 AnySearch 强项任务里更靠前使用，适合用户明确想提高外部搜索覆盖时开启。
+- `anysearch-auto=off`：完全关闭 AnySearch 自动路由。
+- `anysearch-anonymous-auto=on`：默认开启；无 key 时使用 AnySearch 匿名免费额度。
+- `anysearch-anonymous-auto=off`：仅关闭无 key 匿名自动调用；如果用户配置了 `anysearch-key`，自动路由仍可使用用户自己的 key。
+
+如果 AnySearch 返回匿名额度耗尽并附带自动注册 key，Agent 必须先让用户确认是否保存；不要读取浏览器 Cookie、Token、密码、控制台页面或浏览器存储来“无感获取” key。推荐保存方式是 `guanlan configure anysearch-key <key>`，并在输出里只显示“已配置”，不打印 key。
+
 ### 社交平台
 
 社交平台能力分三类：

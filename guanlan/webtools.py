@@ -30,6 +30,13 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
+from guanlan.anysearch import (
+    AnySearchAPIError,
+    anysearch_activation_plan,
+    anysearch_api_key,
+    anysearch_auto_backend_order,
+    search_anysearch,
+)
 from guanlan.claim_ledger import (
     build_claim_ledger,
     format_claim_ledger_context,
@@ -1154,6 +1161,7 @@ def backend_order(
     profile: str | None = None,
     site: str | None = None,
     query: str | None = None,
+    scope: str | None = None,
 ) -> list[str]:
     """Return search backend order for a profile."""
     backend = (backend or "auto").lower()
@@ -1169,7 +1177,13 @@ def backend_order(
         order = ["duckduckgo", "bing"]
     if _is_wechat_search_intent(site=site, query=query):
         order.append("wechat-sogou")
-    return order
+    return anysearch_auto_backend_order(
+        order,
+        query=query,
+        profile=profile,
+        scope=scope,
+        site=site,
+    )
 
 
 def _bing_cjk_drift_active(now: float | None = None) -> bool:
@@ -1501,7 +1515,7 @@ def search_web(
 
     errors: list[str] = []
     results: list[SearchResult] = []
-    order = backend_order(backend, profile, site=site, query=original_query)
+    order = backend_order(backend, profile, site=site, query=original_query, scope=effective_scope)
     backend_diagnostics: list[dict[str, Any]] = []
     for name in order:
         attempt: dict[str, Any] = {
@@ -1511,6 +1525,26 @@ def search_web(
             "error": "",
             "note": "",
         }
+        if name == "duckduckgo" and _anysearch_auto_fallback_satisfied(
+            results,
+            diagnostics=backend_diagnostics,
+            original_query=original_query,
+            quality=quality,
+            limit=limit,
+            backend=backend,
+        ):
+            attempt.update(
+                {
+                    "status": "skipped",
+                    "result_count": 0,
+                    "note": (
+                        "AnySearch 自动兜底已补到足够候选，跳过较慢的 DuckDuckGo HTML 后端，"
+                        "降低 Agent 外层超时风险。"
+                    ),
+                }
+            )
+            backend_diagnostics.append(attempt)
+            continue
         if _usable_candidate_count(results, original_query, quality) >= max(limit, 1):
             attempt.update(
                 {
@@ -1558,6 +1592,12 @@ def search_web(
                     )
                     continue
                 batch = _search_wechat_sogou(original_query, limit=limit)
+            elif name == "anysearch":
+                batch = _search_anysearch(
+                    original_query,
+                    limit=limit,
+                    profile=profile,
+                )
             elif name.startswith("plugin:"):
                 batch = _search_plugin_backend(name, query, limit=limit)
             else:
@@ -1725,6 +1765,8 @@ def search_web(
             if isinstance(network_attempts, list) and network_attempts:
                 attempt["network_attempts"] = network_attempts
                 attempt["network_mode"] = _first_ok_network_mode(network_attempts)
+            if isinstance(e, AnySearchAPIError):
+                attempt["anysearch_error"] = e.details
             attempt.update(
                 {
                     "status": getattr(e, "status", None) or _exception_backend_status(str(e)),
@@ -1735,7 +1777,21 @@ def search_web(
         finally:
             backend_diagnostics.append(attempt)
 
-    if full_recovery_enabled and backend in {"auto", "duckduckgo"} and not site and effective_scope != "university":
+    anysearch_fast_satisfied = _anysearch_auto_fallback_satisfied(
+        results,
+        diagnostics=backend_diagnostics,
+        original_query=original_query,
+        quality=quality,
+        limit=limit,
+        backend=backend,
+    )
+    if (
+        full_recovery_enabled
+        and not anysearch_fast_satisfied
+        and backend in {"auto", "duckduckgo"}
+        and not site
+        and effective_scope != "university"
+    ):
         _run_duckduckgo_recovery_pass(
             results,
             diagnostics=backend_diagnostics,
@@ -1752,7 +1808,13 @@ def search_web(
             strict_scope=strict_scope,
         )
 
-    if full_recovery_enabled and backend in {"auto", "duckduckgo"} and not site and effective_scope != "university":
+    if (
+        full_recovery_enabled
+        and not anysearch_fast_satisfied
+        and backend in {"auto", "duckduckgo"}
+        and not site
+        and effective_scope != "university"
+    ):
         _run_multi_entity_fanout_pass(
             results,
             diagnostics=backend_diagnostics,
@@ -1778,7 +1840,15 @@ def search_web(
         limit=limit,
     )
 
-    if not site and backend in {"auto", "duckduckgo"}:
+    anysearch_fast_satisfied = _anysearch_auto_fallback_satisfied(
+        results,
+        diagnostics=backend_diagnostics,
+        original_query=original_query,
+        quality=quality,
+        limit=limit,
+        backend=backend,
+    )
+    if not site and not anysearch_fast_satisfied and backend in {"auto", "duckduckgo"}:
         _run_route_target_site_rescue_pass(
             results,
             diagnostics=backend_diagnostics,
@@ -1925,6 +1995,15 @@ def search_web(
     )
     backend_summary = _backend_diagnostic_summary(backend_diagnostics)
     scope_distinction = _scope_distinction_diagnostics(results, quality=quality, effective_scope=effective_scope)
+    anysearch_activation = anysearch_activation_plan(
+        original_query,
+        profile=profile,
+        scope=effective_scope,
+        backend=backend,
+        route_plan=route_plan.to_dict(),
+        backend_summary=backend_summary,
+        result_count=len(results),
+    )
     external_fetch_strategy = _external_fetch_strategy(
         original_query,
         results=results,
@@ -1985,6 +2064,7 @@ def search_web(
                 "backend_diagnostics": backend_diagnostics,
                 "backend_summary": backend_summary,
                 "backend_recovery": backend_recovery,
+                "anysearch_activation": anysearch_activation,
                 "network_profile": network_profile,
                 "network_health": network_health_snapshot(),
                 "errors": list(errors),
@@ -2019,6 +2099,7 @@ def search_web(
         backend_diagnostics=backend_diagnostics,
         backend_summary=backend_summary,
         backend_recovery=backend_recovery,
+        anysearch_activation=anysearch_activation,
         errors=errors,
         network_profile=network_profile,
         scope_mode="strict" if strict_scope and effective_scope else ("soft" if effective_scope else "open"),
@@ -2046,6 +2127,7 @@ def _search_shared_diagnostics(
     backend_summary: dict[str, Any],
     backend_recovery: dict[str, Any],
     errors: list[str],
+    anysearch_activation: dict[str, Any] | None = None,
     network_profile: dict[str, Any] | None = None,
     scope_mode: str = "open",
     site_filter: dict[str, Any] | None = None,
@@ -2083,6 +2165,7 @@ def _search_shared_diagnostics(
         "backend_diagnostics": backend_diagnostics,
         "backend_summary": backend_summary,
         "backend_recovery": backend_recovery,
+        "anysearch_activation": anysearch_activation or {"enabled": False},
         "network_profile": network_profile or build_network_profile(),
         "network_health": network_health_snapshot(),
         "errors": list(errors),
@@ -2961,6 +3044,38 @@ def _usable_candidate_count(
     return len(deduped)
 
 
+def _anysearch_auto_fallback_satisfied(
+    results: list[SearchResult],
+    *,
+    diagnostics: list[dict[str, Any]],
+    original_query: str,
+    quality: dict[str, Any],
+    limit: int,
+    backend: str,
+) -> bool:
+    """Return True when AnySearch already made slow HTML fallback optional."""
+    if backend != "auto":
+        return False
+    anysearch_ok = any(
+        item.get("backend") == "anysearch"
+        and item.get("status") == "ok"
+        and int(item.get("result_count") or 0) > 0
+        for item in diagnostics
+    )
+    if not anysearch_ok:
+        return False
+    usable = _usable_candidate_count(results, original_query, quality)
+    if usable <= 0:
+        return False
+    previous_backend_problem = any(
+        item.get("backend") != "anysearch"
+        and item.get("status") not in {"ok", "skipped"}
+        for item in diagnostics
+    )
+    target = 10 if previous_backend_problem else 15
+    return usable >= min(max(limit, 1), target)
+
+
 def _try_bing_cjk_variant_recovery(
     query: str,
     *,
@@ -3155,6 +3270,10 @@ def _zero_result_backend_note(backend: str) -> str:
 
 def _exception_backend_status(error: str) -> str:
     lowered = error.lower()
+    if "anysearch api error 402" in lowered or "quota_exhausted" in lowered:
+        return "quota_exhausted"
+    if "anysearch api error 401" in lowered or "invalid_api_key" in lowered:
+        return "invalid_auth"
     if "proxy_error" in lowered or "proxy" in lowered and ("refused" in lowered or "tunnel" in lowered):
         return "proxy_error"
     if "network_unreachable" in lowered or "timed out" in lowered or "timeout" in lowered:
@@ -3168,6 +3287,15 @@ def _exception_backend_status(error: str) -> str:
 
 def _backend_error_note(backend: str, error: str) -> str:
     lowered = error.lower()
+    if backend == "anysearch" and ("quota_exhausted" in lowered or "api error 402" in lowered):
+        return (
+            "AnySearch 额度已耗尽或匿名免费额度触顶；如果响应包含自动注册 key，必须先请用户确认后再保存，"
+            "否则提示用户运行 `guanlan configure anysearch-key <key>`。"
+        )
+    if backend == "anysearch" and ("invalid_api_key" in lowered or "api error 401" in lowered):
+        return "AnySearch API key 无效或已禁用；请用户重新配置 key，不要回退读取浏览器凭据。"
+    if backend == "anysearch":
+        return "AnySearch 外部后端本轮不可用；保留默认搜索链路并按 trace 的 AnySearch 激活建议处理。"
     if "proxy_error" in lowered or ("proxy" in lowered and ("refused" in lowered or "tunnel" in lowered)):
         return f"{backend} 代理路径不可用；不要把它当作无资料，应切换 direct/current 或等待代理恢复。"
     if "network_unreachable" in lowered or "timed out" in lowered or "timeout" in lowered:
@@ -3938,6 +4066,70 @@ def _search_plugin_backend(backend: str, query: str, limit: int = DEFAULT_SEARCH
             )
         )
     return results
+
+
+def _search_anysearch(query: str, limit: int = DEFAULT_SEARCH_LIMIT, profile: str | None = None) -> list[SearchResult]:
+    language = ""
+    zone = ""
+    if profile == "china":
+        language = "zh-CN"
+        zone = "cn"
+    elif profile in {"english", "global"}:
+        language = "en"
+        zone = "intl"
+    payload = search_anysearch(
+        query,
+        limit=limit,
+        api_key=anysearch_api_key(),
+        zone=zone or None,
+        language=language or None,
+        timeout=_SEARCH_TIMEOUT + 4,
+    )
+    metadata = payload.get("metadata") if isinstance(payload, dict) else {}
+    rows = payload.get("results") if isinstance(payload, dict) else []
+    if not isinstance(rows, list):
+        rows = []
+    results: list[SearchResult] = []
+    for idx, row in enumerate(rows[:limit], start=1):
+        if not isinstance(row, dict):
+            continue
+        title = str(row.get("title") or "").strip()
+        url = str(row.get("url") or "").strip()
+        if not title or not url:
+            continue
+        description = str(row.get("description") or row.get("snippet") or "").strip()
+        content = _collapse_ws(str(row.get("content") or row.get("raw_content") or ""))
+        snippet = description or content[:360]
+        score = _safe_float(row.get("quality_score"), default=_safe_float(row.get("score"), default=0.0))
+        results.append(
+            SearchResult(
+                title=title,
+                url=url,
+                snippet=snippet,
+                source="anysearch",
+                rank=idx,
+                source_type="AnySearch",
+                score=score,
+                trace={
+                    "anysearch": {
+                        "source": row.get("source") or "",
+                        "score": row.get("score"),
+                        "quality_score": row.get("quality_score"),
+                        "credential_mode": metadata.get("credential_mode", "anonymous"),
+                        "request_id": metadata.get("request_id", ""),
+                        "rate_limit_remaining": metadata.get("rate_limit_remaining", ""),
+                    }
+                },
+            )
+        )
+    return results
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _resolve_plugin_backend_path(plugin_ref: str) -> Path:
@@ -7199,6 +7391,7 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
     backend_diagnostics = trace.get("backend_diagnostics") or []
     backend_summary = trace.get("backend_summary") or {}
     backend_recovery = trace.get("backend_recovery") or {}
+    anysearch_activation = trace.get("anysearch_activation") or {}
     scope_rewrite = trace.get("scope_rewrite") or ""
     query_shape = trace.get("query_shape") or {}
     site_filter = trace.get("site_filter") or quality_summary.get("site_filter") or {}
@@ -7245,6 +7438,8 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
                 parts.append(f"{backend_name}=unsafe_filtered({raw_count})")
             elif status == "error":
                 parts.append(f"{backend_name}=error")
+            elif status in {"quota_exhausted", "invalid_auth"}:
+                parts.append(f"{backend_name}={status}")
             elif status == "skipped":
                 parts.append(f"{backend_name}=skipped")
             else:
@@ -7264,6 +7459,8 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
                     _UNSAFE_RESULT_STATUS,
                     "blocked",
                     "error",
+                    "quota_exhausted",
+                    "invalid_auth",
                     *_NETWORK_PROBLEM_STATUSES,
                 }
                 or item.get("backend") in {"duckduckgo:open_fallback", "duckduckgo:site_inferred"}
@@ -7311,6 +7508,18 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
             lines.append(f"  recovery: {item}")
         for command in backend_recovery.get("followup_commands") or []:
             lines.append(f"  followup: `{command}`")
+    if isinstance(anysearch_activation, dict) and anysearch_activation.get("enabled"):
+        lines.append(
+            "- anysearch_activation: "
+            f"status={anysearch_activation.get('status')} "
+            f"mode={anysearch_activation.get('auto_mode')} "
+            f"has_key={anysearch_activation.get('has_api_key')} "
+            f"reasons={','.join(anysearch_activation.get('reasons') or []) or '-'}"
+        )
+        if anysearch_activation.get("next_action"):
+            lines.append(f"  anysearch_next: {anysearch_activation.get('next_action')}")
+        for command in anysearch_activation.get("recommended_commands") or []:
+            lines.append(f"  anysearch_command: `{command}`")
     if scope_rewrite:
         lines.append(f"- scope_rewrite: {scope_rewrite}")
     if isinstance(site_filter, dict) and site_filter.get("enabled"):

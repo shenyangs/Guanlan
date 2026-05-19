@@ -52,6 +52,14 @@ guanlan agent "用户需求" --json
 
 `--limit 30` 以下只适合 smoke test。严肃搜索、研究、对比、时间线和档案任务，应尽量保持默认 80 条候选池；如果用户或评测脚本给了很小的 limit，Agent 可以先执行，但必须把它当“小样本线索”，并建议补跑 `--limit 80` 后再下结论。
 
+### AnySearch 激活
+
+AnySearch 是外部搜索后端，适合英文、技术、学术、金融、安全、API/MCP/GitHub/CVE/论文等跨域 Agent 搜索补强。默认策略是 `anysearch-auto=fallback` 且允许匿名免费额度：只有路由命中强适配场景、默认后端证据不足或需要补强时，才自动把 AnySearch 加到后端链路。强适配英文/技术链路会先跑快速公开基线，再跑 AnySearch；如果候选池已经足够，会跳过较慢的 DuckDuckGo HTML 兜底。用户显式运行 `--backend anysearch` 时也可以直接使用。
+
+如果用户不希望默认使用外部 AnySearch 匿名额度，可运行 `guanlan configure anysearch-auto off` 完全关闭自动路由，或运行 `guanlan configure anysearch-anonymous-auto off` 仅关闭无 key 匿名自动调用。
+
+如果 AnySearch 匿名额度耗尽并返回自动注册 key，Agent 只能在用户确认后保存到 `anysearch_api_key`；不要读取浏览器 Cookie、Token、密码、控制台页面或浏览器存储来“无感获取” key。推荐路径是用户自带 key：`guanlan configure anysearch-key <key>`。
+
 ### 约束纪律
 
 `--site` 是硬过滤，不是排序偏好。`--site gov.cn` 结果为空时，不要把知乎、SEO 页或泛网页包装成站内结果；应该改为读站点入口、使用站内搜索，或按 Guanlan 输出的 `external_fetch_strategy` 补证。
