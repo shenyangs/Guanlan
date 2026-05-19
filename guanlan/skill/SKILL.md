@@ -27,6 +27,7 @@ triggers:
   - finance: 雪球/股票/stock/xueqiu/行情/基金
   - wps_office: 金山办公/WPS/WPS AI/WPS365/办公AI/PPT/Agent/信创办公
   - entertainment: 文娱/娱乐/影视/电影/电视剧/综艺/明星/票房/豆瓣/猫眼/游戏/欧美娱乐/日韩娱乐/K-pop/J-pop
+  - watch/radar: 长期观察/持续关注/每天扫/定期看/监控/watch/radar/standing intent
   - archive/wiki/rag: 本地知识库/archive/RAG/向量库/Agent Wiki/知识底座
   - diagnose/recipe: 页面读不到/动态页/登录墙/WAF/研究模板/固定流程/recipe
   - report: 报表/html report/可视化报告/汇报页/出个报告
@@ -71,6 +72,7 @@ metadata:
 - 科技/AI/WPS/AI Office/开发者/工程实践类问题必须额外补一轮 RSS/精品内容流；`research --preset tech` 和 `research --preset wps_office` 会自动补。AI/WPS/Agent/大模型命中时，research 还会内部纳入 AI 垂类精选动态源作为线索层，用户不需要记额外命令；若只跑 `route` 或 `search`，再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。
 - arXiv、预印本、论文线索和近期研究发现任务补 `guanlan feeds arxiv --keyword "query" --limit 80`。`preprint_record` 是论文候选，不是同行评议结论；若输出 `preprint_search_entrypoint` / `api_unavailable`，使用返回入口或 `research --preset academic` 继续补证。
 - 长期观察指定博客、项目、机构公告或固定源池时用 `guanlan feeds watchlist --watchlist PATH --limit 80`；watchlist 支持 JSON、JSONL、每行一个 RSS/Atom URL。`watchlist_update_signal` 要保留 `user_watchlist` / `feed_dependent` 边界。
+- 长期观察一个意图而不只是固定 RSS 源时用 `guanlan watch plan/add/fire`。`watch` 是 Guanlan-native standing intent 雷达，不启动后台、不发通知、不要求 Qdrant/Docker；`watch fire` 默认是诊断调用，不写 seen，只有 `--record-seen` 才更新本地去重状态。NEW 线索仍需 `read --quality-report` 或 `research/archive ingest-research` 补证。
 - 公众号文章链接先跑普通 `guanlan read "https://mp.weixin.qq.com/s/..." --trace`。`selected_backend=wechat_article` 说明已成功走公开文章专项正文提取；不要再要求用户授权浏览器或 Cookie。这个路径只读公开文章 HTML，不读取 Cookie、credentials、IndexedDB 或公众号后台。只有专项提取、Jina 和 direct HTML 都弱/被挡时，才转 `diagnose page` 或浏览器可见页补证。用户已经自配公众号导出服务时，才使用 `guanlan wechat-exporter status --probe` / `account-search` / `articles` / `download`；auth key 只能从当前 shell 环境读取，不写入提示词、日志或文档。
 - 金山办公/WPS/WPS AI/WPS 365/AI Office/PPT/办公 Agent/文档协作/SaaS/信创/办公安全等选题任务用 `research --preset wps_office` 或 `search --scope wps_office --trace`；它不是品牌白名单搜索，应主动外扩到竞品、科技/AI 媒体、RSS/公众号/热榜、开发者/用户样本和安全/信创线索。
 - 文娱/影视/综艺/明星/游戏/票房/评分/口碑类问题优先用 `route` 或 `research --preset entertainment`；把平台热度、用户评分、产业报道、宣发通稿和粉圈讨论分层看。
@@ -217,6 +219,10 @@ guanlan feeds curated --limit 80
 guanlan feeds curated --category ai --min-score 85 --limit 80
 guanlan feeds arxiv --keyword "AI Agent" --limit 80
 guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80
+guanlan watch plan "OpenAI API release notes" --profile english
+guanlan watch add "WPS AI PPT Agent 办公选题" --feed-source curated --schedule "daily 09:00"
+guanlan watch fire <id> --limit 30
+guanlan watch fire <id> --record-seen --limit 30
 guanlan feeds baidu-rss --limit 80
 guanlan feeds wechat-rss --limit 80
 guanlan feeds curated-sources --keyword AI --limit 80

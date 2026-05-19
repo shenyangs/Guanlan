@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.6.3`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.6.4`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -407,6 +407,10 @@ guanlan configure --from-browser chrome
 | `guanlan welcome` | 重新查看首次安装后的简短使用介绍和 Agent 说法示例。 |
 | `guanlan capabilities` | 展示观澜能力地图：何时用 search/route/research/advisor/hotnews 等能力。 |
 | `guanlan agent "关键词" --json` | Agent 自动挡：本地规划一条 `primary_command` 和少量 `agent_next_steps`，避免在完整命令面里猜。 |
+| `guanlan watch plan "OpenAI API release notes"` | 把一次性 query 规划成长期 standing intent；不保存、不联网，只给出本地雷达路线和后续命令。 |
+| `guanlan watch add "WPS AI PPT Agent 办公选题" --feed-source curated --schedule "daily 09:00"` | 保存一个本地长期关注意图；schedule 是给外部 Agent/cron 看的标签，不启动后台服务。 |
+| `guanlan watch fire <id> --limit 30` | 对保存的长期意图做一次无通知、默认不写状态的诊断拉取。 |
+| `guanlan watch fire <id> --record-seen --limit 30` | 拉取并写入本地 seen 去重状态，适合自动化任务实际运行。 |
 | `guanlan doctor` | 健康检查，默认跳过敏感登录态探测。 |
 | `guanlan doctor --trace` | 展示诊断路径，帮助定位是否存在敏感探测风险。 |
 | `guanlan doctor --check-config` | 扫描本地配置中可能误存的明文 Cookie、Token、Key 或代理凭据。 |
@@ -547,12 +551,13 @@ guanlan configure --from-browser chrome
 
 ## 0.5.0 级上层工作流
 
-`agent`、`workflow`、`investigate`、`sources` 和 `eval suite` 是上层增强，不接管基础搜索。
+`agent`、`workflow`、`investigate`、`sources`、`watch` 和 `eval suite` 是上层增强，不接管基础搜索。
 
 - `agent`：低选择成本自动挡，不联网；输出主命令和短链路，`quick/fresh/deep` 分别偏速度、热点和深查。
 - `workflow`：本地轻重分流，判断 direct/guided/investigate。
 - `investigate`：显式深查，支持 `--budget light|standard|deep` 和 `--dry-run`。
 - `sources`：只读信源矩阵，解释来源身份、角色、风险和适用边界；`audit/export` 用来治理口径漂移。
+- `watch`：长期意图雷达，把 query 存成本地 standing intent；`fire` 复用 search/feeds 做一次拉取，默认无通知、不写 seen，显式 `--record-seen` 才更新去重状态。
 - `eval suite`：公开离线基准和 live 样本池，用来证明路由和工作流是否守住 Agent 契约。
 - `archive semantic`：显式本地语义侧车，不联网、不替代 FTS，专为 RAG/本地模型长期记忆准备。
 - `performance guard`：只守确定性性能边界，不把真实网络波动写进阻断式 release gate。

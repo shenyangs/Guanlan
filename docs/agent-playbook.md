@@ -159,6 +159,19 @@ guanlan recipe run wps-office-radar "WPS AI PPT Agent 办公选题 最近热点"
 
 Recipe 输出的是计划、证据层和边界，不是最终答案。执行时仍要按 `route/search/read/research` 的质量信号补证。
 
+### Watch
+
+当用户说“持续关注、每天扫、定期看、监控某主题”时，不要只给一次 `search`。先把它规划或保存为 Guanlan 自己的 standing intent：
+
+```bash
+guanlan watch plan "OpenAI API release notes" --profile english
+guanlan watch add "WPS AI PPT Agent 办公选题" --feed-source curated --schedule "daily 09:00"
+guanlan watch fire <id> --limit 30
+guanlan watch fire <id> --record-seen --limit 30
+```
+
+`watch` 是轻量拉取式雷达，不启动后台服务、不发通知、不引入 Qdrant/Docker。`fire` 默认是诊断调用，不写 seen；只有显式 `--record-seen` 才更新本地去重状态。重要事实仍要回读原文：对 NEW 线索先 `guanlan read URL --quality-report`，需要长期沉淀时再 `guanlan archive ingest-research "query" --limit 80 --read-top 3`。
+
 ### 4-step
 
 适用于：时效、技术、证据面过窄等高风险场景。

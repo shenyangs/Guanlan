@@ -90,6 +90,13 @@ public opinion, brand risk, competitor watch, pricing watch, review mining, app 
 entertainment pulse, security advisory, or tech radar. Recipes are explicit workflow templates; they
 do not replace search/read/research, and they should not be treated as final answers.
 
+Watch rule: use `guanlan watch plan/add/fire` when the user wants to keep monitoring a topic,
+turn a query into a reusable standing intent, or run a no-notification radar pass. `watch` is
+Guanlan-native and local: it does not start a daemon, send notifications, or require Qdrant/Docker.
+`guanlan watch fire <id>` is diagnostic and does not write seen state by default; use
+`--record-seen` only when an automation should update local dedupe state. Important new clues still
+need `guanlan read URL --quality-report` or `research/archive ingest-research` before strong claims.
+
 Site/time constraint rule: `--site` is a hard filter. If `guanlan search ... --site gov.cn` returns
 zero results after filtering, do not relax to Zhihu, generic SEO pages, or other domains. For explicit
 years or year ranges, treat the requested window as a strong constraint: window-outside materials can
@@ -227,6 +234,10 @@ guanlan recipe run competitor-watch "某产品 竞品 功能 定价 口碑"
 guanlan recipe run pricing-watch "某产品 定价变化 套餐调整"
 guanlan recipe run review-mining "某产品 用户评论 差评 好评 反馈"
 guanlan recipe run app-review-pulse "某 App 应用商店评论 差评主题"
+guanlan watch plan "OpenAI API release notes" --profile english
+guanlan watch add "WPS AI PPT Agent 办公选题" --feed-source curated --schedule "daily 09:00"
+guanlan watch fire <id> --limit 30
+guanlan watch fire <id> --record-seen --limit 30
 guanlan investigate "复杂研究需求" --limit 80 --format context
 guanlan investigate "复杂研究需求" --budget deep --dry-run
 guanlan sources explain "中文研究需求"

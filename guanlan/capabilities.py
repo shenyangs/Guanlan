@@ -131,6 +131,21 @@ CAPABILITIES: tuple[Capability, ...] = (
         examples=["查股票风险该怎么跑？", "高校导师清单应该按什么流程搜？"],
     ),
     Capability(
+        id="watch",
+        name="长期意图雷达",
+        description="把用户的长期关注点保存成本地 standing intent，按需 fire 一次，复用 Guanlan 的 route/search/feeds/archive 能力发现新线索。",
+        when_to_use="用户说持续关注、每天看、定期扫、监控某主题，或 Agent 需要把一次性 query 固化成可重复执行的观察任务时。",
+        cli=[
+            "guanlan watch plan \"OpenAI API release notes\" --profile english",
+            "guanlan watch add \"WPS AI PPT Agent 办公选题\" --feed-source curated --schedule \"daily 09:00\"",
+            "guanlan watch list",
+            "guanlan watch fire <id> --limit 30",
+            "guanlan watch fire <id> --record-seen --limit 30",
+        ],
+        boundary="本地轻量拉取式雷达；默认不启动后台服务、不发通知、不写 seen 状态。只有显式 --record-seen 才更新本地去重记录；重要事实仍需 read/research 回读原文。",
+        examples=["每天帮我扫一下 OpenAI API 更新。", "把这个竞品主题变成长期观察。", "现在试跑一次这个 watch。"],
+    ),
+    Capability(
         id="market_intelligence",
         name="公开舆情与竞品观察",
         description="把品牌/产品的公开讨论、评论样本、应用商店评分、竞品官网/价格页、媒体报道和热榜线索组织成可审计证据链。",

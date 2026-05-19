@@ -57,6 +57,7 @@ guanlan search "人工智能 政策 最新" --profile china --limit 80
 4. **热榜观察**：用 `hotnews` 和 `feeds` 帮 Agent 观察“今天中文互联网在涌动什么”。
 5. **股票财经结构化入口**：`guanlan stock` / `guanlan_stock` 先拿股票行情、指数、ETF/基金净值、资金流、榜单和时效边界，再回到公告、宏观、研报和情绪样本分层核验。
 6. **证据包输出**：`research`、`compare`、`timeline`、`dossier`、`recipe`、`archive`、`--format context` 面向 Agent 继续推理。
+7. **长期意图雷达**：`watch` 把一次性 query 固化为本地 standing intent，按需 fire，复用搜索、RSS、归档和去重状态发现新线索。
 
 ## 典型命令
 
@@ -92,10 +93,15 @@ guanlan recipe run competitor-watch "某产品 竞品 功能 定价 口碑"
 # 4. 看今日中文互联网水势
 guanlan hotnews today --limit 80 --trends
 
-# 5. 不确定去哪搜时，先看信源路由
+# 5. 把一个主题变成长期观察意图，先诊断 fire，再按需记录 seen
+guanlan watch plan "OpenAI API release notes" --profile english
+guanlan watch add "WPS AI PPT Agent 办公选题" --feed-source curated --schedule "daily 09:00"
+guanlan watch fire <id> --record-seen --limit 30
+
+# 6. 不确定去哪搜时，先看信源路由
 guanlan route "AI 产业政策 地方 补贴" --json
 
-# 6. 想系统搞懂一个对象时，先生成对象脉络/同类格局研究链路
+# 7. 想系统搞懂一个对象时，先生成对象脉络/同类格局研究链路
 guanlan recipe run trajectory-map "Cursor 发展历程 竞品格局"
 ```
 
@@ -133,7 +139,7 @@ guanlan doctor --install-check
 guanlan status
 ```
 
-看到 `观澜 / Guanlan v0.6.3`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.6.4`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
 
 ## 给 Agent 复制的安装指令
 
