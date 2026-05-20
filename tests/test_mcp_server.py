@@ -216,7 +216,7 @@ def test_mcp_search_context_uses_webtools(monkeypatch):
             }
         ]
 
-    monkeypatch.setattr("guanlan.webtools.search_web", fake_search_web)
+    monkeypatch.setattr("guanlan.web.search.search_web", fake_search_web)
 
     text = mcp_server._run_tool(
         "guanlan_search",
@@ -235,7 +235,7 @@ def test_mcp_read_uses_webtools(monkeypatch):
         calls.append(kwargs)
         return "# Article"
 
-    monkeypatch.setattr("guanlan.webtools.read_url", fake_read_url)
+    monkeypatch.setattr("guanlan.web.read.read_url", fake_read_url)
 
     text = mcp_server._run_tool("guanlan_read", {"url": "https://example.com"})
 

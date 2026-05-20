@@ -11,8 +11,6 @@ import asyncio
 import json
 import sys
 
-from guanlan.config import Config
-from guanlan.core import Guanlan
 from guanlan.limits import (
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
     DEFAULT_FEEDS_LIMIT,
@@ -37,6 +35,14 @@ try:
     HAS_MCP = True
 except ImportError:
     HAS_MCP = False
+
+
+def _doctor_report() -> str:
+    from guanlan.config import Config
+    from guanlan.doctor import check_all, format_report
+
+    config = Config()
+    return format_report(check_all(config))
 
 
 def _tool_definitions() -> list[dict]:
@@ -668,7 +674,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
     """Run a Guanlan MCP tool and return text/dict/list output."""
     args = arguments or {}
     if name == "guanlan_status":
-        return Guanlan(Config()).doctor_report()
+        return _doctor_report()
 
     if name == "guanlan_capabilities":
         from guanlan.capabilities import format_capabilities_markdown, list_capabilities
@@ -697,11 +703,13 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         return plan.to_dict()
 
     if name == "guanlan_search":
-        from guanlan.webtools import (
+        from guanlan.web.renderers import (
             format_search_context,
             format_search_markdown,
             format_search_prompt,
             format_search_trace,
+        )
+        from guanlan.web.search import (
             search_web,
         )
 
@@ -875,7 +883,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         raise ValueError(f"unknown recipe command: {command}")
 
     if name == "guanlan_read":
-        from guanlan.webtools import read_url
+        from guanlan.web.read import read_url
 
         return read_url(
             str(args.get("url", "")).strip(),
@@ -888,8 +896,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         )
 
     if name == "guanlan_research":
-        from guanlan.webtools import (
-            build_research_packet,
+        from guanlan.web.renderers import (
             format_advisor_context,
             format_claim_ledger_context,
             format_evidence_audit_context,
@@ -897,6 +904,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             format_research_prompt,
             format_search_context,
         )
+        from guanlan.web.research import build_research_packet
 
         packet = build_research_packet(
             str(args.get("query", "")).strip(),
@@ -1201,8 +1209,6 @@ def create_server():
         sys.exit(1)
 
     server = Server("guanlan")
-    config = Config()
-    eyes = Guanlan(config)
 
     @server.list_tools()
     async def list_tools():
@@ -1212,7 +1218,7 @@ def create_server():
     async def call_tool(name: str, arguments: dict):
         try:
             # Keep this alias for local MCP clients that already call it.
-            result = eyes.doctor_report() if name == "get_status" else _run_tool(name, arguments)
+            result = _doctor_report() if name == "get_status" else _run_tool(name, arguments)
             return [TextContent(type="text", text=_as_text(result))]
         except Exception as e:
             return [TextContent(type="text", text=f"Error: {str(e)}")]

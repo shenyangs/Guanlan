@@ -33,7 +33,9 @@ DICTIONARY_DRIFT_DOMAINS = {
     "baike.baidu.com",
     "hanyu.baidu.com",
     "dict.baidu.com",
+    "zdic.net",
     "hxdic.net",
+    "hanyuguoxue.com",
     "iciba.com",
     "dict.cn",
     "youdao.com",
@@ -53,6 +55,10 @@ DICTIONARY_DRIFT_TERMS = (
     "百科",
     "字义",
     "意思",
+    "解释",
+    "汉字",
+    "笔顺",
+    "读音",
 )
 
 SEO_TITLE_TERMS = (
@@ -147,6 +153,67 @@ CJK_REQUIRED_TOPIC_GROUPS = {
     "hara_kenya_design",
 }
 
+CJK_COMPOUND_SPLIT_TERMS = (
+    "字节跳动",
+    "豆包",
+    "抖音",
+    "飞书",
+    "火山引擎",
+    "人工智能",
+    "大模型",
+    "AI",
+    "战略",
+    "流量",
+    "优势",
+    "品牌",
+    "设计",
+    "趋势",
+    "房产",
+    "加名",
+    "婚前财产",
+    "财产纠纷",
+    "纠纷",
+    "法院",
+    "司法",
+    "政策",
+    "规定",
+    "通知",
+    "公告",
+    "攻略",
+    "应用",
+    "开发",
+    "改革",
+    "动态",
+    "案例",
+    "调查",
+    "本土化",
+)
+
+CJK_GENERIC_ENTITY_TERMS = {
+    "AI",
+    "战略",
+    "流量",
+    "优势",
+    "品牌",
+    "设计",
+    "趋势",
+    "房产",
+    "加名",
+    "纠纷",
+    "政策",
+    "规定",
+    "通知",
+    "公告",
+    "攻略",
+    "应用",
+    "开发",
+    "改革",
+    "动态",
+    "案例",
+    "调查",
+    "本土化",
+}
+
 OFFICIAL_DOMAIN_SUFFIXES = (
     "gov.cn",
     "hengqin.gov.cn",
@@ -164,6 +231,10 @@ QUERY_TOKEN_STOPWORDS = {
     "相关",
     "最新",
     "近期",
+    "今天",
+    "今日",
+    "刚刚",
+    "昨天",
     "动态",
     "行业",
     "产业",
@@ -223,6 +294,7 @@ def assess_backend_batch_quality(
     group_coverage = len(matched_groups) / max(len(groups), 1) if groups else 1.0
     official_salvage = official_salvage_summary(batch, groups, quality)
     pollution = backend_pollution_summary(query, batch)
+    pollution_reasons = " ".join(str(sample.get("reason") or "") for sample in pollution.get("samples") or [])
     requested_required_groups = {
         str(group.get("name"))
         for group in groups
@@ -246,8 +318,18 @@ def assess_backend_batch_quality(
         reasons.append("cjk_compound_terms_missing")
     if len(terms) >= 2 and term_coverage < 0.25 and group_coverage < 0.5 and len(batch) >= 3:
         reasons.append("query_terms_missing")
+    if (
+        contains_cjk(query)
+        and len(terms) >= 5
+        and term_coverage < 0.35
+        and entity_coverage < 0.5
+        and len(batch) >= 2
+    ):
+        reasons.append("cjk_multi_entity_sparse_coverage")
     if len(terms) >= 3 and term_coverage == 0 and top_domain_ratio >= 0.8 and len(batch) >= 4:
         reasons.append("single_domain_zero_query_overlap")
+    if pollution["severity"] == "high" and "dictionary_definition_drift" in pollution_reasons:
+        reasons.append("dictionary_definition_drift")
     if (
         pollution["severity"] == "high"
         and len(batch) >= 3
@@ -331,6 +413,8 @@ def expand_relevance_term(term: str) -> list[str]:
     if not contains_cjk(term):
         return [term]
     expanded = [phrase for phrase in CJK_RELEVANCE_PHRASES if phrase in term]
+    lowered = term.lower()
+    expanded.extend(phrase for phrase in CJK_COMPOUND_SPLIT_TERMS if phrase.lower() in lowered)
     expanded.extend(cjk_compound_windows(term))
     if expanded:
         # Keep the original term when it is short enough to be a meaningful
@@ -368,6 +452,8 @@ def query_entity_terms(query: str) -> list[str]:
         if term in QUERY_TOKEN_STOPWORDS:
             continue
         if term in {"人形机器人", "机器人", "具身智能", "人工智能", "大模型"}:
+            continue
+        if term in CJK_GENERIC_ENTITY_TERMS:
             continue
         if len(term) >= 2:
             terms.append(term)
@@ -471,7 +557,12 @@ def is_official_domain(domain: str) -> bool:
 
 def result_text_contains(item: SearchResultLike, term: str) -> bool:
     haystack = collapse_ws(f"{item.title} {item.snippet} {item.url}").lower()
-    return term.lower() in haystack
+    needle = collapse_ws(term).lower()
+    if not needle:
+        return False
+    if needle in haystack:
+        return True
+    return compact_relevance_text(needle) in compact_relevance_text(haystack)
 
 
 def filter_unsafe_search_results(batch: list[SearchResultLike]) -> dict[str, Any]:
@@ -515,7 +606,8 @@ def backend_pollution_summary(query: str, batch: list[SearchResultLike]) -> dict
         if any(term.lower() in text for term in SEO_TITLE_TERMS):
             reasons.append("seo_or_service_phone_title")
         if domain in DICTIONARY_DRIFT_DOMAINS or any(term.lower() in text for term in DICTIONARY_DRIFT_TERMS):
-            if len(collapse_ws(query)) >= 4 and len(title_compact) <= 3:
+            dictionary_title = any(term in title_compact for term in ("解释", "意思", "拼音", "笔顺", "汉字", "读音"))
+            if len(collapse_ws(query)) >= 4 and (len(title_compact) <= 3 or dictionary_title):
                 reasons.append("dictionary_definition_drift")
             elif semantic_aliases and not any(alias in text for alias in semantic_aliases):
                 reasons.append("dictionary_definition_drift")
@@ -571,6 +663,11 @@ def contains_cjk(text: str) -> bool:
 
 def collapse_ws(text: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(text or "")).strip()
+
+
+def compact_relevance_text(text: str) -> str:
+    """Normalize display text for CJK/ASCII mixed relevance matching."""
+    return re.sub(r"[^0-9a-z\u4e00-\u9fff]+", "", collapse_ws(text).lower())
 
 
 def unique_keep_order(items: list[str]) -> list[str]:

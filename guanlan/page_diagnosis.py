@@ -52,7 +52,7 @@ def diagnose_page(
 ) -> dict[str, Any]:
     """Diagnose a URL or supplied page text without changing browser state."""
 
-    from guanlan.webtools import assess_read_quality, build_read_quality_report, read_url_with_trace
+    from guanlan.web.read import assess_read_quality, build_read_quality_report, read_url_with_trace
 
     normalized_url = _normalize_url(url)
     packet: dict[str, Any]

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Small plugin registry for read-only Guanlan search backends."""
+"""Experimental plugin registry for read-only Guanlan search backends."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from guanlan.config import Config
 
 
 def list_plugins(config: Config | None = None) -> dict[str, Any]:
-    """Return registered read-only plugin backends."""
+    """Return registered experimental read-only plugin backends."""
     cfg = config or Config()
     backends = cfg.get("backends", {}) or {}
     return {
@@ -20,7 +20,7 @@ def list_plugins(config: Config | None = None) -> dict[str, Any]:
 
 
 def register_plugin(name: str, path: str, config: Config | None = None) -> dict[str, Any]:
-    """Register a local script as `guanlan search --backend plugin:name`."""
+    """Register a local experimental script as `guanlan search --backend plugin:name`."""
     clean_name = _clean_name(name)
     script = Path(path).expanduser()
     if not script.is_file():
@@ -33,6 +33,7 @@ def register_plugin(name: str, path: str, config: Config | None = None) -> dict[
         "type": "plugin",
         "path": str(script),
         "mode": "read-only",
+        "stability": "experimental",
         "contract": "script query limit -> JSON array or {'results': [...]}",
     }
     cfg.set("backends", backends)
@@ -40,10 +41,10 @@ def register_plugin(name: str, path: str, config: Config | None = None) -> dict[
 
 
 def plugin_template(name: str = "my_company_api") -> str:
-    """Return a minimal read-only enterprise connector template."""
+    """Return a minimal experimental read-only enterprise connector template."""
     clean_name = _clean_name(name)
     return f'''# -*- coding: utf-8 -*-
-"""Read-only Guanlan plugin backend: {clean_name}.
+"""Experimental read-only Guanlan plugin backend: {clean_name}.
 
 Contract:
     python {clean_name}.py "query" 50

@@ -7,9 +7,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from guanlan import webtools
+from guanlan.web import search as search_api
 
-STRESS_REPORT_FIXTURE = Path(__file__).resolve().parent / "data" / "stress_report_20260518.jsonl"
+STRESS_REPORT_FIXTURE = Path(__file__).resolve().parents[1] / "guanlan" / "data" / "stress_report_20260518.jsonl"
 
 
 def load_stress_report_cases(path: str | Path | None = None) -> list[dict[str, Any]]:
@@ -52,7 +52,7 @@ def replay_stress_report(
 def replay_stress_case(case: dict[str, Any], *, limit: int = 10) -> dict[str, Any]:
     query = str(case.get("query") or "")
     profile = str(case.get("profile") or "china")
-    results = webtools.search_web(query, profile=profile, limit=max(int(limit or 0), 1), trace=True)
+    results = search_api.search_web(query, profile=profile, limit=max(int(limit or 0), 1), trace=True)
     if results:
         trace = dict(results[0].get("trace") or {})
     else:

@@ -231,14 +231,28 @@ def direct_source_seeds(
     text = _norm(query)
     intent_set = {str(item) for item in intents or [] if str(item)}
     scope_set = {str(item) for item in scopes or [] if str(item)}
+    finance_like = is_finance_lookup(query, intents=intents, scopes=scopes)
     seeds: list[dict[str, Any]] = []
 
     if is_live_sports_lookup(query, intents=intents, scopes=scopes):
         seeds.extend(_sports_seeds(query))
     if is_wps_office_lookup(query, intents=intents, scopes=scopes):
         seeds.extend(_wps_office_seeds(query))
+    if finance_like:
+        seeds.extend(_finance_seeds(query, intents=intents, scopes=scopes))
     if _matches_vertical(intent_set, scope_set, "weather_disaster") or _contains_any(text, ("台风", "地震", "气象", "预警", "weather", "typhoon", "earthquake")):
         seeds.extend(_weather_seeds(query))
+    explicit_policy_like = _matches_vertical(intent_set, scope_set, "policy") or bool(scope_set & {"gov", "party_central", "local_official"})
+    if (
+        explicit_policy_like
+        or (not finance_like and _contains_any(text, ("政策", "通知", "公告", "法规", "意见", "办法", "申报", "指南")))
+    ):
+        seeds.extend(_policy_official_seeds(query))
+    if (
+        _matches_vertical(intent_set, scope_set, "legal_judicial")
+        or (not finance_like and _contains_any(text, ("法律", "司法解释", "裁判文书", "法院", "纠纷", "婚前财产", "房产加名")))
+    ):
+        seeds.extend(_legal_official_seeds(query))
     security_terms = ("cve", "漏洞", "补丁", "安全公告", "phishing", "ransomware")
     if "cybersecurity" in intent_set or ("cybersecurity" in scope_set and _contains_any(text, security_terms)) or _contains_any(text, security_terms):
         seeds.extend(_security_seeds(query))
@@ -256,9 +270,6 @@ def direct_source_seeds(
         seeds.extend(_academic_seeds(query))
     if _matches_vertical(intent_set, scope_set, "test_prep") or _contains_any(text, ("雅思", "托福", "gre", "ielts", "toefl", "考试", "题库")):
         seeds.extend(_test_prep_seeds(query))
-    if is_finance_lookup(query, intents=intents, scopes=scopes):
-        seeds.extend(_finance_seeds(query, intents=intents, scopes=scopes))
-
     return _dedupe_seeds(seeds)[: max(limit, 0)]
 
 
@@ -538,6 +549,41 @@ def _weather_seeds(query: str) -> list[dict[str, Any]]:
         _seed("weather:nmc_typhoon", "中央气象台台风路径", "http://typhoon.nmc.cn/web.html", "中央气象台台风路径入口，适合核对台风路径和强度。", scope="weather_disaster", source_type="天气/灾害/预警", role="forecast_track", trust=5),
         _seed("weather:jma_typhoon", "Japan Meteorological Agency typhoon information", "https://www.jma.go.jp/bosai/map.html#contents=typhoon", "日本气象厅台风信息入口，适合跨机构核验路径。", scope="weather_disaster", source_type="天气/灾害/预警", role="forecast_track", trust=5),
         _seed("weather:usgs_earthquake", "USGS Earthquake Map", "https://earthquake.usgs.gov/earthquakes/map/", "USGS 地震实时地图入口，适合核验震级、位置和时间。", scope="weather_disaster", source_type="天气/灾害/预警", role="official_alert", trust=5),
+    ]
+
+
+def _policy_official_seeds(query: str) -> list[dict[str, Any]]:
+    text = _norm(query)
+    seeds = [
+        _seed("policy:govcn_zhengce", "中国政府网政策频道", "https://www.gov.cn/zhengce/", "中国政府网政策频道入口，适合核验国家层面政策原文和国务院文件。", scope="gov", source_type="政府/部委", role="official_primary", trust=5),
+        _seed("policy:govcn_search", "中国政府网搜索", _search_url("https://sousuo.www.gov.cn/sousuo/search.shtml", query, param="q"), "中国政府网站内搜索入口；适合在搜索引擎漂移时定点查找政策原文。", scope="gov", source_type="政府/部委", role="official_primary", trust=5, read_ready=False),
+        _seed("policy:people", "人民网", "https://www.people.com.cn/", "党央媒入口，适合核验政策权威报道和官方表述。", scope="party_central", source_type="党央媒", role="authoritative_report", trust=5),
+        _seed("policy:xinhuanet", "新华网", "https://www.news.cn/", "新华社/新华网入口，适合核验政策权威报道和官方表述。", scope="party_central", source_type="党央媒", role="authoritative_report", trust=5),
+    ]
+    if _contains_any(text, ("横琴", "粤澳", "自贸区", "合作区")):
+        seeds.insert(0, _seed("policy:hengqin", "横琴粤澳深度合作区官网", "https://www.hengqin.gov.cn/", "横琴粤澳深度合作区官方入口，适合核验横琴政策、通知、公示和办事信息。", scope="gov", source_type="政府/部委", role="official_primary", trust=5))
+        seeds.insert(1, _seed("policy:gd_gov", "广东省人民政府", "https://www.gd.gov.cn/", "广东省人民政府官方入口，适合核验广东及横琴相关政策背景。", scope="gov", source_type="政府/部委", role="official_primary", trust=5))
+    city_domains = {
+        "佛山": ("policy:foshan", "佛山市人民政府", "https://www.foshan.gov.cn/", "佛山市人民政府官方入口，适合核验佛山地方政策、通知和办事口径。"),
+        "广州": ("policy:guangzhou", "广州市人民政府", "https://www.gz.gov.cn/", "广州市人民政府官方入口，适合核验广州地方政策、通知和办事口径。"),
+        "深圳": ("policy:shenzhen", "深圳政府在线", "https://www.sz.gov.cn/", "深圳市人民政府官方入口，适合核验深圳地方政策、通知和办事口径。"),
+        "珠海": ("policy:zhuhai", "珠海市人民政府", "https://www.zhuhai.gov.cn/", "珠海市人民政府官方入口，适合核验珠海地方政策、通知和办事口径。"),
+        "东莞": ("policy:dongguan", "东莞市人民政府", "https://www.dg.gov.cn/", "东莞市人民政府官方入口，适合核验东莞地方政策、通知和办事口径。"),
+        "中山": ("policy:zhongshan", "中山市人民政府", "https://www.zs.gov.cn/", "中山市人民政府官方入口，适合核验中山地方政策、通知和办事口径。"),
+    }
+    for city, (seed_id, title, url, snippet) in city_domains.items():
+        if city in query:
+            seeds.insert(0, _seed(seed_id, title, url, snippet, scope="gov", source_type="政府/部委", role="official_primary", trust=5))
+            break
+    return seeds
+
+
+def _legal_official_seeds(query: str) -> list[dict[str, Any]]:
+    return [
+        _seed("legal:npc", "中国人大网法律法规库", "https://www.npc.gov.cn/", "中国人大网入口，适合核验法律条文、法律草案和立法信息。", scope="gov", source_type="政府/部委", role="statute_original", trust=5),
+        _seed("legal:court", "最高人民法院", "https://www.court.gov.cn/", "最高人民法院入口，适合核验司法解释、指导案例和法院权威信息。", scope="gov", source_type="政府/部委", role="judicial_interpretation", trust=5),
+        _seed("legal:moj", "司法部", "https://www.moj.gov.cn/", "司法部入口，适合核验法律法规、普法解读和行政法规信息。", scope="gov", source_type="政府/部委", role="statute_original", trust=5),
+        _seed("legal:wenshu", "中国裁判文书网", "https://wenshu.court.gov.cn/", "裁判文书入口，适合查找案例线索；访问和检索能力可能受站点限制。", scope="gov", source_type="政府/部委", role="case_record", trust=5, read_ready=False),
     ]
 
 

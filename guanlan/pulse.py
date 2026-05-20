@@ -103,7 +103,8 @@ def build_pulse_report(
     use_cache: bool = True,
 ) -> dict[str, Any]:
     """Build a conservative topic echo report from public evidence."""
-    from guanlan.webtools import read_url, source_distribution
+    from guanlan.web.read import read_url
+    from guanlan.web.search import source_distribution
 
     query = query.strip()
     if not query:
@@ -266,7 +267,7 @@ def _collect_results(
     cache_ttl: int,
     use_cache: bool,
 ) -> list[dict[str, Any]]:
-    from guanlan.webtools import search_web
+    from guanlan.web.search import search_web
 
     targets = _normalize_sites(([site] if site else []) + sites)
     if not targets:

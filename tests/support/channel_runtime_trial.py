@@ -1,10 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Experimental read-only channel runtime adapters.
-
-The runtime layer is intentionally not wired into the main search/read path yet.
-It gives Guanlan a low-risk place to test whether stable channels can share a
-search/read/health shape without disturbing existing doctor/status behavior.
-"""
+"""Experimental read-only channel runtime adapters used only by tests."""
 
 from __future__ import annotations
 
@@ -87,7 +82,7 @@ class WebRuntime(BaseRuntime):
     name = "web"
 
     def read(self, url: str, max_chars: int | None = None) -> RuntimeResult:
-        from guanlan.webtools import read_url
+        from guanlan.web.read import read_url
 
         content = read_url(url, max_chars=max_chars, backend="auto")
         return RuntimeResult(
@@ -124,7 +119,13 @@ class GithubRuntime(BaseRuntime):
             channel=self.name,
             kind="search",
             status="planned",
-            items=[{"query": query, "source": meta, "recommended_command": f"guanlan search {query!r} --scope tech_dev --limit {max(limit, 1)}"}],
+            items=[
+                {
+                    "query": query,
+                    "source": meta,
+                    "recommended_command": f"guanlan search {query!r} --scope tech_dev --limit {max(limit, 1)}",
+                }
+            ],
             boundary="GitHub runtime 先只暴露推荐入口；实际搜索仍走现有 search scope。",
         )
 

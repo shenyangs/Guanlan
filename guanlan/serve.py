@@ -105,7 +105,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 task_goal=str(payload.get("task_goal") or ""),
             )
         if method == "POST" and route == "/search":
-            from guanlan.webtools import search_web
+            from guanlan.web.search import search_web
 
             results = search_web(
                 str(payload.get("query", "")),
@@ -118,7 +118,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
             )
             return 200, {"results": results}
         if method == "POST" and route == "/research":
-            from guanlan.webtools import build_research_packet
+            from guanlan.web.research import build_research_packet
 
             packet = build_research_packet(
                 str(payload.get("query", "")),
@@ -182,7 +182,8 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 select_top=_int(payload.get("select_top"), 10),
             )
         if method == "POST" and route in {"/prompt", "/context"}:
-            from guanlan.webtools import build_research_packet, format_research_prompt
+            from guanlan.web.renderers import format_research_prompt
+            from guanlan.web.research import build_research_packet
 
             packet = build_research_packet(
                 str(payload.get("query", "")),
@@ -203,7 +204,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 "prompt": format_research_prompt(packet, style=str(payload.get("style") or "deep")),
             }
         if method == "POST" and route == "/read":
-            from guanlan.webtools import read_url
+            from guanlan.web.read import read_url
 
             content = read_url(
                 str(payload.get("url", "")),

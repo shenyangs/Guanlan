@@ -8,7 +8,8 @@ import re
 from typing import Any
 
 from guanlan.limits import DEFAULT_RESEARCH_LIMIT
-from guanlan.webtools import build_research_packet, detect_recency_intent
+from guanlan.web.research import build_research_packet
+from guanlan.web.search import detect_recency_intent
 
 Evidence = dict[str, Any]
 

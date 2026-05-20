@@ -92,7 +92,7 @@ def test_serve_dispatch_feeds_passes_watchlist_path(monkeypatch):
 
 def test_serve_dispatch_search_uses_webtools(monkeypatch):
     monkeypatch.setattr(
-        "guanlan.webtools.search_web",
+        "guanlan.web.search.search_web",
         lambda *args, **kwargs: [{"title": "A", "url": "https://example.com", "rank": 1}],
     )
 
@@ -106,7 +106,7 @@ def test_serve_dispatch_errors_are_classified(monkeypatch):
     def broken_search(*_args, **_kwargs):
         raise TimeoutError("timed out")
 
-    monkeypatch.setattr("guanlan.webtools.search_web", broken_search)
+    monkeypatch.setattr("guanlan.web.search.search_web", broken_search)
 
     status, body = serve.dispatch_request("POST", "/search", {"query": "A"})
 
@@ -133,7 +133,7 @@ def test_serve_dispatch_defaults_use_expanded_agent_limits(monkeypatch):
         calls["compare"] = kwargs["limit"]
         return {"ok": True}
 
-    monkeypatch.setattr("guanlan.webtools.search_web", fake_search_web)
+    monkeypatch.setattr("guanlan.web.search.search_web", fake_search_web)
     monkeypatch.setattr("guanlan.hotnews.fetch_hotnews", fake_fetch_hotnews)
     monkeypatch.setattr("guanlan.archive.search_documents", fake_search_documents)
     monkeypatch.setattr("guanlan.research_workflows.build_compare_report", fake_compare_report)
@@ -164,7 +164,7 @@ def test_serve_dispatch_feeds_uses_curated(monkeypatch):
 
 def test_serve_dispatch_context_returns_prompt(monkeypatch):
     monkeypatch.setattr(
-        "guanlan.webtools.build_research_packet",
+        "guanlan.web.research.build_research_packet",
         lambda *args, **kwargs: {"query": args[0], "results": [], "selected_evidence": [], "readings": [], "guidance": []},
     )
 

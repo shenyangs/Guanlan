@@ -66,7 +66,7 @@ def add_url(
     db_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Read one URL and persist it into the local archive."""
-    from guanlan.webtools import read_url
+    from guanlan.web.read import read_url
 
     content = read_url(
         url,
@@ -99,7 +99,7 @@ def add_urls(
     concurrency: int = 1,
 ) -> list[dict[str, Any]]:
     """Read multiple URLs and persist successful records into the archive."""
-    from guanlan.webtools import read_batch
+    from guanlan.web.read import read_batch
 
     batch = read_batch(
         urls,
@@ -402,7 +402,8 @@ def ingest_search(
 ) -> dict[str, Any]:
     """Run Guanlan research and persist representative evidence into the archive."""
     started_at = time.time()
-    from guanlan.webtools import build_research_packet, read_batch
+    from guanlan.web.read import read_batch
+    from guanlan.web.research import build_research_packet
 
     phase_log: list[dict[str, Any]] = []
 
@@ -736,7 +737,7 @@ def _enrich_archive_metadata(metadata: dict[str, Any], *, domain: str, content: 
         if not metadata.get("source_card"):
             metadata["source_card"] = {"domain": domain}
     try:
-        from guanlan.webtools import assess_read_quality, build_read_quality_report
+        from guanlan.web.read import assess_read_quality, build_read_quality_report
 
         quality = metadata.get("read_quality") if isinstance(metadata.get("read_quality"), dict) else {}
         if not quality:

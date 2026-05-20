@@ -2,6 +2,8 @@
 """Tests for 观澜 / Guanlan CLI."""
 
 import json
+import subprocess
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -26,6 +28,15 @@ class TestCLI:
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
         assert "观澜 / Guanlan v" in captured.out
+
+    def test_module_entrypoint_version(self):
+        completed = subprocess.run(
+            [sys.executable, "-m", "guanlan.cli", "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert "观澜 / Guanlan v" in completed.stdout
 
     def test_no_command_shows_help(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
@@ -92,7 +103,7 @@ class TestCLI:
                 }
             },
         ), patch(
-            "guanlan.webtools.cache_summary",
+            "guanlan.web.search.cache_summary",
             return_value={
                 "path": "/tmp/cache",
                 "exists": True,
@@ -461,8 +472,8 @@ class TestCLI:
                 },
             }
         ]
-        with patch("guanlan.webtools.search_web", return_value=mocked_results), patch(
-            "guanlan.webtools.format_search_markdown", return_value="ok"
+        with patch("guanlan.web.search.search_web", return_value=mocked_results), patch(
+            "guanlan.web.renderers.format_search_markdown", return_value="ok"
         ), patch("guanlan.feedback.submit_feedback") as mocked_submit, patch(
             "sys.argv",
             ["guanlan", "search", "AI 政策", "--limit", "5"],
@@ -665,7 +676,7 @@ class TestCLI:
             calls.append(kwargs)
             return []
 
-        monkeypatch.setattr("guanlan.webtools.search_web", fake_search_web)
+        monkeypatch.setattr("guanlan.web.search.search_web", fake_search_web)
 
         with patch("sys.argv", ["guanlan", "search", "人工智能", "--json"]):
             main()
@@ -680,7 +691,7 @@ class TestCLI:
             calls.append(kwargs)
             return []
 
-        monkeypatch.setattr("guanlan.webtools.search_web", fake_search_web)
+        monkeypatch.setattr("guanlan.web.search.search_web", fake_search_web)
 
         with patch("sys.argv", ["guanlan", "search", "人工智能", "--network", "direct", "--json"]):
             main()
@@ -695,7 +706,7 @@ class TestCLI:
             calls.append(kwargs)
             return []
 
-        monkeypatch.setattr("guanlan.webtools.search_web", fake_search_web)
+        monkeypatch.setattr("guanlan.web.search.search_web", fake_search_web)
 
         with patch("sys.argv", ["guanlan", "search", "人工智能", "--scope", "tech_dev", "--strict-scope", "--json"]):
             main()
@@ -708,7 +719,7 @@ class TestCLI:
         def fake_search_web(*_args, **_kwargs):
             return []
 
-        monkeypatch.setattr("guanlan.webtools.search_web", fake_search_web)
+        monkeypatch.setattr("guanlan.web.search.search_web", fake_search_web)
 
         with patch(
             "guanlan.update_check.cached_update_info",
@@ -743,7 +754,7 @@ class TestCLI:
             calls.append(kwargs)
             return "# Article"
 
-        monkeypatch.setattr("guanlan.webtools.read_url", fake_read_url)
+        monkeypatch.setattr("guanlan.web.read.read_url", fake_read_url)
 
         with patch("sys.argv", ["guanlan", "read", "https://example.com"]):
             main()

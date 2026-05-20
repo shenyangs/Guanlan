@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from guanlan import webtools
-from guanlan.stress_replay import (
+from scripts.stress_replay import (
     format_stress_report_markdown,
     load_stress_report_cases,
     replay_stress_report,
@@ -48,7 +48,7 @@ def test_stress_report_replay_summarizes_results(monkeypatch):
             ]
         )
 
-    monkeypatch.setattr("guanlan.stress_replay.webtools.search_web", fake_search_web)
+    monkeypatch.setattr("scripts.stress_replay.search_api.search_web", fake_search_web)
     report = replay_stress_report(case_ids=["stress_001", "stress_004"])
 
     assert report["summary"]["total"] == 2

@@ -31,7 +31,7 @@ def test_investigate_budget_uses_research_packet(monkeypatch):
             "guidance": [],
         }
 
-    monkeypatch.setattr("guanlan.webtools.build_research_packet", fake_research)
+    monkeypatch.setattr("guanlan.web.research.build_research_packet", fake_research)
     packet = build_investigation_packet("人工智能 政策 最新", budget="light")
 
     assert packet["workflow_decision"]["tier"] in {"guided", "investigate"}
@@ -100,7 +100,7 @@ def test_investigate_exposes_budget_fallback_and_sufficiency(monkeypatch):
             "guidance": [],
         }
 
-    monkeypatch.setattr("guanlan.webtools.build_research_packet", fake_research)
+    monkeypatch.setattr("guanlan.web.research.build_research_packet", fake_research)
     packet = build_investigation_packet("某复杂热点", budget="deep")
     investigation = packet["investigation"]
 
@@ -173,7 +173,7 @@ def test_cli_new_p2_p3_surfaces(capsys, tmp_path):
 
 
 def test_channel_runtime_trial_lists_low_risk_adapters():
-    from guanlan.channel_runtime import get_runtime, list_runtime_adapters
+    from tests.support.channel_runtime_trial import get_runtime, list_runtime_adapters
 
     adapters = list_runtime_adapters()
     runtime = get_runtime("web")

@@ -37,7 +37,7 @@ def _sample_results():
 
 
 def test_build_pulse_report_is_conservative(monkeypatch):
-    monkeypatch.setattr("guanlan.webtools.search_web", lambda *args, **kwargs: _sample_results())
+    monkeypatch.setattr("guanlan.web.search.search_web", lambda *args, **kwargs: _sample_results())
 
     report = pulse.build_pulse_report("某产品", limit=3)
 
@@ -52,7 +52,7 @@ def test_build_pulse_report_is_conservative(monkeypatch):
 
 
 def test_format_pulse_markdown_shows_caveats(monkeypatch):
-    monkeypatch.setattr("guanlan.webtools.search_web", lambda *args, **kwargs: _sample_results())
+    monkeypatch.setattr("guanlan.web.search.search_web", lambda *args, **kwargs: _sample_results())
 
     md = pulse.format_pulse_markdown(pulse.build_pulse_report("某产品", limit=3))
 
@@ -63,7 +63,7 @@ def test_format_pulse_markdown_shows_caveats(monkeypatch):
 
 
 def test_pulse_context_is_prompt_friendly(monkeypatch):
-    monkeypatch.setattr("guanlan.webtools.search_web", lambda *args, **kwargs: _sample_results())
+    monkeypatch.setattr("guanlan.web.search.search_web", lambda *args, **kwargs: _sample_results())
 
     context = pulse.format_pulse_context(pulse.build_pulse_report("某产品", limit=3))
 
@@ -75,7 +75,7 @@ def test_pulse_context_is_prompt_friendly(monkeypatch):
 def test_pulse_cli_outputs_json(capsys):
     from guanlan.cli import main
 
-    with patch("guanlan.webtools.search_web", return_value=_sample_results()):
+    with patch("guanlan.web.search.search_web", return_value=_sample_results()):
         with patch("sys.argv", ["guanlan", "pulse", "某产品", "--json", "--limit", "3"]):
             main()
     captured = capsys.readouterr()

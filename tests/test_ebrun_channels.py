@@ -4,7 +4,7 @@
 from guanlan import hotnews
 from guanlan.ebrun_channels import ebrun_query_variants, match_ebrun_channels, resolve_ebrun_channel
 from guanlan.router import build_route_plan
-from guanlan.webtools import build_query_strategy
+from guanlan.web.search import build_query_strategy
 
 
 def test_ebrun_channel_resolution_and_matching():

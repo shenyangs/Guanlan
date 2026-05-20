@@ -104,10 +104,10 @@ def test_archive_updates_existing_url(tmp_path):
 
 
 def test_archive_add_url_uses_reader(tmp_path, monkeypatch):
-    from guanlan import webtools
+    from guanlan.web import read
 
     db = tmp_path / "archive.db"
-    monkeypatch.setattr(webtools, "read_url", lambda url, **kwargs: "# 标题\n正文")
+    monkeypatch.setattr(read, "read_url", lambda url, **kwargs: "# 标题\n正文")
 
     record = archive.add_url("https://example.com/article", db_path=db)
 
@@ -301,13 +301,13 @@ def test_archive_inspect_remove_and_reindex(tmp_path):
 
 
 def test_archive_cli_add_batch_respects_blocked_records(tmp_path, capsys, monkeypatch):
-    from guanlan import webtools
     from guanlan.cli import main
+    from guanlan.web import read
 
     db = tmp_path / "archive.db"
     urls = tmp_path / "urls.txt"
     urls.write_text("https://www.xiaohongshu.com/explore/1\nhttps://example.com/a\n", encoding="utf-8")
-    monkeypatch.setattr(webtools, "read_url", lambda url, **kwargs: "# 标题\n正文")
+    monkeypatch.setattr(read, "read_url", lambda url, **kwargs: "# 标题\n正文")
 
     with patch("sys.argv", ["guanlan", "archive", "add", "batch", str(urls), "--db", str(db), "--format", "json"]):
         main()
@@ -504,7 +504,7 @@ def test_archive_ingest_search_persists_representative_evidence(tmp_path, monkey
             "readings": [{"url": "https://gov.cn/a", "status": "ok", "content": "# 政策原文\n全文"}],
         }
 
-    monkeypatch.setattr("guanlan.webtools.build_research_packet", fake_packet)
+    monkeypatch.setattr("guanlan.web.research.build_research_packet", fake_packet)
 
     result = archive.ingest_search("人工智能 政策", db_path=db, progress_callback=progress_events.append)
     records = archive.search_documents("全文", db_path=db)
@@ -558,8 +558,8 @@ def test_archive_ingest_optional_reads_are_bounded_outside_research(tmp_path, mo
         captured_read_kwargs.update(kwargs)
         return [{"url": urls[0], "status": "ok", "content": "# 横琴跨境电商政策\n全文内容"}]
 
-    monkeypatch.setattr("guanlan.webtools.build_research_packet", fake_packet)
-    monkeypatch.setattr("guanlan.webtools.read_batch", fake_read_batch)
+    monkeypatch.setattr("guanlan.web.research.build_research_packet", fake_packet)
+    monkeypatch.setattr("guanlan.web.read.read_batch", fake_read_batch)
 
     result = archive.ingest_search("珠海横琴 跨境电商政策", read_top=1, db_path=db)
     records = archive.search_documents("全文内容", db_path=db)
@@ -582,7 +582,7 @@ def test_archive_ingest_dry_run_and_low_value_filter(tmp_path, monkeypatch):
     db = tmp_path / "archive.db"
 
     monkeypatch.setattr(
-        "guanlan.webtools.build_research_packet",
+        "guanlan.web.research.build_research_packet",
         lambda *args, **kwargs: {
             "result_count": 2,
             "preset": "tech",
@@ -643,7 +643,7 @@ def test_archive_cli_ingest_research_alias(tmp_path, capsys, monkeypatch):
 
     db = tmp_path / "archive.db"
     monkeypatch.setattr(
-        "guanlan.webtools.build_research_packet",
+        "guanlan.web.research.build_research_packet",
         lambda *args, **kwargs: {
             "result_count": 1,
             "preset": "academic",

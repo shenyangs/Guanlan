@@ -31,7 +31,7 @@ def build_investigation_packet(
 ) -> dict[str, Any]:
     """Build a deep investigation packet while reusing the stable research path."""
 
-    from guanlan.webtools import build_research_packet
+    from guanlan.web.research import build_research_packet
 
     budget = _normalize_budget(budget)
     decision = decide_workflow(
@@ -119,7 +119,7 @@ def build_investigation_packet(
 def format_investigation_markdown(packet: dict[str, Any]) -> str:
     """Render an investigation packet as Markdown."""
 
-    from guanlan.webtools import format_research_markdown
+    from guanlan.web.renderers import format_research_markdown
 
     lines = ["# 观澜深查工作流", ""]
     decision = packet.get("workflow_decision")
@@ -147,7 +147,7 @@ def format_investigation_markdown(packet: dict[str, Any]) -> str:
 def format_investigation_context(packet: dict[str, Any]) -> str:
     """Render compact prompt-ready context for an investigation packet."""
 
-    from guanlan.webtools import (
+    from guanlan.web.renderers import (
         format_advisor_context,
         format_claim_ledger_context,
         format_evidence_audit_context,

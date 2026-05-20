@@ -500,7 +500,7 @@ def _collect_search_items(
     backend: str,
     cache_ttl: int,
 ) -> tuple[list[dict[str, Any]], str]:
-    from guanlan.webtools import search_web
+    from guanlan.web.search import search_web
 
     try:
         rows = search_web(

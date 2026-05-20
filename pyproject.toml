@@ -1,6 +1,6 @@
 [project]
 name = "guanlan"
-version = "0.6.4"
+version = "0.6.5"
 description = "Guanlan: a China-aware source and platform router for AI agents."
 readme = "README.md"
 license = {text = "MIT"}
@@ -91,8 +91,6 @@ packages = ["guanlan"]
 "guanlan/browser_bridge/extension/icons/icon-32.png" = "guanlan/browser_bridge/extension/icons/icon-32.png"
 "guanlan/browser_bridge/extension/icons/icon-48.png" = "guanlan/browser_bridge/extension/icons/icon-48.png"
 "guanlan/browser_bridge/extension/icons/icon-128.png" = "guanlan/browser_bridge/extension/icons/icon-128.png"
-"docs/data/hotboard_nodes.csv" = "docs/data/hotboard_nodes.csv"
-"docs/data/hotboard_nodes_summary.json" = "docs/data/hotboard_nodes_summary.json"
 
 [tool.ruff]
 target-version = "py310"

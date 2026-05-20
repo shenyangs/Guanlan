@@ -965,7 +965,12 @@ def _check_source_registry_audit_contract() -> list[dict[str, Any]]:
 def _check_tool_registry_contract() -> list[dict[str, Any]]:
     from guanlan.integrations.mcp_server import _tool_definitions
     from guanlan.serve import dispatch_request
-    from guanlan.tool_registry import CORE_AGENT_TOOLS, core_agent_tool_names, http_routes
+    from guanlan.tool_registry import (
+        CORE_AGENT_TOOLS,
+        core_agent_tool_names,
+        http_routes,
+        mcp_projection_defaults,
+    )
 
     mcp_names = {tool.get("name") for tool in _tool_definitions()}
     missing = sorted(core_agent_tool_names() - mcp_names)
@@ -973,12 +978,25 @@ def _check_tool_registry_contract() -> list[dict[str, Any]]:
     http_tool_names = {tool.get("name") for tool in tools_payload.get("tools", [])} if status == 200 else set()
     http_missing = sorted(core_agent_tool_names() - http_tool_names)
     registered_http_routes = http_routes()
+    canonical_projection = mcp_projection_defaults()
     low_limits = [
         tool.name
         for tool in CORE_AGENT_TOOLS
         if tool.min_default_limit and tool.min_default_limit < 20
     ]
-    ok = not missing and not http_missing and status == 200 and registered_http_routes and not low_limits
+    missing_projection = sorted(
+        name
+        for name, projection in canonical_projection.items()
+        if not projection.get("cli_handler") or not projection.get("service_entrypoint")
+    )
+    ok = (
+        not missing
+        and not http_missing
+        and status == 200
+        and registered_http_routes
+        and not low_limits
+        and not missing_projection
+    )
     return [
         {
             "id": "robustness_tool_registry_matches_mcp_surface",
@@ -986,6 +1004,7 @@ def _check_tool_registry_contract() -> list[dict[str, Any]]:
             "status": "pass" if ok else "fail",
             "message": (
                 f"mcp_missing={missing}, http_missing={http_missing}, low_limits={low_limits}, "
+                f"missing_projection={missing_projection}, "
                 f"registry={len(CORE_AGENT_TOOLS)}, mcp={len(mcp_names)}, http_routes={len(registered_http_routes)}"
             ),
         }

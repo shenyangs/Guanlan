@@ -15,7 +15,7 @@ if str(REPO_ROOT) not in sys.path:
 
 
 def main() -> int:
-    from guanlan.stress_replay import format_stress_report_markdown, replay_stress_report
+    from scripts.stress_replay import format_stress_report_markdown, replay_stress_report
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture", default="", help="Optional JSONL fixture path")
