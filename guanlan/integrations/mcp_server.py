@@ -590,6 +590,51 @@ def _tool_definitions() -> list[dict]:
             },
         },
         {
+            "name": "guanlan_daily",
+            "description": (
+                "Build a Guanlan-native daily brief by combining route/search or watch, RSS discovery, "
+                "and hotnews trend signals into one evidence-bound report. Use this for daily industry, "
+                "brand, AI, PR, or public-web briefings instead of assembling separate hotnews/feeds/search "
+                "calls by hand."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Optional daily topic; omit for a broader public brief."},
+                    "watch_id": {"type": "string", "description": "Optional saved watch intent id to reuse as the daily subject."},
+                    "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
+                    "scope": {"type": "string"},
+                    "site": {"type": "string"},
+                    "preset": {"type": "string", "default": "general"},
+                    "lens": {"type": "string"},
+                    "feed_source": {"type": "string", "default": "auto"},
+                    "watchlist": {"type": "string"},
+                    "watchlist_path": {"type": "string"},
+                    "hotnews_source": {"type": "string", "default": "today"},
+                    "backend": {"type": "string", "default": "auto"},
+                    "limit": {"type": "integer", "default": 12, "minimum": 1, "maximum": 30},
+                    "search_limit": {"type": "integer", "default": DEFAULT_SEARCH_LIMIT, "minimum": 1, "maximum": MAX_SEARCH_LIMIT},
+                    "feeds_limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": MAX_FEEDS_LIMIT},
+                    "hotnews_limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": MAX_HOTNEWS_LIMIT},
+                    "read_top": {"type": "integer", "default": 3, "minimum": 0, "maximum": 8},
+                    "read_backend": {"type": "string", "enum": ["auto", "jina", "direct"], "default": "auto"},
+                    "max_read_chars": {"type": "integer", "default": 1800, "minimum": 300, "maximum": 8000},
+                    "overflow_limit": {"type": "integer", "default": 20, "minimum": 0, "maximum": 80},
+                    "time_window": {"type": "string", "enum": ["today", "24h", "3d", "7d"], "default": "3d"},
+                    "edition": {"type": "string", "enum": ["brand", "market", "reputation", "general"], "default": "brand"},
+                    "record_history": {"type": "boolean", "default": False},
+                    "history_path": {"type": "string"},
+                    "compare_days": {"type": "integer", "default": 0, "minimum": 0, "maximum": 365},
+                    "cache_ttl": {"type": "integer", "default": 0, "minimum": 0},
+                    "no_search": {"type": "boolean", "default": False},
+                    "no_feeds": {"type": "boolean", "default": False},
+                    "no_hotnews": {"type": "boolean", "default": False},
+                    "store": {"type": "string"},
+                    "format": {"type": "string", "enum": ["markdown", "context", "json", "html", "im"], "default": "markdown"},
+                },
+            },
+        },
+        {
             "name": "guanlan_archive_search",
             "description": (
                 "Search Guanlan's local Markdown archive. This is Guanlan's local memory layer, not web search. "
@@ -1154,6 +1199,57 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         if output_format == "markdown":
             return format_feed_items_markdown(items, title=title)
         return format_feed_items_context(items, title=f"{title} 上下文")
+
+    if name == "guanlan_daily":
+        from guanlan.daily import (
+            build_daily_report,
+            format_daily_context,
+            format_daily_html,
+            format_daily_im,
+            format_daily_markdown,
+        )
+
+        report = build_daily_report(
+            str(args.get("query", "")).strip(),
+            watch_id=str(args.get("watch_id") or ""),
+            profile=str(args.get("profile") or "china"),
+            scope=str(args.get("scope") or ""),
+            site=str(args.get("site") or ""),
+            preset=str(args.get("preset") or ""),
+            lens=str(args.get("lens") or ""),
+            feed_source=str(args.get("feed_source") or "auto"),
+            watchlist_path=str(args.get("watchlist_path") or args.get("watchlist") or ""),
+            hotnews_source=str(args.get("hotnews_source") or "today"),
+            search_backend=str(args.get("backend") or "auto"),
+            limit=int(args.get("limit") or 12),
+            search_limit=int(args.get("search_limit") or DEFAULT_SEARCH_LIMIT),
+            feeds_limit=int(args.get("feeds_limit") or 20),
+            hotnews_limit=int(args.get("hotnews_limit") or 20),
+            include_search=not bool(args.get("no_search", False)),
+            include_feeds=not bool(args.get("no_feeds", False)),
+            include_hotnews=not bool(args.get("no_hotnews", False)),
+            cache_ttl=int(args.get("cache_ttl") or 0),
+            store_path=args.get("store") or None,
+            read_top=int(args.get("read_top") if args.get("read_top") is not None else 3),
+            read_backend=str(args.get("read_backend") or "auto"),
+            max_read_chars=int(args.get("max_read_chars") or 1800),
+            overflow_limit=int(args.get("overflow_limit") if args.get("overflow_limit") is not None else 20),
+            time_window=str(args.get("time_window") or "3d"),
+            edition=str(args.get("edition") or "brand"),
+            record_history=bool(args.get("record_history", False)),
+            history_path=str(args.get("history_path") or ""),
+            compare_days=int(args.get("compare_days") or 0),
+        )
+        output_format = str(args.get("format") or "markdown")
+        if output_format == "json":
+            return report
+        if output_format == "context":
+            return format_daily_context(report)
+        if output_format == "html":
+            return format_daily_html(report)
+        if output_format == "im":
+            return format_daily_im(report)
+        return format_daily_markdown(report)
 
     if name == "guanlan_archive_search":
         from guanlan.archive import (

@@ -285,6 +285,24 @@ def test_ai_vertical_signals_use_stale_cache_on_api_failure(monkeypatch, tmp_pat
     assert "stale_cache" in stale[0]["risk_tags"]
 
 
+def test_fetch_feed_source_supports_ai_vertical(monkeypatch):
+    seen = {}
+
+    def fake_fetch(query="", **kwargs):
+        seen["query"] = query
+        seen.update(kwargs)
+        return [{"title": "AI 动态", "url": "https://example.com/ai", "source_id": "ai-vertical"}]
+
+    monkeypatch.setattr(feeds, "fetch_ai_vertical_signals", fake_fetch)
+
+    items = feeds.fetch_feed_source("aihot", keyword="WPS AI", category="industry", limit=2)
+
+    assert items[0]["source_id"] == "ai-vertical"
+    assert seen["query"] == "WPS AI"
+    assert seen["keyword"] == "WPS AI"
+    assert seen["category"] == "industry"
+
+
 def test_fetch_arxiv_normalizes_public_api_results(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     raw = b"""<?xml version="1.0" encoding="UTF-8"?>

@@ -140,6 +140,9 @@ _SOURCE_ALIASES = {
     "wasi": "wechat-rss",
     "preprint": "arxiv",
     "paper": "arxiv",
+    "aihot": "ai-vertical",
+    "ai-hot": "ai-vertical",
+    "ai": "ai-vertical",
     "watch": "watchlist",
     "feeds-watch": "watchlist",
 }
@@ -1081,11 +1084,18 @@ def fetch_feed_source(
         return fetch_wechat_rss(limit=limit)
     if resolved == "arxiv":
         return fetch_arxiv(keyword or "", limit=limit)
+    if resolved == "ai-vertical":
+        return fetch_ai_vertical_signals(
+            keyword or "",
+            limit=limit,
+            category=category,
+            keyword=keyword,
+        )
     if resolved == "watchlist":
         return fetch_watchlist(limit=limit, path=watchlist_path, keyword=keyword)
     if resolved.startswith(("http://", "https://")):
         return fetch_rss_feed(resolved, limit=limit, source_id="rss")
-    raise ValueError("feeds source must be curated, arxiv, watchlist, baidu-rss, wechat-rss, curated-sources, list, or an RSS/Atom URL")
+    raise ValueError("feeds source must be curated, ai-vertical, arxiv, watchlist, baidu-rss, wechat-rss, curated-sources, list, or an RSS/Atom URL")
 
 
 def list_curated_sources(

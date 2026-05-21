@@ -50,6 +50,7 @@ _DEFAULT_CLI_HANDLERS = {
     "guanlan_dossier": "guanlan.commands.research._cmd_dossier",
     "guanlan_hotnews": "guanlan.commands.hotnews._cmd_hotnews",
     "guanlan_feeds": "guanlan.commands.feeds._cmd_feeds",
+    "guanlan_daily": "guanlan.commands.daily._cmd_daily",
     "guanlan_archive_search": "guanlan.commands.admin._cmd_archive",
 }
 
@@ -68,6 +69,7 @@ _DEFAULT_SERVICE_ENTRYPOINTS = {
     "guanlan_dossier": "guanlan.research_workflows.build_dossier_report",
     "guanlan_hotnews": "guanlan.hotnews.fetch_hotnews",
     "guanlan_feeds": "guanlan.feeds.fetch_feed_source",
+    "guanlan_daily": "guanlan.daily.build_daily_report",
     "guanlan_archive_search": "guanlan.archive.search_documents",
 }
 
@@ -87,6 +89,30 @@ CORE_AGENT_TOOLS: tuple[AgentTool, ...] = (
     AgentTool("guanlan_dossier", ("cli", "mcp", "http"), "stable", "guanlan dossier", "entity_dossier", "/dossier", 80),
     AgentTool("guanlan_hotnews", ("cli", "mcp", "http"), "stable", "guanlan hotnews", "trend_discovery", "/hotnews", 80),
     AgentTool("guanlan_feeds", ("cli", "mcp", "http"), "stable", "guanlan feeds", "rss_discovery", "/feeds", 80),
+    AgentTool(
+        "guanlan_daily",
+        ("cli", "mcp", "http"),
+        "experimental",
+        "guanlan daily",
+        "daily_brief",
+        "/daily",
+        20,
+        request_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "watch_id": {"type": "string"},
+                "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
+                "time_window": {"type": "string", "enum": ["today", "24h", "3d", "7d"], "default": "3d"},
+                "edition": {"type": "string", "enum": ["brand", "market", "reputation", "general"], "default": "brand"},
+                "format": {"type": "string", "enum": ["markdown", "context", "json", "html", "im"], "default": "markdown"},
+                "record_history": {"type": "boolean", "default": False},
+                "history_path": {"type": "string"},
+                "compare_days": {"type": "integer", "default": 0},
+            },
+        },
+        mcp_description="Build a multi-source editorial daily brief with storylines, source tiers, freshness, risks, actions, overflow clues, and optional history delta.",
+    ),
     AgentTool("guanlan_archive_search", ("cli", "mcp", "http"), "stable", "guanlan archive search", "local_memory_search", "/archive/search", 80),
 )
 

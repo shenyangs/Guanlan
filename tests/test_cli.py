@@ -136,6 +136,7 @@ class TestCLI:
         assert "timeout_ms" in captured.out
         assert "300000 ms" in captured.out
         assert "裸数字" in captured.out
+        assert "guanlan daily" in captured.out
 
     def test_capabilities_json_lists_mcp_tools(self, capsys):
         with patch("sys.argv", ["guanlan", "capabilities", "--json"]):

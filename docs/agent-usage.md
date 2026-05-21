@@ -29,6 +29,7 @@
 - 学术论文/预印本发现用 `guanlan feeds arxiv --keyword "..." --limit 80` 补线索；`preprint_record` 只是预印本/论文候选，不等同同行评议结论。遇到 `preprint_search_entrypoint`、`api_unavailable` 或 `feed_status=error` 时，使用返回的 arXiv 搜索入口或 `research --preset academic` 继续补证。
 - 长期观察指定博客、项目、机构公告或用户维护源池时，用 `guanlan feeds watchlist --watchlist PATH --limit 80`。watchlist 支持 JSON、JSONL 或每行一个 RSS/Atom URL；`watchlist_update_signal` 要标注为用户源池更新，不代表全网发现。
 - 长期观察一个“意图”而不只是固定 RSS 源时，用 `guanlan watch plan/add/fire`。`watch` 是本地 standing intent 雷达，默认不启动后台服务、不发通知；`fire` 默认不写 seen，只有 `--record-seen` 才更新去重状态。
+- 品牌、公关、市场、舆情团队要日报/晨报/每日简报时，用 `guanlan daily "主题" --time-window 3d --format markdown`。日报不是搜索结果列表，而是多源采编工作流：主线来自 `storylines`，正文保留一手口径、外部报道、社区样本、风险信任、候补线索和采编自检；`editorial_health.status=block` 时不能当成品日报。需要团队 IM 摘要用 `--format im`，需要可交付静态页用 `--format html`，需要连续性时显式 `--record-history --compare-days N`。
 - Agent 调用时应尽量多取结果再筛选：普通任务保持 80，复杂研究可设到 80-100；只有用户明确要求“小样本/快速看一下”时才降低 limit。
 - 当 `--limit` 小于 30 时，把它当 smoke sample：可以先返回线索，但要提醒后续 Agent/用户补跑 `--limit 80`，不要用 5-10 条结果直接写强结论。
 - Agent 平台外层 timeout 要宽松：不要用 10-30 秒去包住 `research`、`feeds` 或 `hotnews` 这种组合命令；超时只能说明网络/上游抖动，不代表没有证据。
@@ -201,6 +202,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “观察我维护的 RSS watchlist” | `guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80`，再读重要更新 |
 | “把这个主题变成长期观察” | `guanlan watch plan "主题"`，确认后 `guanlan watch add "主题" --schedule "daily 09:00"` |
 | “现在试跑一次长期观察” | `guanlan watch fire <id> --limit 30`；正式自动化运行时再加 `--record-seen` |
+| “做一份品牌/市场/舆情日报” | `guanlan daily "WPS AI" --time-window 3d --format markdown --read-top 3`，IM 用 `--format im`，静态页用 `--format html` |
 | “补一个百度热点 RSS 视角” | `guanlan feeds baidu-rss --limit 80` |
 | “找精品 RSS 源目录” | `guanlan feeds curated-sources --keyword AI --limit 80` |
 | “这些 RSS 源怎么路由” | `guanlan feeds list` |

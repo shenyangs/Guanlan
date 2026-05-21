@@ -172,6 +172,28 @@ guanlan watch fire <id> --record-seen --limit 30
 
 `watch` 是轻量拉取式雷达，不启动后台服务、不发通知、不引入 Qdrant/Docker。`fire` 默认是诊断调用，不写 seen；只有显式 `--record-seen` 才更新本地去重状态。重要事实仍要回读原文：对 NEW 线索先 `guanlan read URL --quality-report`，需要长期沉淀时再 `guanlan archive ingest-research "query" --limit 80 --read-top 3`。
 
+### Daily
+
+当用户要“日报、晨报、每日简报、今日 WPS AI/品牌/舆情动态”时，优先使用 `guanlan daily`，而不是手工拼 `search + feeds + hotnews`。日报是多源采编工作流：它会把候选线索分成一手/官方、外部报道/产业媒体、社区样本、风险/信任和弱线索，并聚合成 `storylines`。主正文不应由 D 层 SEO、下载站、镜像站或标题党转载撑起；如果 `editorial_health.status=block`，只能把输出当线索池，不能当成品日报。
+
+推荐命令：
+
+```bash
+guanlan daily "WPS AI" --format markdown --time-window 3d --read-top 3
+guanlan daily "某品牌 最近舆情" --edition reputation --format im
+guanlan daily "AI Office 市场动态" --format html --output daily.html
+guanlan daily "WPS AI" --record-history --compare-days 7
+```
+
+使用规则：
+
+- `time_window` 控制能不能使用“今天/最新”口径：旧材料只能进背景或候补线索。
+- `storylines` 是日报主线；`items` 和 `overflow_items` 是兼容字段和候补线索池。
+- 社区层必须标成样本，不外推总体口碑。
+- 官方口径只能代表一手事实，不能写成“全网情况”。
+- `--record-history` 才写入 `~/.guanlan/daily/history.jsonl`；默认只读低扰。
+- HTML/IM 只是同一份 report 的交付形态，证据边界和来源层级必须保留。
+
 ### 4-step
 
 适用于：时效、技术、证据面过窄等高风险场景。

@@ -31,7 +31,7 @@ def test_serve_dispatch_health_and_route():
     status, tools = serve.dispatch_request("GET", "/tools")
     assert status == 200
     tool_names = {tool["name"] for tool in tools["tools"]}
-    assert {"guanlan_search", "guanlan_research", "guanlan_archive_search", "guanlan_browser_assist_plan", "guanlan_browser_assist_run"} <= tool_names
+    assert {"guanlan_search", "guanlan_research", "guanlan_daily", "guanlan_archive_search", "guanlan_browser_assist_plan", "guanlan_browser_assist_run"} <= tool_names
     assert "只读工具面" in tools["boundary"]
 
 
@@ -160,6 +160,40 @@ def test_serve_dispatch_feeds_uses_curated(monkeypatch):
     assert status == 200
     assert body["items"][0]["title"] == "A"
     assert body["items"][0]["limit"] == 3
+
+
+def test_serve_dispatch_daily_uses_daily_builder(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.daily.build_daily_report",
+        lambda *args, **kwargs: {"title": "测试日报", "item_count": 1, "items": [{"title": "A"}]},
+    )
+
+    status, body = serve.dispatch_request("POST", "/daily", {"query": "AI 行业"})
+
+    assert status == 200
+    assert body["title"] == "测试日报"
+    assert body["items"][0]["title"] == "A"
+
+
+def test_serve_dispatch_daily_can_return_rendered_im(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.daily.build_daily_report",
+        lambda *args, **kwargs: {
+            "title": "测试日报",
+            "item_count": 0,
+            "items": [],
+            "storylines": [],
+            "editorial_health": {"status": "ok", "warnings": []},
+            "highlights": ["测试摘要"],
+            "boundaries": [],
+        },
+    )
+
+    status, body = serve.dispatch_request("POST", "/daily", {"query": "AI 行业", "format": "im"})
+
+    assert status == 200
+    assert body["rendered_format"] == "im"
+    assert "【观澜日报】测试日报" in body["rendered"]
 
 
 def test_serve_dispatch_context_returns_prompt(monkeypatch):

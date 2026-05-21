@@ -2,7 +2,7 @@
 """Read-only local HTTP service for Guanlan.
 
 The service is intentionally local-first and conservative: by default it binds
-to 127.0.0.1 and exposes only search/read/research/workflow/hotnews/feeds/archive lookup.
+to 127.0.0.1 and exposes only search/read/research/workflow/hotnews/feeds/daily/archive lookup.
 """
 
 from __future__ import annotations
@@ -264,6 +264,60 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 watchlist_path=query_args.get("watchlist_path") or query_args.get("watchlist") or None,
             )
             return 200, {"items": compact_feed_items(items) if _bool(query_args.get("compact")) else items}
+        if method == "POST" and route == "/daily":
+            from guanlan.daily import (
+                build_daily_report,
+                format_daily_context,
+                format_daily_html,
+                format_daily_im,
+                format_daily_markdown,
+            )
+
+            report = build_daily_report(
+                str(payload.get("query", "")).strip(),
+                watch_id=str(payload.get("watch_id") or ""),
+                profile=str(payload.get("profile") or "china"),
+                scope=str(payload.get("scope") or ""),
+                site=str(payload.get("site") or ""),
+                preset=str(payload.get("preset") or ""),
+                lens=str(payload.get("lens") or ""),
+                feed_source=str(payload.get("feed_source") or "auto"),
+                watchlist_path=str(payload.get("watchlist_path") or payload.get("watchlist") or ""),
+                hotnews_source=str(payload.get("hotnews_source") or "today"),
+                search_backend=str(payload.get("backend") or "auto"),
+                limit=_int(payload.get("limit"), 12),
+                search_limit=_int(payload.get("search_limit"), DEFAULT_SEARCH_LIMIT),
+                feeds_limit=_int(payload.get("feeds_limit"), 20),
+                hotnews_limit=_int(payload.get("hotnews_limit"), 20),
+                include_search=not bool(payload.get("no_search", False)),
+                include_feeds=not bool(payload.get("no_feeds", False)),
+                include_hotnews=not bool(payload.get("no_hotnews", False)),
+                cache_ttl=_int(payload.get("cache_ttl"), 0),
+                store_path=payload.get("store") or None,
+                read_top=_int(payload.get("read_top"), 3),
+                read_backend=str(payload.get("read_backend") or "auto"),
+                max_read_chars=_int(payload.get("max_read_chars"), 1800),
+                overflow_limit=_int(payload.get("overflow_limit"), 20),
+                time_window=str(payload.get("time_window") or "3d"),
+                edition=str(payload.get("edition") or "brand"),
+                record_history=_bool(payload.get("record_history")),
+                history_path=str(payload.get("history_path") or ""),
+                compare_days=_int(payload.get("compare_days"), 0),
+            )
+            output_format = str(payload.get("format") or "json").lower()
+            if output_format == "markdown":
+                report["rendered"] = format_daily_markdown(report)
+                report["rendered_format"] = "markdown"
+            elif output_format == "context":
+                report["rendered"] = format_daily_context(report)
+                report["rendered_format"] = "context"
+            elif output_format == "html":
+                report["rendered"] = format_daily_html(report)
+                report["rendered_format"] = "html"
+            elif output_format == "im":
+                report["rendered"] = format_daily_im(report)
+                report["rendered_format"] = "im"
+            return 200, report
         if method == "POST" and route == "/archive/search":
             from guanlan.archive import search_documents
 
@@ -284,7 +338,7 @@ def run_server(host: str = "127.0.0.1", port: int = 8765, token: str = "") -> No
     server = ThreadingHTTPServer((host, int(port)), _GuanlanHandler)
     server.guanlan_token = token or os.environ.get("GUANLAN_SERVE_TOKEN", "")
     print(f"观澜只读服务启动: http://{host}:{port}")
-    print("Endpoints: /health, /tools, /sources, /route, /browser-assist/plan, /search, /research, /compare, /timeline, /dossier, /read, /hotnews, /feeds, /archive/search")
+    print("Endpoints: /health, /tools, /sources, /route, /browser-assist/plan, /search, /research, /compare, /timeline, /dossier, /read, /hotnews, /feeds, /daily, /archive/search")
     if server.guanlan_token:
         print("Access: token required via Authorization: Bearer <token> or X-Guanlan-Token")
     server.serve_forever()

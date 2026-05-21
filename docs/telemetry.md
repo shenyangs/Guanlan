@@ -59,7 +59,7 @@ still running:
   "invocation_id": "uuid",
   "surface": "cli",
   "command": "search",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "agent_kind": "codex",
   "agent_id": "anonymous-hash",
   "platform": "darwin",

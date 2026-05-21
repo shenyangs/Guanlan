@@ -6,6 +6,18 @@
 
 ## Unreleased
 
+## v0.6.6 - 2026-05-22
+
+### Added
+
+- 新增成品级日报系统：`guanlan daily` 支持主线聚合、来源分层、时间窗、风险判断、行动建议、候补线索、历史对比，以及 Markdown/JSON/context/HTML/IM 多形态输出。
+- MCP `guanlan_daily` 与 HTTP `/daily` 同步日报参数，支持 `time_window`、`edition`、`record_history`、`history_path`、`compare_days` 和多输出格式。
+
+### Changed
+
+- 把日报质量、主线、历史和渲染逻辑拆成独立内部模块，增强品牌、公关、市场和舆情团队的日常简报可用性。
+- README、Agent 指南、Skill、能力地图和官网版本面同步到 `0.6.6`。
+
 ## v0.6.5 - 2026-05-20
 
 ### Changed

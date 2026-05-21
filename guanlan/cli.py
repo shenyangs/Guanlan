@@ -41,6 +41,7 @@ from guanlan.commands.admin import (
 from guanlan.commands.admin import (
     _cmd_check_update as _admin_cmd_check_update,
 )
+from guanlan.commands.daily import _cmd_daily
 from guanlan.commands.feeds import _cmd_feeds, _cmd_pulse
 from guanlan.commands.hotnews import _cmd_hotnews
 from guanlan.commands.read import (
@@ -685,6 +686,41 @@ def main():
     p_feeds.add_argument("--json", action="store_true",
                          help="Print normalized JSON instead of Markdown")
 
+    # ── daily ──
+    p_daily = sub.add_parser("daily", help="Build a Guanlan-native daily brief from route/search/feeds/hotnews/watch")
+    p_daily.add_argument("query", nargs="?", default="", help="Optional daily topic; omit for a broader public daily brief")
+    p_daily.add_argument("--watch-id", default="", help="Reuse one saved watch intent as the daily subject")
+    p_daily.add_argument("--profile", choices=VALID_PROFILES, default="china", help="Region profile")
+    p_daily.add_argument("--scope", default="", help="Curated source scope")
+    p_daily.add_argument("--site", default="", help="Restrict search to one domain")
+    p_daily.add_argument("--preset", default="", help="Research preset hint for the daily brief")
+    p_daily.add_argument("--lens", default="", help="Optional analyst lens to keep in the report header")
+    p_daily.add_argument("--feed-source", default="auto", help="Feed source: auto, curated, ai-vertical, arxiv, watchlist, baidu-rss, wechat-rss, or RSS URL")
+    p_daily.add_argument("--watchlist", default="", help="RSS watchlist path when --feed-source watchlist")
+    p_daily.add_argument("--hotnews-source", default="today", help="Hotnews source id, default today")
+    p_daily.add_argument("--backend", default="auto", help="Search backend")
+    p_daily.add_argument("--limit", type=int, default=12, help="Final number of daily items to keep")
+    p_daily.add_argument("--search-limit", type=int, default=DEFAULT_SEARCH_LIMIT, help="Search candidate pool size before daily selection")
+    p_daily.add_argument("--feeds-limit", type=int, default=20, help="Feed candidate count before daily selection")
+    p_daily.add_argument("--hotnews-limit", type=int, default=20, help="Hotnews candidate count before daily selection")
+    p_daily.add_argument("--read-top", type=int, default=3, help="Representative daily URLs to read; use 0 to keep search-only")
+    p_daily.add_argument("--read-backend", choices=["auto", "jina", "direct"], default="auto", help="Read backend for representative daily URLs")
+    p_daily.add_argument("--max-read-chars", type=int, default=1800, help="Maximum characters per representative daily read")
+    p_daily.add_argument("--overflow-limit", type=int, default=20, help="How many non-selected daily candidates to list at the bottom; use 0 to hide")
+    p_daily.add_argument("--time-window", choices=["today", "24h", "3d", "7d"], default="3d", help="Freshness window for using today/latest language")
+    p_daily.add_argument("--edition", choices=["brand", "market", "reputation", "general"], default="brand", help="Editorial edition for action/team defaults")
+    p_daily.add_argument("--record-history", action="store_true", help="Append a compact daily history record under ~/.guanlan/daily/history.jsonl")
+    p_daily.add_argument("--history-path", default="", help="Override daily history JSONL path")
+    p_daily.add_argument("--compare-days", type=int, default=0, help="Compare against saved daily history from the last N days")
+    p_daily.add_argument("--cache-ttl", type=int, default=0, help="Reuse identical search cache for this many seconds")
+    p_daily.add_argument("--no-search", action="store_true", help="Skip the search layer")
+    p_daily.add_argument("--no-feeds", action="store_true", help="Skip the feeds layer")
+    p_daily.add_argument("--no-hotnews", action="store_true", help="Skip the hotnews layer")
+    p_daily.add_argument("--output", default="", help="Optional output path for Markdown/JSON/context")
+    p_daily.add_argument("--store", default="", help="Optional watch store path when --watch-id is used")
+    p_daily.add_argument("--format", choices=["markdown", "json", "context", "html", "im"], default="markdown", help="Output format")
+    p_daily.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+
     # ── watch ──
     p_watch = sub.add_parser("watch", help="Manage standing research intents for Guanlan radar workflows")
     watch_sub = p_watch.add_subparsers(dest="watch_command", help="Watch commands")
@@ -1225,6 +1261,8 @@ def _dispatch_command(args):
         _cmd_pulse(args)
     elif args.command == "feeds":
         _cmd_feeds(args)
+    elif args.command == "daily":
+        _cmd_daily(args)
     elif args.command == "watch":
         _cmd_watch_intents(args)
     elif args.command == "read":

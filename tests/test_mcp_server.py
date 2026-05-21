@@ -49,12 +49,14 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "guanlan_hotnews" in names
     assert "guanlan_pulse" in names
     assert "guanlan_feeds" in names
+    assert "guanlan_daily" in names
     assert "guanlan_archive_search" in names
     assert "guanlan_archive_context" in names
     assert "guanlan_archive_verify" in names
     research_tool = next(tool for tool in tools if tool["name"] == "guanlan_research")
     capabilities_tool = next(tool for tool in tools if tool["name"] == "guanlan_capabilities")
     hotnews_tool = next(tool for tool in tools if tool["name"] == "guanlan_hotnews")
+    daily_tool = next(tool for tool in tools if tool["name"] == "guanlan_daily")
     assert "what Guanlan can do" in capabilities_tool["description"]
     assert "format" in capabilities_tool["inputSchema"]["properties"]
     assert "advisor" in research_tool["inputSchema"]["properties"]
@@ -65,6 +67,11 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "助理视角规则" in research_tool["inputSchema"]["properties"]["advisor"]["description"]
     assert "backend" in hotnews_tool["inputSchema"]["properties"]
     assert "newsnow_base_url" in hotnews_tool["inputSchema"]["properties"]
+    assert "watch_id" in daily_tool["inputSchema"]["properties"]
+    assert "time_window" in daily_tool["inputSchema"]["properties"]
+    assert "html" in daily_tool["inputSchema"]["properties"]["format"]["enum"]
+    assert "im" in daily_tool["inputSchema"]["properties"]["format"]["enum"]
+    assert "daily brief" in daily_tool["description"]
     search_tool = next(tool for tool in tools if tool["name"] == "guanlan_search")
     agent_tool = next(tool for tool in tools if tool["name"] == "guanlan_agent")
     stock_tool = next(tool for tool in tools if tool["name"] == "guanlan_stock")
@@ -353,6 +360,18 @@ def test_mcp_capabilities_can_return_json():
     ids = {item["id"] for item in payload}
     assert "discover" in ids
     assert "hotnews" in ids
+    assert "daily" in ids
+
+
+def test_mcp_daily_runs_report(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.daily.build_daily_report",
+        lambda *args, **kwargs: {"title": "测试日报", "items": [], "candidate_count": 0, "item_count": 0},
+    )
+
+    payload = mcp_server._run_tool("guanlan_daily", {"query": "AI 行业", "format": "json"})
+
+    assert payload["title"] == "测试日报"
 
 
 def test_mcp_stock_tool_returns_markdown(monkeypatch):
