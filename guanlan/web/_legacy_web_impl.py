@@ -1859,6 +1859,20 @@ def search_web(
             profile=profile,
         )
 
+    if not results and backend in {"auto", "duckduckgo"} and not site:
+        _run_recency_relaxed_recovery_pass(
+            results,
+            diagnostics=backend_diagnostics,
+            errors=errors,
+            original_query=original_query,
+            query_shape=query_shape,
+            recency=recency,
+            quality=quality,
+            limit=limit,
+            network_mode=network_mode,
+            profile=profile,
+        )
+
     if backend == "auto" and not results:
         _append_quality_salvage_results(
             results,
@@ -2973,6 +2987,137 @@ def _run_duckduckgo_recovery_pass(
             network_mode=network_mode,
             profile=profile,
         )
+
+
+def _run_recency_relaxed_recovery_pass(
+    results: list[SearchResult],
+    *,
+    diagnostics: list[dict[str, Any]],
+    errors: list[str],
+    original_query: str,
+    query_shape: dict[str, Any],
+    recency: dict[str, Any],
+    quality: dict[str, Any],
+    limit: int,
+    network_mode: str,
+    profile: str | None,
+) -> None:
+    """Recover from over-constrained "today/latest" queries without faking freshness."""
+    if results or not recency.get("enabled"):
+        return
+    label = str(recency.get("label") or "")
+    if label in {"year", "year_range", "year_to_date"}:
+        return
+    if _duckduckgo_recovery_blocked_by_health(diagnostics):
+        _append_duckduckgo_recovery_skip(
+            diagnostics,
+            "duckduckgo:recency_relaxed",
+            "DuckDuckGo 主路径刚发生网络超时，跳过近期词放宽补搜，避免外层 Agent/MCP 调用继续被慢后端拖到 abort。",
+        )
+        return
+
+    attempted_queries = {
+        str(item.get("query") or "").strip()
+        for item in diagnostics
+        if str(item.get("query") or "").strip()
+    }
+    base_queries = _recency_relaxed_query_variants(original_query, query_shape=query_shape, recency=recency)
+    for query in base_queries[:3]:
+        if not query or query in attempted_queries:
+            continue
+        attempted_queries.add(query)
+        before = len(results)
+        _run_duckduckgo_recovery_attempt(
+            results,
+            diagnostics=diagnostics,
+            errors=errors,
+            backend_name="duckduckgo:recency_relaxed",
+            query=query,
+            original_query=original_query,
+            quality=quality,
+            limit=max(limit, 5),
+            note=(
+                "近期词/当天日期导致候选过窄，自动去掉“今天/最新”等时间词补一轮开放线索；"
+                "这些结果只作背景或待补证线索，不应直接写成今日事实。"
+            ),
+            extra={
+                "relaxed_recency": True,
+                "recency_label": label,
+                "matched_terms": list(recency.get("matched_terms") or []),
+            },
+            network_mode=network_mode,
+            profile=profile,
+        )
+        if len(results) > before:
+            for item in results[before:]:
+                item.trace["recency_relaxed_fallback"] = True
+                item.trace["recency_relaxed_from"] = label
+                item.trace["agent_note"] = (
+                    "近期词放宽恢复得到的线索；需要继续 read/research/hotnews 核验，"
+                    "不能仅凭该条把旧材料表述为今天发生。"
+                )
+            break
+
+
+def _recency_relaxed_query_variants(
+    original_query: str,
+    *,
+    query_shape: dict[str, Any],
+    recency: dict[str, Any],
+) -> list[str]:
+    terms = [str(term) for term in recency.get("matched_terms") or [] if str(term)]
+    candidates = [
+        original_query,
+        str(query_shape.get("fallback_open_query") or ""),
+        str(query_shape.get("backend_query") or ""),
+    ]
+    stripped: list[str] = []
+    for candidate in candidates:
+        clean = _strip_recency_terms(candidate, terms)
+        if clean:
+            stripped.append(clean)
+    for variant in semantic_query_variants(_strip_recency_terms(original_query, terms), limit=4):
+        stripped.append(_strip_recency_terms(variant, terms))
+    return _unique_keep_order([item for item in stripped if item and item != original_query])
+
+
+def _strip_recency_terms(query: str, matched_terms: list[str]) -> str:
+    clean = _collapse_ws(query)
+    if not clean:
+        return ""
+    terms = set(matched_terms)
+    terms.update(
+        {
+            "今天",
+            "今日",
+            "当天",
+            "当日",
+            "刚刚",
+            "实时",
+            "最新",
+            "最近",
+            "近24小时",
+            "24小时",
+            "近7天",
+            "本周",
+            "this week",
+            "today",
+            "now",
+            "latest",
+            "recent",
+        }
+    )
+    for term in sorted(terms, key=len, reverse=True):
+        if not term:
+            continue
+        if re.fullmatch(r"[A-Za-z0-9 _-]+", term):
+            clean = re.sub(rf"\b{re.escape(term)}\b", " ", clean, flags=re.I)
+        else:
+            clean = clean.replace(term, " ")
+    clean = re.sub(r"(?:19|20)\d{2}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日", " ", clean)
+    clean = re.sub(r"(?:19|20)\d{2}\s*年\s*\d{1,2}\s*月", " ", clean)
+    clean = re.sub(r"\b(?:19|20)\d{2}[-/.]\d{1,2}(?:[-/.]\d{1,2})?\b", " ", clean)
+    return _collapse_ws(clean)
 
 
 def _scope_open_mix_needed(

@@ -1079,6 +1079,57 @@ def test_policy_search_returns_direct_official_entrypoints_when_backends_empty(m
     assert all("zdic.net" not in item["url"] for item in results)
 
 
+def test_recent_query_relaxes_time_terms_when_all_backends_are_weak(monkeypatch):
+    def fake_order(*_args, **_kwargs):
+        return ["baidu", "duckduckgo", "bing"]
+
+    calls = []
+
+    def fake_backend(name, query, *, limit, network_mode="auto", profile=None):
+        calls.append((name, query))
+        if name == "baidu":
+            raise RuntimeError("captcha_or_verification: 百度安全验证")
+        if name in {"bing", "bing_generic"}:
+            return [
+                webtools.SearchResult(
+                    title="Microsoft Support",
+                    url="https://support.microsoft.com/en-us",
+                    snippet="Support home",
+                    source=name,
+                )
+            ], [{"backend": name, "network_mode": network_mode, "status": "ok"}]
+        if name == "duckduckgo" and query == "生物油 餐饮燃料 设备":
+            return [
+                webtools.SearchResult(
+                    title="“生物油”是啥？餐饮燃料设备安全提示",
+                    url="https://www.thepaper.cn/newsDetail_forward_1",
+                    snippet="生物油 餐饮燃料 设备 使用安全",
+                    source="duckduckgo",
+                )
+            ], [{"backend": name, "network_mode": network_mode, "status": "ok"}]
+        return [
+            webtools.SearchResult(
+                title="生物 学院",
+                url="https://bio.example.edu.cn/",
+                snippet="生命科学 学术交流",
+                source=name,
+            )
+        ], [{"backend": name, "network_mode": network_mode, "status": "ok"}]
+
+    monkeypatch.setattr(webtools, "backend_order", fake_order)
+    monkeypatch.setattr(webtools, "_search_backend_with_network", fake_backend)
+
+    results = webtools.search_web("生物油 餐饮燃料 设备 今天", backend="auto", profile="china", limit=5, trace=True)
+
+    assert len(results) == 1
+    assert results[0]["domain"] == "thepaper.cn"
+    assert results[0]["trace"]["recency_relaxed_fallback"] is True
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+    relaxed = [item for item in diagnostics if item["backend"] == "duckduckgo:recency_relaxed"]
+    assert relaxed and relaxed[0]["status"] == "ok"
+    assert ("duckduckgo", "生物油 餐饮燃料 设备") in calls
+
+
 def test_bing_cjk_low_relevance_tries_disambiguation_variant(monkeypatch):
     calls = []
 
