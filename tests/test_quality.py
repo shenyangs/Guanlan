@@ -58,7 +58,9 @@ def test_regression_guard_checks_agent_visible_depth():
 
     assert report["summary"]["fail"] == 0
     assert any(item["id"] == "regression_feeds_can_mark_stale_cache" for item in report["checks"])
+    assert any(item["dimension"] == "evidence_mixer" for item in report["checks"])
     assert "feed_status" in quality.format_regression_report(report)
+    assert "evidence_mixer_shadow" in quality.format_regression_report(report)
 
 
 def test_quality_cli_regression_outputs_json(capsys):
@@ -72,6 +74,39 @@ def test_quality_cli_regression_outputs_json(capsys):
     assert payload["mode"] == "quick"
     assert payload["summary"]["fail"] == 0
     assert "minimum_pool" in payload["contract"]
+
+
+def test_evidence_mixer_guard_checks_shadow_contract():
+    report = quality.run_evidence_mixer_checks()
+
+    assert report["summary"]["fail"] == 0
+    assert report["gain_summary"]["positive"] >= 1
+    assert report["gain_summary"]["fallback_count"] >= 1
+    assert report["gain_summary"]["average_gain_score"] > 0
+    assert report["gain_summary"]["activation_empty_risk_count"] == 0
+    assert any(item["id"] == "evidence_mixer_policy_keeps_official_primary" for item in report["checks"])
+    assert any(
+        item["id"] == "evidence_mixer_reputation_fails_open_on_single_domain"
+        and item["shadow_report"]["fallback_reason"] == "coverage_floor"
+        for item in report["checks"]
+    )
+    assert all("gain_estimate" in item for item in report["checks"])
+    assert "Evidence Mixer Guard" in quality.format_evidence_mixer_report(report)
+    assert "增益估计" in quality.format_evidence_mixer_report(report)
+
+
+def test_quality_cli_evidence_mixer_outputs_json(capsys):
+    from guanlan.cli import main
+
+    with patch("sys.argv", ["guanlan", "quality", "evidence-mixer", "--format", "json"]):
+        main()
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert payload["mode"] == "quick"
+    assert payload["summary"]["fail"] == 0
+    assert payload["contract"]["fixture_count"] >= 5
+    assert "gain_summary" in payload
 
 
 def test_robustness_guard_checks_messy_agent_workflows():

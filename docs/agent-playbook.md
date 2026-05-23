@@ -52,6 +52,10 @@ guanlan agent "用户需求" --json
 
 `--limit 30` 以下只适合 smoke test。严肃搜索、研究、对比、时间线和档案任务，应尽量保持默认 80 条候选池；如果用户或评测脚本给了很小的 limit，Agent 可以先执行，但必须把它当“小样本线索”，并建议补跑 `--limit 80` 后再下结论。
 
+### Evidence Mixer 影子诊断
+
+`search` 会输出 Evidence Mixer 诊断，用来估算“哪些候选更适合作为优先阅读证据”。默认是 `shadow`：不删除、不重排、不让空结果扩大，只在 trace/context 里给 `selected_evidence`、增益估计、fallback 和空结果风险。需要让 Agent 明确按优先阅读顺序补证时，用 `--evidence-mode assist`；排障或对照基线时，用 `--evidence-mode off`。看到 `fallback=coverage_floor` 时，不要收窄结果集，应继续用完整候选池补读。
+
 ### AnySearch 激活
 
 AnySearch 是外部搜索后端，适合英文、技术、学术、金融、安全、API/MCP/GitHub/CVE/论文等跨域 Agent 搜索补强。默认策略是 `anysearch-auto=fallback` 且允许匿名免费额度：只有路由命中强适配场景、默认后端证据不足或需要补强时，才自动把 AnySearch 加到后端链路。强适配英文/技术链路会先跑快速公开基线，再跑 AnySearch；如果候选池已经足够，会跳过较慢的 DuckDuckGo HTML 兜底。用户显式运行 `--backend anysearch` 时也可以直接使用。

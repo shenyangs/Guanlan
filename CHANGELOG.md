@@ -6,6 +6,19 @@
 
 ## Unreleased
 
+## v0.6.8 - 2026-05-23
+
+### Added
+
+- 新增 Evidence Mixer 影子诊断：`search` 默认保留完整结果集，同时输出优先阅读候选、增益估计、coverage fallback 和空结果风险提示。
+- 新增 `guanlan search --evidence-mode off|shadow|assist` 与 `guanlan quality evidence-mixer`，用于 Agent 排障、优先补读和发布前护栏。
+- 增加信源盘点文档，集中梳理 search scopes、source packs、feeds、热榜目录和 channel catalog 的边界。
+
+### Changed
+
+- 强化搜索质量回归：Evidence Mixer 当前只做 fail-open 诊断，不删除、不重排、不扩大空结果率，避免 Agent 误把弱候选收窄成空证据。
+- README、Agent 指南、Skill、能力地图和官网版本面同步到 `0.6.8`。
+
 ## v0.6.7 - 2026-05-22
 
 ### Changed

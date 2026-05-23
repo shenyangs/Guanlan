@@ -134,6 +134,7 @@ def _cmd_search(args):
             cache_ttl=max(args.cache_ttl, 0),
             use_cache=not args.no_cache,
             strict_scope=args.strict_scope,
+            evidence_mode=getattr(args, "evidence_mode", "shadow"),
         )
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

@@ -80,6 +80,11 @@ from guanlan.source_seeds import (
     is_live_sports_lookup,
 )
 from guanlan.source_taxonomy import source_card_for_domain
+from guanlan.web.evidence_pipeline import (
+    build_disabled_evidence_pipeline,
+    build_shadow_evidence_pipeline,
+    normalize_evidence_mode,
+)
 from guanlan.wps_semantics import (
     WPS_OFFICE_TERMS,
     wps_office_subroute,
@@ -1304,12 +1309,14 @@ def search_web(
     use_cache: bool = True,
     strict_scope: bool = False,
     recovery_mode: str = "auto",
+    evidence_mode: str = "shadow",
 ) -> list[dict[str, Any]]:
     """Search the web and return normalized result dictionaries."""
     original_query = query.strip()
     query = original_query
     if not original_query:
         raise ValueError("query is required")
+    evidence_mode = normalize_evidence_mode(evidence_mode)
     recovery_mode = (recovery_mode or "auto").strip().lower()
     if recovery_mode not in {"auto", "lite", "off"}:
         recovery_mode = "auto"
@@ -1441,6 +1448,11 @@ def search_web(
             backend_recovery={},
             errors=[],
             network_profile=network_profile,
+            evidence_mixer_shadow=(
+                build_disabled_evidence_pipeline(query=original_query, reason="mode_off")
+                if evidence_mode == "off"
+                else build_shadow_evidence_pipeline([], query=original_query, mode=evidence_mode)
+            ),
         )
         return SearchResults([], diagnostics=shared_diagnostics)
     query = str(query_shape.get("backend_query") or original_query)
@@ -1493,6 +1505,7 @@ def search_web(
                 },
                 "quality_intent": quality["intent"],
                 "strict_scope": bool(strict_scope),
+                "evidence_mode": evidence_mode,
             },
         )
         cached = _cache_get("search", cache_key, ttl=cache_ttl)
@@ -2055,6 +2068,20 @@ def search_web(
         external_fetch_strategy=external_fetch_strategy,
         scope_distinction=scope_distinction,
     )
+    evidence_mixer_shadow = (
+        build_disabled_evidence_pipeline(query=original_query, reason="mode_off")
+        if evidence_mode == "off"
+        else build_shadow_evidence_pipeline(
+            output_full,
+            query=original_query,
+            route_plan=route_plan.to_dict(),
+            quality=quality,
+            limit=limit,
+            site_filter=site_filter,
+            time_constraint=time_constraint,
+            mode=evidence_mode,
+        )
+    )
     for item in output_full:
         item.setdefault("trace", {})
         item["trace"].update(
@@ -2083,6 +2110,7 @@ def search_web(
                 "scope_distinction": scope_distinction,
                 "scope_mode": "strict" if strict_scope and effective_scope else ("soft" if effective_scope else "open"),
                 "external_fetch_strategy": external_fetch_strategy,
+                "evidence_mixer_shadow": evidence_mixer_shadow,
                 "backend_diagnostics": backend_diagnostics,
                 "backend_summary": backend_summary,
                 "backend_recovery": backend_recovery,
@@ -2118,6 +2146,7 @@ def search_web(
         limit_advice=limit_advice,
         scope_distinction=scope_distinction,
         external_fetch_strategy=external_fetch_strategy,
+        evidence_mixer_shadow=evidence_mixer_shadow,
         backend_diagnostics=backend_diagnostics,
         backend_summary=backend_summary,
         backend_recovery=backend_recovery,
@@ -2157,6 +2186,7 @@ def _search_shared_diagnostics(
     limit_advice: dict[str, Any] | None = None,
     scope_distinction: dict[str, Any] | None = None,
     external_fetch_strategy: dict[str, Any] | None = None,
+    evidence_mixer_shadow: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "query": original_query,
@@ -2184,6 +2214,7 @@ def _search_shared_diagnostics(
         "scope_distinction": scope_distinction or {"enabled": False},
         "scope_mode": scope_mode,
         "external_fetch_strategy": external_fetch_strategy or {"enabled": False},
+        "evidence_mixer_shadow": evidence_mixer_shadow or {"enabled": False},
         "backend_diagnostics": backend_diagnostics,
         "backend_summary": backend_summary,
         "backend_recovery": backend_recovery,
@@ -7126,6 +7157,7 @@ def _search_context_diagnostics(results: list[dict[str, Any]]) -> list[str]:
     limit_advice = trace.get("agent_limit_advice") or quality_summary.get("agent_limit_advice") or {}
     external_fetch = trace.get("external_fetch_strategy") or quality_summary.get("external_fetch_strategy") or {}
     browser_assist = trace.get("browser_assist_suggestion") or quality_summary.get("browser_assist_suggestion") or {}
+    evidence_mixer = trace.get("evidence_mixer_shadow") or {}
     lines: list[str] = []
     quality_interpretation = str(quality_summary.get("interpretation") or "")
     quality_status = str(quality_summary.get("quality_status") or "")
@@ -7142,6 +7174,26 @@ def _search_context_diagnostics(results: list[dict[str, Any]]) -> list[str]:
         lines.append(f"> 当前进展: {user_facing_status}")
     if quality_interpretation:
         lines.append(f"> 质量画像: {quality_interpretation}")
+    if isinstance(evidence_mixer, dict) and evidence_mixer.get("enabled"):
+        gain = evidence_mixer.get("gain_estimate") or {}
+        lines.append(
+            f"> Evidence Mixer: `{evidence_mixer.get('mode', 'shadow')}` "
+            f"selected={evidence_mixer.get('selected_count', 0)}/{evidence_mixer.get('candidate_count', 0)} "
+            f"gain={gain.get('label', '-')} score={gain.get('gain_score', 0)} "
+            f"delta={gain.get('score_delta', 0)} "
+            f"empty_risk={gain.get('empty_result_risk', '-')}; 原结果集保持 fail-open。"
+        )
+        if evidence_mixer.get("fallback_reason"):
+            lines.append(f"> Evidence Mixer fallback: {evidence_mixer.get('fallback_reason')}")
+        selected = evidence_mixer.get("selected_evidence") or []
+        if selected:
+            samples = []
+            for item in selected[:4]:
+                samples.append(
+                    f"rank={item.get('rank')} {item.get('domain')}/{item.get('evidence_role')}"
+                )
+            label = "优先阅读" if evidence_mixer.get("mode") == "assist" else "影子候选"
+            lines.append(f"> Evidence Mixer {label}: " + "；".join(samples))
     if isinstance(query_shape, dict) and query_shape.get("rewritten"):
         lines.append(f"> Query 修整: 已自动改写为 `{query_shape.get('backend_query', '')}`")
     if isinstance(query_shape, dict) and query_shape.get("rejected"):
@@ -7241,6 +7293,7 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
     limit_advice = trace.get("agent_limit_advice") or quality_summary.get("agent_limit_advice") or {}
     scope_distinction = trace.get("scope_distinction") or quality_summary.get("scope_distinction") or {}
     external_fetch = trace.get("external_fetch_strategy") or quality_summary.get("external_fetch_strategy") or {}
+    evidence_mixer = trace.get("evidence_mixer_shadow") or {}
     if isinstance(query_shape, dict) and query_shape:
         lines.append(
             "- query_shape: "
@@ -7396,6 +7449,31 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
         lines.append("- external_fetch_strategy: enabled reasons=" + ",".join(external_fetch.get("reasons") or []))
         for url in external_fetch.get("candidate_urls") or []:
             lines.append(f"  webfetch_candidate: {url}")
+    if isinstance(evidence_mixer, dict) and evidence_mixer.get("enabled"):
+        gain = evidence_mixer.get("gain_estimate") or {}
+        lines.append(
+            "- evidence_mixer_shadow: "
+            f"mode={evidence_mixer.get('mode', 'shadow')} "
+            f"candidates={evidence_mixer.get('candidate_count', 0)} "
+            f"selected={evidence_mixer.get('selected_count', 0)} "
+            f"overflow={evidence_mixer.get('overflow_count', 0)} "
+            f"fail_open={evidence_mixer.get('fail_open', True)} "
+            f"fallback={evidence_mixer.get('fallback_reason') or '-'} "
+            f"gain={gain.get('label', '-')} "
+            f"gain_score={gain.get('gain_score', 0)} "
+            f"delta={gain.get('score_delta', 0)} "
+            f"empty_risk={gain.get('empty_result_risk', '-')}"
+        )
+        if gain.get("activation_recommendation"):
+            lines.append(f"  evidence_mixer_activation: {gain.get('activation_recommendation')}")
+        for warning in evidence_mixer.get("warnings") or []:
+            lines.append(f"  evidence_mixer_warning: {warning}")
+        for item in (evidence_mixer.get("selected_evidence") or [])[:4]:
+            lines.append(
+                "  evidence_selected: "
+                f"rank={item.get('rank')} domain={item.get('domain')} "
+                f"role={item.get('evidence_role')} score={item.get('evidence_score')}"
+            )
     if route_plan:
         lines.append(
             "- route_plan: "

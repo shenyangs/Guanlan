@@ -536,6 +536,7 @@ def _cmd_quality(args):
         format_backend_fixtures_report,
         format_coverage_jsonl,
         format_coverage_report,
+        format_evidence_mixer_report,
         format_foundational_report,
         format_performance_report,
         format_quality_jsonl,
@@ -544,6 +545,7 @@ def _cmd_quality(args):
         format_robustness_report,
         run_backend_fixture_checks,
         run_coverage_checks,
+        run_evidence_mixer_checks,
         run_foundational_checks,
         run_live_smoke_checks,
         run_performance_checks,
@@ -561,11 +563,12 @@ def _cmd_quality(args):
         "robustness",
         "performance",
         "backend-fixtures",
+        "evidence-mixer",
         "live-smoke",
     }:
         print(
             "Error: quality command is required: run, foundational, coverage, regression, robustness, performance, "
-            "backend-fixtures, or live-smoke",
+            "backend-fixtures, evidence-mixer, or live-smoke",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -651,6 +654,17 @@ def _cmd_quality(args):
             print(format_coverage_jsonl(report))
         else:
             print(format_backend_fixtures_report(report))
+        if report.get("summary", {}).get("fail", 0):
+            sys.exit(1)
+        return
+    if command == "evidence-mixer":
+        report = run_evidence_mixer_checks()
+        if args.format == "json":
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        elif args.format == "jsonl":
+            print(format_coverage_jsonl(report))
+        else:
+            print(format_evidence_mixer_report(report))
         if report.get("summary", {}).get("fail", 0):
             sys.exit(1)
         return

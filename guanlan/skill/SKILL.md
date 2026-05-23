@@ -52,6 +52,7 @@ metadata:
 - 强路由命中时直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮；只有意图混合、拿不准信源角色、或需要解释路由时，才先跑 `guanlan route "query" --json`。
 - 强路由包括：WPS/AI Office `wps_office`、欧美娱乐 `global_entertainment`、日韩娱乐 `jp_kr_entertainment`、CVE/反诈 `cybersecurity`、天气灾害 `weather_disaster`、体育 `sports`、财经/股票/宏观金融 `finance`、科学新闻 `science`、职场薪资面经 `career`、播客 `podcast`、考试备考 `test_prep`、高校招生导师 `university`、学术投稿检索 `academic`、产品/公司口碑 `reputation`。
 - Agent 自动挡：如果只是拿不准该用哪个 Guanlan 命令，先跑 `guanlan agent "query" --json`；MCP 模式调用 `guanlan_agent`。它只做本地规划，返回 `primary_command` 和少量 `agent_next_steps`。`--mode quick` 保持轻路径，`--mode fresh` 把 hotnews/feeds 放进短链路，`--mode deep` 进入深查。
+- Evidence Mixer 只做候选证据优先级诊断：默认 `search` 附带 `evidence_mixer_shadow`，不删除、不重排、不扩大空结果率；需要 Agent 明确看到优先阅读顺序时用 `--evidence-mode assist`，回滚或对照时用 `--evidence-mode off`。`coverage_floor` fallback 说明应保留完整候选池继续补读，不应收紧过滤。
 - 信源解释：当需要说明“为什么该看这些来源/某来源能不能当主证据”时，先用 `guanlan sources explain "query"` 或 `guanlan sources show gov.cn`；需要治理口径漂移时用 `guanlan sources audit`。这些都是只读信源元数据，不是实际搜索结果。
 - 轻重分流：不确定任务该轻搜还是深查时，先跑 `guanlan workflow "query" --json`；simple/direct 任务不要过度规划，复杂/高风险/对比/时间线/档案任务才用 `guanlan investigate "query" --limit 80 --format context`。
 - 页面诊断：当 `read` 读到动态页壳、登录墙、WAF、安全验证、搜索兜底或弱正文时，先跑 `guanlan diagnose page "URL"`；诊断只解释页面是否能当证据，不读取 Cookie，不执行浏览器动作。

@@ -424,6 +424,8 @@ def main():
                           help="Print normalized JSON instead of Markdown")
     p_search.add_argument("--trace", action="store_true",
                           help="Show score factors, cache status, backend order, and clustering trace")
+    p_search.add_argument("--evidence-mode", choices=["off", "shadow", "assist"], default="shadow",
+                          help="Evidence Mixer mode: off disables it, shadow keeps diagnostics, assist surfaces first-read guidance")
     p_search.add_argument("--source-chart", action="store_true",
                           help="Append an ASCII source/domain distribution chart")
     p_search.add_argument("--cluster-threshold", choices=["conservative", "balanced", "loose"],
@@ -1126,6 +1128,8 @@ def main():
     p_quality_perf.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
     p_quality_backend = quality_sub.add_parser("backend-fixtures", help="Run deterministic backend quality fixture guards")
     p_quality_backend.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
+    p_quality_mixer = quality_sub.add_parser("evidence-mixer", help="Run deterministic Evidence Mixer shadow-mode guards")
+    p_quality_mixer.add_argument("--format", choices=["markdown", "json", "jsonl"], default="markdown")
 
     # ── mcp ──
     p_mcp = sub.add_parser("mcp", help="MCP helpers for agent integration")

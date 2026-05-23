@@ -26,6 +26,7 @@ from guanlan.search_quality import (
     filter_unsafe_search_results,
     query_relevance_terms,
 )
+from guanlan.web.evidence_pipeline import build_shadow_evidence_pipeline
 from guanlan.workflow_decider import timeout_budget_ms, timeout_unit_contract
 
 SEARCH_RANKING_FIXTURES: list[dict[str, Any]] = [
@@ -108,6 +109,71 @@ BACKEND_QUALITY_FIXTURES: list[dict[str, Any]] = [
             {"title": "广东省低空经济补贴政策", "url": "https://www.gd.gov.cn/a", "snippet": "低空经济 补贴 申报"},
             {"title": "人民网解读低空经济", "url": "https://people.com.cn/a", "snippet": "政策 解读 产业发展"},
         ],
+    },
+]
+
+EVIDENCE_MIXER_FIXTURES: list[dict[str, Any]] = [
+    {
+        "id": "evidence_mixer_policy_keeps_official_primary",
+        "query": "人工智能 政策 最新",
+        "scope": "gov",
+        "profile": "china",
+        "expected_selected_domains_any": ["gov.cn"],
+        "expected_selected_roles_any": ["official_primary"],
+        "min_selected": 2,
+        "results": [
+            {"title": "知乎热议人工智能政策", "url": "https://zhihu.com/question/ai-policy", "snippet": "网友讨论人工智能政策最新影响"},
+            {"title": "国务院发布人工智能政策通知", "url": "https://www.gov.cn/zhengce/ai.htm", "snippet": "2026年5月2日 国务院发布人工智能相关政策通知"},
+            {"title": "人民网解读人工智能政策", "url": "https://people.com.cn/ai-policy", "snippet": "权威报道人工智能政策"},
+        ],
+    },
+    {
+        "id": "evidence_mixer_reputation_fails_open_on_single_domain",
+        "query": "某产品 用户评价 值不值得买",
+        "scope": "social_web",
+        "profile": "china",
+        "expected_fallback_reason": "coverage_floor",
+        "min_selected": 5,
+        "results": [
+            {"title": f"某产品用户体验样本 {idx}", "url": f"https://zhihu.com/question/product-{idx}", "snippet": "某产品 用户评价 体验 优缺点"}
+            for idx in range(1, 7)
+        ],
+    },
+    {
+        "id": "evidence_mixer_finance_keeps_disclosure_source",
+        "query": "贵州茅台 600519 股价 财报 公告",
+        "scope": "finance_disclosure",
+        "profile": "china",
+        "expected_selected_domains_any": ["cninfo.com.cn"],
+        "expected_selected_roles_any": ["company_filing"],
+        "min_selected": 2,
+        "results": [
+            {"title": "贵州茅台公告", "url": "https://www.cninfo.com.cn/new/disclosure/stock?stockCode=600519", "snippet": "贵州茅台 财报 公告"},
+            {"title": "贵州茅台行情", "url": "https://quote.eastmoney.com/sh600519.html", "snippet": "贵州茅台 股价 行情"},
+            {"title": "雪球讨论", "url": "https://xueqiu.com/S/SH600519", "snippet": "投资者讨论"},
+        ],
+    },
+    {
+        "id": "evidence_mixer_cybersecurity_keeps_vendor_and_advisory",
+        "query": "OpenSSL CVE 最新 漏洞 影响版本",
+        "scope": "cybersecurity",
+        "profile": "hybrid",
+        "expected_selected_domains_any": ["openssl.org", "cisa.gov"],
+        "expected_selected_roles_any": ["vendor_patch", "security_advisory"],
+        "min_selected": 2,
+        "results": [
+            {"title": "OpenSSL Security Advisories", "url": "https://www.openssl.org/news/secadv/", "snippet": "OpenSSL CVE vulnerability fixed versions"},
+            {"title": "CISA KEV Catalog", "url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog", "snippet": "Known exploited vulnerabilities"},
+            {"title": "论坛讨论", "url": "https://example.com/openssl", "snippet": "OpenSSL 漏洞讨论"},
+        ],
+    },
+    {
+        "id": "evidence_mixer_empty_input_is_diagnostic_not_failure",
+        "query": "冷门不存在查询样本",
+        "scope": "",
+        "profile": "china",
+        "min_selected": 0,
+        "results": [],
     },
 ]
 
@@ -221,6 +287,7 @@ def run_regression_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any
     checks.extend(_check_read_article_extraction_signal())
     checks.extend(_check_advisor_adapts_to_task())
     checks.extend(_check_archive_technical_recall())
+    checks.extend(_check_evidence_mixer_shadow_contract())
     if mode == "live":
         checks.extend(_check_live_coverage(limit=limit))
         checks.extend(_check_live(limit=min(limit, 8)))
@@ -253,6 +320,7 @@ def run_regression_checks(mode: str = "quick", limit: int = 50) -> dict[str, Any
                 "quality_report",
                 "feed_status",
                 "advisor.answer_frame",
+                "evidence_mixer_shadow",
             ],
         },
     }
@@ -416,6 +484,39 @@ def run_backend_fixture_checks() -> dict[str, Any]:
             "principle": "搜索后端必须要么返回可用证据，要么返回结构化诊断，不能把污染结果交给 Agent。",
             "statuses": ["ok", LOW_RELEVANCE_RESULT_STATUS, UNSAFE_RESULT_STATUS],
             "fixture_count": len(BACKEND_QUALITY_FIXTURES),
+        },
+    }
+
+
+def run_evidence_mixer_checks() -> dict[str, Any]:
+    """Run deterministic Evidence Mixer shadow-mode contract checks."""
+
+    checks = _check_evidence_mixer_shadow_contract()
+    passed = sum(1 for item in checks if item["status"] == "pass")
+    warned = sum(1 for item in checks if item["status"] == "warn")
+    failed = sum(1 for item in checks if item["status"] == "fail")
+    return {
+        "mode": "quick",
+        "summary": {
+            "total": len(checks),
+            "pass": passed,
+            "warn": warned,
+            "fail": failed,
+            "score": round((passed + warned * 0.5) / max(len(checks), 1) * 100, 1),
+        },
+        "gain_summary": _evidence_mixer_gain_summary(checks),
+        "checks": checks,
+        "contract": {
+            "principle": "Evidence Mixer 当前只做 shadow 评估：不改写搜索输出、不制造空结果、优先保留强官方/垂直证据。",
+            "fixture_count": len(EVIDENCE_MIXER_FIXTURES),
+            "must_hold": [
+                "fail_open",
+                "mutates_output_false",
+                "order_preserved",
+                "selected_count_floor",
+                "strong_source_retained",
+                "empty_result_risk_controlled",
+            ],
         },
     }
 
@@ -607,6 +708,37 @@ def format_backend_fixtures_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def format_evidence_mixer_report(report: dict[str, Any]) -> str:
+    """Render Evidence Mixer fixture checks as Markdown."""
+
+    summary = report.get("summary") or {}
+    gain_summary = report.get("gain_summary") or {}
+    contract = report.get("contract") or {}
+    lines = [
+        "# 观澜 Evidence Mixer Guard",
+        "",
+        f"- 模式: {report.get('mode', 'quick')}",
+        f"- 总分: {summary.get('score', 0)}",
+        f"- 结果: pass={summary.get('pass', 0)} warn={summary.get('warn', 0)} fail={summary.get('fail', 0)}",
+        f"- 增益估计: avg_gain={gain_summary.get('average_gain_score', 0)} "
+        f"avg_delta={gain_summary.get('average_score_delta', 0)} "
+        f"positive={gain_summary.get('positive', 0)} neutral={gain_summary.get('neutral', 0)} "
+        f"watch={gain_summary.get('watch', 0)} risk={gain_summary.get('risk', 0)}",
+        f"- 风险估计: fallback={gain_summary.get('fallback_count', 0)} "
+        f"activation_empty_risk={gain_summary.get('activation_empty_risk_count', 0)} "
+        f"existing_empty_input={gain_summary.get('existing_empty_input_count', 0)}",
+        f"- 原则: {contract.get('principle', '')}",
+        "",
+        "## 必须守住",
+    ]
+    for item in contract.get("must_hold") or []:
+        lines.append(f"- {item}")
+    lines.extend(["", "## 检查项"])
+    for item in report.get("checks") or []:
+        lines.append(f"- [{item.get('status')}] {item.get('id')}: {item.get('message')}")
+    return "\n".join(lines)
+
+
 def format_foundational_report(report: dict[str, Any]) -> str:
     """Render foundational workflow checks as Markdown."""
     summary = report.get("summary") or {}
@@ -637,6 +769,132 @@ def format_quality_jsonl(report: dict[str, Any]) -> str:
 def format_coverage_jsonl(report: dict[str, Any]) -> str:
     """Render coverage guard checks as JSONL."""
     return "\n".join(json.dumps(item, ensure_ascii=False, sort_keys=True) for item in report.get("checks") or [])
+
+
+def _check_evidence_mixer_shadow_contract() -> list[dict[str, Any]]:
+    """Check shadow Evidence Mixer fixtures without changing search output."""
+
+    checks: list[dict[str, Any]] = []
+    for fixture in EVIDENCE_MIXER_FIXTURES:
+        query = str(fixture.get("query") or "")
+        scope = str(fixture.get("scope") or "")
+        profile = str(fixture.get("profile") or "china")
+        limit = max(int(fixture.get("limit") or DEFAULT_SEARCH_LIMIT), 1)
+        route_plan = webtools.build_route_plan(
+            query,
+            scope=scope or None,
+            profile=profile,
+            limit=limit,
+        ).to_dict()
+        quality = webtools.detect_search_quality_profile(
+            query,
+            scope=scope or None,
+            profile=profile,
+        )
+        if hasattr(webtools, "_quality_with_route_plan"):
+            quality = webtools._quality_with_route_plan(  # noqa: SLF001 - deterministic guard.
+                quality,
+                route_plan,
+                explicit_scope=scope or None,
+            )
+        rows = [
+            webtools.SearchResult(
+                title=str(item.get("title") or ""),
+                url=str(item.get("url") or ""),
+                snippet=str(item.get("snippet") or ""),
+                source=str(item.get("source") or "fixture"),
+            )
+            for item in fixture.get("results") or []
+        ]
+        ranked = webtools.rank_results(
+            rows,
+            query=query,
+            backend_order=["fixture"],
+            preferred_scope=scope or None,
+            quality=quality,
+        )
+        output_full = [item.to_dict() for item in ranked[:limit]]
+        original_urls = [str(item.get("url") or "") for item in output_full]
+        report = build_shadow_evidence_pipeline(
+            output_full,
+            query=query,
+            route_plan=route_plan,
+            quality=quality,
+            limit=limit,
+            target_size=fixture.get("target_size"),
+        )
+        gain = report.get("gain_estimate") or {}
+        after_urls = [str(item.get("url") or "") for item in output_full]
+        selected = report.get("selected_evidence") or []
+        selected_domains = {str(item.get("domain") or "") for item in selected}
+        selected_roles = {str(item.get("evidence_role") or "") for item in selected}
+        expected_domains = set(fixture.get("expected_selected_domains_any") or [])
+        expected_roles = set(fixture.get("expected_selected_roles_any") or [])
+        issues: list[str] = []
+        if not report.get("fail_open"):
+            issues.append("fail_open=false")
+        if report.get("mutates_output"):
+            issues.append("mutates_output=true")
+        if original_urls != after_urls:
+            issues.append("output_order_changed")
+        min_selected = int(fixture.get("min_selected") or 0)
+        if int(report.get("selected_count") or 0) < min_selected:
+            issues.append(f"selected_count<{min_selected}")
+        if output_full and int(report.get("selected_count") or 0) <= 0:
+            issues.append("non_empty_input_selected_zero")
+        if str(gain.get("empty_result_risk") or "") == "would_create_empty_if_activated":
+            issues.append("empty_result_risk")
+        if expected_domains and not (selected_domains & expected_domains):
+            issues.append("expected_domain_missing:" + ",".join(sorted(expected_domains)))
+        if expected_roles and not (selected_roles & expected_roles):
+            issues.append("expected_role_missing:" + ",".join(sorted(expected_roles)))
+        expected_fallback = str(fixture.get("expected_fallback_reason") or "")
+        if expected_fallback and str(report.get("fallback_reason") or "") != expected_fallback:
+            issues.append(f"fallback_reason!={expected_fallback}")
+        checks.append(
+            {
+                "id": str(fixture.get("id") or ""),
+                "dimension": "evidence_mixer",
+                "query": query,
+                "scope": scope,
+                "status": "pass" if not issues else "fail",
+                "message": (
+                    f"selected={report.get('selected_count', 0)}/"
+                    f"{report.get('candidate_count', 0)}, "
+                    f"fallback={report.get('fallback_reason') or '-'}, "
+                    f"gain={gain.get('label', '-')}/{gain.get('score_delta', 0)}, "
+                    f"domains={','.join(sorted(selected_domains)) or '-'}, "
+                    f"roles={','.join(sorted(selected_roles)) or '-'}"
+                    f"{' issues=' + ','.join(issues) if issues else ''}"
+                ),
+                "issues": issues,
+                "gain_estimate": gain,
+                "shadow_report": report,
+            }
+        )
+    return checks
+
+
+def _evidence_mixer_gain_summary(checks: list[dict[str, Any]]) -> dict[str, Any]:
+    gains = [item.get("gain_estimate") or {} for item in checks]
+    labels = [str(item.get("label") or "neutral") for item in gains]
+    score_deltas = [float(item.get("score_delta") or 0) for item in gains]
+    gain_scores = [float(item.get("gain_score") or 0) for item in gains]
+    return {
+        "average_score_delta": round(sum(score_deltas) / max(len(score_deltas), 1), 1),
+        "average_gain_score": round(sum(gain_scores) / max(len(gain_scores), 1), 1),
+        "positive": labels.count("positive"),
+        "neutral": labels.count("neutral"),
+        "watch": labels.count("watch"),
+        "risk": labels.count("risk"),
+        "fallback_count": sum(1 for item in checks if (item.get("shadow_report") or {}).get("fallback_used")),
+        "activation_empty_risk_count": sum(
+            1 for item in gains if item.get("empty_result_risk") == "would_create_empty_if_activated"
+        ),
+        "existing_empty_input_count": sum(
+            1 for item in gains if item.get("empty_result_risk") == "existing_empty_input"
+        ),
+    }
 
 
 def _check_default_limits() -> list[dict[str, Any]]:
