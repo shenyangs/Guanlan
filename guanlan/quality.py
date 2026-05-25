@@ -1033,17 +1033,22 @@ def _check_workflow_guided_path_contract() -> list[dict[str, Any]]:
     decision = decide_workflow("人工智能 监管 政策 最新通知", command="search", profile="china")
     ok = (
         decision.tier == GUIDED
-        and decision.recommended_entrypoint == "research"
+        and decision.recommended_entrypoint == "search"
         and "route" in decision.command_path
-        and "research" in decision.command_path
+        and "scoped search" in decision.command_path
+        and "read" in decision.command_path
+        and "research" not in decision.command_path
         and decision.recommended_limit >= 80
     )
     return [
         {
-            "id": "foundational_policy_query_uses_guided_research",
+            "id": "foundational_policy_query_uses_guided_scoped_search",
             "dimension": "foundational_guard",
             "status": "pass" if ok else "fail",
-            "message": f"tier={decision.tier}, path={decision.command_path}, limit={decision.recommended_limit}",
+            "message": (
+                f"tier={decision.tier}, entrypoint={decision.recommended_entrypoint}, "
+                f"path={decision.command_path}, limit={decision.recommended_limit}"
+            ),
         }
     ]
 
