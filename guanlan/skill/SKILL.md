@@ -59,29 +59,30 @@ metadata:
 - 浏览器辅助补证：如果 `diagnose page` 输出 `browser_assist.recommended=true`，必须先询问用户授权；如需登录、验证或切换账号，让用户自己在浏览器里完成；Agent 只读取目标页面的浏览器可见内容，本次可见页补证不读取 Cookie、Token、钥匙串、localStorage、sessionStorage、浏览器数据库/profile 或无关个人信息。私信、订单、后台、账号页只有在它们就是目标页且用户单独明确授权目标、用途、风险和只读范围时才读取，并标记 `private_account_evidence=true`；如果仍需 Cookie 或其他凭据材料，必须另行说明平台、用途和风险并获得用户明确同意，凭据材料不得进入 browser-visible payload，也不点赞、评论、关注、发帖、私信、下单或提交表单。OpenGuanlan 就是 Guanlan 的浏览器补证总层，默认复用宿主 Agent 浏览器可见页契约，不要求插件、daemon、OpenCLI、Playwright 或独立浏览器 profile。用户授权后可先用 `guanlan browser-assist adapters --check` 查看只读适配器自检，用 `guanlan browser-assist sessions "URL" --json` 获取同一目标页会话契约，再用 `guanlan browser-assist run "URL" --adapter openguanlan --json` 取得 OpenGuanlan 执行契约；可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库。`openguanlan-bridge` 只是可选扩展桥；只有用户明确需要独立 Chrome/Chromium 桥时，才用 `guanlan browser-assist setup-openguanlan --json`、`openguanlan pair-code --json` 和扩展 popup 配对。`open-cli` 只作为兼容迁移入口，不要求用户安装 OpenCLI。`xhs-cli` 等外部适配器必须由用户预先配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
 - 浏览器可见页动态采集不能只靠固定 sleep。优先等待标题/正文、结果数增长、DOM 变化趋稳或相关网络响应；`aria-label`、`placeholder`、`title`、按钮文字等会随语言变化，不要用单一 UI 文案当唯一 selector。列表、评论、搜索页需要样本池时，用 `--min-visible-items` 并输出 `requested_min_items`、`collected_count`、`partial_reason`；未达到目标要标记 partial，不要把空结果当成功。
 - 研究模板：高频垂直任务先用 `guanlan recipe list` / `guanlan recipe run <recipe> "query"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`public-opinion-pulse`、`brand-risk-watch`、`competitor-watch`、`pricing-watch`、`review-mining`、`app-review-pulse`、`entertainment-pulse`、`security-advisory`、`tech-radar`、`wps-office-radar`、`trajectory-map`。
-- 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究至少走 `route -> research -> scoped search`；热点题再补 `hotnews`；技术/AI/WPS/AI Office 题再补 `feeds`；来源过窄时再补 `dossier/compare/timeline`。
+- 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究走 `route -> scoped search -> read`；热点题先补 `hotnews`；技术/AI/WPS/AI Office 题补 `feeds`；来源过窄时再补 `dossier/compare/timeline` 或受控 `research`。
+- `research` 是重型证据包工具，不是 Agent 自动挡的第一选择。只有用户明确要深度综合/可复用证据包，或 `search + read` 后仍缺信源角色覆盖时再用；MCP/Agent 场景把 `read_top` 控在 0-2，并优先用单独 `guanlan read` 补代表 URL。
 - 体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE、安全公告、科学机构声明、文娱榜单/票房、考试官方信息等高确定性垂直题，优先执行 `route` 推荐的 direct `guanlan read` 命令，再用匹配的 `preset/scope` 扩大证据面；不要只看搜索引擎是否返回。
 - 在完成当前档位要求的 Guanlan 工具前，不要立刻切 `web_search/web_fetch`。`quality_summary=warn` 通常表示证据包还不完整，不等于 Guanlan 搜索失败。
 - `quality_gate.reason=partial_salvage` 表示观澜保留了强官方/垂直信源线索但仍有覆盖缺口；先读代表原文，不要写成失败。`read` 出现 `兜底状态: unusable` 时，不要引用搜索兜底，改用页面诊断、结构化入口、scope 搜索或 WebFetch 定点补证。
 - 使用 `guanlan agent "query" --json` 时，先执行 `primary_command`，再检查 `quality_tripwires`。若出现空结果、preferred 命中为 0、后端降级、partial_salvage、时间窗不符、read 不可用等信号，先无感执行 `silent_repair_commands`，再合并证据回答；用户面前不要说 Guanlan 崩了/坏了/没搜到，而是说明已补一轮信源核验和证据边界。
 - 如果 Guanlan 输出 `external_fetch_strategy`，可以调用宿主 Agent 的 WebFetch/WebRead 读取候选 URL；外显时说明这是“Guanlan 规划信源 + WebFetch 定点补证”的搜索策略，不是 Guanlan 脆弱。
 - 面向用户不要写“Guanlan 崩了 / 抽风了 / 挂了 / 炸了 / 翻车 / 拉胯 / 坏了”。只在影响证据边界时说明“目标页公开读取超时或上游响应慢，已按 Guanlan 定点补证路线读取目标页”；否则直接给来源和结论。
-- 做 benchmark 时不要误用：实时题必须带 `hotnews`，技术/AI/WPS/AI Office 题必须带 `feeds` 或 `research --preset tech|wps_office`，政策题不要只测单次泛搜。
+- 做 benchmark 时不要误用：实时题必须带 `hotnews`，技术/AI/WPS/AI Office 题必须带 `feeds`，政策题要测 `search --scope gov + read`；`research --preset ...` 只作为深查/证据包链路单独评估。
 - 自动挡或路由规则变更要沉淀 positive/negative/near-miss：把错例加到 `tests/fixtures/routing_regression_cases.jsonl`，用 `expected_*` 和 `forbidden_*` 同时约束命中与误命中，再跑 `tests/test_routing_regression_cases.py`、`guanlan eval benchmark` 和 `guanlan eval suite run chinese-web-v1`。
 - `guanlan quality live-smoke` 是可选公网漂移探针，默认不阻断。长期观察用 `guanlan quality live-smoke --record-history --trend-window 10`，看 `live_trend_report` 的 new/recovered/persistent/network-or-upstream 信号；`--strict` 仍只按本次 fail 决定退出码。
 - 如果 Agent/MCP/自动化平台能设置工具 timeout：`search/read/status/doctor` 用 60-90 秒；`hotnews/feeds/pulse/read batch` 和默认 `archive ingest-research` 用 120 秒；`research/compare/timeline/dossier/archive ingest-research --read-top N` 用 180-300 秒；安装/升级/发布 smoke 用 300-600 秒。单位要按宿主字段名换算：`timeout_budget_seconds` 传秒，`timeout_ms` / `timeout_milliseconds` 传毫秒，例如 120 秒 = 120000 ms、300 秒 = 300000 ms；不要把 `timeout=120` 这种裸数字交给下游。
 - 超时只代表网络或上游源未完成，不代表没有证据；优先重试一次、加 `--cache-ttl 3600`，或把 `--read-top` 降到 0/1，不要为了速度把 80 条候选池砍成小样本。
-- 科技/AI/WPS/AI Office/开发者/工程实践类问题必须额外补一轮 RSS/精品内容流；`research --preset tech` 和 `research --preset wps_office` 会自动补。AI/WPS/Agent/大模型命中时，research 还会内部纳入 AI 垂类精选动态源作为线索层，用户不需要记额外命令；若只跑 `route` 或 `search`，再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。
+- 科技/AI/WPS/AI Office/开发者/工程实践类问题必须额外补一轮 RSS/精品内容流；默认用 `search --scope tech_dev|wps_office` 加 `guanlan feeds curated --category ai --limit 80`。`research --preset tech|wps_office` 只在深查/证据包模式下使用，且保持 `--read-top 0-2`。
 - arXiv、预印本、论文线索和近期研究发现任务补 `guanlan feeds arxiv --keyword "query" --limit 80`。`preprint_record` 是论文候选，不是同行评议结论；若输出 `preprint_search_entrypoint` / `api_unavailable`，使用返回入口或 `research --preset academic` 继续补证。
 - 长期观察指定博客、项目、机构公告或固定源池时用 `guanlan feeds watchlist --watchlist PATH --limit 80`；watchlist 支持 JSON、JSONL、每行一个 RSS/Atom URL。`watchlist_update_signal` 要保留 `user_watchlist` / `feed_dependent` 边界。
 - 长期观察一个意图而不只是固定 RSS 源时用 `guanlan watch plan/add/fire`。`watch` 是 Guanlan-native standing intent 雷达，不启动后台、不发通知、不要求 Qdrant/Docker；`watch fire` 默认是诊断调用，不写 seen，只有 `--record-seen` 才更新本地去重状态。NEW 线索仍需 `read --quality-report` 或 `research/archive ingest-research` 补证。
 - 品牌、公关、市场、舆情团队要日报/晨报/每日简报时，优先用 `guanlan daily "主题" --time-window 3d --format markdown --read-top 3`。日报主线来自 `storylines`，会区分 A 一手/官方、B 媒体/产业/开发者、C 社区/用户样本、D 弱线索/SEO；不要把官网信息写成全网情况，不要把社区样本外推成总体口碑。`editorial_health.status=block` 时只能当线索池。交付到 IM 用 `--format im`，静态页用 `--format html`，连续日报显式加 `--record-history --compare-days N`。
 - 公众号文章链接先跑普通 `guanlan read "https://mp.weixin.qq.com/s/..." --trace`。`selected_backend=wechat_article` 说明已成功走公开文章专项正文提取；不要再要求用户授权浏览器或 Cookie。这个路径只读公开文章 HTML，不读取 Cookie、credentials、IndexedDB 或公众号后台。只有专项提取、Jina 和 direct HTML 都弱/被挡时，才转 `diagnose page` 或浏览器可见页补证。用户已经自配公众号导出服务时，才使用 `guanlan wechat-exporter status --probe` / `account-search` / `articles` / `download`；auth key 只能从当前 shell 环境读取，不写入提示词、日志或文档。
-- 金山办公/WPS/WPS AI/WPS 365/AI Office/PPT/办公 Agent/文档协作/SaaS/信创/办公安全等选题任务用 `research --preset wps_office` 或 `search --scope wps_office --trace`；它不是品牌白名单搜索，应主动外扩到竞品、科技/AI 媒体、RSS/公众号/热榜、开发者/用户样本和安全/信创线索。
+- 金山办公/WPS/WPS AI/WPS 365/AI Office/PPT/办公 Agent/文档协作/SaaS/信创/办公安全等选题任务先用 `search --scope wps_office --trace`，再补 `feeds curated --category ai`；深查时才用受控 `research --preset wps_office --read-top 0-2 --max-search-jobs 2`。它不是品牌白名单搜索，应主动外扩到竞品、科技/AI 媒体、RSS/公众号/热榜、开发者/用户样本和安全/信创线索。
 - 文娱/影视/综艺/明星/游戏/票房/评分/口碑类问题优先用 `route` 或 `research --preset entertainment`；把平台热度、用户评分、产业报道、宣发通稿和粉圈讨论分层看。
 - 欧美娱乐、Hollywood、Taylor Swift、Billboard、Grammy、巡演、新歌专辑等问题优先用 `research --preset global_entertainment --profile english`；英文行业媒体、榜单/奖项和艺人/厂牌一手信息优先于粉丝账号和八卦站。
 - 日韩娱乐、K-pop/J-pop、韩剧日剧、Soompi、Oricon、Naver 等问题优先用 `research --preset jp_kr_entertainment --profile hybrid`；区分本地媒体/榜单、经纪公司口径、英文翻译站和粉丝讨论。
-- 财经、股票、行情、ETF/基金净值、公告、财报、基金公告、监管、宏观金融、雪球/股吧情绪和研报问题先跑 `guanlan stock plan "问题"`（如果不确定该怎么查），再用 `guanlan stock ...` / `guanlan-stock ...` 获取结构化行情、净值、榜单、资金流向和大盘概览，再用 `research --preset finance` 或 `search --scope finance_quote|finance_disclosure|finance_macro|finance_sentiment|finance_research` 扩展证据；把行情/净值、公告披露、监管/宏观、新闻、研报观点和投资者情绪分层看，不输出买卖建议。
+- 财经、股票、行情、ETF/基金净值、公告、财报、基金公告、监管、宏观金融、雪球/股吧情绪和研报问题先跑 `guanlan stock plan "问题"`（如果不确定该怎么查），再用 `guanlan stock ...` / `guanlan-stock ...` 获取结构化行情、净值、榜单、资金流向和大盘概览，再用 `search --scope finance_quote|finance_disclosure|finance_macro|finance_sentiment|finance_research` 扩展证据；只有深查/证据包时才用受控 `research --preset finance --read-top 0-2 --max-search-jobs 2`。把行情/净值、公告披露、监管/宏观、新闻、研报观点和投资者情绪分层看，不输出买卖建议。
 - CVE/漏洞/补丁/反诈/诈骗短信用 `research --preset cybersecurity` 或 `search --scope cybersecurity --trace`；优先 CVE/NVD/CISA/厂商公告/监管来源。
 - 台风/天气/地震/灾害预警用 `search --scope weather_disaster --trace`；优先官方气象和应急来源，并检查时间戳。
 - 体育、科学新闻、招聘薪资面经、播客、考试备考分别用 `sports`、`science`、`career`、`podcast`、`test_prep` preset/scope，不要停在泛搜索。
@@ -112,8 +113,8 @@ metadata:
 | 文娱/影视/综艺/游戏/明星/票房口碑 | entertainment | `guanlan research "关键词" --preset entertainment` |
 | 欧美娱乐/音乐产业/明星动态 | global_entertainment | `guanlan research "关键词" --preset global_entertainment --profile english` |
 | 日韩娱乐/K-pop/J-pop/韩剧日剧 | jp_kr_entertainment | `guanlan research "关键词" --preset jp_kr_entertainment --profile hybrid` |
-| 财经/股票/行情/财报公告/宏观金融 | finance | `guanlan research "关键词" --preset finance --advisor` |
-| 金山办公/WPS/WPS AI/WPS365/办公AI/PPT/Agent/信创办公 | wps_office | `guanlan research "关键词" --preset wps_office --advisor` |
+| 财经/股票/行情/财报公告/宏观金融 | finance | `guanlan search "关键词" --scope finance_disclosure --limit 80 --trace` |
+| 金山办公/WPS/WPS AI/WPS365/办公AI/PPT/Agent/信创办公 | wps_office | `guanlan search "关键词" --scope wps_office --limit 80 --trace` |
 | 行情/指数/股价/ETF | finance_quote | `guanlan search "关键词" --scope finance_quote --trace` |
 | 公告/财报/监管/问询函 | finance_disclosure | `guanlan search "关键词" --scope finance_disclosure --trace` |
 | 宏观/央行/统计局/利率 | finance_macro | `guanlan search "关键词" --scope finance_macro --trace` |
@@ -154,7 +155,7 @@ guanlan search "BLACKPINK K-pop comeback" --profile hybrid --scope jp_kr_enterta
 guanlan search "OpenSSL CVE 最新 漏洞 影响版本" --scope cybersecurity --limit 80 --trace
 guanlan search "台风 路径 中央气象台 日本气象厅" --scope weather_disaster --limit 80 --trace
 guanlan search "梅西 比赛 伤病 最新" --scope sports --limit 80
-guanlan research "NBA季后赛2026年首轮战绩比分" --preset sports --read-top 5
+guanlan research "NBA季后赛2026年首轮战绩比分" --preset sports --read-top 2 --max-search-jobs 2
 guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80
 guanlan install --env=auto --channels=zsxq
 zsxq-cli auth login
@@ -191,17 +192,17 @@ guanlan sources explain "query"
 guanlan eval suite run chinese-web-v1
 guanlan sources audit
 guanlan quality performance
-guanlan research "query" --profile china --advisor
+guanlan research "query" --profile china --read-top 0 --max-search-jobs 2 --advisor
 guanlan research "query" --profile china --format prompt
 guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
 guanlan research "清华大学计算机系研究生招生 导师" --preset university --read-top 0
 guanlan research "电影/综艺/游戏/明星 票房口碑" --preset entertainment --read-top 0
-guanlan research "WPS AI PPT Agent 办公选题 最近热点" --preset wps_office --read-top 5 --advisor
-guanlan research "宁德时代 股价 财报 公告 最近风险" --preset finance --read-top 5 --advisor
+guanlan search "WPS AI PPT Agent 办公选题 最近热点" --scope wps_office --limit 80 --trace
+guanlan search "宁德时代 股价 财报 公告 最近风险" --scope finance_disclosure --limit 80 --trace
 guanlan research "Taylor Swift 最新动态 新专辑 巡演" --preset global_entertainment --profile english
 guanlan research "BLACKPINK K-pop 最新回归" --preset jp_kr_entertainment --profile hybrid
-guanlan research "OpenSSL CVE 最新 漏洞 影响版本" --preset cybersecurity --read-top 5
-guanlan research "字节 AI 产品经理 校招 薪资 面经" --preset career --read-top 5
+guanlan search "OpenSSL CVE 最新 漏洞 影响版本" --scope cybersecurity --limit 80 --trace
+guanlan research "字节 AI 产品经理 校招 薪资 面经" --preset career --read-top 2 --max-search-jobs 2
 guanlan research "雅思 口语 题库 机经" --preset test_prep --read-top 4
 guanlan prompt "query" --profile china --style evidence
 guanlan context "query" --profile china --style evidence

@@ -19,6 +19,7 @@ from guanlan.limits import (
     DEFAULT_PULSE_LIMIT,
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
+    MAX_AGENT_RESEARCH_READ_TOP,
 )
 from guanlan.query_semantics import analyze_query_semantics, semantic_query_variants
 from guanlan.source_seeds import direct_source_read_commands
@@ -2071,6 +2072,7 @@ def _recommended_commands(
     elif "global_policy" in intents:
         commands.append(f"guanlan research {quoted} --preset global_policy{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "policy" in intents:
+        commands.append(f"guanlan search {quoted}{profile_part} --scope gov --limit {search_limit} --trace")
         commands.append(f"guanlan research {quoted} --preset policy{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "official_position" in intents:
         commands.append(f"guanlan research {quoted} --preset official{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
@@ -2119,6 +2121,7 @@ def _recommended_commands(
         if profile != "english":
             commands.append(f"guanlan hotnews weibo --limit {hotnews_limit}")
             commands.append(f"guanlan hotnews bilibili --limit {hotnews_limit}")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope entertainment --limit {search_limit} --trace")
         commands.append(f"guanlan research {quoted} --preset entertainment{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 3)}")
         commands.append(f"guanlan pulse {quoted}{profile_part} --limit {pulse_limit} --format context")
     elif "reputation" in intents or "purchase_advice" in intents:
@@ -2199,7 +2202,58 @@ def _recommended_commands(
         commands.extend(_ebrun_route_commands(query, intents=intents))
         commands.extend(_hotboard_route_commands(query, intents=intents, domains=domains))
 
-    return _unique(commands)[:10]
+    guarded = _guard_research_commands_for_agents(commands)
+    return _prioritize_agent_route_commands(_unique(guarded))[:10]
+
+
+def _guard_research_commands_for_agents(commands: list[str]) -> list[str]:
+    return [_guard_research_command(command) for command in commands]
+
+
+def _prioritize_agent_route_commands(commands: list[str]) -> list[str]:
+    """Keep heavy research suggestions visible but behind lighter evidence-gathering steps."""
+
+    def priority(command: str) -> tuple[int, int]:
+        kind = command.split(maxsplit=2)[1] if command.startswith("guanlan ") and len(command.split()) > 1 else ""
+        if kind == "stock":
+            return (0, 0)
+        if kind == "read":
+            return (1, 0)
+        if kind == "search":
+            return (2, 0)
+        if kind in {"feeds", "pulse"}:
+            return (3, 0)
+        if kind == "hotnews" and any(marker in command for marker in (" hotboard:", " ebrun:")):
+            return (5, 0)
+        if kind == "hotnews":
+            return (4, 0)
+        if kind in {"compare", "timeline", "dossier"}:
+            return (6, 0)
+        if kind == "research":
+            return (8, 0)
+        return (5, 0)
+
+    return [command for _index, command in sorted(enumerate(commands), key=lambda item: (*priority(item[1]), item[0]))]
+
+
+def _guard_research_command(command: str) -> str:
+    if not command.startswith("guanlan research "):
+        return command
+    max_top = MAX_AGENT_RESEARCH_READ_TOP
+
+    def replace_read_top(match: re.Match[str]) -> str:
+        try:
+            value = int(match.group(1))
+        except ValueError:
+            value = 0
+        return f"--read-top {min(max(value, 0), max_top)}"
+
+    guarded = re.sub(r"--read-top\s+(\d+)", replace_read_top, command)
+    if "--read-top " not in guarded:
+        guarded = f"{guarded} --read-top 0"
+    if "--max-search-jobs" not in guarded:
+        guarded = f"{guarded} --max-search-jobs 2"
+    return guarded
 
 
 def _ebrun_route_commands(query: str, *, intents: list[str]) -> list[str]:

@@ -88,21 +88,23 @@ guanlan read "https://..." --quality-report
 
 ### 3-step
 
-适用于：普通研究问题，或质量画像未过。
+适用于：普通研究问题，或质量画像未过。默认不要把 `research` 放在第一轮；先用 route 选源、scope 搜索扩池，再读代表 URL。
 
 顺序：
 
 1. `route`
-2. `research`
-3. `search --scope ...`
+2. `search --scope ...`
+3. `read`
 
 例子：
 
 ```bash
 guanlan route "华为手机"
-guanlan research "华为手机" --preset general --advisor
 guanlan search "华为手机" --scope social_web --limit 80 --trace
+guanlan read "https://..." --quality-report
 ```
+
+`research` 现在按重型/受控工具使用：只有用户明确要可复用证据包、深度综合、或 `search + read` 后仍缺信源角色覆盖时再调用；MCP/Agent 自动挡默认应把 `read_top` 控在 0-2，并优先用单独的 `guanlan read` 补代表 URL。
 
 ### 页面诊断
 
@@ -205,20 +207,20 @@ guanlan daily "WPS AI" --record-history --compare-days 7
 热点/时效：
 
 1. `route`
-2. `research`
+2. `hotnews`
 3. `search --scope ...`
-4. `hotnews`
+4. `read`
 
 电商/零售/跨境/品牌/产业互联网类任务如果命中亿邦动力垂类语境，可在第 4 步补一个小窗口频道入口，例如 `guanlan hotnews ebrun:cross-border --limit 10`、`guanlan hotnews ebrun:retail --limit 10`、`guanlan hotnews ebrun:brand-globalization --limit 10`。它用于发现最新垂类线索，不能替代 `search/research --scope ecommerce --limit 80`。
 
 技术/AI/WPS/AI Office：
 
 1. `route`
-2. `research`
-3. `search --scope ...`
-4. `feeds`
+2. `search --scope ...`
+3. `feeds`
+4. `read`
 
-`research --preset tech` 和 `research --preset wps_office` 会自动补 RSS/精品内容流；当 query 命中 AI/WPS/Agent/大模型语义时，还会内部纳入 AI 垂类精选动态源作为近 7 天线索层。这个源不要求用户记新命令，也不替代官方文档、代码仓库、原始公告或产品页面；关键事实要回读原始 URL。
+技术和 WPS/AI Office 题必须补 RSS/精品内容流。优先显式跑 `guanlan feeds curated --category ai --limit 80` 或 `guanlan feeds curated --limit 80`；`research --preset tech|wps_office` 只在深查/证据包模式下使用，不能替代官方文档、代码仓库、原始公告或产品页面；关键事实要回读原始 URL。
 
 学术发现：
 
@@ -353,7 +355,7 @@ guanlan quality live-smoke --record-history --trend-window 10
 - 页面读不出来时，先 `diagnose page`，再按诊断建议切结构化源、scope 搜索、metadata 读取或 archive 流程；不要把搜索兜底内容当原文正文。
 - 公众号链接先看 `read --trace` 是否走到 `wechat_article`；如果已经拿到正文，不要再要求用户授权浏览器或 Cookie。用户自配 exporter 后，再用 `wechat-exporter` 查历史文章或下载结果。
 - 高频垂直任务先 `recipe run`，把流程讲清楚，再执行对应命令；不要让 Agent 临场发明一套不稳定搜索路径。
-- 技术题优先 `research --preset tech` 或 `search + feeds`；WPS/AI Office 选题优先 `research --preset wps_office` 或 `recipe run wps-office-radar`，不要只看品牌稿或社区搜索结果。
+- 技术题优先 `search --scope tech_dev + feeds + read`；WPS/AI Office 选题优先 `search --scope wps_office + feeds` 或 `recipe run wps-office-radar`，深查时再用受控 `research --read-top 0-2 --max-search-jobs 2`，不要只看品牌稿或社区搜索结果。
 - `source_type` 只作辅助，不要把它当唯一真相；结合 domain、authority_score、evidence_role 一起判断。
 - `compare` 若提示 `source_diversity_guard=warn`，先补公司一手、垂直媒体或社区样本，不要拿单站结果做横向结论。
 - `timeline` 若提示 `timeline_quality=warn`，说明主时间窗证据不足；窗口外事件只能当背景。

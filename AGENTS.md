@@ -141,14 +141,15 @@ not full answers.
 Agent workflow ladder rule: do not reduce Guanlan to one generic `search` call. Use a dynamic
 minimum workflow:
 - 2-step: `search -> read` when the result set is already clearly usable and you only need to verify a representative original page.
-- 3-step: `route -> research -> scoped search` for normal research tasks or whenever quality signals are not yet good enough.
-- 4-step: upgrade to `route -> research -> scoped search -> hotnews` for recent/hot tasks, `route -> research -> scoped search -> feeds` for tech/AI/developer tasks, and `route -> research -> scoped search -> dossier|compare|timeline` when source diversity is too narrow.
+- 3-step: `route -> scoped search -> read` for normal research tasks or whenever quality signals are not yet good enough.
+- 4-step: upgrade to `route -> hotnews -> scoped search -> read` for recent/hot tasks, `route -> scoped search -> feeds -> read` for tech/AI/developer tasks, and `route -> scoped search -> read -> dossier|compare|timeline|guarded research` when source diversity is too narrow.
+Treat `research` as a guarded heavy evidence-packet tool in Agent/MCP auto flows: use it only when the user explicitly asks for deep synthesis/reusable evidence, or after `search + read` still lacks source-role coverage. Keep Agent/MCP `read_top` at 0-2 and use `guanlan read` for selected URLs instead of raising `read_top`.
 Do not fall back to generic `web_search` / `web_fetch` until the current Guanlan workflow tier has been completed and still lacks key evidence.
 
 Benchmark rule: do not call a benchmark fair if it tests Guanlan with a workflow Guanlan is not
 meant to use. Real-time or “today/just now/latest” queries must include `hotnews`; tech/AI queries
-must include `feeds` or `research --preset tech`; policy/official tasks should usually be measured
-with `research` or `search + read`, not with a single generic search pass. Do not report
+must include `feeds`; policy/official tasks should usually be measured
+with scoped `search + read`, not with a single generic search pass. Use `research` only for guarded deep evidence-packet scenarios. Do not report
 `quality_summary=warn` as “Guanlan search failed”; that usually means “the evidence packet is not
 complete enough yet.”
 
@@ -211,7 +212,7 @@ guanlan search "K-pop 最新回归" --profile hybrid --scope jp_kr_entertainment
 guanlan search "OpenSSL CVE 最新 漏洞 影响版本" --scope cybersecurity --limit 80 --trace
 guanlan search "台风 路径 中央气象台 日本气象厅" --scope weather_disaster --limit 80 --trace
 guanlan search "梅西 比赛 伤病 最新" --scope sports --limit 80
-guanlan research "NBA季后赛2026年首轮战绩比分" --preset sports --read-top 5
+guanlan research "NBA季后赛2026年首轮战绩比分" --preset sports --read-top 2 --max-search-jobs 2
 guanlan search "詹姆斯韦伯 外星生命 NASA" --scope science --profile english --limit 80
 guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80
 guanlan search --list-scopes
@@ -257,15 +258,15 @@ guanlan read "https://example.com/article" --quality-report
 guanlan read "https://example.com/article" --strict --trace
 guanlan feeds arxiv --keyword "AI Agent" --limit 80
 guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80
-guanlan research "query" --profile china --advisor
+guanlan research "query" --profile china --read-top 0 --max-search-jobs 2 --advisor
 guanlan research "EI会议 投稿 检索 要求" --preset academic --read-top 0
 guanlan research "清华大学计算机系研究生招生 导师" --preset university --read-top 0
 guanlan research "影视 综艺 游戏 明星 票房口碑" --preset entertainment --read-top 0
-guanlan research "宁德时代 股价 财报 公告 最近风险" --preset finance --read-top 5 --advisor
+guanlan search "宁德时代 股价 财报 公告 最近风险" --scope finance_disclosure --limit 80 --trace
 guanlan research "Taylor Swift 最新动态 新专辑 巡演" --preset global_entertainment --profile english
 guanlan research "BLACKPINK K-pop 最新回归" --preset jp_kr_entertainment --profile hybrid
-guanlan research "OpenSSL CVE 最新 漏洞 影响版本" --preset cybersecurity --read-top 5
-guanlan research "字节 AI 产品经理 校招 薪资 面经" --preset career --read-top 5
+guanlan search "OpenSSL CVE 最新 漏洞 影响版本" --scope cybersecurity --limit 80 --trace
+guanlan research "字节 AI 产品经理 校招 薪资 面经" --preset career --read-top 2 --max-search-jobs 2
 guanlan research "雅思 口语 题库 机经" --preset test_prep --read-top 4
 guanlan research "产品 用户评价" --preset reputation --read-top 0 --advisor
 guanlan compare "A" "B" --focus "价格 口碑 风险" --limit 80 --format context
@@ -327,14 +328,14 @@ Safety rules:
 - Use `guanlan research ... --preset entertainment --read-top 0` for film, drama, variety show, music, celebrity, game, box-office, rating, and fandom/public-discussion questions; separate platform metrics, user ratings, industry reports, promotion copy, and fandom samples.
 - Use `guanlan research ... --preset global_entertainment --profile english` for Western entertainment, Hollywood, pop stars, tours, albums, Billboard/Grammy/award questions; prioritize English trade media, charts/awards, and official artist/label statements over fan or tabloid claims.
 - Use `guanlan research ... --preset jp_kr_entertainment --profile hybrid` for Japanese/Korean entertainment, K-pop/J-pop, K-drama/J-drama, Oricon/Soompi/Naver questions; separate local media/charts, agency statements, translation sites, and fandom samples.
-- Use `guanlan stock ...` or `guanlan-stock ...` for structured stock quotes, ETF/fund NAV, market overview, rankings, fund flow, plates, and stock news before trying to read dynamic finance pages. If the Agent does not know how to handle a stock/fund task, run `guanlan stock plan "query"` first. Trigger it for 股票、股价、ETF、基金、净值、联接基金、行情、指数、大盘、资金流向、财报、公告、雪球、股吧、研报、风险 and similar terms. Use `guanlan research ... --preset finance`, `search --scope finance_disclosure`, `search --scope finance_quote`, `search --scope finance_macro`, `search --scope finance_sentiment`, or `search --scope finance_research` for broader evidence. Separate quote/NAV data, company or fund disclosures, regulation, news, research opinions, and sentiment samples. Do not output buy/sell/hold advice.
+- Use `guanlan stock ...` or `guanlan-stock ...` for structured stock quotes, ETF/fund NAV, market overview, rankings, fund flow, plates, and stock news before trying to read dynamic finance pages. If the Agent does not know how to handle a stock/fund task, run `guanlan stock plan "query"` first. Trigger it for 股票、股价、ETF、基金、净值、联接基金、行情、指数、大盘、资金流向、财报、公告、雪球、股吧、研报、风险 and similar terms. Use `search --scope finance_disclosure`, `search --scope finance_quote`, `search --scope finance_macro`, `search --scope finance_sentiment`, or `search --scope finance_research` for broader evidence; reserve `guanlan research ... --preset finance --read-top 0-2 --max-search-jobs 2` for explicit deep evidence-packet work. Separate quote/NAV data, company or fund disclosures, regulation, news, research opinions, and sentiment samples. Do not output buy/sell/hold advice.
 - Use `guanlan research ... --preset cybersecurity` or `search --scope cybersecurity --trace` for CVE, vulnerabilities, patches, vendor advisories, phishing, fraud, and suspicious messages; prioritize CVE/NVD/CISA/vendor/regulator sources.
 - Use `guanlan search ... --scope weather_disaster --trace` for typhoon, weather alert, earthquake, disaster, and official safety questions; prioritize official meteorological/emergency sources and check timestamps.
 - Use `guanlan research ... --preset sports`, `--preset science`, `--preset career`, `--preset podcast`, or `--preset test_prep` for sports, science-news verification, job/salary/interview, podcast discovery, and exam-prep questions instead of leaving them as generic web search.
 - Use `guanlan hotnews hotboard:catalog:*` as the local full hotboard directory when a task needs platform-level hotboard routing; this uses the packaged hotboard catalog and does not require a key. Use `guanlan hotnews hotboard:snapshots:<node>` for free snapshot IDs when a key and active balance are configured. Use `guanlan hotnews hotboard:<node>` only as explicit opt-in detail fetching; it is cache-backed and metered, so keep `paid_api` / `cost_u` metadata visible to downstream agents.
 - Use `guanlan hotnews ebrun:<channel>` when an ecommerce/retail/cross-border/brand/industrial-internet/AI-commerce task needs a fresh Ebrun vertical channel signal. Useful aliases include `cross-border`, `retail`, `temu`, `amazon`, `tiktok-shop`, `brand-globalization`, `industrial`, and `ai`. Treat it as a small latest-items discovery window, then run `search/research --scope ecommerce --limit 80` or read representative URLs before making claims.
 - Use `guanlan hotnews tophub:*`, `guanlan hotnews uapis:*`, `guanlan hotnews vvhan:*`, or `guanlan hotnews hotboard:*` only as optional external hotboard expansion. Keep the `external_backend`, cache/staleness, and cost metadata in mind; do not treat third-party aggregate lists as authoritative facts.
-- For technology/AI/developer routing, always include one RSS discovery pass. `guanlan research ... --preset tech` does this automatically; when a query matches AI/WPS/Agent/large-model semantics, research also internally includes an AI vertical selected-dynamics source as a discovery layer. This is not a new user command and does not replace original URLs, official docs, code repositories, announcements, or product pages. If you only run `route` or `search`, also run `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80` as a second pass.
+- For technology/AI/developer routing, always include one RSS discovery pass. Prefer `guanlan search ... --scope tech_dev --limit 80 --trace` plus `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80`; use `guanlan research ... --preset tech --read-top 0-2 --max-search-jobs 2` only for explicit deep evidence-packet work. Feed discovery does not replace original URLs, official docs, code repositories, announcements, or product pages.
 - Use `guanlan read ... --quality-report` when deciding whether a page body is clean enough for downstream reasoning; use `--strict` when noisy page chrome would be harmful; use `--extract metadata` or `--extract links` for source/date/link checks.
 - `guanlan read` has a native WeChat article extractor for `mp.weixin.qq.com` article URLs. For public WeChat article links, try normal `read` first; it should expose `selected_backend=wechat_article` in trace when the article body is directly readable. This path extracts public article HTML only and must not read Cookie, Token, credentials, IndexedDB, localStorage, browser profile, or公众号后台 pages. Only move to `diagnose page` or user-authorized browser-visible evidence when the WeChat extractor, Jina, and direct HTML path still return weak/blocked content.
 - Use `guanlan wechat-exporter ...` only when the user has explicitly configured a WeChat article exporter service. It reads `GUANLAN_WECHAT_EXPORTER_BASE_URL` and optional `GUANLAN_WECHAT_EXPORTER_AUTH_KEY` from the current environment; never ask the user to paste the auth key into prompts, logs, README, docs, commits, or release notes. Treat account search, article history, reading metrics, comments, and batch download as `wechat_exporter_authorized_account_api` or `wechat_exporter_download` evidence with session/auth-key expiry boundaries. Do not use wxdown-service, mitmproxy, credentials, Cookie, or browser storage unless the user separately authorizes the target platform, purpose, risk, and read-only scope.

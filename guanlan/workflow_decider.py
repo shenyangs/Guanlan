@@ -13,7 +13,7 @@ import shlex
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from guanlan.limits import DEFAULT_RESEARCH_LIMIT, DEFAULT_SEARCH_LIMIT
+from guanlan.limits import DEFAULT_RESEARCH_LIMIT, DEFAULT_SEARCH_LIMIT, MAX_AGENT_RESEARCH_READ_TOP
 from guanlan.query_semantics import semantic_query_variants
 from guanlan.router import RoutePlan, build_route_plan
 
@@ -222,10 +222,10 @@ def decide_workflow(
             intents,
             risk_level,
             "compare",
-            ["route", "research", "compare"],
+            ["route", "scoped search per subject", "compare"],
             3,
             max(requested_limit, DEFAULT_RESEARCH_LIMIT),
-            max(requested_read_top, 0),
+            0,
             240,
             route_data,
             warnings=list(route_data.get("warnings") or []),
@@ -238,7 +238,7 @@ def decide_workflow(
             intents,
             risk_level,
             "timeline",
-            ["route", "research", "timeline"],
+            ["route", "scoped search", "timeline"],
             3,
             max(requested_limit, DEFAULT_RESEARCH_LIMIT),
             max(requested_read_top, 0),
@@ -254,7 +254,7 @@ def decide_workflow(
             intents,
             risk_level,
             "dossier",
-            ["route", "research", "dossier"],
+            ["route", "scoped search", "dossier"],
             3,
             max(requested_limit, DEFAULT_RESEARCH_LIMIT),
             max(requested_read_top, 2),
@@ -269,7 +269,7 @@ def decide_workflow(
         if {"tech", "wps_office"} & set(intents):
             path.append("feeds")
         if finance_task:
-            path = ["stock plan", "stock detail/quote", "research --preset finance", "scoped finance search"]
+            path = ["stock plan", "stock detail/quote", "scoped finance search", "guarded research if evidence packet is required"]
         return _decision(
             clean_query,
             INVESTIGATE,
@@ -327,31 +327,39 @@ def decide_workflow(
             intents,
             risk_level,
             "stock",
-            ["stock plan", "stock detail/quote", "research --preset finance", "scoped finance search"],
+            ["stock plan", "stock detail/quote", "scoped finance search", "guarded research if evidence packet is required"],
             3,
             max(requested_limit, DEFAULT_RESEARCH_LIMIT),
-            max(requested_read_top, 5),
+            requested_read_top,
             180,
             route_data,
             warnings=list(route_data.get("warnings") or []),
         )
     if high_impact or vertical or freshness or deep_signals:
-        path = ["route", "research", "scoped search"]
-        if freshness:
-            path.append("hotnews")
-        if {"tech", "wps_office"} & set(intents):
-            path.append("feeds")
+        if command == "research":
+            path = ["route", "guarded research", "scoped search"]
+            entrypoint = "research"
+            read_top_hint = min(max(requested_read_top, 0), MAX_AGENT_RESEARCH_READ_TOP)
+        else:
+            path = ["route"]
+            if freshness:
+                path.append("hotnews")
+            path.extend(["scoped search", "read"])
+            if {"tech", "wps_office"} & set(intents):
+                path.append("feeds")
+            entrypoint = "search"
+            read_top_hint = 0
         return _decision(
             clean_query,
             GUIDED,
-            "任务需要信源分层或时效判断；保持较大候选池，先取证再下结论。",
+            "任务需要信源分层或时效判断；先用 scoped search/read 取证，research 只作显式深查证据包。",
             intents,
             risk_level,
-            "research",
+            entrypoint,
             path,
             len(path),
             max(requested_limit, DEFAULT_RESEARCH_LIMIT),
-            max(requested_read_top, 5 if high_impact else requested_read_top),
+            read_top_hint,
             180 if not freshness else 240,
             route_data,
             warnings=list(route_data.get("warnings") or []),
@@ -471,8 +479,8 @@ def build_agent_plan(
         command_context = "investigate"
         explicit_deep = True
     elif mode == "fresh":
-        command_context = "research"
-        explicit_deep = True
+        command_context = "search"
+        explicit_deep = False
 
     decision = decide_workflow(
         clean_query,
@@ -659,17 +667,17 @@ def _workflow_contract(tier: str) -> list[str]:
         return [
             "保持基础命令轻量，不自动扩成长链路。",
             "结果池默认不低于 80，除非用户明确要求小样本。",
-            "如果 trace/quality 提示证据不足，再升级到 research。",
+            "如果 trace/quality 提示证据不足，先补 scoped search/read；只有 deep 模式或用户明确要证据包时再用 research。",
         ]
     if tier == GUIDED:
         return [
-            "先 route 或使用匹配 preset/scope，再 research/scoped search。",
+            "先 route 或使用匹配 preset/scope，再 scoped search/read；research 只作显式深查证据包。",
             "保留官方、媒体、社区、用户样本等证据角色差异。",
             "近期/热点任务必须检查时间窗，科技和 WPS/AI Office 任务必须补 RSS discovery。",
         ]
     return [
         "显式进入上层工作流，但不改变 search/read/hotnews 的轻路径默认行为。",
-        "以证据包为底座，再组织 compare/timeline/dossier，而不是直接写结论。",
+        "自动挡先用 search/read 建立证据底座；deep 模式再组织 compare/timeline/dossier。",
         "高影响领域必须保留边界、时间戳、来源身份和待核验问题。",
     ]
 
@@ -677,14 +685,14 @@ def _workflow_contract(tier: str) -> list[str]:
 def _fallback_policy(tier: str, intents: list[str]) -> list[str]:
     policy = [
         "不要因为一次后端超时就报告没有资料；这只是网络证据。",
-        "优先重试、使用缓存或降低 read_top，不要先缩小正常候选池。",
+        "优先重试、使用缓存、补 scoped search/read；不要先缩小正常候选池。",
     ]
     if tier != DIRECT:
         policy.append("观澜工作流仍缺关键原文时，可让宿主 Agent 用 WebFetch 定点补读，并外显说明这是补证策略。")
     if "tech" in intents:
-        policy.append("科技/AI/开发者任务要额外跑 feeds curated 或 research --preset tech 的 RSS 发现。")
+        policy.append("科技/AI/开发者任务要额外跑 feeds curated 和 scoped search；deep 模式再跑 research --preset tech。")
     if "wps_office" in intents:
-        policy.append("WPS/AI Office 选题任务要额外跑 feeds curated、research --preset wps_office 和 hotnews/pulse，避免只看品牌或单一垂类。")
+        policy.append("WPS/AI Office 选题任务要额外跑 feeds curated、scope wps_office search 和 hotnews/pulse；deep 模式再跑 research。")
     if "hot_trend" in intents:
         policy.append("热点任务要补 hotnews/pulse，看水势后再写判断。")
     return policy
@@ -749,10 +757,14 @@ def _select_primary_agent_command(
     if mode == "deep":
         return f"guanlan investigate {quote_query(query)} --limit {max(decision.recommended_limit, DEFAULT_RESEARCH_LIMIT)} --format context"
     if mode == "fresh":
-        research = _first_command(route_commands, "research")
-        if research:
-            return research
-        return _generated_research_command(query, decision, profile=profile)
+        if _needs_agent_freshness(decision, mode):
+            return "guanlan hotnews today --limit 80 --trends"
+        if _needs_agent_feeds(decision):
+            return "guanlan feeds curated --category ai --limit 80"
+        search = _first_command(route_commands, "search")
+        if search:
+            return search
+        return _generated_search_command(query, decision, profile=profile, scope=scope)
     if mode == "quick" and decision.tier != INVESTIGATE:
         search = _first_command(route_commands, "search")
         if search:
@@ -762,33 +774,32 @@ def _select_primary_agent_command(
     entrypoint = decision.recommended_entrypoint
     if entrypoint == "stock":
         if _is_macro_finance_query(query, decision):
-            return _generated_research_command(query, decision, profile=profile)
+            return _generated_search_command(query, decision, profile=profile, scope="finance_macro")
         if _is_generic_finance_product_query(query):
-            return _generated_research_command(query, decision, profile=profile)
+            return _generated_search_command(query, decision, profile=profile, scope="finance_research")
         stock = _first_command(route_commands, "stock")
         if stock:
             return stock
         return f"guanlan stock plan {quote_query(query)}"
     if entrypoint == "compare":
-        return f"guanlan investigate {quote_query(query)} --limit {max(decision.recommended_limit, DEFAULT_RESEARCH_LIMIT)} --format context"
+        return _generated_search_command(query, decision, profile=profile, scope=scope)
     if entrypoint == "timeline":
-        return f"guanlan timeline {quote_query(query)} --limit {max(decision.recommended_limit, DEFAULT_RESEARCH_LIMIT)} --format context"
+        return _generated_search_command(query, decision, profile=profile, scope=scope)
     if entrypoint == "dossier":
-        return f"guanlan dossier {quote_query(query)} --limit {max(decision.recommended_limit, DEFAULT_RESEARCH_LIMIT)} --format context"
+        return _generated_search_command(query, decision, profile=profile, scope=scope)
     if entrypoint == "investigate":
-        return f"guanlan investigate {quote_query(query)} --limit {max(decision.recommended_limit, DEFAULT_RESEARCH_LIMIT)} --format context"
+        return _generated_search_command(query, decision, profile=profile, scope=scope)
     if entrypoint == "research":
         if "podcast" in decision.route_intents:
             search = _first_command(route_commands, "search")
             if search:
                 return search
-        research = _first_command(route_commands, "research")
-        if research:
-            return research
-        return _generated_research_command(query, decision, profile=profile)
+        return _generated_search_command(query, decision, profile=profile, scope=scope)
+    if entrypoint in {"search", "hotnews"}:
+        return _generated_search_command(query, decision, profile=profile, scope=scope)
 
     if _is_ai_discovery_query(query, decision) and mode != "quick":
-        return _generated_tech_research_command(query, decision, profile=profile)
+        return _generated_search_command(query, decision, profile=profile, scope="tech_dev")
 
     search = _first_command(route_commands, "search")
     if search:
@@ -860,7 +871,12 @@ def _build_agent_commands(
                 required=False,
             )
         )
-    if _needs_agent_feeds(decision) and not _has_kind(commands, "research") and len(commands) < max_commands:
+    if (
+        _agent_allows_research_command(decision, mode)
+        and _needs_agent_feeds(decision)
+        and not _has_kind(commands, "research")
+        and len(commands) < max_commands
+    ):
         commands.append(
             _agent_command(
                 "evidence_packet",
@@ -871,7 +887,12 @@ def _build_agent_commands(
                 required=False,
             )
         )
-    if _needs_finance_research(decision) and not _has_kind(commands, "research") and len(commands) < max_commands:
+    if (
+        _agent_allows_research_command(decision, mode)
+        and _needs_finance_research(decision)
+        and not _has_kind(commands, "research")
+        and len(commands) < max_commands
+    ):
         commands.append(
             _agent_command(
                 "evidence_packet",
@@ -918,6 +939,8 @@ def _build_agent_commands(
         if kind == "hotnews" and not _needs_agent_freshness(decision, mode):
             continue
         if kind == "feeds" and not (_needs_agent_feeds(decision) or "podcast" in decision.route_intents):
+            continue
+        if kind == "research" and not _agent_allows_research_command(decision, mode):
             continue
         if kind in {"search", "research"} and _has_kind(commands, kind):
             continue
@@ -990,7 +1013,7 @@ def _agent_quality_tripwires(query: str, decision: WorkflowDecision, *, primary:
         tripwires.append(
             {
                 "signal": "科技/AI/WPS 结果只有通用网页或 SEO 文章，缺 RSS/垂类/官方/社区角色",
-                "repair": "补 curated feeds 或对应 preset research；不要把搜索排名当行业事实。",
+                "repair": "先补 scoped search 和 curated feeds；只有 deep 模式或用户明确要证据包时才升级 research。",
             }
         )
     return tripwires
@@ -1007,6 +1030,11 @@ def _agent_auto_repair_policy(query: str, decision: WorkflowDecision, *, primary
     if decision.risk_level == "high":
         policy.append("高影响任务补救后仍必须保留时间戳、来源身份和非专业建议边界。")
     return policy
+
+
+def _agent_allows_research_command(decision: WorkflowDecision, mode: str) -> bool:
+    """Keep research out of ordinary Agent auto plans unless the user opts into deep mode."""
+    return mode == "deep"
 
 
 def _build_silent_repair_commands(
@@ -1057,12 +1085,12 @@ def _build_silent_repair_commands(
             scoped_fallback,
             "主命令结果为空、preferred_hit_count 为 0 或来源角色过窄时，补一轮语义 scope 搜索。",
         )
-    if _command_kind(primary) != "research" and not _has_kind(existing_commands, "research") and decision.tier != DIRECT:
+    if _command_kind(primary) == "search" and "--scope " in primary:
         add(
-            _generated_research_command(query, decision, profile=profile),
-            "轻路径证据不足时升级成 research 证据包，分清官方、媒体、社区和风险样本。",
+            _generated_open_search_command(query, decision, profile=profile),
+            "scope 结果为空、偏窄或 preferred_hit_count 为 0 时，补一轮开放搜索保底。",
         )
-    if _command_kind(primary) != "search":
+    elif _command_kind(primary) != "search":
         add(
             _generated_open_search_command(query, decision, profile=profile),
             "preset/scope 明显跑偏或过窄时，补一轮开放搜索保底，但仍保留来源角色差异。",
@@ -1177,6 +1205,8 @@ def _agent_scoped_search_fallback(query: str, decision: WorkflowDecision, *, pro
         scope = "finance_quote"
     elif "finance_disclosure" in intents:
         scope = "finance_disclosure"
+    elif "policy" in intents or "official_position" in intents:
+        scope = "gov"
     elif "company_primary" in intents:
         scope = "company_primary"
     elif "global_industry" in intents:
@@ -1196,10 +1226,11 @@ def _generated_research_command(query: str, decision: WorkflowDecision, *, profi
     preset = _preset_from_intents(decision.route_intents)
     preset_part = f" --preset {preset}" if preset else ""
     advisor = " --advisor" if decision.risk_level != "low" or {"wps_office", "reputation", "purchase_advice"} & set(decision.route_intents) else ""
+    read_top = _agent_research_read_top(decision)
     return (
         f"guanlan research {quote_query(effective_query)}{preset_part}{profile_part} "
         f"--limit {max(decision.recommended_limit, DEFAULT_RESEARCH_LIMIT)} "
-        f"--read-top {max(decision.recommended_read_top, 3)}{advisor}"
+        f"--read-top {read_top} --max-search-jobs 2{advisor}"
     )
 
 
@@ -1210,17 +1241,22 @@ def _generated_tech_research_command(query: str, decision: WorkflowDecision, *, 
     return (
         f"guanlan research {quote_query(effective_query)} --preset tech{profile_part} "
         f"--limit {max(decision.recommended_limit, DEFAULT_RESEARCH_LIMIT)} "
-        f"--read-top {max(decision.recommended_read_top, 5)}{advisor}"
+        f"--read-top {_agent_research_read_top(decision)} --max-search-jobs 2{advisor}"
     )
+
+
+def _agent_research_read_top(decision: WorkflowDecision) -> int:
+    if decision.tier == INVESTIGATE or decision.risk_level == "high":
+        return min(max(decision.recommended_read_top, 1), MAX_AGENT_RESEARCH_READ_TOP)
+    return 0
 
 
 def _generated_search_command(query: str, decision: WorkflowDecision, *, profile: str | None, scope: str | None) -> str:
     effective_query = _agent_query_for_commands(query)
-    profile_part = f" --profile {profile}" if profile in {"china", "english", "hybrid"} else ""
-    scope_part = f" --scope {scope}" if scope else ""
-    if not scope_part:
-        scope_hint = _scope_from_intents(decision.route_intents)
-        scope_part = f" --scope {scope_hint}" if scope_hint else ""
+    scope_hint = scope or _scope_from_intents(decision.route_intents)
+    effective_profile = _profile_for_scope(profile, scope_hint)
+    profile_part = f" --profile {effective_profile}" if effective_profile in {"china", "english", "hybrid"} else ""
+    scope_part = f" --scope {scope_hint}" if scope_hint else ""
     return f"guanlan search {quote_query(effective_query)}{profile_part}{scope_part} --limit {max(decision.recommended_limit, DEFAULT_SEARCH_LIMIT)} --trace"
 
 
@@ -1228,6 +1264,14 @@ def _generated_open_search_command(query: str, decision: WorkflowDecision, *, pr
     effective_query = _agent_query_for_commands(query)
     profile_part = f" --profile {profile}" if profile in {"china", "english", "hybrid"} else ""
     return f"guanlan search {quote_query(effective_query)}{profile_part} --limit {max(decision.recommended_limit, DEFAULT_SEARCH_LIMIT)} --trace"
+
+
+def _profile_for_scope(profile: str | None, scope: str | None) -> str | None:
+    if scope == "global_entertainment":
+        return "english"
+    if scope == "jp_kr_entertainment":
+        return "hybrid"
+    return profile
 
 
 def _first_command(commands: list[str], kind: str) -> str:
@@ -1297,7 +1341,7 @@ def _primary_reason(decision: WorkflowDecision, mode: str) -> str:
     if mode == "deep":
         return "深查模式直接生成可复用证据包，适合高影响、对比、档案或复杂研究。"
     if mode == "fresh":
-        return "新鲜度模式先跑研究/主证据，再强制补热点或 RSS。"
+        return "新鲜度模式优先跑 hotnews/feeds/search，先拿近期线索，再决定是否需要深查。"
     if decision.do_not_overthink:
         return "这是低歧义任务；直接执行主命令，不要先浏览完整能力列表。"
     return decision.reason or "按本地路由和轻重分流选择的主证据入口。"
@@ -1619,8 +1663,14 @@ def _preset_from_intents(intents: list[str]) -> str:
 def _scope_from_intents(intents: list[str]) -> str:
     mapping = {
         "wps_office": "wps_office",
+        "tech": "tech_dev",
+        "policy": "gov",
+        "official_position": "gov",
+        "global_policy": "global_official",
+        "academic": "academic",
         "weather_disaster": "weather_disaster",
         "cybersecurity": "cybersecurity",
+        "company_primary": "company_primary",
         "finance_quote": "finance_quote",
         "finance_disclosure": "finance_disclosure",
         "finance_macro": "finance_macro",
@@ -1632,9 +1682,47 @@ def _scope_from_intents(intents: list[str]) -> str:
         "podcast": "podcast",
         "test_prep": "test_prep",
         "university_admissions": "university",
+        "entertainment": "entertainment",
         "global_entertainment": "global_entertainment",
         "jp_kr_entertainment": "jp_kr_entertainment",
+        "reputation": "social_web",
+        "purchase_advice": "social_web",
+        "industry": "industry_analysis",
+        "global_industry": "industry_analysis",
     }
+    priority = [
+        "wps_office",
+        "company_primary",
+        "podcast",
+        "tech",
+        "policy",
+        "official_position",
+        "global_policy",
+        "academic",
+        "weather_disaster",
+        "cybersecurity",
+        "finance_quote",
+        "finance_disclosure",
+        "finance_macro",
+        "finance_sentiment",
+        "finance_research",
+        "sports",
+        "science",
+        "career",
+        "test_prep",
+        "university_admissions",
+        "global_entertainment",
+        "jp_kr_entertainment",
+        "entertainment",
+        "industry",
+        "global_industry",
+        "reputation",
+        "purchase_advice",
+    ]
+    intent_set = set(intents)
+    for intent in priority:
+        if intent in intent_set and intent in mapping:
+            return mapping[intent]
     for intent in intents:
         if intent in mapping:
             return mapping[intent]

@@ -58,7 +58,7 @@
 - 需要强调速度时用 `--mode quick`，需要最新热点/三天内情报时用 `--mode fresh`，需要深查或可复用证据包时用 `--mode deep`。
 - 不确定该轻搜还是深查时，先跑 `guanlan workflow "关键词" --json`。它只做本地判断，不联网，不会改变基础搜索行为。
 - `direct`：简单官网、链接、事实入口和轻量资料，直接 `search -> read optional`，不要过度规划。
-- `guided`：政策、财经、安全、技术、WPS/AI Office、热点、口碑等需要信源分层的问题，走 `route -> research -> scoped search`，科技和 WPS/AI Office 题补 RSS，热点题补 hotnews。
+- `guided`：政策、财经、安全、技术、WPS/AI Office、热点、口碑等需要信源分层的问题，默认走 `route -> scoped search -> read`，科技和 WPS/AI Office 题补 RSS，热点题补 hotnews；`research` 只在用户明确要深查/可复用证据包，或 `search + read` 后仍缺信源角色覆盖时启用。
 - `investigate`：用户明确要深度研究、对比、时间线、档案、高影响核验或可复用证据包时，使用 `guanlan investigate "关键词" --limit 80 --format context`；不确定开销时先 `--dry-run`。
 - 明确命中专门分类时，直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮。WPS/AI Office、欧美娱乐、日韩娱乐、CVE/反诈、天气灾害、体育、财经/股票/宏观金融、科学新闻、职场薪资面经、播客、考试备考、高校招生导师、学术投稿检索、产品/公司口碑都属于强路由。
 - 重复出现的垂直研究模式先用 `recipe run` 输出计划，再执行对应 `search/read/research/stock/archive`，避免 Agent 临场拼错路由。
@@ -69,8 +69,8 @@
 不要把 Guanlan 理解成“一次 `search` 就结束”。默认按场景走这三档：
 
 - `2-step`：`search -> read`。适合结果已经明显可用，只需要核代表原文。
-- `3-step`：`route -> research -> scoped search`。适合普通研究题，或质量画像未过。
-- `4-step`：在 `3-step` 基础上，热点/时效题补 `hotnews`，技术/AI/WPS/AI Office 题补 `feeds`，证据面过窄时补 `dossier`、`compare` 或 `timeline`。
+- `3-step`：`route -> scoped search -> read`。适合普通研究题，或质量画像未过。
+- `4-step`：在 `3-step` 基础上，热点/时效题补 `hotnews`，技术/AI/WPS/AI Office 题补 `feeds`，证据面过窄时补 `dossier`、`compare`、`timeline` 或受控 `research`。
 
 只有完成当前档位要求的 Guanlan 工具后，仍缺关键证据，才切到通用 `web_search` / `web_fetch`。
 如果 trace 或 context 中出现 `external_fetch_strategy`，可以临时调用宿主平台的 WebFetch/WebRead 读取 Guanlan 推荐 URL。外显时要说清楚：这是 Guanlan 主动规划的“定点补证”策略，不是 Guanlan 搜索失败。
@@ -79,7 +79,7 @@
 
 如果 trace 中出现 `quality_gate.reason=partial_salvage`，说明 Guanlan 已从低覆盖批次里保留强官方/垂直信源线索；它可作为继续读取和核验的入口，不应汇报成失败。如果 `read` 输出 `兜底状态: unusable`，说明搜索兜底无法确认同一页面，不能引用兜底内容，应改用 `diagnose page`、结构化入口、scope 搜索或 WebFetch 定点补证。
 
-对于体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE/安全公告、科学机构声明、文娱榜单/票房、考试官方信息、WPS/AI Office 官方入口这类高确定性垂直题，先看 `guanlan route` 给出的 direct `guanlan read` 命令。这些是权威入口候选，应该先读取核验，再用 `research/search` 扩大信源面。
+对于体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE/安全公告、科学机构声明、文娱榜单/票房、考试官方信息、WPS/AI Office 官方入口这类高确定性垂直题，先看 `guanlan route` 给出的 direct `guanlan read` 命令。这些是权威入口候选，应该先读取核验，再用对应 `search --scope ...` 扩大信源面；只有需要证据包时再用 `research`。
 
 ## Benchmark 纪律
 
@@ -89,7 +89,7 @@
 - 不要把 `quality_summary=warn` 直接写成 “Guanlan 搜索失败”。
 - 实时/热点题必须补 `hotnews`。
 - 实时体育、灾害预警、安全漏洞等垂直题必须读取 Guanlan 推荐的 direct source seeds。
-- 技术/AI/WPS/AI Office 题必须补 `feeds`，或直接走 `research --preset tech` / `research --preset wps_office`。
+- 技术/AI/WPS/AI Office 题必须补 `feeds`；不要默认直接走 `research --preset tech|wps_office`，除非是深查/证据包需求。
 - 政策/办事题优先 `search + read` 或 `research`，不要只测单次泛搜。
 - 自动挡或路由规则变更必须补 `tests/fixtures/routing_regression_cases.jsonl`，同时覆盖 positive、negative、near-miss；断言要包含 `expected_*` 和 `forbidden_*`，不能只保留 happy path。
 - 垂类 benchmark 可在 `guanlan/evaluation.py` 的任务里声明 `expected_intents_any`、`expected_scopes_any`、`expected_command_contains`、`forbidden_intents`、`forbidden_command_contains`，用于防止关键词误路由。
@@ -132,10 +132,10 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “查地方官媒/区域政策” | `guanlan search "关键词" --profile china --scope local_official` |
 | “查电商/零售/产业带” | `guanlan search "关键词" --profile china --scope ecommerce` |
 | “查亿邦动力垂类频道最新线索” | `guanlan hotnews ebrun:cross-border --limit 10`，频道可换 `retail` / `temu` / `brand-globalization` / `ai` |
-| “查金山办公/WPS/WPS AI/WPS 365/办公 AI 选题” | `guanlan research "WPS AI PPT Agent 办公选题 最近热点" --preset wps_office --limit 80 --read-top 5 --advisor` |
+| “查金山办公/WPS/WPS AI/WPS 365/办公 AI 选题” | `guanlan search "WPS AI PPT Agent 办公选题 最近热点" --scope wps_office --limit 80 --trace`，再补 `guanlan feeds curated --category ai --limit 80` |
 | “查高校招生/导师/院系官网” | `guanlan research "关键词" --preset university --read-top 0` |
 | “查影视/综艺/明星/游戏/票房口碑” | `guanlan research "关键词" --preset entertainment --read-top 0` |
-| “查股票/公司财报公告/风险” | 先 `guanlan stock detail "宁德时代"`，再 `guanlan research "宁德时代 股价 财报 公告 最近风险" --preset finance --read-top 5 --advisor` |
+| “查股票/公司财报公告/风险” | 先 `guanlan stock detail "宁德时代"`，再 `guanlan search "宁德时代 股价 财报 公告 最近风险" --scope finance_disclosure --limit 80 --trace` |
 | “查行情/指数/股价” | `guanlan stock quote "上证指数"` 或 `guanlan stock quote "600519"`，再按需 `guanlan search "上证指数 今日 行情" --scope finance_quote --limit 80 --trace` |
 | “查 ETF/基金/联接基金净值” | `guanlan stock quote "024051"` 或 `guanlan stock detail "基金名称"`，再按需 `guanlan search "基金名称 净值 公告 招募说明书" --scope finance_quote --limit 80 --trace` |
 | “查资金流向/榜单/大盘概览” | `guanlan stock fundflow "600519"`、`guanlan-stock rank --sort turnover --limit 20`、`guanlan-stock index` |
@@ -155,7 +155,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “查雪球/股吧/投资者情绪” | `guanlan search "某股票 雪球 股吧 情绪" --scope finance_sentiment --limit 80 --trace` |
 | “查欧美娱乐/明星/巡演/新专辑/榜单” | `guanlan research "Taylor Swift 最新动态" --preset global_entertainment --profile english` |
 | “查日韩娱乐/K-pop/J-pop/韩剧日剧” | `guanlan research "BLACKPINK K-pop 最新回归" --preset jp_kr_entertainment --profile hybrid` |
-| “查 CVE/漏洞/补丁/诈骗短信” | `guanlan research "OpenSSL CVE 最新 漏洞" --preset cybersecurity --read-top 5` |
+| “查 CVE/漏洞/补丁/诈骗短信” | `guanlan search "OpenSSL CVE 最新 漏洞" --scope cybersecurity --limit 80 --trace` |
 | “查台风路径/天气/地震/灾害预警” | `guanlan search "台风 路径 中央气象台" --scope weather_disaster --trace` |
 | “查体育比赛/伤病/转会” | `guanlan research "梅西 比赛 伤病 最新" --preset sports` |
 | “查 NBA/赛事实时比分和战绩” | `guanlan route "NBA季后赛2026年首轮战绩比分" --json` 后先读推荐的 ESPN/NBA direct read |
@@ -169,12 +169,12 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “我该去哪搜/怎么分信源/该跑哪个命令” | `guanlan route "关键词"`，先看 `recommended_commands` |
 | “这个任务该轻搜还是深查” | `guanlan workflow "关键词" --json` |
 | “我要系统深查/证据包/高影响核验” | `guanlan investigate "关键词" --limit 80 --format context` |
-| “帮我查清楚并给依据” | `guanlan research "关键词" --profile china` |
+| “帮我查清楚并给依据” | 先 `guanlan agent "关键词" --json` 执行 primary；需要证据包时再 `guanlan research "关键词" --profile china --read-top 0 --max-search-jobs 2` |
 | “查完后给建议/下一步/可能原因” | `guanlan research "关键词" --profile china --advisor` |
 | “帮我对比/竞品分析/多个方案怎么选” | `guanlan compare "A" "B" --focus "价格 口碑 风险" --limit 80 --format context` |
 | “按时间线梳理/最近发生了什么” | `guanlan timeline "关键词 最新进展" --limit 80 --format context` |
 | “整理一个公司/产品/政策档案” | `guanlan dossier "对象" --focus "业务 口碑 风险" --limit 80 --format context` |
-| “查政策/监管/官方通知” | `guanlan research "关键词" --preset policy` |
+| “查政策/监管/官方通知” | `guanlan search "关键词" --profile china --scope gov --limit 80 --trace`，再读代表官方 URL |
 | “查产品口碑/用户评价” | `guanlan research "关键词" --preset reputation` |
 | “查 EI/SCI/Scopus、学术会议、投稿/检索/收录要求” | `guanlan research "关键词" --preset academic --read-top 0` |
 | “查文娱口碑/票房/评分/粉圈讨论” | `guanlan research "关键词" --preset entertainment --read-top 0` |
@@ -184,7 +184,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “指定多个平台查口碑” | `guanlan research "关键词" --preset reputation --sites zhihu.com,weibo.com,xiaohongshu.com` |
 | “看话题是被夸还是被骂” | `guanlan pulse "关键词" --format context` |
 | “查技术选型/开发者反馈” | `guanlan research "关键词" --preset tech` |
-| “查 WPS/AI Office 选题雷达” | `guanlan research "关键词" --preset wps_office --read-top 5 --advisor` |
+| “查 WPS/AI Office 选题雷达” | `guanlan search "关键词" --scope wps_office --limit 80 --trace`，再补 `guanlan feeds curated --category ai --limit 80` |
 | “只要证据包，不读原文” | `guanlan research "关键词" --read-top 0` |
 | “读这个链接” | `guanlan read "URL"` |
 | “Jina 读不了/读取不完整” | `guanlan read "URL" --backend direct` |
@@ -435,14 +435,15 @@ guanlan pulse "产品名 用户评价" --read-top 2 --format context
 
 ```bash
 guanlan route "某主题"
-guanlan research "某主题" --profile china --limit 80 --read-top 5
+guanlan search "某主题" --profile china --limit 80 --trace
+guanlan research "某主题" --profile china --limit 80 --read-top 0 --max-search-jobs 2
 ```
 
 `research` 会自动整合搜索质量层、同题聚类、信源多样性和原文摘读。输出仍然不是最终答案，Agent 需要基于证据包再组织结论、依据和不确定性。
 
 `route` 会输出主要意图、证据角色、优先 scope、推荐站点、兜底 scope、查询改写和边界提醒。不要把 route 当成硬过滤：除非用户显式指定 `--scope` 或 `--site`，否则 `research` 会同时保留开放网页兜底，避免只在白名单里打转。
 
-科技、AI、WPS/AI Office、开发者、工程实践类问题必须额外补一轮 RSS/精品内容流。`guanlan research "问题" --preset tech` 和 `guanlan research "问题" --preset wps_office` 会自动把 `feeds curated` 作为 forced feed group 纳入候选池；AI/WPS/Agent/大模型命中时，还会内部纳入 AI 垂类精选动态源，作为近 7 天动态和选题线索层。这个源不是新的用户命令，关键事实仍要回读原始 URL。如果 Agent 只跑了 `route` 或 `search`，还需要再跑：
+科技、AI、WPS/AI Office、开发者、工程实践类问题必须额外补一轮 RSS/精品内容流。默认显式跑 `search --scope tech_dev|wps_office` 和 `feeds curated`；`research --preset tech|wps_office` 只用于深查/证据包模式，且 MCP/Agent 场景应保持 `--read-top 0-2`。AI/WPS/Agent/大模型命中时，相关 feed 作为近 7 天动态和选题线索层；关键事实仍要回读原始 URL。如果 Agent 只跑了 `route` 或 `search`，还需要再跑：
 
 ```bash
 guanlan feeds curated --category ai --limit 80
@@ -460,7 +461,7 @@ RSS 适合作阅读发现、新鲜技术文章和趋势线索，不替代官方�
 如果用户需要你在证据包之外给一个谨慎的“助理视角”，加 `--advisor`：
 
 ```bash
-guanlan research "某主题" --profile china --limit 80 --read-top 5 --advisor
+guanlan research "某主题" --profile china --limit 80 --read-top 0 --max-search-jobs 2 --advisor
 guanlan research "某产品 用户评价" --preset reputation --read-top 0 --advisor
 ```
 

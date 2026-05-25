@@ -15,13 +15,16 @@ from guanlan.limits import (
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
     DEFAULT_FEEDS_LIMIT,
     DEFAULT_HOTNEWS_LIMIT,
+    DEFAULT_MCP_RESEARCH_READ_TOP,
     DEFAULT_PULSE_LIMIT,
     DEFAULT_READ_FALLBACK_LIMIT,
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
+    MAX_AGENT_RESEARCH_READ_TOP,
     MAX_ARCHIVE_SEARCH_LIMIT,
     MAX_FEEDS_LIMIT,
     MAX_HOTNEWS_LIMIT,
+    MAX_MCP_RESEARCH_READ_TOP,
     MAX_PULSE_LIMIT,
     MAX_READ_FALLBACK_LIMIT,
     MAX_RESEARCH_LIMIT,
@@ -89,7 +92,7 @@ def _tool_definitions() -> list[dict]:
                     "sites": {"type": "array", "items": {"type": "string"}},
                     "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
                     "limit": {"type": "integer", "default": DEFAULT_SEARCH_LIMIT, "minimum": 1, "maximum": MAX_RESEARCH_LIMIT},
-                    "read_top": {"type": "integer", "minimum": 0, "maximum": 10},
+                    "read_top": {"type": "integer", "minimum": 0, "maximum": MAX_AGENT_RESEARCH_READ_TOP},
                     "max_commands": {"type": "integer", "default": 5, "minimum": 1, "maximum": 10},
                     "format": {"type": "string", "enum": ["markdown", "json"], "default": "json"},
                 },
@@ -343,13 +346,18 @@ def _tool_definitions() -> list[dict]:
         {
             "name": "guanlan_research",
             "description": (
-                "Build an agent-ready research evidence packet. Prefer a broad limit such as 80-100 for "
-                "serious research. Set advisor=true when the user wants advice, next steps, implications, "
+                "Guarded/heavy evidence-packet tool. Do not use as the first step for ordinary lookups; "
+                "prefer guanlan_search plus guanlan_read, or guanlan_agent to plan a safe chain. Use this "
+                "only when the user explicitly needs a reusable research packet, deep synthesis, or when a "
+                "prior search/read pass still lacks source-role coverage. Prefer a broad limit such as 80-100 "
+                "for serious research, but keep read_top low on MCP clients and follow with guanlan_read for "
+                "specific URLs. Set advisor=true when the user wants advice, next steps, implications, "
                 "risk reminders, or cautious hypotheses about why they may be searching; the advisor block "
                 "returns evidence-bound writing rules for the agent, not final advice or the user's true intent. "
                 "Use an outer timeout budget of 180-300 seconds for research; if the host field is named "
                 "timeout_ms or timeout_milliseconds, convert explicitly, for example 300 seconds = 300000 ms. "
-                "On timeout, retry once with cache_ttl=3600 where available or reduce read_top before reducing limit."
+                "On timeout, retry once with cache_ttl=3600 where available or run guanlan_search/guanlan_read "
+                "instead of increasing read_top."
             ),
             "inputSchema": {
                 "type": "object",
@@ -368,7 +376,13 @@ def _tool_definitions() -> list[dict]:
                     "scope": {"type": "string"},
                     "search_backend": {"type": "string", "default": "auto"},
                     "read_backend": {"type": "string", "enum": ["auto", "jina", "direct"], "default": "auto"},
-                    "read_top": {"type": "integer", "minimum": 0, "maximum": 10},
+                    "read_top": {
+                        "type": "integer",
+                        "default": DEFAULT_MCP_RESEARCH_READ_TOP,
+                        "minimum": 0,
+                        "maximum": MAX_MCP_RESEARCH_READ_TOP,
+                        "description": "MCP guarded default is 0; use guanlan_read for selected URLs instead of making research read many pages.",
+                    },
                     "max_read_chars": {"type": "integer", "minimum": 1},
                     "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"]},
                     "format": {"type": "string", "enum": ["markdown", "context", "prompt", "json"], "default": "markdown"},
@@ -708,6 +722,14 @@ def _as_text(result) -> str:
     return json.dumps(result, ensure_ascii=False, indent=2) if isinstance(result, (dict, list)) else str(result)
 
 
+def _bounded_int(value, default: int, minimum: int, maximum: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    return min(max(number, minimum), maximum)
+
+
 def _run_tool(name: str, arguments: dict | None = None):
     from guanlan.telemetry import telemetry_span
 
@@ -731,6 +753,11 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
     if name == "guanlan_agent":
         from guanlan.workflow_decider import build_agent_plan, format_agent_plan_markdown
 
+        agent_read_top = (
+            None
+            if args.get("read_top") is None
+            else _bounded_int(args.get("read_top"), 0, 0, MAX_AGENT_RESEARCH_READ_TOP)
+        )
         plan = build_agent_plan(
             str(args.get("query", "")).strip(),
             mode=str(args.get("mode") or "auto"),
@@ -740,7 +767,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             sites=args.get("sites") or None,
             profile=args.get("profile") or "china",
             limit=int(args.get("limit") or DEFAULT_SEARCH_LIMIT),
-            read_top=int(args["read_top"]) if args.get("read_top") is not None else None,
+            read_top=agent_read_top,
             max_commands=int(args.get("max_commands") or 5),
         )
         if str(args.get("format") or "json") == "markdown":
@@ -960,11 +987,17 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             scope=args.get("scope") or None,
             search_backend=str(args.get("search_backend") or "auto"),
             profile=args.get("profile") or None,
-            read_top=int(args["read_top"]) if args.get("read_top") is not None else None,
+            read_top=_bounded_int(
+                args.get("read_top"),
+                DEFAULT_MCP_RESEARCH_READ_TOP,
+                0,
+                MAX_MCP_RESEARCH_READ_TOP,
+            ),
             read_backend=str(args.get("read_backend") or "auto"),
             max_read_chars=int(args["max_read_chars"]) if args.get("max_read_chars") is not None else None,
             advisor=bool(args.get("advisor", False)),
             advisor_style=str(args.get("advisor_style") or "brief"),
+            max_search_jobs=1,
         )
         output_format = str(args.get("format") or "markdown")
         if output_format == "json":

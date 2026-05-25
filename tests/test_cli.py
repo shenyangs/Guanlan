@@ -169,10 +169,11 @@ class TestCLI:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         commands = [item["command"] for item in data["agent_next_steps"]]
-        assert data["primary_command"].startswith("guanlan research")
-        assert "--preset wps_office" in data["primary_command"]
+        assert data["primary_command"] == "guanlan hotnews today --limit 80 --trends"
         assert "guanlan hotnews today --limit 80 --trends" in commands
         assert "guanlan feeds curated --category ai --limit 80" in commands
+        assert any("--scope wps_office" in command for command in commands)
+        assert not any(command.startswith("guanlan research") for command in commands)
 
     def test_route_json_includes_workflow_decision(self, capsys):
         with patch("sys.argv", ["guanlan", "route", "人工智能 政策 最新", "--json"]):

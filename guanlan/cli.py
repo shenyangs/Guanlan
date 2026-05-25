@@ -495,6 +495,8 @@ def main():
                             help="Prompt style when --format prompt is used")
     p_research.add_argument("--select-top", type=int, default=None,
                             help="How many representative evidence items to highlight from the broad pool")
+    p_research.add_argument("--max-search-jobs", type=int, default=None,
+                            help="Cap research sub-search jobs for guarded/scout runs; unset keeps full preset routing")
 
     # ── investigate ──
     p_investigate = sub.add_parser("investigate", help="Run an explicit upper-layer investigation workflow")

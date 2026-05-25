@@ -124,6 +124,22 @@ def test_research_cli_outputs_json(capsys):
     assert json.loads(captured.out)["query"] == "query"
 
 
+def test_research_cli_passes_guarded_search_job_budget(capsys):
+    from guanlan.cli import main
+
+    packet = {"query": "query", "results": [], "readings": []}
+    with patch("guanlan.web.research.build_research_packet", return_value=packet) as mocked:
+        with patch(
+            "sys.argv",
+            ["guanlan", "research", "query", "--json", "--read-top", "0", "--max-search-jobs", "2"],
+        ):
+            main()
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["query"] == "query"
+    assert mocked.call_args.kwargs["max_search_jobs"] == 2
+
+
 def test_research_cli_lists_presets(capsys):
     from guanlan.cli import main
 

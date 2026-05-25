@@ -51,6 +51,7 @@ def _cmd_research(args):
             advisor=args.advisor,
             advisor_style=args.advisor_style,
             select_top=max(args.select_top, 0) if args.select_top is not None else None,
+            max_search_jobs=max(args.max_search_jobs, 0) if args.max_search_jobs is not None else None,
         )
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

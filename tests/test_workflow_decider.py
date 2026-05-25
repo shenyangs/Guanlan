@@ -26,11 +26,12 @@ def test_policy_research_uses_guided_workflow():
     decision = decide_workflow("人工智能 监管 政策 最新通知", command="search", profile="china")
 
     assert decision.tier == GUIDED
-    assert decision.recommended_entrypoint == "research"
+    assert decision.recommended_entrypoint == "search"
     assert "route" in decision.command_path
-    assert "research" in decision.command_path
+    assert "scoped search" in decision.command_path
+    assert "read" in decision.command_path
     assert decision.recommended_limit >= 80
-    assert decision.recommended_read_top >= 5
+    assert decision.recommended_read_top == 0
 
 
 def test_explicit_compare_uses_investigate_tier():
@@ -46,7 +47,9 @@ def test_tech_query_reminds_rss_without_forcing_basic_search_heavy():
     decision = decide_workflow("Python Agent 框架 对比 github issue", command="research", profile="china")
 
     assert decision.tier in {GUIDED, INVESTIGATE}
-    assert "feeds" in decision.command_path or any("RSS" in item for item in decision.fallback_policy)
+    assert "feeds" in decision.command_path or any(
+        "RSS" in item or "feeds" in item or "精品内容流" in item for item in decision.fallback_policy
+    )
 
 
 def test_stock_quote_lookup_uses_stock_entrypoint_without_overthinking():
@@ -72,7 +75,7 @@ def test_market_intelligence_queries_use_guided_workflow():
     app_review = decide_workflow("某 App Store 评论 差评 评分变化", command="search", profile="china")
 
     assert decision.tier == GUIDED
-    assert decision.recommended_entrypoint == "research"
+    assert decision.recommended_entrypoint == "search"
     assert "crisis_watch" in decision.route_intents
     assert decision.recommended_limit >= 80
     assert app_review.tier == GUIDED
@@ -114,10 +117,13 @@ def test_agent_plan_fresh_wps_keeps_hotnews_and_feeds_visible():
     plan = build_agent_plan("WPS AI 灵犀 Claw AI PPT AI笔记 AI知识库 最近热点", mode="fresh", profile="china")
     commands = [item.command for item in plan.recommended_commands]
 
-    assert "--preset wps_office" in plan.primary_command
+    assert plan.primary_command == "guanlan hotnews today --limit 80 --trends"
     assert any(command == "guanlan hotnews today --limit 80 --trends" for command in commands)
     assert any(command == "guanlan feeds curated --category ai --limit 80" for command in commands)
-    assert any(item.role == "freshness" and item.required for item in plan.recommended_commands)
+    assert any("--scope wps_office" in command for command in commands)
+    assert not any(command.startswith("guanlan research") for command in commands)
+    assert plan.recommended_commands[0].role == "primary"
+    assert plan.recommended_commands[0].required is True
     assert len(commands) <= 5
 
 
@@ -133,10 +139,11 @@ def test_agent_plan_tech_latest_keeps_hotnews_feeds_and_tech_research():
     plan = build_agent_plan("AI Agent 框架 对比 GitHub issue 最新", profile="china")
     commands = [item.command for item in plan.recommended_commands]
 
-    assert plan.primary_command.startswith("guanlan investigate")
+    assert plan.primary_command.startswith("guanlan search")
+    assert "--scope tech_dev" in plan.primary_command
     assert "guanlan hotnews today --limit 80 --trends" in commands
     assert "guanlan feeds curated --category ai --limit 80" in commands
-    assert any("--preset tech" in command for command in commands)
+    assert not any(command.startswith("guanlan research") for command in commands)
 
 
 def test_agent_plan_finance_risk_keeps_stock_and_finance_research():
@@ -144,19 +151,20 @@ def test_agent_plan_finance_risk_keeps_stock_and_finance_research():
     commands = [item.command for item in plan.recommended_commands]
 
     assert plan.primary_command.startswith("guanlan stock plan")
-    assert any("--preset finance" in command for command in commands)
-    assert any(item.role == "evidence_packet" and item.required for item in plan.recommended_commands)
+    assert any("--scope finance_quote" in command for command in commands)
+    assert any(command.startswith("guanlan stock detail") for command in commands)
+    assert not any(command.startswith("guanlan research") for command in commands)
 
 
 def test_agent_plan_cross_industry_matrix_has_safe_primary_commands():
     cases = {
         "图书": ("刘慈欣 新书 书评 推荐", "guanlan search"),
-        "文娱": ("哪吒2 票房 口碑 豆瓣评分 最新", "--preset entertainment"),
-        "民生": ("医保 异地就医 政策 办理 最新", "--preset policy"),
-        "高校": ("清华大学 计算机系 研究生招生 导师", "--preset university"),
-        "学术": ("EI会议 投稿 检索 要求", "--preset academic"),
-        "农业": ("农业农村部 玉米 病虫害 防控 政策 最新", "--preset policy"),
-        "政策": ("人工智能 监管 政策 最新通知", "--preset policy"),
+        "文娱": ("哪吒2 票房 口碑 豆瓣评分 最新", "--scope entertainment"),
+        "民生": ("医保 异地就医 政策 办理 最新", "--scope gov"),
+        "高校": ("清华大学 计算机系 研究生招生 导师", "--scope university"),
+        "学术": ("EI会议 投稿 检索 要求", "--scope academic"),
+        "农业": ("农业农村部 玉米 病虫害 防控 政策 最新", "--scope gov"),
+        "政策": ("人工智能 监管 政策 最新通知", "--scope gov"),
     }
 
     for _label, (query, expected) in cases.items():
@@ -176,11 +184,11 @@ def test_agent_plan_long_tail_regressions_do_not_blame_agent():
 
     assert "--scope cybersecurity" in fraud.primary_command
     assert not any("known-exploited" in item.command or "openssl.org/news/secadv" in item.command for item in fraud.recommended_commands)
-    assert "--preset reputation" in charity.primary_command
+    assert "--scope social_web" in charity.primary_command
     assert not any(item.command.startswith("guanlan stock") for item in charity.recommended_commands)
     assert "--scope podcast" in podcast.primary_command
     assert any("feeds curated-sources" in item.command for item in podcast.recommended_commands)
-    assert "--preset finance" in bank.primary_command
+    assert "--scope finance_research" in bank.primary_command
     assert not any(item.command.startswith("guanlan stock") for item in bank.recommended_commands)
     assert archive.primary_command.startswith("guanlan archive context")
     assert len(archive.recommended_commands) <= 2
@@ -200,17 +208,15 @@ def test_agent_plan_telemetry_regressions_keep_auto_mode_broad_and_precise():
     ai_hardware = build_agent_plan("华为 昇腾 910B 910C 性能 对标", profile="china")
     companion_robot = build_agent_plan("pet companion robot market 2025 2026", profile="china")
 
-    assert "--preset tech" in figma_ai.primary_command
+    assert "--scope tech_dev" in figma_ai.primary_command
     assert any("feeds curated --category ai" in item.command for item in figma_ai.recommended_commands)
-    assert any("--scope tech_dev" in item.command for item in figma_ai.recommended_commands)
-    assert "--preset company --profile english" in character.primary_command
-    assert any("--scope company_primary" in item.command for item in character.recommended_commands)
+    assert "--scope company_primary" in character.primary_command
     assert not any("--site openai.com" in item.command for item in character.recommended_commands)
-    assert any("--scope company_primary" in item.command for item in palantir.recommended_commands)
+    assert "--scope company_primary" in palantir.primary_command
     assert not any("--site github.com" in item.command for item in palantir.recommended_commands)
-    assert macro.primary_command.startswith("guanlan research")
+    assert macro.primary_command.startswith("guanlan search")
+    assert "--scope finance_macro" in macro.primary_command
     assert not macro.primary_command.startswith("guanlan stock")
-    assert any("--scope finance_macro" in item.command for item in macro.recommended_commands)
     assert not any("stats.gov.cn" in item.command or "pbc.gov.cn" in item.command for item in macro.recommended_commands)
     assert "--site gov.cn" in gov_site.primary_command
     assert not any("--preset policy" in item.command or "feeds curated" in item.command for item in gov_site.recommended_commands)
@@ -219,9 +225,9 @@ def test_agent_plan_telemetry_regressions_keep_auto_mode_broad_and_precise():
     assert not any("--site cninfo.com.cn" in item.command for item in nvidia.recommended_commands)
     assert "--scope ecommerce" in secondhand.primary_command
     assert "--scope social_web" in social_style.primary_command
-    assert "--preset tech" in pure_agent.primary_command
+    assert "--scope tech_dev" in pure_agent.primary_command
     assert "--preset wps_office" not in pure_agent.primary_command
-    assert "--preset tech" in ai_hardware.primary_command
+    assert "--scope tech_dev" in ai_hardware.primary_command
     assert any("--scope industry_analysis" in item.command for item in companion_robot.recommended_commands)
     assert not any("--site latepost.com" in item.command for item in companion_robot.recommended_commands)
 
@@ -236,12 +242,23 @@ def test_agent_plan_exposes_silent_auto_repair_contract():
     assert payload["silent_repair_commands"]
     assert any("preferred_hit_count" in item["signal"] for item in payload["quality_tripwires"])
     assert any("不要说 Guanlan 崩了" in item for item in payload["auto_repair_policy"])
-    assert any("--scope company_primary" in item.command for item in company.silent_repair_commands)
+    assert "--scope company_primary" in company.primary_command
     assert not any("--site openai.com" in item.command for item in company.silent_repair_commands)
     assert site.silent_repair_commands
     assert all("--preset policy" not in item.command and "feeds curated" not in item.command for item in site.silent_repair_commands)
     assert any("site:" in item["signal"] or "site_filter" in item["signal"] for item in site.quality_tripwires)
     assert any(item.command.startswith("guanlan diagnose page https://example.com/article") for item in url.silent_repair_commands)
+
+
+def test_agent_plan_keeps_research_out_of_default_policy_repairs():
+    plan = build_agent_plan("四川和湖北通信管理局2024-2025年骚扰电话综合整治政策差异", profile="china")
+    payload = plan.to_dict()
+    commands = [item["command"] for item in payload["agent_next_steps"] + payload["silent_repair_commands"]]
+
+    assert plan.primary_command.startswith("guanlan search")
+    assert "--scope gov" in plan.primary_command
+    assert not any(command.startswith("guanlan research") for command in commands)
+    assert any(command.startswith("guanlan search") and "--scope gov" in command for command in commands)
 
 
 def test_agent_plan_markdown_is_agent_readable():

@@ -52,7 +52,7 @@ def test_route_plan_detects_policy_and_avoids_social_primary():
     assert "party_central" in plan.preferred_scopes
     assert "社交/内容平台" in plan.avoid_as_primary
     assert "baidu-rss" in plan.recommended_feeds
-    assert any("--preset policy" in command for command in plan.recommended_commands)
+    assert any("--scope gov" in command for command in plan.recommended_commands)
     assert plan.read_top >= 2
 
 
@@ -86,7 +86,7 @@ def test_route_plan_detects_entertainment_need():
     assert "entertainment" in plan.preferred_scopes
     assert "douban.com" in plan.target_sites
     assert "maoyan.com" in plan.target_sites
-    assert any("--preset entertainment" in command for command in plan.recommended_commands)
+    assert any("--scope entertainment" in command for command in plan.recommended_commands)
     assert "粉圈控评" in plan.avoid_as_primary
     assert any("宣发" in warning or "单平台" in warning for warning in plan.warnings)
     assert plan.advisor_recommended is True
@@ -99,7 +99,7 @@ def test_route_plan_routes_magic_school_manga_to_entertainment_not_university():
     assert "university_admissions" not in plan.primary_intents
     assert "bangumi.tv" in plan.target_sites
     assert "pixiv.net" in plan.target_sites
-    assert any("--preset entertainment" in command for command in plan.recommended_commands)
+    assert any("--scope entertainment" in command for command in plan.recommended_commands)
 
 
 def test_route_plan_detects_global_entertainment_need():
@@ -217,7 +217,6 @@ def test_route_plan_detects_finance_layers_and_commands():
     assert any(command.startswith("guanlan stock plan") for command in plan.recommended_commands)
     assert any(command.startswith("guanlan stock quote") for command in plan.recommended_commands)
     assert any(command.startswith("guanlan stock detail") for command in plan.recommended_commands)
-    assert any("--preset finance" in command for command in plan.recommended_commands)
     assert any("--scope finance_disclosure" in command for command in plan.recommended_commands)
     assert any(command.startswith("guanlan read ") and ("cninfo.com.cn" in command or "sse.com.cn" in command) for command in plan.recommended_commands)
     assert any("投资建议" in warning for warning in plan.warnings)
@@ -368,11 +367,9 @@ def test_route_plan_detects_wps_office_market_radar():
     assert any("职场效率" in query for query in plan.query_variants)
     assert any("Gamma Canva" in query for query in plan.query_variants)
     assert any("国产 AI PPT 工具 横评" in query for query in plan.query_variants)
-    assert any("--preset wps_office" in command for command in plan.recommended_commands)
     assert any("--scope wps_office" in command for command in plan.recommended_commands)
     assert any("feeds curated" in command for command in plan.recommended_commands)
     assert not any("feeds aihot" in command or "feeds ai-vertical" in command for command in plan.recommended_commands)
-    assert any("hotboard:catalog:tech" in command for command in plan.recommended_commands)
 
 
 def test_route_plan_separates_wps_subroute_query_variants():

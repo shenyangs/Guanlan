@@ -27,12 +27,12 @@ Upstream tools for 17 platforms. Call them directly.
 Run `guanlan welcome` when a new user asks how to start using Guanlan with their agent.
 Run `guanlan capabilities` when the user or agent needs to know what Guanlan can do.
 Run `guanlan doctor` to check which channels are available.
-`guanlan research` includes evidence-audit hints for version/name conflicts, source timelines, and follow-up verification.
+`guanlan research` is a guarded heavy evidence-packet tool. Do not use it as the first step for ordinary lookups; prefer search/read/feeds/hotnews first, then use research only for explicit deep synthesis or reusable evidence packets. In MCP/Agent flows keep `read_top` at 0-2.
 Use `guanlan archive verify`, `archive context`, `archive wiki`, and `archive pack` for local archive memory, Agent Wiki, RAG export, and local-model context. These commands only use local archived records.
 Use `guanlan report html` only as a sidecar renderer when the user asks for a static HTML report; it reads existing JSON/stdin/demo data and does not replace search/read/research/hotnews.
 If your agent/MCP runner supports tool timeouts, use generous outer budgets: 60-90s for search/read/status/doctor, 120s for hotnews/feeds/pulse/batch reads, 180-300s for research/compare/timeline/dossier/archive ingest, and 300-600s for install/update/release smoke. Treat timeouts as network/upstream evidence, not proof of no results; retry once, use cache_ttl where available, or reduce read_top before shrinking the result pool.
-For technology/AI/WPS/AI Office/developer/engineering-practice routes, always add one RSS discovery pass. `guanlan research ... --preset tech` and `guanlan research ... --preset wps_office` do this automatically; if you only run route or search, run `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80` as the second pass.
-For Kingsoft Office/WPS/WPS AI/WPS 365/AI Office/PPT/office-agent/document-collaboration/SaaS/xinchuang/security topic discovery, use `guanlan research ... --preset wps_office` or `guanlan search ... --scope wps_office --trace`; do not narrow it to brand-only PR, and separate official, competitor, tech/AI media, RSS/hotnews, developer/user samples, and security/xinchuang evidence.
+For technology/AI/WPS/AI Office/developer/engineering-practice routes, always add one RSS discovery pass. Prefer scoped search plus `guanlan feeds curated --limit 80` or `guanlan feeds curated --category ai --limit 80`; use `research --preset tech|wps_office --read-top 0-2 --max-search-jobs 2` only for deep evidence-packet work.
+For Kingsoft Office/WPS/WPS AI/WPS 365/AI Office/PPT/office-agent/document-collaboration/SaaS/xinchuang/security topic discovery, use `guanlan search ... --scope wps_office --trace` plus feeds first; do not narrow it to brand-only PR, and separate official, competitor, tech/AI media, RSS/hotnews, developer/user samples, and security/xinchuang evidence.
 For Chinese entertainment routes such as film, TV drama, variety shows, music, celebrities, games, box office, ratings, and fandom/public discussion, use `guanlan research ... --preset entertainment`; separate platform metrics, user ratings, industry reports, promotional copy, and fandom samples.
 For Western entertainment, Hollywood, pop stars, tours, albums, Billboard/Grammy/award questions, use `guanlan research ... --preset global_entertainment --profile english`; prioritize trade media, charts/awards, and official artist/label statements over fan or tabloid claims.
 For Japanese/Korean entertainment, K-pop/J-pop, K-drama/J-drama, Oricon/Soompi/Naver questions, use `guanlan research ... --preset jp_kr_entertainment --profile hybrid`; separate local media/charts, agency statements, translation sites, and fandom samples.
@@ -58,7 +58,8 @@ mcporter call 'exa.get_code_context_exa(query: "code question", tokensNum: 3000)
 guanlan research "film box office douban rating public discussion" --preset entertainment --read-top 0
 guanlan research "Taylor Swift latest album tour" --preset global_entertainment --profile english
 guanlan research "BLACKPINK K-pop comeback" --preset jp_kr_entertainment --profile hybrid
-guanlan research "WPS AI PPT Agent office topic discovery" --preset wps_office --read-top 5 --advisor
+guanlan search "WPS AI PPT Agent office topic discovery" --scope wps_office --limit 80 --trace
+guanlan feeds curated --category ai --limit 80
 guanlan research "OpenSSL CVE latest affected versions" --preset cybersecurity
 guanlan search "typhoon track JMA NOAA" --scope weather_disaster --trace
 guanlan research "AI product manager salary interview" --preset career

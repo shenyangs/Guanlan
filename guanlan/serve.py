@@ -18,8 +18,10 @@ from guanlan.errors import error_diagnostics
 from guanlan.limits import (
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
     DEFAULT_HOTNEWS_LIMIT,
+    DEFAULT_MCP_RESEARCH_READ_TOP,
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
+    MAX_MCP_RESEARCH_READ_TOP,
 )
 
 
@@ -129,8 +131,14 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 scope=payload.get("scope") or None,
                 search_backend=str(payload.get("search_backend") or "auto"),
                 profile=payload.get("profile") or "china",
-                read_top=_optional_int(payload.get("read_top")),
+                read_top=_bounded_int(
+                    payload.get("read_top"),
+                    DEFAULT_MCP_RESEARCH_READ_TOP,
+                    0,
+                    MAX_MCP_RESEARCH_READ_TOP,
+                ),
                 advisor=bool(payload.get("advisor", False)),
+                max_search_jobs=1,
             )
             return 200, packet
         if method == "POST" and route == "/compare":
@@ -194,9 +202,15 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 scope=payload.get("scope") or None,
                 search_backend=str(payload.get("search_backend") or "auto"),
                 profile=payload.get("profile") or "china",
-                read_top=_optional_int(payload.get("read_top")),
+                read_top=_bounded_int(
+                    payload.get("read_top"),
+                    DEFAULT_MCP_RESEARCH_READ_TOP,
+                    0,
+                    MAX_MCP_RESEARCH_READ_TOP,
+                ),
                 advisor=bool(payload.get("advisor", True)),
                 advisor_style=str(payload.get("advisor_style") or "brief"),
+                max_search_jobs=1,
             )
             return 200, {
                 "query": packet.get("query", ""),
@@ -406,6 +420,10 @@ def _optional_int(value: Any) -> int | None:
     if value in (None, ""):
         return None
     return _int(value)
+
+
+def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    return min(max(_int(value, default), minimum), maximum)
 
 
 def _bool(value: Any) -> bool:

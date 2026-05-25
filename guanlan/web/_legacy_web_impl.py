@@ -4674,6 +4674,7 @@ def build_research_packet(
     advisor_style: str = "brief",
     select_top: int | None = None,
     cache_ttl: int = 0,
+    max_search_jobs: int | None = None,
 ) -> dict[str, Any]:
     """Build an agent-ready evidence packet from search + selected reads."""
     preset_config = resolve_research_preset(preset)
@@ -4765,6 +4766,7 @@ def build_research_packet(
         include_open_fallback=not bool(explicit_scope or explicit_sites),
         query_strategy=query_strategy,
         cache_ttl=max(cache_ttl, 0),
+        max_search_jobs=max_search_jobs,
     )
     feed_results, feed_errors, feed_groups = _research_feed_discovery(
         query,
@@ -4820,6 +4822,7 @@ def build_research_packet(
         "search_backend": search_backend,
         "read_backend": read_backend,
         "read_top": effective_read_top,
+        "max_search_jobs": max_search_jobs,
         "cache_ttl": max(cache_ttl, 0),
         "route_plan": route_plan.to_dict(),
         "query_strategy": query_strategy,
@@ -5353,6 +5356,7 @@ def _research_search(
     include_open_fallback: bool = True,
     query_strategy: dict[str, Any] | None = None,
     cache_ttl: int = 0,
+    max_search_jobs: int | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
     errors: list[str] = []
     groups: list[dict[str, Any]] = []
@@ -5360,6 +5364,7 @@ def _research_search(
     jobs.extend(("site", site_id) for site_id in sites)
     if jobs and include_open_fallback:
         jobs.append(("general", "open_web"))
+    jobs = _cap_research_jobs(jobs, max_search_jobs)
     if not jobs:
         results = search_web(query, limit=limit, backend=search_backend, profile=profile, cache_ttl=cache_ttl)
         return results, errors, [{"type": "general", "label": "web", "result_count": len(results), "results": results}]
@@ -5388,6 +5393,25 @@ def _research_search(
     if not combined and errors:
         raise RuntimeError("; ".join(errors))
     return _merge_ranked_result_dicts(combined, limit=limit), errors, groups
+
+
+def _cap_research_jobs(jobs: list[tuple[str, str]], max_search_jobs: int | None) -> list[tuple[str, str]]:
+    if max_search_jobs is None:
+        return jobs
+    try:
+        budget = int(max_search_jobs)
+    except (TypeError, ValueError):
+        return jobs
+    if budget <= 0 or len(jobs) <= budget:
+        return jobs
+    general_jobs = [job for job in jobs if job[0] == "general"]
+    focused_jobs = [job for job in jobs if job[0] != "general"]
+    selected: list[tuple[str, str]] = []
+    focused_budget = budget - 1 if general_jobs and budget > 1 else budget
+    selected.extend(focused_jobs[:focused_budget])
+    if general_jobs and len(selected) < budget:
+        selected.append(general_jobs[0])
+    return selected[:budget]
 
 
 def _research_feed_discovery(

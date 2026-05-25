@@ -10,6 +10,7 @@ from guanlan.limits import (
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
     DEFAULT_FEEDS_LIMIT,
     DEFAULT_HOTNEWS_LIMIT,
+    DEFAULT_MCP_RESEARCH_READ_TOP,
     DEFAULT_PULSE_LIMIT,
     DEFAULT_READ_FALLBACK_LIMIT,
     DEFAULT_RESEARCH_LIMIT,
@@ -17,6 +18,7 @@ from guanlan.limits import (
     MAX_ARCHIVE_SEARCH_LIMIT,
     MAX_FEEDS_LIMIT,
     MAX_HOTNEWS_LIMIT,
+    MAX_MCP_RESEARCH_READ_TOP,
     MAX_PULSE_LIMIT,
     MAX_READ_FALLBACK_LIMIT,
     MAX_RESEARCH_LIMIT,
@@ -146,6 +148,7 @@ def test_mcp_tool_definitions_use_expanded_limits():
     search_limit = tools["guanlan_search"]["inputSchema"]["properties"]["limit"]
     read_fallback = tools["guanlan_read"]["inputSchema"]["properties"]["fallback_limit"]
     research_limit = tools["guanlan_research"]["inputSchema"]["properties"]["limit"]
+    research_read_top = tools["guanlan_research"]["inputSchema"]["properties"]["read_top"]
     route_limit = tools["guanlan_route"]["inputSchema"]["properties"]["limit"]
     hotnews_limit = tools["guanlan_hotnews"]["inputSchema"]["properties"]["limit"]
     pulse_limit = tools["guanlan_pulse"]["inputSchema"]["properties"]["limit"]
@@ -167,6 +170,9 @@ def test_mcp_tool_definitions_use_expanded_limits():
         "minimum": 1,
         "maximum": MAX_RESEARCH_LIMIT,
     }
+    assert research_read_top["default"] == DEFAULT_MCP_RESEARCH_READ_TOP
+    assert research_read_top["minimum"] == 0
+    assert research_read_top["maximum"] == MAX_MCP_RESEARCH_READ_TOP
     assert route_limit == {
         "type": "integer",
         "default": DEFAULT_RESEARCH_LIMIT,
@@ -278,10 +284,30 @@ def test_mcp_agent_returns_low_choice_plan():
     )
     commands = [item["command"] for item in payload["agent_next_steps"]]
 
-    assert payload["primary_command"].startswith("guanlan research")
-    assert "--preset wps_office" in payload["primary_command"]
+    assert payload["primary_command"] == "guanlan hotnews today --limit 80 --trends"
     assert "guanlan hotnews today --limit 80 --trends" in commands
     assert "guanlan feeds curated --category ai --limit 80" in commands
+    assert any("--scope wps_office" in command for command in commands)
+    assert not any(command.startswith("guanlan research") for command in commands)
+
+
+def test_mcp_research_is_guarded_and_clamps_heavy_knobs(monkeypatch):
+    calls = []
+
+    def fake_build_research_packet(*args, **kwargs):
+        calls.append({"args": args, "kwargs": kwargs})
+        return {"query": args[0], "results": [], "readings": []}
+
+    monkeypatch.setattr("guanlan.web.research.build_research_packet", fake_build_research_packet)
+
+    payload = mcp_server._run_tool(
+        "guanlan_research",
+        {"query": "政策差异", "read_top": 8, "format": "json"},
+    )
+
+    assert payload["query"] == "政策差异"
+    assert calls[0]["kwargs"]["read_top"] == MAX_MCP_RESEARCH_READ_TOP
+    assert calls[0]["kwargs"]["max_search_jobs"] == 1
 
 
 def test_mcp_investigate_uses_investigation_module(monkeypatch):
