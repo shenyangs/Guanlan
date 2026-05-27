@@ -54,6 +54,12 @@ _VERTICAL_INTENTS = {
     "academic",
     "university_admissions",
     "career",
+    "transport",
+    "local_life",
+    "education_learning",
+    "education_service",
+    "reading_notes",
+    "design_trend",
     "science",
     "sports",
     "podcast",
@@ -773,6 +779,8 @@ def _select_primary_agent_command(
 
     entrypoint = decision.recommended_entrypoint
     if entrypoint == "stock":
+        if _is_index_or_futures_quote_query(query):
+            return _generated_search_command(query, decision, profile=profile, scope="finance_quote")
         if _is_macro_finance_query(query, decision):
             return _generated_search_command(query, decision, profile=profile, scope="finance_macro")
         if _is_generic_finance_product_query(query):
@@ -1164,6 +1172,8 @@ def _should_skip_agent_route_command(command: str, decision: WorkflowDecision, q
     site = _extract_site_from_command(command)
     if _is_generic_finance_product_query(query) and kind == "stock":
         return True
+    if _is_index_or_futures_quote_query(query) and kind == "stock":
+        return True
     if _is_generic_finance_product_query(query) and "finance_disclosure" in text:
         return True
     if _is_generic_finance_product_query(query) and kind == "read" and any(
@@ -1205,8 +1215,18 @@ def _agent_scoped_search_fallback(query: str, decision: WorkflowDecision, *, pro
         scope = "finance_quote"
     elif "finance_disclosure" in intents:
         scope = "finance_disclosure"
+    elif "global_policy" in intents:
+        scope = "global_official"
     elif "policy" in intents or "official_position" in intents:
         scope = "gov"
+    elif "standards_compliance" in intents:
+        scope = "global_official"
+    elif "transport" in intents:
+        scope = "local_official"
+    elif {"local_life", "education_service", "reading_notes", "design_trend"} & intents:
+        scope = "social_web"
+    elif "education_learning" in intents:
+        scope = "test_prep"
     elif "company_primary" in intents:
         scope = "company_primary"
     elif "global_industry" in intents:
@@ -1393,6 +1413,9 @@ def _is_archive_query(query: str) -> bool:
 
 def _is_generic_finance_product_query(query: str) -> bool:
     text = (query or "").lower()
+    education_service_context = ("夏令营", "冬令营", "研学", "营地", "家长评价", "小学生", "青少年", "户外", "投诉")
+    if any(term in text for term in education_service_context):
+        return False
     product_terms = ("理财", "银行理财", "存款", "贷款", "车险", "保险", "保费", "利率", "回撤")
     if not any(term in text for term in product_terms):
         return False
@@ -1404,6 +1427,25 @@ def _is_macro_finance_query(query: str, decision: WorkflowDecision) -> bool:
     text = (query or "").lower()
     macro_terms = ("finance_macro", "gdp", "inflation", "recession", "cpi", "pmi", "fed", "央行", "社融", "通胀", "降息", "宏观")
     return "finance_macro" in decision.route_intents or any(term in text for term in macro_terms)
+
+
+def _is_index_or_futures_quote_query(query: str) -> bool:
+    text = (query or "").lower()
+    quote_terms = (
+        "富时",
+        "a50",
+        "期货",
+        "标普500",
+        "s&p 500",
+        "纳指",
+        "nasdaq",
+        "道指",
+        "dow",
+        "美股收盘",
+        "指数",
+    )
+    company_terms = ("公司", "集团", "财报", "年报", "公告", "股东", "股票代码")
+    return any(term in text for term in quote_terms) and not any(term in text for term in company_terms)
 
 
 def _is_secondhand_market_query(query: str) -> bool:
@@ -1663,10 +1705,19 @@ def _preset_from_intents(intents: list[str]) -> str:
 def _scope_from_intents(intents: list[str]) -> str:
     mapping = {
         "wps_office": "wps_office",
+        "ecommerce": "ecommerce",
         "tech": "tech_dev",
         "policy": "gov",
         "official_position": "gov",
         "global_policy": "global_official",
+        "standards_compliance": "global_official",
+        "legal_judicial": "gov",
+        "transport": "local_official",
+        "local_life": "social_web",
+        "education_learning": "test_prep",
+        "education_service": "social_web",
+        "reading_notes": "social_web",
+        "design_trend": "social_web",
         "academic": "academic",
         "weather_disaster": "weather_disaster",
         "cybersecurity": "cybersecurity",
@@ -1694,10 +1745,19 @@ def _scope_from_intents(intents: list[str]) -> str:
         "wps_office",
         "company_primary",
         "podcast",
-        "tech",
+        "global_policy",
         "policy",
         "official_position",
-        "global_policy",
+        "legal_judicial",
+        "standards_compliance",
+        "tech",
+        "transport",
+        "local_life",
+        "education_learning",
+        "education_service",
+        "reading_notes",
+        "design_trend",
+        "ecommerce",
         "academic",
         "weather_disaster",
         "cybersecurity",
@@ -1713,9 +1773,9 @@ def _scope_from_intents(intents: list[str]) -> str:
         "university_admissions",
         "global_entertainment",
         "jp_kr_entertainment",
-        "entertainment",
         "industry",
         "global_industry",
+        "entertainment",
         "reputation",
         "purchase_advice",
     ]

@@ -87,6 +87,9 @@ def test_agent_auto_routing_regression_case(case: dict[str, Any]):
         assert scopes & expected_scopes, f"{case['id']} scopes={sorted(scopes)}"
     for scope in _list(case.get("forbidden_scopes")):
         assert scope not in scopes, f"{case['id']} unexpectedly preferred/fell back to {scope}: {sorted(scopes)}"
+    target_sites = set(str(site) for site in route_plan.get("target_sites") or [])
+    for site in _list(case.get("expected_sites_contains")):
+        assert site in target_sites, f"{case['id']} target_sites={sorted(target_sites)}"
 
     primary = str(payload.get("primary_command") or "")
     for needle in _list(case.get("expected_primary_contains")):

@@ -93,7 +93,37 @@ class RoutePlan:
 _INTENT_RULES: tuple[dict[str, Any], ...] = (
     {
         "intent": "policy",
-        "terms": ("政策", "监管", "法规", "通知", "办法", "意见", "征求意见", "部委", "国务院", "工信部", "专精特新", "备案", "合规"),
+        "terms": (
+            "政策",
+            "监管",
+            "法规",
+            "通知",
+            "办法",
+            "意见",
+            "征求意见",
+            "专项整治",
+            "录用公示",
+            "部委",
+            "国务院",
+            "教育部",
+            "双一流",
+            "一流学科建设高校",
+            "选调生",
+            "公务员",
+            "电子税务局",
+            "燃气安全",
+            "充装站",
+            "瓶安",
+            "工信部",
+            "无障碍环境建设法",
+            "信息无障碍",
+            "适老化",
+            "公共场所数字化指示",
+            "yd/t",
+            "专精特新",
+            "备案",
+            "合规",
+        ),
         "scopes": ("gov", "party_central"),
         "fallback": ("local_official", "business"),
         "roles": ("official_primary", "authoritative_report"),
@@ -126,9 +156,15 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "cbam",
             "拥堵费",
             "congestion pricing",
+            "欧洲无障碍法案",
+            "eaa",
+            "european accessibility act",
+            "eu accessibility",
+            "eur-lex",
         ),
         "scopes": ("global_official", "global_news"),
         "fallback": ("industry_analysis", "community_sample"),
+        "sites": ("ec.europa.eu", "eur-lex.europa.eu", "europa.eu", "w3.org"),
         "roles": ("official_primary", "authoritative_report"),
         "warning": "英文政策/监管问题应优先核验政府、监管机构或标准组织原文，媒体报道只能作为背景。",
     },
@@ -150,10 +186,34 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "certification",
             "standard",
             "standards",
+            "无障碍",
+            "信息无障碍",
+            "适老化",
+            "大字模式",
+            "大字体",
+            "wcag",
+            "eaa",
+            "yd/t",
+            "字体大小",
+            "字号",
+            "对比度",
+            "公共场所数字化指示",
+            "accessibility",
         ),
         "scopes": ("global_official", "gov", "company_primary", "academic"),
         "fallback": ("developer", "industry_analysis", "business"),
-        "sites": ("iso.org", "iec.ch", "nist.gov", "samr.gov.cn", "tc260.org.cn"),
+        "sites": (
+            "iso.org",
+            "iec.ch",
+            "nist.gov",
+            "samr.gov.cn",
+            "std.samr.gov.cn",
+            "tc260.org.cn",
+            "miit.gov.cn",
+            "w3.org",
+            "ec.europa.eu",
+            "eur-lex.europa.eu",
+        ),
         "roles": ("standard_original", "regulator_guidance", "implementation_context", "vendor_claim"),
         "warning": "标准/合规问题应区分标准原文、监管解释、厂商声明和实施经验；博客只能作落地参考。",
     },
@@ -293,10 +353,59 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
     },
     {
         "intent": "local",
-        "terms": ("地方", "城市", "区域", "省", "市", "区县", "园区", "北京", "上海", "深圳", "广州", "杭州", "成都"),
+        "terms": ("地方", "城市", "区域", "区县", "园区", "北京", "上海", "深圳", "广州", "杭州", "成都", "沈阳", "广西", "珠海"),
         "scopes": ("local_official", "gov"),
         "fallback": ("party_central", "business"),
         "roles": ("local_context", "official_primary"),
+    },
+    {
+        "intent": "local_life",
+        "terms": (
+            "骑行路线",
+            "骑行",
+            "徒步路线",
+            "Citywalk",
+            "citywalk",
+            "热门店",
+            "人気店",
+            "焼き鳥",
+            "美食",
+            "餐厅",
+            "餐馆",
+            "咖啡店",
+            "旅行攻略",
+            "展览",
+            "新展览",
+            "主题展览",
+            "展会",
+            "周末好去处",
+            "好去处",
+        ),
+        "scopes": ("social_web", "business"),
+        "fallback": ("local_official", "ecommerce", "community_sample"),
+        "sites": ("xiaohongshu.com", "dianping.com", "mafengwo.cn", "tripadvisor.com", "damai.cn", "showstart.com"),
+        "roles": ("local_guide", "user_sample", "official_context", "review_sample"),
+        "warning": "本地生活/路线/餐饮问题应区分官方入口、攻略样本、平台评价和当天时效；单平台榜单不能代表总体。",
+    },
+    {
+        "intent": "transport",
+        "terms": (
+            "开行日历",
+            "开行计划",
+            "运营计划",
+            "列车运行图",
+            "车次",
+            "铁路",
+            "高铁",
+            "12306",
+            "train schedule",
+            "railway timetable",
+        ),
+        "scopes": ("local_official", "gov", "business"),
+        "fallback": ("social_web",),
+        "sites": ("12306.cn", "railway12306.cn", "china-railway.com.cn"),
+        "roles": ("official_schedule", "operator_notice", "service_update", "traveler_sample"),
+        "warning": "铁路/交通开行信息应优先官方或运营方公告，第三方票务和论坛只能作线索。",
     },
     {
         "intent": "weather_disaster",
@@ -362,7 +471,6 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "比分",
             "伤病",
             "转会",
-            "合同",
             "续约",
             "梅西",
             "姆巴佩",
@@ -490,6 +598,27 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "nct",
             "starto",
             "snow man",
+            "アニメ",
+            "アニメ 新作",
+            "青春アニメ",
+            "新刊",
+            "最新刊",
+            "続編",
+            "劇場版",
+            "展覧会",
+            "イベント",
+            "ライトノベル",
+            "ラノベ",
+            "弱キャラ友崎くん",
+            "違国日記",
+            "ぼっち・ざ・ろっく",
+            "僕の心のヤバイやつ",
+            "僕ヤバ",
+            "とんがり帽子のアトリエ",
+            "青春コンプレックス",
+            "コミュ症",
+            "コミュ障",
+            "星の王子",
         ),
         "scopes": ("jp_kr_entertainment", "global_entertainment", "community_sample"),
         "fallback": ("global_news", "company_primary"),
@@ -523,10 +652,25 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "演唱会",
             "游戏",
             "手游",
+            "主机游戏",
             "steam",
             "dlc",
+            "mod",
+            "模组",
             "销量",
             "黑神话",
+            "巫师",
+            "witcher",
+            "cdpr",
+            "赛博朋克",
+            "cyberpunk",
+            "玩家反响",
+            "战锤",
+            "warhammer",
+            "星际战士",
+            "space marine",
+            "桌面游戏",
+            "新规则",
             "动漫",
             "二次元",
             "漫画",
@@ -542,9 +686,43 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
         ),
         "scopes": ("entertainment", "social_web", "business"),
         "fallback": ("finance", "tech_dev", "global_entertainment", "jp_kr_entertainment"),
-        "sites": ("douban.com", "maoyan.com", "bilibili.com", "weibo.com", "taptap.cn", "bangumi.tv", "pixiv.net", "mangapedia.com", "manba.co.jp"),
+        "sites": (
+            "douban.com",
+            "maoyan.com",
+            "bilibili.com",
+            "weibo.com",
+            "taptap.cn",
+            "bangumi.tv",
+            "pixiv.net",
+            "mangapedia.com",
+            "manba.co.jp",
+            "warhammer-community.com",
+            "games-workshop.com",
+        ),
         "roles": ("platform_metric", "user_review", "industry_report", "fan_discussion", "official_release"),
         "warning": "文娱问题应区分平台热度、用户评分、产业报道、宣发通稿和粉圈讨论；漫画/番剧/轻小说题材优先看条目站、创作者社区和公开口碑，单平台热搜不能代表总体口碑。",
+    },
+    {
+        "intent": "design_trend",
+        "terms": (
+            "流行色",
+            "色彩趋势",
+            "设计趋势",
+            "产品配色",
+            "配色趋势",
+            "ui 配色",
+            "视觉趋势",
+            "丁香紫",
+            "pantone",
+            "color trend",
+            "colour trend",
+            "palette",
+        ),
+        "scopes": ("social_web", "business", "industry_analysis"),
+        "fallback": ("ecommerce", "community_sample"),
+        "sites": ("pantone.com", "behance.net", "dribbble.com", "xiaohongshu.com", "pinterest.com"),
+        "roles": ("design_reference", "trend_report", "platform_sample", "brand_example"),
+        "warning": "设计趋势/配色问题应区分权威色彩机构、设计社区样本、品牌案例和平台种草；流行色不是事实性标准。",
     },
     {
         "intent": "reputation",
@@ -797,7 +975,27 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "趋势",
             "供应链",
             "创业",
+            "市场规模",
+            "复合增速",
+            "cagr",
+            "出货量",
+            "清洁能源",
+            "光伏",
+            "光热",
+            "熔盐储罐",
+            "主营业务",
+            "可穿戴",
+            "智能眼镜",
             "航运",
+            "业务板块",
+            "纺织服装",
+            "户外动力设备",
+            "ope",
+            "船舶制造",
+            "医疗设备进口",
+            "大宗商品",
+            "机电",
+            "商业模式",
             "运价",
             "红海",
             "关税",
@@ -823,16 +1021,41 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
     {
         "intent": "company_primary",
         "terms": (
+            "涂鸦智能",
+            "tuya",
+            "tuyaopen",
+            "cobuilder",
+            "iot paas",
+        ),
+        "scopes": ("company_primary", "developer", "tech_dev"),
+        "fallback": ("business", "global_news", "community_sample"),
+        "sites": ("tuya.com", "developer.tuya.com", "iot.tuya.com", "github.com"),
+        "roles": ("company_primary", "developer_documentation", "technical_primary", "fresh_news"),
+        "warning": "平台/开发者生态问题应先核验公司一手发布、开发者文档和代码入口，再补媒体与社区样本。",
+    },
+    {
+        "intent": "company_primary",
+        "terms": (
             "付费",
             "订阅",
             "定价",
             "价格",
+            "报价",
+            "服务费",
             "套餐",
             "会员",
             "商业化",
             "发布",
             "上线",
             "pricing",
+            "usage",
+            "billing",
+            "bills",
+            "quota",
+            "quotas",
+            "usage limit",
+            "usage limits",
+            "limits",
             "valuation",
             "users",
             "revenue",
@@ -850,6 +1073,22 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "earnings",
             "product update",
             "official blog",
+            "发售时间",
+            "发售日期",
+            "开发进度",
+            "股东",
+            "法定代表人",
+            "董事长",
+            "创始人",
+            "工商",
+            "企业信用",
+            "公司背景",
+            "社保代理",
+            "google cloud",
+            "gemini api",
+            "cloud console",
+            "开发者平台",
+            "开发者大会",
         ),
         "scopes": ("company_primary", "developer"),
         "fallback": ("global_news", "community_sample"),
@@ -902,6 +1141,18 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "供应链",
             "产业带",
             "亚马逊",
+            "京东",
+            "淘宝",
+            "天猫",
+            "拼多多",
+            "ecommerce",
+            "e-commerce",
+            "shopify",
+            "shopee",
+            "lazada",
+            "tiktok shop",
+            "dropshipping",
+            "instagram",
             "抖音电商",
             "抖音小店",
             "小店",
@@ -921,6 +1172,14 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "中古",
             "resale",
             "second hand",
+            "显卡",
+            "rtx",
+            "tech accessories",
+            "ai hardware",
+            "智能硬件",
+            "数码配件",
+            "smart devices",
+            "smart home",
         ),
         "scopes": ("ecommerce", "business"),
         "fallback": ("social_web", "finance"),
@@ -979,6 +1238,26 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "选型",
             "开发者",
             "mcp",
+            "人工智能 今天",
+            "人工智能 今日",
+            "人工智能 热门",
+            "人工智能 热点",
+            "openclaw",
+            "opencli",
+            "wechat-article-exporter",
+            "wechat article exporter",
+            "tuyaopen",
+            "cobuilder",
+            "iot paas",
+            "霞鹜文楷",
+            "lxgw",
+            "lxgwwenkai",
+            "wenkai",
+            "屏幕阅读版",
+            "字重",
+            "字体优化",
+            "字体 优化",
+            "视力障碍 字体",
             "教程",
             "rag",
             "reranker",
@@ -1071,6 +1350,70 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
         "warning": "考试备考资料应区分官方考试政策、培训机构材料和考生经验；机经/题库不宜当作确定事实。",
     },
     {
+        "intent": "education_learning",
+        "terms": (
+            "化学学习",
+            "学习技巧",
+            "初中",
+            "高中",
+            "元素周期表",
+            "记忆方法",
+            "stoichiometry",
+            "balancing equations",
+            "common student errors",
+            "practice tool",
+            "interactive",
+            "problem solving strategy",
+        ),
+        "scopes": ("social_web", "academic"),
+        "fallback": ("test_prep", "company_primary", "community_sample"),
+        "sites": ("khanacademy.org", "phet.colorado.edu", "chemcollective.org", "neea.edu.cn"),
+        "roles": ("learning_resource", "official_curriculum", "practice_tool", "teacher_strategy"),
+        "warning": "学习资源应区分官方/机构材料、教师经验、互动工具和社区样本；不要把 SEO 题库当权威。",
+    },
+    {
+        "intent": "education_service",
+        "terms": (
+            "夏令营",
+            "冬令营",
+            "研学",
+            "营地",
+            "暑期",
+            "家长评价",
+            "小学生",
+            "青少年",
+            "费用",
+            "年龄",
+            "住宿",
+        ),
+        "scopes": ("social_web", "business", "company_primary"),
+        "fallback": ("gov", "market_review"),
+        "sites": ("xiaohongshu.com", "zhihu.com", "weibo.com", "heimao.com"),
+        "roles": ("official_program", "parent_sample", "complaint_sample", "safety_context"),
+        "warning": "教育服务/夏令营口碑应分开官方招生页、家长样本、投诉样本和安全/保险条款；投诉样本不能外推总体。",
+    },
+    {
+        "intent": "reading_notes",
+        "terms": (
+            "书摘",
+            "读书笔记",
+            "阅读笔记",
+            "书评",
+            "豆瓣读书",
+            "少儿阅读",
+            "图书馆",
+            "阅读清单",
+            "caldecott",
+            "caldecott medal",
+            "medal winners",
+        ),
+        "scopes": ("social_web", "business"),
+        "fallback": ("local_official", "entertainment", "community_sample"),
+        "sites": ("book.douban.com", "douban.com", "weread.qq.com", "goodreads.com", "ala.org"),
+        "roles": ("book_record", "reader_note", "library_context", "review_sample"),
+        "warning": "书摘/读书笔记应避免长段版权文本；读者笔记和平台评分只能作样本。",
+    },
+    {
         "intent": "academic",
         "terms": (
             "ei",
@@ -1138,6 +1481,14 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "盘口",
             "大盘",
             "指数",
+            "富时",
+            "a50",
+            "期货",
+            "收盘",
+            "美股收盘",
+            "标普500",
+            "纳指",
+            "道指",
             "板块",
             "etf",
             "基金净值",
@@ -1145,6 +1496,10 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "quote",
             "stock price",
             "market cap",
+            "futures",
+            "s&p 500",
+            "nasdaq",
+            "dow",
         ),
         "scopes": ("finance_quote", "finance_news"),
         "fallback": ("finance_disclosure", "finance_sentiment"),
@@ -1247,7 +1602,7 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
     },
     {
         "intent": "hot_trend",
-        "terms": ("今天", "今日", "最新", "最近", "近期", "热点", "热搜", "热议", "刷屏", "突发", "舆情", "快讯"),
+        "terms": ("今天", "今日", "最新", "最近", "近期", "热点", "热搜", "热议", "刷屏", "突发", "舆情", "快讯", "重大新闻", "时政", "社会热点"),
         "scopes": ("social_web", "business", "finance"),
         "fallback": ("party_central", "tech_dev"),
         "roles": ("fresh_news", "public_discussion"),
@@ -1386,9 +1741,50 @@ def build_route_plan(
     if _should_demote_secondhand_company_primary(text, matched_rules):
         matched_rules = [rule for rule in matched_rules if rule.get("intent") != "company_primary"]
         reasons = [reason for reason in reasons if not reason.startswith("company_primary:")]
+    if _should_demote_marketplace_company_primary(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "company_primary"]
+        reasons = [reason for reason in reasons if not reason.startswith("company_primary:")]
+    if _should_demote_marketplace_finance(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") not in {"finance", "finance_quote"}]
+        reasons = [
+            reason
+            for reason in reasons
+            if not (reason.startswith("finance:") or reason.startswith("finance_quote:"))
+        ]
+    if _should_demote_procurement_finance(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") not in {"finance", "finance_disclosure"}]
+        reasons = [
+            reason
+            for reason in reasons
+            if not (reason.startswith("finance:") or reason.startswith("finance_disclosure:"))
+        ]
+    if _should_demote_business_segment_finance_quote(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "finance_quote"]
+        reasons = [reason for reason in reasons if not reason.startswith("finance_quote:")]
     if _should_demote_broad_entertainment(text, matched_rules):
         matched_rules = [rule for rule in matched_rules if rule.get("intent") != "entertainment"]
         reasons = [reason for reason in reasons if not reason.startswith("entertainment:")]
+    if _should_demote_reading_notes_entertainment(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "entertainment"]
+        reasons = [reason for reason in reasons if not reason.startswith("entertainment:")]
+    if _should_demote_game_reaction_tech(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "tech"]
+        reasons = [reason for reason in reasons if not reason.startswith("tech:")]
+    if _should_demote_education_service_tech(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "tech"]
+        reasons = [reason for reason in reasons if not reason.startswith("tech:")]
+    if _should_demote_policy_topic_tech(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "tech"]
+        reasons = [reason for reason in reasons if not reason.startswith("tech:")]
+    if _should_demote_global_accessibility_domestic_policy(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "policy"]
+        reasons = [reason for reason in reasons if not reason.startswith("policy:")]
+    if _should_demote_standard_purchase_advice(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "purchase_advice"]
+        reasons = [reason for reason in reasons if not reason.startswith("purchase_advice:")]
+    if _should_demote_academic_generic_standards(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "standards_compliance"]
+        reasons = [reason for reason in reasons if not reason.startswith("standards_compliance:")]
     if _should_demote_fictional_university(text, matched_rules):
         matched_rules = [rule for rule in matched_rules if rule.get("intent") != "university_admissions"]
         reasons = [reason for reason in reasons if not reason.startswith("university_admissions:")]
@@ -1467,6 +1863,8 @@ def build_route_plan(
         target_sites = _unique(_university_target_sites(clean_query) + target_sites)
     if not (site or sites or scope or preset):
         target_sites = _unique(target_sites + _source_pack_target_sites(primary + secondary))
+    if not (site or sites):
+        target_sites = _unique(_topic_specific_target_sites(clean_query) + target_sites)
     if cross_region_entertainment and not (site or sites):
         domestic_entertainment_sites = {"douban.com", "maoyan.com", "bilibili.com", "weibo.com", "taptap.cn"}
         target_sites = [site_id for site_id in target_sites if site_id not in domestic_entertainment_sites]
@@ -1509,6 +1907,12 @@ def build_route_plan(
             "career",
             "podcast",
             "test_prep",
+            "education_learning",
+            "education_service",
+            "reading_notes",
+            "transport",
+            "local_life",
+            "design_trend",
             "public_opinion",
             "crisis_watch",
             "competitor_watch",
@@ -1846,6 +2250,9 @@ def _query_variants(query: str, intents: list[str], domains: list[str]) -> list[
     if "public_opinion" in intents:
         variants.append(f"{query} 舆情 风评 声量 正负面")
         variants.append(f"{query} 微博 知乎 小红书 B站 评论")
+    if "design_trend" in intents:
+        variants.append(f"{query} Pantone Behance Dribbble")
+        variants.append(f"{query} 小红书 设计趋势 产品配色 案例")
     if "crisis_watch" in intents:
         variants.append(f"{query} 负面 投诉 道歉 澄清")
         variants.append(f"{query} 媒体报道 官方回应 用户投诉")
@@ -2517,6 +2924,19 @@ def _university_target_sites(query: str) -> list[str]:
     return _unique(sites)
 
 
+def _topic_specific_target_sites(query: str) -> list[str]:
+    """Promote known high-signal original sites for recurring niche topics."""
+    text = (query or "").lower()
+    sites: list[str] = []
+    if any(term in text for term in ("yd/t", "工信部", "信息无障碍", "适老化", "无障碍环境建设法", "公共场所数字化指示")):
+        sites.extend(["miit.gov.cn", "std.samr.gov.cn", "samr.gov.cn", "w3.org"])
+    if any(term in text for term in ("欧洲无障碍法案", "eaa", "european accessibility act")):
+        sites.extend(["ec.europa.eu", "eur-lex.europa.eu", "w3.org"])
+    if any(term in text for term in ("战锤", "warhammer", "星际战士", "space marine")):
+        sites.extend(["warhammer-community.com", "games-workshop.com"])
+    return _unique(sites)
+
+
 def _english_scope_equivalents(scopes: list[str]) -> list[str]:
     mapping = {
         "gov": ["global_official"],
@@ -2666,6 +3086,142 @@ def _should_demote_secondhand_company_primary(text: str, rules: list[dict[str, A
     return not _contains_any(text, official_terms)
 
 
+def _should_demote_marketplace_company_primary(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Marketplace product price lookups should not be treated as vendor docs."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if not {"company_primary", "ecommerce"} <= intents:
+        return False
+    marketplace_terms = (
+        "京东",
+        "淘宝",
+        "天猫",
+        "拼多多",
+        "shopify",
+        "instagram",
+        "显卡",
+        "rtx",
+        "tech accessories",
+        "ai hardware",
+        "智能硬件",
+        "数码配件",
+    )
+    price_terms = ("价格", "报价", "行情", "多少钱", "price")
+    official_terms = ("官网", "官方", "release notes", "official blog", "docs", "documentation")
+    return _contains_any(text, marketplace_terms) and _contains_any(text, price_terms) and not _contains_any(text, official_terms)
+
+
+def _should_demote_marketplace_finance(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Product-market 行情 should not trigger stock/quote workflows."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "ecommerce" not in intents or not {"finance", "finance_quote"} & intents:
+        return False
+    product_terms = (
+        "京东",
+        "淘宝",
+        "天猫",
+        "拼多多",
+        "显卡",
+        "rtx",
+        "rx 9070",
+        "充电宝",
+        "数码配件",
+        "智能硬件",
+        "tech accessories",
+        "ai hardware",
+    )
+    capital_market_terms = (
+        "股票",
+        "股价",
+        "大盘",
+        "指数",
+        "etf",
+        "基金净值",
+        "期货",
+        "富时",
+        "a50",
+        "标普",
+        "纳指",
+        "道指",
+        "nasdaq",
+        "dow",
+        "stock price",
+    )
+    return _contains_any(text, product_terms) and not _contains_any(text, capital_market_terms)
+
+
+def _should_demote_procurement_finance(text: str, rules: list[dict[str, Any]]) -> bool:
+    """招标/采购公告 is procurement evidence, not capital-market finance by default."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if not {"finance", "finance_disclosure"} & intents:
+        return False
+    procurement_terms = ("招标", "采购", "中标", "外包", "建库", "供应商", "采购项目")
+    capital_market_terms = (
+        "财报",
+        "年报",
+        "季报",
+        "半年报",
+        "减持",
+        "质押",
+        "停牌",
+        "复牌",
+        "监管函",
+        "问询函",
+        "交易所",
+        "上市公司",
+        "股票",
+        "股价",
+        "投资者",
+        "cninfo",
+        "sse",
+        "szse",
+    )
+    return _contains_any(text, procurement_terms) and not _contains_any(text, capital_market_terms)
+
+
+def _should_demote_business_segment_finance_quote(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Company business-segment queries use industry/company evidence; 板块 alone is not a quote request."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "finance_quote" not in intents or not {"industry", "company_primary"} & intents:
+        return False
+    business_terms = (
+        "业务板块",
+        "主营业务",
+        "业务",
+        "商业模式",
+        "公司",
+        "集团",
+        "纺织服装",
+        "户外动力设备",
+        "船舶制造",
+        "医疗设备进口",
+        "大宗商品",
+        "机电",
+    )
+    live_quote_terms = (
+        "股价",
+        "行情",
+        "涨跌",
+        "涨跌幅",
+        "盘口",
+        "大盘",
+        "指数",
+        "富时",
+        "a50",
+        "期货",
+        "收盘",
+        "etf",
+        "基金净值",
+        "实时",
+        "quote",
+        "stock price",
+        "market cap",
+        "futures",
+        "nasdaq",
+        "dow",
+    )
+    return _contains_any(text, business_terms) and not _contains_any(text, live_quote_terms)
+
+
 def _should_demote_broad_finance_sentiment(text: str, rules: list[dict[str, Any]]) -> bool:
     """Keep generic 舆情 queries out of the stock workflow unless finance is explicit."""
     intents = {str(rule.get("intent") or "") for rule in rules}
@@ -2725,6 +3281,154 @@ def _should_demote_broad_entertainment(text: str, rules: list[dict[str, Any]]) -
         "hollywood",
     )
     return not _contains_any(text, entertainment_terms)
+
+
+def _should_demote_reading_notes_entertainment(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Keep book notes/reviews out of movie/game entertainment routing."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if not {"reading_notes", "entertainment"} <= intents:
+        return False
+    reading_terms = ("书摘", "读书笔记", "阅读笔记", "书评", "豆瓣读书", "图书馆", "少儿阅读")
+    visual_entertainment_terms = (
+        "电影",
+        "电视剧",
+        "综艺",
+        "明星",
+        "票房",
+        "游戏",
+        "手游",
+        "steam",
+        "动漫",
+        "漫画",
+        "番剧",
+        "演唱会",
+    )
+    return _contains_any(text, reading_terms) and not _contains_any(text, visual_entertainment_terms)
+
+
+def _should_demote_game_reaction_tech(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Keep game release/reaction queries in entertainment unless they ask for engineering details."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if not {"entertainment", "tech"} <= intents:
+        return False
+    game_context = ("巫师", "witcher", "cdpr", "steam", "玩家反响", "玩家争议", "mod", "模组", "发售")
+    engineering_terms = ("sdk", "api", "github", "源码", "代码", "开发教程", "部署", "bug", "benchmark")
+    return _contains_any(text, game_context) and not _contains_any(text, engineering_terms)
+
+
+def _should_demote_education_service_tech(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Summer-camp reputation should not be swallowed by generic AI/robotics tech terms."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "tech" not in intents or not {"education_service", "reputation"} & intents:
+        return False
+    service_terms = ("夏令营", "研学", "营地", "暑期", "家长评价", "小学生", "青少年", "投诉")
+    engineering_terms = ("github", "sdk", "api", "源码", "代码", "部署", "benchmark", "论文", "开源")
+    return _contains_any(text, service_terms) and not _contains_any(text, engineering_terms)
+
+
+def _should_demote_policy_topic_tech(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Treat AI policy/regulation queries as policy, not a parallel tech workflow."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "tech" not in intents or not {"policy", "global_policy", "standards_compliance"} & intents:
+        return False
+    policy_terms = ("政策", "监管", "法规", "通知", "办法", "意见", "合规", "专项整治", "原文", "regulation", "policy")
+    engineering_terms = ("github", "sdk", "api", "源码", "代码", "部署", "benchmark", "开源", "框架", "教程")
+    return _contains_any(text, policy_terms) and not _contains_any(text, engineering_terms)
+
+
+def _should_demote_global_accessibility_domestic_policy(text: str, rules: list[dict[str, Any]]) -> bool:
+    """European accessibility law should start from EU/standards sources, not China gov scope."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if not {"policy", "global_policy"} <= intents:
+        return False
+    global_terms = (
+        "欧洲无障碍法案",
+        "eaa",
+        "european accessibility act",
+        "欧盟",
+        "欧洲",
+        "eu accessibility",
+        "eur-lex",
+    )
+    domestic_terms = (
+        "中国",
+        "国务院",
+        "工信部",
+        "教育部",
+        "国家标准",
+        "国家",
+        "miit",
+        "samr",
+        "gov.cn",
+    )
+    return _contains_any(text, global_terms) and not _contains_any(text, domestic_terms)
+
+
+def _should_demote_standard_purchase_advice(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Do not let 对比度 inside standards text trigger shopping-style purchase advice."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "purchase_advice" not in intents or not {"policy", "global_policy", "standards_compliance"} & intents:
+        return False
+    standard_terms = (
+        "对比度",
+        "字号",
+        "字体大小",
+        "无障碍",
+        "适老化",
+        "大字模式",
+        "wcag",
+        "yd/t",
+        "标准",
+        "具体条款",
+    )
+    shopping_terms = (
+        "值不值得买",
+        "能买吗",
+        "要不要买",
+        "购买",
+        "选购",
+        "推荐哪",
+        "哪个牌子",
+        "优缺点",
+    )
+    return _contains_any(text, standard_terms) and not _contains_any(text, shopping_terms)
+
+
+def _should_demote_academic_generic_standards(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Academic CFP/indexing 'standards and requirements' should stay in academic routing."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if not {"academic", "standards_compliance"} <= intents:
+        return False
+    academic_terms = (
+        "ei",
+        "sci",
+        "scopus",
+        "会议",
+        "学术会议",
+        "投稿",
+        "检索",
+        "收录",
+        "论文",
+        "期刊",
+        "cfp",
+        "proceedings",
+    )
+    hard_standard_terms = (
+        "iso",
+        "iec",
+        "nist",
+        "wcag",
+        "yd/t",
+        "无障碍",
+        "适老化",
+        "等保",
+        "gdpr",
+        "合规",
+        "认证",
+        "审计",
+        "监管",
+    )
+    return _contains_any(text, academic_terms) and not _contains_any(text, hard_standard_terms)
 
 
 def _should_demote_fictional_university(text: str, rules: list[dict[str, Any]]) -> bool:

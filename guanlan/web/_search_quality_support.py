@@ -550,11 +550,19 @@ def _source_mix(results: list[dict[str, Any]]) -> dict[str, int]:
     return dict(sorted(mix.items(), key=lambda item: (-item[1], item[0])))
 
 
-def _search_limit_advice(limit: int) -> dict[str, Any]:
+def _search_limit_advice(
+    limit: int,
+    *,
+    query: str = "问题",
+    profile: str | None = None,
+    scope: str | None = None,
+    site: str | None = None,
+) -> dict[str, Any]:
     current = max(int(limit or 0), 0)
     threshold = 30
     if current >= threshold:
         return {"enabled": False, "limit": current, "recommended_limit": DEFAULT_SEARCH_LIMIT}
+    repair_command = _expanded_limit_repair_command(query, profile=profile, scope=scope, site=site)
     return {
         "enabled": True,
         "limit": current,
@@ -563,13 +571,42 @@ def _search_limit_advice(limit: int) -> dict[str, Any]:
         "severity": "warn" if current < 20 else "note",
         "message": (
             f"当前 --limit {current} 适合 smoke test，不适合严肃研究；"
-            f"Agent 应尽量说服用户接受 --limit {DEFAULT_SEARCH_LIMIT}，再压缩输出给用户。"
+            f"Agent 应先无感补跑 --limit {DEFAULT_SEARCH_LIMIT}，再压缩输出给用户。"
         ),
         "agent_instruction": (
-            "不要因为用户给了很小的 limit 就直接下最终结论；先说明小样本风险，"
-            f"建议补跑 `guanlan search \"query\" --limit {DEFAULT_SEARCH_LIMIT} --trace`。"
+            "不要因为用户给了很小的 limit 就直接下最终结论；除非用户明确只要 smoke，"
+            "先执行 silent_repair_commands 里的扩大候选池命令，再合并呈现。"
         ),
+        "repair_policy": "silent_expand_then_summarize",
+        "silent_repair_commands": [
+            {
+                "role": "expanded_search",
+                "command": repair_command,
+                "reason": f"当前 {current} 条只适合 smoke；补到 {DEFAULT_SEARCH_LIMIT} 条作为研究级候选池。",
+            }
+        ],
+        "suggested_command": repair_command,
     }
+
+
+def _expanded_limit_repair_command(
+    query: str,
+    *,
+    profile: str | None = None,
+    scope: str | None = None,
+    site: str | None = None,
+) -> str:
+    quoted = _shell_quote_for_command(query or "问题")
+    parts = [f"guanlan search {quoted}"]
+    if profile:
+        parts.append(f"--profile {profile}")
+    if site:
+        parts.append(f"--site {site}")
+    if scope:
+        parts.append(f"--scope {scope}")
+    parts.append(f"--limit {DEFAULT_SEARCH_LIMIT}")
+    parts.append("--trace")
+    return " ".join(parts)
 
 
 def _shell_quote_for_command(value: str) -> str:

@@ -50,7 +50,7 @@ guanlan agent "用户需求" --json
 
 ### 结果池纪律
 
-`--limit 30` 以下只适合 smoke test。严肃搜索、研究、对比、时间线和档案任务，应尽量保持默认 80 条候选池；如果用户或评测脚本给了很小的 limit，Agent 可以先执行，但必须把它当“小样本线索”，并建议补跑 `--limit 80` 后再下结论。
+`--limit 30` 以下只适合 smoke test。严肃搜索、研究、对比、时间线和档案任务，应尽量保持默认 80 条候选池；如果用户或评测脚本给了很小的 limit，Agent 可以先执行，但必须把它当“小样本线索”。`search --trace` 会在 `agent_limit_advice.silent_repair_commands` 里给出扩大到 `--limit 80` 的补跑命令；除非用户明确只要 smoke，先无感执行该命令，再压缩输出给用户。
 
 ### Evidence Mixer 影子诊断
 

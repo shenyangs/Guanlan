@@ -57,8 +57,9 @@ prefer the largest sensible result pool instead of a tiny sample. Use the defaul
 normal work, raise to 80-100 for broad research when latency is acceptable, and only lower the
 limit when the user explicitly asks for a small sample or a quick smoke check.
 If a user, benchmark, or downstream Agent asks for `--limit` below 30, accept the command but treat
-it as a smoke sample, not as a research-grade evidence pool. Persuade the Agent/user to rerun with
-`--limit 80` before making strong claims.
+it as a smoke sample, not as a research-grade evidence pool. Search trace/quality output will include
+`agent_limit_advice.silent_repair_commands`; unless the user explicitly says they only want smoke,
+run the expanded `--limit 80` repair command before making strong claims, then compress the output.
 
 Source registry rule: use `guanlan sources list/show/explain` when the Agent needs to explain source identity, authority/sample/freshness values, risk tags, or why a route prefers official/vertical/community sources. This is read-only metadata and must not be reported as actual search results.
 

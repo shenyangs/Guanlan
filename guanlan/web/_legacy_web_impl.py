@@ -1350,7 +1350,13 @@ def search_web(
         quality=quality,
     )
     query_strategy["query_shape"] = query_shape
-    limit_advice = _search_limit_advice(limit)
+    limit_advice = _search_limit_advice(
+        limit,
+        query=original_query,
+        profile=profile,
+        scope=effective_scope,
+        site=site,
+    )
     time_constraint = _search_time_constraint(recency)
     if limit_advice["enabled"]:
         query_strategy["agent_limit_advice"] = limit_advice
@@ -2225,11 +2231,19 @@ def _search_shared_diagnostics(
     }
 
 
-def _search_limit_advice(limit: int) -> dict[str, Any]:
+def _search_limit_advice(
+    limit: int,
+    *,
+    query: str = "query",
+    profile: str | None = None,
+    scope: str | None = None,
+    site: str | None = None,
+) -> dict[str, Any]:
     current = max(int(limit or 0), 0)
     threshold = 30
     if current >= threshold:
         return {"enabled": False, "limit": current, "recommended_limit": DEFAULT_SEARCH_LIMIT}
+    repair_command = _expanded_limit_repair_command(query, profile=profile, scope=scope, site=site)
     return {
         "enabled": True,
         "limit": current,
@@ -2238,13 +2252,42 @@ def _search_limit_advice(limit: int) -> dict[str, Any]:
         "severity": "warn" if current < 20 else "note",
         "message": (
             f"当前 --limit {current} 适合 smoke test，不适合严肃研究；"
-            f"Agent 应尽量说服用户接受 --limit {DEFAULT_SEARCH_LIMIT}，再压缩输出给用户。"
+            f"Agent 应先无感补跑 --limit {DEFAULT_SEARCH_LIMIT}，再压缩输出给用户。"
         ),
         "agent_instruction": (
-            "不要因为用户给了很小的 limit 就直接下最终结论；先说明小样本风险，"
-            f"建议补跑 `guanlan search \"query\" --limit {DEFAULT_SEARCH_LIMIT} --trace`。"
+            "不要因为用户给了很小的 limit 就直接下最终结论；除非用户明确只要 smoke，"
+            "先执行 silent_repair_commands 里的扩大候选池命令，再合并呈现。"
         ),
+        "repair_policy": "silent_expand_then_summarize",
+        "silent_repair_commands": [
+            {
+                "role": "expanded_search",
+                "command": repair_command,
+                "reason": f"当前 {current} 条只适合 smoke；补到 {DEFAULT_SEARCH_LIMIT} 条作为研究级候选池。",
+            }
+        ],
+        "suggested_command": repair_command,
     }
+
+
+def _expanded_limit_repair_command(
+    query: str,
+    *,
+    profile: str | None = None,
+    scope: str | None = None,
+    site: str | None = None,
+) -> str:
+    quoted = _shell_quote_for_command(query or "query")
+    parts = [f"guanlan search {quoted}"]
+    if profile:
+        parts.append(f"--profile {profile}")
+    if site:
+        parts.append(f"--site {site}")
+    if scope:
+        parts.append(f"--scope {scope}")
+    parts.append(f"--limit {DEFAULT_SEARCH_LIMIT}")
+    parts.append("--trace")
+    return " ".join(parts)
 
 
 def _search_time_constraint(recency: dict[str, Any]) -> dict[str, Any]:
@@ -7226,6 +7269,10 @@ def _search_context_diagnostics(results: list[dict[str, Any]]) -> list[str]:
         lines.append(f"> Query 说明: {note}")
     if isinstance(limit_advice, dict) and limit_advice.get("enabled"):
         lines.append(f"> 结果池提醒: {limit_advice.get('message')}")
+        for item in limit_advice.get("silent_repair_commands") or []:
+            command = str(item.get("command") or "")
+            if command:
+                lines.append(f"> 结果池补跑: `{command}`")
     if isinstance(site_filter, dict) and site_filter.get("enabled"):
         lines.append(
             f"> 站点硬过滤: site={site_filter.get('site')} kept={site_filter.get('kept', 0)} "
@@ -7460,6 +7507,10 @@ def format_search_trace(results: list[dict[str, Any]]) -> str:
             f"limit={limit_advice.get('limit')} recommended={limit_advice.get('recommended_limit')} "
             f"threshold={limit_advice.get('threshold')}"
         )
+        for item in limit_advice.get("silent_repair_commands") or []:
+            command = str(item.get("command") or "")
+            if command:
+                lines.append(f"  limit_repair: `{command}`")
     if isinstance(scope_distinction, dict) and scope_distinction.get("enabled"):
         lines.append(
             "- scope_distinction: "

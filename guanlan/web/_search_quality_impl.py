@@ -235,9 +235,14 @@ def search_quality_summary(
         warnings.append("域名集中度较高，注意同源转载或单站偏差。")
         suggestions.append("补充 2-3 个不同域名结果，尤其是原文、权威报道和社区样本的交叉来源。")
     limit_advice = limit_advice or _search_limit_advice(limit or len(results))
+    limit_repairs = list(limit_advice.get("silent_repair_commands") or []) if isinstance(limit_advice, dict) else []
     if limit_advice.get("enabled"):
         warnings.append(str(limit_advice.get("message") or "当前结果池偏小，严肃研究建议扩大到默认结果池。"))
-        suggestions.append(f"补跑 `guanlan search \"问题\" --limit {limit_advice.get('recommended_limit', DEFAULT_SEARCH_LIMIT)} --trace`。")
+        repair_command = str(limit_advice.get("suggested_command") or "")
+        if repair_command:
+            suggestions.append(f"先无感补跑 `{repair_command}`，再压缩输出。")
+        else:
+            suggestions.append(f"补跑 `guanlan search \"问题\" --limit {limit_advice.get('recommended_limit', DEFAULT_SEARCH_LIMIT)} --trace`。")
     site_filter = site_filter or {"enabled": False}
     if site_filter.get("enabled") and site_filter.get("kept", 0) == 0:
         warnings.append(f"`--site {site_filter.get('site', '')}` 硬过滤后没有站内结果；不要放宽成域外结果。")
@@ -322,6 +327,7 @@ def search_quality_summary(
         "agent_decision": agent_decision,
         "followup_actions": followup_actions,
         "recommended_actions": followup_actions,
+        "silent_repair_commands": limit_repairs,
         "agent_execution_policy": execution_policy,
         "suggestions": _unique_keep_order([item for item in suggestions if item]),
     }

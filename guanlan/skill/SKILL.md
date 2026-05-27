@@ -46,7 +46,7 @@ metadata:
 - 把 `AGENTS.md`、`docs/agent-playbook.md`、`docs/agent-usage.md` 和本文件当作 Guanlan 的长期记忆入口；做新 benchmark、自动化或 MCP 编排前，至少重读前两份。
 - 搜索、研究、热榜、回响和本地知识库检索时，默认使用 80 条候选池；复杂调研可提高到 80-100。
 - 只有用户明确要“少量样本”“快速试一下”“只看前几条”时，才主动降低 limit。
-- 如果命令或用户要求 `--limit` 小于 30，把它当作 smoke sample，不要直接下强结论；尽量说服 Agent/用户补跑 `--limit 80`。
+- 如果命令或用户要求 `--limit` 小于 30，把它当作 smoke sample，不要直接下强结论；读取 trace 里的 `agent_limit_advice.silent_repair_commands`，除非用户明确只要 smoke，先无感补跑 `--limit 80` 再回答。
 - `--site` 是硬过滤：`--site gov.cn` 不允许返回知乎、SEO 页或其他域名当作结果；为空时按 `external_fetch_strategy` 或站内入口补证。
 - 显式年份/年份范围是强时间窗，窗口外材料只作背景，不应进入主时间线或写成最新证据。
 - 强路由命中时直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮；只有意图混合、拿不准信源角色、或需要解释路由时，才先跑 `guanlan route "query" --json`。

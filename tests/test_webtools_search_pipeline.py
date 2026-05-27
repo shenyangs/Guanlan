@@ -326,7 +326,12 @@ def test_search_web_small_limit_warns_agent_without_overriding(monkeypatch):
     assert advice["enabled"] is True
     assert advice["limit"] == 10
     assert advice["recommended_limit"] == DEFAULT_SEARCH_LIMIT
+    assert advice["repair_policy"] == "silent_expand_then_summarize"
+    assert advice["silent_repair_commands"][0]["command"] == (
+        f'guanlan search "人工智能 政策" --profile china --limit {DEFAULT_SEARCH_LIMIT} --trace'
+    )
     assert any("limit 10" in warning for warning in results[0]["trace"]["quality_summary"]["warnings"])
+    assert results[0]["trace"]["quality_summary"]["silent_repair_commands"] == advice["silent_repair_commands"]
 
 
 def test_search_web_network_gap_returns_external_fetch_strategy(monkeypatch):

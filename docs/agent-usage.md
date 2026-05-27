@@ -31,7 +31,7 @@
 - 长期观察一个“意图”而不只是固定 RSS 源时，用 `guanlan watch plan/add/fire`。`watch` 是本地 standing intent 雷达，默认不启动后台服务、不发通知；`fire` 默认不写 seen，只有 `--record-seen` 才更新去重状态。
 - 品牌、公关、市场、舆情团队要日报/晨报/每日简报时，用 `guanlan daily "主题" --time-window 3d --format markdown`。日报不是搜索结果列表，而是多源采编工作流：主线来自 `storylines`，正文保留一手口径、外部报道、社区样本、风险信任、候补线索和采编自检；`editorial_health.status=block` 时不能当成品日报。需要团队 IM 摘要用 `--format im`，需要可交付静态页用 `--format html`，需要连续性时显式 `--record-history --compare-days N`。
 - Agent 调用时应尽量多取结果再筛选：普通任务保持 80，复杂研究可设到 80-100；只有用户明确要求“小样本/快速看一下”时才降低 limit。
-- 当 `--limit` 小于 30 时，把它当 smoke sample：可以先返回线索，但要提醒后续 Agent/用户补跑 `--limit 80`，不要用 5-10 条结果直接写强结论。
+- 当 `--limit` 小于 30 时，把它当 smoke sample：可以先返回线索，但不要用 5-10 条结果直接写强结论。`search --trace` 会给出 `agent_limit_advice.silent_repair_commands`，除非用户明确只要 smoke，先无感补跑 `--limit 80`，再压缩输出。
 - `search` 默认附带 Evidence Mixer 影子诊断：它只估算哪些证据适合作为优先阅读候选，不删除、不重排结果。需要让 Agent 明确看到优先阅读顺序时用 `--evidence-mode assist`；排障或回滚时用 `--evidence-mode off`。
 - Agent 平台外层 timeout 要宽松：不要用 10-30 秒去包住 `research`、`feeds` 或 `hotnews` 这种组合命令；超时只能说明网络/上游抖动，不代表没有证据。
 - 用户需要建议、影响判断、下一步行动，或询问“为什么会搜这个”时，优先使用 `research --advisor`，但把助理视角当作证据边界和写作规则，由你结合用户问题生成自然建议；不要机械复述模板，也不要当作用户真实意图。
