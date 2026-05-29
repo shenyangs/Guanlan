@@ -777,8 +777,13 @@ def _select_primary_agent_command(
             return search
         return _generated_search_command(query, decision, profile=profile, scope=scope)
 
+    if _is_country_industry_finance_query(query):
+        return _generated_search_command(query, decision, profile=profile, scope="industry_analysis")
+
     entrypoint = decision.recommended_entrypoint
     if entrypoint == "stock":
+        if _is_country_industry_finance_query(query):
+            return _generated_search_command(query, decision, profile=profile, scope="industry_analysis")
         if _is_index_or_futures_quote_query(query):
             return _generated_search_command(query, decision, profile=profile, scope="finance_quote")
         if _is_macro_finance_query(query, decision):
@@ -1170,6 +1175,12 @@ def _should_skip_agent_route_command(command: str, decision: WorkflowDecision, q
     intents = set(decision.route_intents)
     finance_intents = {"finance", "finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"}
     site = _extract_site_from_command(command)
+    if _is_country_industry_finance_query(query) and kind == "stock":
+        return True
+    if _is_country_industry_finance_query(query) and kind == "read" and any(
+        domain in text for domain in ("cninfo.com.cn", "sse.com.cn", "szse.cn", "eastmoney.com")
+    ):
+        return True
     if _is_generic_finance_product_query(query) and kind == "stock":
         return True
     if _is_index_or_futures_quote_query(query) and kind == "stock":
@@ -1209,6 +1220,8 @@ def _agent_scoped_search_fallback(query: str, decision: WorkflowDecision, *, pro
         scope = "ecommerce"
     elif _is_social_style_query(query):
         scope = "social_web"
+    elif _is_country_industry_finance_query(query):
+        scope = "industry_analysis"
     elif "finance_macro" in intents:
         scope = "finance_macro"
     elif "finance_quote" in intents:
@@ -1221,6 +1234,8 @@ def _agent_scoped_search_fallback(query: str, decision: WorkflowDecision, *, pro
         scope = "gov"
     elif "standards_compliance" in intents:
         scope = "global_official"
+    elif "cybersecurity" in intents:
+        scope = "cybersecurity"
     elif "transport" in intents:
         scope = "local_official"
     elif {"local_life", "education_service", "reading_notes", "design_trend"} & intents:
@@ -1423,6 +1438,37 @@ def _is_generic_finance_product_query(query: str) -> bool:
     return not any(term in text for term in capital_market_terms)
 
 
+def _is_country_industry_finance_query(query: str) -> bool:
+    text = (query or "").lower()
+    country_terms = ("英国", "uk companies", "british companies", "british", "英企")
+    industry_terms = (
+        "英国企业",
+        "企业并购",
+        "并购",
+        "m&a",
+        "merger",
+        "acquisition",
+        "industry policy",
+        "行业政策",
+    )
+    listed_entity_terms = (
+        "股价",
+        "股票代码",
+        "今日净值",
+        "基金净值",
+        "etf联接",
+        "a50",
+        "期货",
+        "ftse 100",
+        "688111",
+    )
+    return (
+        (any(term in text for term in country_terms) or "企业并购" in text or "行业政策" in text)
+        and any(term in text for term in industry_terms)
+        and not any(term in text for term in listed_entity_terms)
+    )
+
+
 def _is_macro_finance_query(query: str, decision: WorkflowDecision) -> bool:
     text = (query or "").lower()
     macro_terms = ("finance_macro", "gdp", "inflation", "recession", "cpi", "pmi", "fed", "央行", "社融", "通胀", "降息", "宏观")
@@ -1443,6 +1489,10 @@ def _is_index_or_futures_quote_query(query: str) -> bool:
         "dow",
         "美股收盘",
         "指数",
+        "ftse",
+        "gilts",
+        "bond yields",
+        "uk stocks",
     )
     company_terms = ("公司", "集团", "财报", "年报", "公告", "股东", "股票代码")
     return any(term in text for term in quote_terms) and not any(term in text for term in company_terms)
@@ -1574,7 +1624,27 @@ def _query_has_developer_site_intent(query: str) -> bool:
 def _query_prefers_global_finance(query: str) -> bool:
     text = (query or "").lower()
     english_profile = _agent_effective_profile(query, None) == "english"
-    global_terms = ("nasdaq", "nyse", "sec", "10-k", "10-q", "fed", "recession", "inflation", "gdp", "nvidia", "oracle", "salesforce", "paypal")
+    global_terms = (
+        "nasdaq",
+        "nyse",
+        "sec",
+        "10-k",
+        "10-q",
+        "fed",
+        "recession",
+        "inflation",
+        "gdp",
+        "nvidia",
+        "oracle",
+        "salesforce",
+        "paypal",
+        "英国",
+        "uk",
+        "ftse",
+        "gilts",
+        "bank of england",
+        "imf",
+    )
     return english_profile or any(term in text for term in global_terms)
 
 
@@ -1750,6 +1820,8 @@ def _scope_from_intents(intents: list[str]) -> str:
         "official_position",
         "legal_judicial",
         "standards_compliance",
+        "cybersecurity",
+        "weather_disaster",
         "tech",
         "transport",
         "local_life",
@@ -1759,8 +1831,6 @@ def _scope_from_intents(intents: list[str]) -> str:
         "design_trend",
         "ecommerce",
         "academic",
-        "weather_disaster",
-        "cybersecurity",
         "finance_quote",
         "finance_disclosure",
         "finance_macro",

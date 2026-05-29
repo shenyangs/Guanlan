@@ -161,6 +161,21 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "european accessibility act",
             "eu accessibility",
             "eur-lex",
+            "uk eu trade",
+            "brexit reset",
+            "diplomatic relations",
+            "starmer",
+            "reform uk",
+            "uk politics",
+            "immigration bill",
+            "英国移民法案",
+            "欧盟贸易",
+            "斯塔默",
+            "改革党",
+            "反倾销",
+            "anti-dumping",
+            "antidumping",
+            "ad commission",
         ),
         "scopes": ("global_official", "global_news"),
         "fallback": ("industry_analysis", "community_sample"),
@@ -248,6 +263,14 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "cisa",
             "cnvd",
             "cnnvd",
+            "prompt injection",
+            "indirect prompt injection",
+            "tool calling attack",
+            "agent security",
+            "malicious skill",
+            "mcp attack",
+            "pre-authenticated download links",
+            "copilot cowork",
         ),
         "scopes": ("cybersecurity", "developer", "global_official"),
         "fallback": ("gov", "global_news", "tech_dev"),
@@ -619,10 +642,18 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "コミュ症",
             "コミュ障",
             "星の王子",
+            "葬送的芙莉莲",
+            "芙莉莲",
+            "夏目友人帐",
+            "尖帽子魔法工坊",
+            "同人壁纸",
+            "相反的你和我",
+            "ost",
+            "歌单",
         ),
         "scopes": ("jp_kr_entertainment", "global_entertainment", "community_sample"),
         "fallback": ("global_news", "company_primary"),
-        "sites": ("soompi.com", "oricon.co.jp", "natalie.mu", "entertain.naver.com", "koreaherald.com", "koreatimes.co.kr"),
+        "sites": ("soompi.com", "oricon.co.jp", "natalie.mu", "pixiv.net", "entertain.naver.com", "koreaherald.com", "koreatimes.co.kr"),
         "roles": ("translation_report", "chart_metric", "agency_context", "fan_discussion", "official_release"),
         "warning": "日韩娱乐问题要区分经纪公司/榜单/本地媒体、英文翻译站和粉丝讨论；跨语言转述需保留翻译层风险。",
     },
@@ -995,6 +1026,13 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "医疗设备进口",
             "大宗商品",
             "机电",
+            "食材成本",
+            "配菜",
+            "蔬菜拼盘",
+            "烤鱼品牌",
+            "海带苗",
+            "鸡枞菌",
+            "姜饼瓜",
             "商业模式",
             "运价",
             "红海",
@@ -1089,6 +1127,11 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "cloud console",
             "开发者平台",
             "开发者大会",
+            "harness ci/cd",
+            "delegate 代理原理",
+            "natspec",
+            "product partner",
+            "建筑规格",
         ),
         "scopes": ("company_primary", "developer"),
         "fallback": ("global_news", "community_sample"),
@@ -1119,6 +1162,16 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "revenue",
             "users",
             "acquisition",
+            "acquisitions",
+            "merger",
+            "mergers",
+            "m&a",
+            "enterprise m&a",
+            "企业并购",
+            "并购",
+            "英国企业",
+            "uk companies",
+            "industry policy",
             "report",
             "red sea",
             "shipping",
@@ -1180,6 +1233,16 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "数码配件",
             "smart devices",
             "smart home",
+            "食材成本",
+            "配菜",
+            "蔬菜拼盘",
+            "烤鱼品牌",
+            "探鱼",
+            "半天妖",
+            "鱼酷",
+            "海带苗",
+            "鸡枞菌",
+            "姜饼瓜",
         ),
         "scopes": ("ecommerce", "business"),
         "fallback": ("social_web", "finance"),
@@ -1453,6 +1516,7 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "上市",
             "基金",
             "债券",
+            "净值",
             "营收",
             "利润",
             "英伟达",
@@ -1464,6 +1528,8 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "银行",
             "倒闭",
             "机构观点",
+            "利空",
+            "下跌原因",
         ),
         "scopes": ("finance_disclosure", "finance_company", "finance_news", "finance_quote"),
         "fallback": ("finance_macro", "finance_research", "finance_sentiment", "business"),
@@ -1491,7 +1557,17 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "道指",
             "板块",
             "etf",
+            "etf联接",
             "基金净值",
+            "今日净值",
+            "净值",
+            "联接基金",
+            "联接c",
+            "ftse",
+            "ftse 100",
+            "gilts",
+            "bond yields",
+            "uk stocks",
             "实时",
             "quote",
             "stock price",
@@ -1503,7 +1579,7 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
         ),
         "scopes": ("finance_quote", "finance_news"),
         "fallback": ("finance_disclosure", "finance_sentiment"),
-        "sites": ("quote.eastmoney.com", "finance.sina.com.cn", "xueqiu.com", "finance.yahoo.com", "nasdaq.com"),
+        "sites": ("quote.eastmoney.com", "finance.sina.com.cn", "xueqiu.com", "finance.yahoo.com", "nasdaq.com", "londonstockexchange.com"),
         "roles": ("market_quote", "index_data", "market_news", "sentiment_sample"),
         "warning": "行情页多为动态渲染且可能延迟；回答必须标注时间/来源，不能据此给买卖建议。",
     },
@@ -1554,10 +1630,22 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "fedwatch",
             "非农",
             "通胀",
+            "imf",
+            "bank of england",
+            "boe",
+            "interest rate",
+            "inflation",
+            "uk economy",
+            "economic growth",
+            "growth forecast",
+            "英国经济",
+            "经济增长",
+            "预期 上调",
+            "上调",
         ),
         "scopes": ("finance_macro", "finance_news", "global_official"),
         "fallback": ("finance_research", "business"),
-        "sites": ("stats.gov.cn", "pbc.gov.cn", "safe.gov.cn", "fred.stlouisfed.org", "cmegroup.com", "imf.org"),
+        "sites": ("stats.gov.cn", "pbc.gov.cn", "safe.gov.cn", "fred.stlouisfed.org", "cmegroup.com", "imf.org", "bankofengland.co.uk", "ons.gov.uk"),
         "roles": ("macro_data", "central_bank_notice", "statistics_release", "market_expectation"),
         "warning": "宏观数据必须核对发布机构、统计口径和日期；市场预期不等于政策决定。",
     },
@@ -1574,6 +1662,14 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "舆情",
             "韭菜",
             "爆仓",
+            "利空",
+            "下跌原因",
+            "暴涨",
+            "炒作",
+            "概念",
+            "主力资金",
+            "北向资金",
+            "资金流向",
         ),
         "scopes": ("finance_sentiment", "finance_news"),
         "fallback": ("finance_disclosure", "finance_quote"),
@@ -1618,8 +1714,8 @@ _DOMAIN_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("education", ("高校", "大学", "研究生", "招生", "导师", "院系", "推免", "考研", "雅思", "托福", "机经")),
     ("health", ("医疗", "疾病", "药", "治疗", "医生", "症状", "医院", "孕期", "肺结节", "布洛芬")),
     ("legal", ("法律", "诉讼", "判决", "合同", "律师", "侵权", "工伤", "竞业", "版权")),
-    ("finance", ("财经", "股票", "股价", "行情", "财报", "公告", "基金", "债券", "宏观", "降息", "雪球", "股吧", "研报", "nvidia", "etf")),
-    ("cybersecurity", ("cve", "漏洞", "补丁", "诈骗", "反诈", "钓鱼", "openssl")),
+    ("finance", ("财经", "股票", "股价", "行情", "财报", "公告", "基金", "债券", "宏观", "降息", "雪球", "股吧", "研报", "nvidia", "etf", "ftse", "imf")),
+    ("cybersecurity", ("cve", "漏洞", "补丁", "诈骗", "反诈", "钓鱼", "openssl", "prompt injection", "agent security", "mcp attack")),
     ("sports", ("体育", "比赛", "伤病", "转会", "梅西", "mbappe", "messi", "nba")),
     ("weather", ("天气", "气象", "台风", "预警", "地震", "noaa", "jma")),
     ("science", ("科学", "nasa", "詹姆斯韦伯", "外星生命", "jwst")),
@@ -1758,6 +1854,23 @@ def build_route_plan(
             for reason in reasons
             if not (reason.startswith("finance:") or reason.startswith("finance_disclosure:"))
         ]
+    if _should_demote_country_industry_stock_finance(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") not in {"finance", "finance_disclosure", "finance_quote"}]
+        reasons = [
+            reason
+            for reason in reasons
+            if not (
+                reason.startswith("finance:")
+                or reason.startswith("finance_disclosure:")
+                or reason.startswith("finance_quote:")
+            )
+        ]
+    if _should_demote_finance_wps_office(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "wps_office"]
+        reasons = [reason for reason in reasons if not reason.startswith("wps_office:") and not reason.startswith("wps_office_semantic:")]
+    if _should_demote_food_price_company_primary(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "company_primary"]
+        reasons = [reason for reason in reasons if not reason.startswith("company_primary:")]
     if _should_demote_business_segment_finance_quote(text, matched_rules):
         matched_rules = [rule for rule in matched_rules if rule.get("intent") != "finance_quote"]
         reasons = [reason for reason in reasons if not reason.startswith("finance_quote:")]
@@ -2932,6 +3045,34 @@ def _topic_specific_target_sites(query: str) -> list[str]:
         sites.extend(["miit.gov.cn", "std.samr.gov.cn", "samr.gov.cn", "w3.org"])
     if any(term in text for term in ("欧洲无障碍法案", "eaa", "european accessibility act")):
         sites.extend(["ec.europa.eu", "eur-lex.europa.eu", "w3.org"])
+    if any(
+        term in text
+        for term in (
+            "英国企业",
+            "uk companies",
+            "企业并购",
+            "m&a",
+            "uk eu trade",
+            "starmer",
+            "改革党",
+            "英国移民法案",
+            "欧盟贸易",
+            "斯塔默",
+        )
+    ):
+        sites.extend(["gov.uk", "ons.gov.uk", "ft.com"])
+    if any(term in text for term in ("ftse", "gilts", "bond yields", "uk stocks")):
+        sites.extend(["londonstockexchange.com", "bankofengland.co.uk", "finance.yahoo.com"])
+    if any(term in text for term in ("bank of england", "boe", "英国经济", "经济增长")):
+        sites.extend(["bankofengland.co.uk", "ons.gov.uk", "imf.org"])
+    if "imf" in text:
+        sites.extend(["imf.org"])
+    if any(term in text for term in ("harness ci/cd", "delegate 代理原理")):
+        sites.extend(["harness.io", "developer.harness.io"])
+    if any(term in text for term in ("natspec", "product partner", "建筑规格")):
+        sites.extend(["natspec.com.au"])
+    if any(term in text for term in ("反倾销", "anti-dumping", "antidumping", "ad commission")):
+        sites.extend(["adcommission.gov.au", "industry.gov.au"])
     if any(term in text for term in ("战锤", "warhammer", "星际战士", "space marine")):
         sites.extend(["warhammer-community.com", "games-workshop.com"])
     return _unique(sites)
@@ -3176,6 +3317,88 @@ def _should_demote_procurement_finance(text: str, rules: list[dict[str, Any]]) -
         "szse",
     )
     return _contains_any(text, procurement_terms) and not _contains_any(text, capital_market_terms)
+
+
+def _should_demote_country_industry_stock_finance(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Country/industry M&A scans should not become structured stock tasks."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if not {"finance", "finance_disclosure", "finance_quote"} & intents:
+        return False
+    country_terms = ("英国", "uk companies", "british companies", "british", "英企")
+    industry_terms = (
+        "英国企业",
+        "企业并购",
+        "并购",
+        "m&a",
+        "merger",
+        "acquisition",
+        "industry policy",
+        "行业政策",
+    )
+    capital_market_terms = (
+        "股票代码",
+        "股价",
+        "今日净值",
+        "基金净值",
+        "etf联接",
+        "a50",
+        "期货",
+        "上证",
+        "深证",
+        "纳指",
+        "道指",
+        "ftse 100",
+    )
+    return (
+        (_contains_any(text, country_terms) or "企业并购" in text or "行业政策" in text)
+        and _contains_any(text, industry_terms)
+        and not _contains_any(text, capital_market_terms)
+    )
+
+
+def _should_demote_finance_wps_office(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Stock-market 金山办公/WPS queries need finance evidence before product routing."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    finance_intents = {"finance", "finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"}
+    if "wps_office" not in intents or not finance_intents & intents:
+        return False
+    stock_context = (
+        "股价",
+        "股票",
+        "下跌",
+        "跌幅",
+        "利空",
+        "研报",
+        "目标价",
+        "营收",
+        "利润",
+        "业绩",
+        "688111",
+        "金山办公",
+    )
+    return bool(re.search(r"\b\d{6}\b", text)) or _contains_any(text, stock_context)
+
+
+def _should_demote_food_price_company_primary(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Ingredient cost lookups are retail/food-market evidence, not vendor docs."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "company_primary" not in intents:
+        return False
+    food_terms = (
+        "食材",
+        "食材成本",
+        "配菜",
+        "蔬菜拼盘",
+        "烤鱼",
+        "海带苗",
+        "鸡枞菌",
+        "姜饼瓜",
+        "辣锅",
+        "清汤",
+    )
+    price_terms = ("价格", "报价", "成本", "多少钱", "行情")
+    official_terms = ("官网", "官方", "投资者关系", "年报", "公告")
+    return _contains_any(text, food_terms) and _contains_any(text, price_terms) and not _contains_any(text, official_terms)
 
 
 def _should_demote_business_segment_finance_quote(text: str, rules: list[dict[str, Any]]) -> bool:

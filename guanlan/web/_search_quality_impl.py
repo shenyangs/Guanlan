@@ -223,15 +223,17 @@ def search_quality_summary(
         for item in results
         if item.get("url")
     }
+    site_filter = site_filter or {"enabled": False}
+    site_constrained = bool(site_filter.get("enabled"))
     warnings: list[str] = []
     suggestions: list[str] = []
     if preferred_types and not preferred_hits:
         warnings.append("未命中当前意图偏好的信源类型，需要补充 scope 或站点定向搜索。")
         suggestions.append(_source_gap_suggestion(quality, preferred_types, preferred_scopes))
-    if len(source_mix) <= 1 and len(results) >= 4:
+    if not site_constrained and len(source_mix) <= 1 and len(results) >= 4:
         warnings.append("来源类型较单一，可能需要扩大信源面。")
         suggestions.append("补充开放网页或相邻 scope，避免只看单一信源类型。")
-    if len(domains) <= 1 and len(results) >= 3:
+    if not site_constrained and len(domains) <= 1 and len(results) >= 3:
         warnings.append("域名集中度较高，注意同源转载或单站偏差。")
         suggestions.append("补充 2-3 个不同域名结果，尤其是原文、权威报道和社区样本的交叉来源。")
     limit_advice = limit_advice or _search_limit_advice(limit or len(results))
@@ -243,7 +245,6 @@ def search_quality_summary(
             suggestions.append(f"先无感补跑 `{repair_command}`，再压缩输出。")
         else:
             suggestions.append(f"补跑 `guanlan search \"问题\" --limit {limit_advice.get('recommended_limit', DEFAULT_SEARCH_LIMIT)} --trace`。")
-    site_filter = site_filter or {"enabled": False}
     if site_filter.get("enabled") and site_filter.get("kept", 0) == 0:
         warnings.append(f"`--site {site_filter.get('site', '')}` 硬过滤后没有站内结果；不要放宽成域外结果。")
         suggestions.append("改用站点入口、站内搜索页或 WebFetch 读取候选原文补证。")

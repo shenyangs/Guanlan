@@ -286,6 +286,34 @@ def test_search_web_site_filter_is_hard(monkeypatch):
     assert results[0]["trace"]["site_filter"]["relaxed"] is False
 
 
+def test_search_web_site_filter_allows_single_domain_without_diversity_warning(monkeypatch):
+    monkeypatch.setattr(
+        webtools,
+        "_search_duckduckgo",
+        lambda query, limit=10: [
+            webtools.SearchResult(
+                title=f"PromptArmor note {idx}",
+                url=f"https://promptarmor.substack.com/p/copilot-cowork-{idx}",
+                snippet="Copilot Cowork PromptArmor analysis.",
+                source="duckduckgo",
+            )
+            for idx in range(4)
+        ],
+    )
+
+    results = webtools.search_web(
+        "site:promptarmor.substack.com Copilot Cowork PromptArmor",
+        backend="duckduckgo",
+        site="promptarmor.substack.com",
+        trace=True,
+    )
+
+    warnings = results[0]["trace"]["quality_summary"]["warnings"]
+    assert not any("来源类型较单一" in warning for warning in warnings)
+    assert not any("域名集中" in warning for warning in warnings)
+    assert results[0]["trace"]["site_filter"]["mode"] == "hard"
+
+
 def test_search_web_site_filter_empty_keeps_diagnostics_and_webfetch_strategy(monkeypatch):
     monkeypatch.setattr(
         webtools,
