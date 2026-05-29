@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from guanlan.errors import error_diagnostics
+from guanlan.errors import error_diagnostics, user_friendly_message
 from guanlan.limits import (
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
     DEFAULT_HOTNEWS_LIMIT,
@@ -344,7 +344,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
         return 404, {"error": "not_found", "message": f"Unknown endpoint: {method} {route}"}
     except Exception as exc:
         diagnostics = error_diagnostics(exc)
-        return 400, {"error": "bad_request", **diagnostics}
+        return 400, {"error": "bad_request", "user_message": user_friendly_message(exc), **diagnostics} #增中文error提示
 
 
 def run_server(host: str = "127.0.0.1", port: int = 8765, token: str = "") -> None:
