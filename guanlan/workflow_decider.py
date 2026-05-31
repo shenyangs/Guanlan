@@ -756,6 +756,8 @@ def _select_primary_agent_command(
     site_operator = _extract_site_operator(query)
     if site_operator and mode != "deep":
         return f"guanlan search {quote_query(query)} --site {site_operator} --profile {profile or 'china'} --limit {max(decision.recommended_limit, DEFAULT_SEARCH_LIMIT)} --trace"
+    if _is_marketplace_rules_query(query):
+        return f"guanlan search {quote_query(query)} --profile {profile or 'china'} --scope ecommerce --limit {max(decision.recommended_limit, DEFAULT_SEARCH_LIMIT)} --trace"
     if _is_secondhand_market_query(query):
         return f"guanlan search {quote_query(query)} --profile {profile or 'china'} --scope ecommerce --limit {max(decision.recommended_limit, DEFAULT_SEARCH_LIMIT)} --trace"
     if _is_social_style_query(query):
@@ -779,10 +781,16 @@ def _select_primary_agent_command(
 
     if _is_country_industry_finance_query(query):
         return _generated_search_command(query, decision, profile=profile, scope="industry_analysis")
+    if _is_industry_financing_research_query(query, decision):
+        return _generated_search_command(query, decision, profile=profile, scope="industry_analysis")
+    if _is_ai_model_release_query(query, decision):
+        return _generated_search_command(query, decision, profile=profile, scope="tech_dev")
 
     entrypoint = decision.recommended_entrypoint
     if entrypoint == "stock":
         if _is_country_industry_finance_query(query):
+            return _generated_search_command(query, decision, profile=profile, scope="industry_analysis")
+        if _is_industry_financing_research_query(query, decision):
             return _generated_search_command(query, decision, profile=profile, scope="industry_analysis")
         if _is_index_or_futures_quote_query(query):
             return _generated_search_command(query, decision, profile=profile, scope="finance_quote")
@@ -1177,6 +1185,12 @@ def _should_skip_agent_route_command(command: str, decision: WorkflowDecision, q
     site = _extract_site_from_command(command)
     if _is_country_industry_finance_query(query) and kind == "stock":
         return True
+    if _is_industry_financing_research_query(query, decision) and kind == "stock":
+        return True
+    if _is_industry_financing_research_query(query, decision) and kind == "read" and any(
+        domain in text for domain in ("cninfo.com.cn", "sse.com.cn", "szse.cn", "eastmoney.com")
+    ):
+        return True
     if _is_country_industry_finance_query(query) and kind == "read" and any(
         domain in text for domain in ("cninfo.com.cn", "sse.com.cn", "szse.cn", "eastmoney.com")
     ):
@@ -1184,6 +1198,10 @@ def _should_skip_agent_route_command(command: str, decision: WorkflowDecision, q
     if _is_generic_finance_product_query(query) and kind == "stock":
         return True
     if _is_index_or_futures_quote_query(query) and kind == "stock":
+        return True
+    if _is_game_patch_without_security(query) and kind == "read" and any(
+        domain in text for domain in ("cisa.gov", "openssl.org", "msrc.microsoft.com", "nvd.nist.gov")
+    ):
         return True
     if _is_generic_finance_product_query(query) and "finance_disclosure" in text:
         return True
@@ -1216,12 +1234,18 @@ def _agent_scoped_search_fallback(query: str, decision: WorkflowDecision, *, pro
         return ""
     text_profile = profile or "china"
     intents = set(decision.route_intents)
-    if _is_secondhand_market_query(query):
+    if _is_marketplace_rules_query(query):
+        scope = "ecommerce"
+    elif _is_secondhand_market_query(query):
         scope = "ecommerce"
     elif _is_social_style_query(query):
         scope = "social_web"
     elif _is_country_industry_finance_query(query):
         scope = "industry_analysis"
+    elif _is_industry_financing_research_query(query, decision):
+        scope = "industry_analysis"
+    elif _is_ai_model_release_query(query, decision):
+        scope = "tech_dev"
     elif "finance_macro" in intents:
         scope = "finance_macro"
     elif "finance_quote" in intents:
@@ -1467,6 +1491,79 @@ def _is_country_industry_finance_query(query: str) -> bool:
         and any(term in text for term in industry_terms)
         and not any(term in text for term in listed_entity_terms)
     )
+
+
+def _is_industry_financing_research_query(query: str, decision: WorkflowDecision) -> bool:
+    text = (query or "").lower()
+    intents = set(decision.route_intents)
+    if "industry" not in intents or "finance_research" not in intents:
+        return False
+    industry_research_terms = (
+        "融资",
+        "行业报告",
+        "市场动态",
+        "市场规模",
+        "产业报告",
+        "竞品",
+        "宠物陪伴机器人",
+        "宠物机器人",
+        "情感陪伴机器人",
+        "ai宠物",
+    )
+    capital_market_terms = (
+        "股票",
+        "股价",
+        "代码",
+        "etf",
+        "基金",
+        "净值",
+        "财报",
+        "公告",
+        "雪球",
+        "股吧",
+        "研报",
+        "评级",
+        "目标价",
+    )
+    return any(term in text for term in industry_research_terms) and not any(term in text for term in capital_market_terms)
+
+
+def _is_game_patch_without_security(query: str) -> bool:
+    text = (query or "").lower()
+    game_terms = (
+        "游戏",
+        "手柄重映射",
+        "红色沙漠",
+        "crimson desert",
+        "pearl abyss",
+        "玩家",
+        "dlc",
+        "mod",
+        "steam",
+    )
+    patch_terms = ("补丁", "patch", "更新补丁")
+    security_terms = ("cve", "漏洞", "安全公告", "安全更新", "影响版本", "exploit", "vulnerability", "nvd", "cisa")
+    return any(term in text for term in game_terms) and any(term in text for term in patch_terms) and not any(term in text for term in security_terms)
+
+
+def _is_marketplace_rules_query(query: str) -> bool:
+    text = (query or "").lower()
+    marketplace_terms = ("闲鱼", "淘宝", "天猫", "直通车", "招聘平台", "boss直聘", "智联招聘", "前程无忧", "拉勾", "脉脉")
+    rule_terms = ("规则", "技术服务", "开放数据", "开放 api", "数据获取", "爬虫", "反爬", "合规", "法律风险")
+    legal_terms = ("法律风险", "数据安全法", "个人信息保护法", "判例", "法院", "裁判文书")
+    return (
+        any(term in text for term in marketplace_terms)
+        and any(term in text for term in rule_terms)
+        and not any(term in text for term in legal_terms)
+    )
+
+
+def _is_ai_model_release_query(query: str, decision: WorkflowDecision) -> bool:
+    text = (query or "").lower()
+    if "tech" not in set(decision.route_intents):
+        return False
+    model_terms = ("seedance", "视频生成模型", "豆包", "doubao", "字节跳动", "volcengine")
+    return any(term in text for term in model_terms)
 
 
 def _is_macro_finance_query(query: str, decision: WorkflowDecision) -> bool:
