@@ -756,6 +756,9 @@ def _select_primary_agent_command(
     site_operator = _extract_site_operator(query)
     if site_operator and mode != "deep":
         return f"guanlan search {quote_query(query)} --site {site_operator} --profile {profile or 'china'} --limit {max(decision.recommended_limit, DEFAULT_SEARCH_LIMIT)} --trace"
+    official_finance_scope = _official_finance_scope(query, decision)
+    if official_finance_scope:
+        return _generated_search_command(query, decision, profile=profile, scope=official_finance_scope)
     if _is_marketplace_rules_query(query):
         return f"guanlan search {quote_query(query)} --profile {profile or 'china'} --scope ecommerce --limit {max(decision.recommended_limit, DEFAULT_SEARCH_LIMIT)} --trace"
     if _is_secondhand_market_query(query):
@@ -788,6 +791,9 @@ def _select_primary_agent_command(
 
     entrypoint = decision.recommended_entrypoint
     if entrypoint == "stock":
+        official_finance_scope = _official_finance_scope(query, decision)
+        if official_finance_scope:
+            return _generated_search_command(query, decision, profile=profile, scope=official_finance_scope)
         if _is_country_industry_finance_query(query):
             return _generated_search_command(query, decision, profile=profile, scope="industry_analysis")
         if _is_industry_financing_research_query(query, decision):
@@ -1183,6 +1189,8 @@ def _should_skip_agent_route_command(command: str, decision: WorkflowDecision, q
     intents = set(decision.route_intents)
     finance_intents = {"finance", "finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"}
     site = _extract_site_from_command(command)
+    if _official_finance_scope(query, decision) and kind == "stock":
+        return True
     if _is_country_industry_finance_query(query) and kind == "stock":
         return True
     if _is_industry_financing_research_query(query, decision) and kind == "stock":
@@ -1234,7 +1242,10 @@ def _agent_scoped_search_fallback(query: str, decision: WorkflowDecision, *, pro
         return ""
     text_profile = profile or "china"
     intents = set(decision.route_intents)
-    if _is_marketplace_rules_query(query):
+    official_finance_scope = _official_finance_scope(query, decision)
+    if official_finance_scope:
+        scope = official_finance_scope
+    elif _is_marketplace_rules_query(query):
         scope = "ecommerce"
     elif _is_secondhand_market_query(query):
         scope = "ecommerce"
@@ -1568,8 +1579,92 @@ def _is_ai_model_release_query(query: str, decision: WorkflowDecision) -> bool:
 
 def _is_macro_finance_query(query: str, decision: WorkflowDecision) -> bool:
     text = (query or "").lower()
-    macro_terms = ("finance_macro", "gdp", "inflation", "recession", "cpi", "pmi", "fed", "央行", "社融", "通胀", "降息", "宏观")
+    macro_terms = (
+        "finance_macro",
+        "gdp",
+        "inflation",
+        "recession",
+        "cpi",
+        "pmi",
+        "fed",
+        "央行",
+        "中国人民银行",
+        "贷款市场报价利率",
+        "lpr",
+        "支付体系运行总体情况",
+        "移动支付",
+        "业务金额",
+        "业务笔数",
+        "国家统计局",
+        "70个大中城市",
+        "商品住宅销售价格",
+        "居民收入和消费支出",
+        "社融",
+        "通胀",
+        "降息",
+        "宏观",
+    )
     return "finance_macro" in decision.route_intents or any(term in text for term in macro_terms)
+
+
+def _official_finance_scope(query: str, decision: WorkflowDecision) -> str:
+    text = (query or "").lower()
+    capital_market_terms = (
+        "股票",
+        "股价",
+        "上市公司",
+        "交易所",
+        "财报",
+        "年报",
+        "季报",
+        "研报",
+        "减持",
+        "质押",
+        "雪球",
+        "股吧",
+        "基金净值",
+        "etf",
+        "688111",
+        "603316",
+    )
+    if any(term in text for term in capital_market_terms):
+        return ""
+    local_housing_terms = ("住房公积金", "公积金贷款", "首套房", "最低首付", "个人住房贷款")
+    if "深圳" in text and any(term in text for term in local_housing_terms):
+        return "local_official"
+    macro_terms = (
+        "中国人民银行",
+        "央行",
+        "贷款市场报价利率",
+        "lpr",
+        "支付体系运行总体情况",
+        "移动支付",
+        "业务金额",
+        "业务笔数",
+        "国家统计局",
+        "70个大中城市",
+        "商品住宅销售价格",
+        "居民收入和消费支出",
+        "全国居民人均消费支出",
+    )
+    if "finance_macro" in decision.route_intents and any(term in text for term in macro_terms):
+        return "finance_macro"
+    policy_terms = (
+        "住房公积金",
+        "公积金贷款",
+        "首套房",
+        "最低首付",
+        "契税",
+        "税收政策",
+        "房地产市场平稳健康发展",
+        "财政部",
+        "税务总局",
+        "非银行支付机构网络支付业务管理办法",
+        "支付账户",
+    )
+    if any(term in text for term in policy_terms) and {"policy", "official_position"} & set(decision.route_intents):
+        return "gov"
+    return ""
 
 
 def _is_index_or_futures_quote_query(query: str) -> bool:

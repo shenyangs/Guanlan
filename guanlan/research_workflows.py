@@ -552,9 +552,14 @@ def _timeline_window_filter(query: str, events: list[dict[str, Any]], *, max_eve
             background.append(item)
     reverse = order != "asc"
     in_window = sorted(in_window, key=lambda item: item.get("date", ""), reverse=reverse)[:max_events]
+    fallback_events: list[dict[str, Any]] = []
+    if not in_window and recency.get("label") in {"recent", "hot"}:
+        fallback_events = sorted(background, key=lambda item: item.get("date", ""), reverse=reverse)[:max_events]
+        background = [item for item in background if item not in fallback_events]
+    selected_events = in_window or fallback_events
     status = "ok" if in_window else "warn"
     return {
-        "events": in_window,
+        "events": selected_events,
         "background_events": sorted(background, key=lambda item: item.get("date", ""), reverse=reverse)[:8],
         "low_relevance_events": low_relevance[:8],
         "timeline_quality": {
@@ -564,12 +569,17 @@ def _timeline_window_filter(query: str, events: list[dict[str, Any]], *, max_eve
             "start_date": recency.get("start_date") or "",
             "end_date": recency.get("end_date") or "",
             "in_window_count": len(in_window),
+            "fallback_count": len(fallback_events),
             "background_count": len(background),
             "low_relevance_count": len(low_relevance),
             "message": (
                 "主时间线已按显式时间窗收束；窗口外事件只作背景。"
                 if in_window
-                else "未抽到窗口内事件；不要把窗口外事件写成主线进展。"
+                else (
+                    "时间窗内未抽到事件；已用最近的窗口外事件作弱兜底。"
+                    if fallback_events
+                    else "未抽到窗口内事件；不要把窗口外事件写成主线进展。"
+                )
             ),
         },
     }

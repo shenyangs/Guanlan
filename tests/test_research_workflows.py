@@ -121,6 +121,42 @@ def test_timeline_report_keeps_explicit_year_window_as_main_events(monkeypatch):
     assert report["timeline_quality"]["status"] == "ok"
 
 
+def test_timeline_report_recent_query_can_fallback_to_background_events(monkeypatch):
+    def fake_packet(query, **_kwargs):
+        return {
+            **_packet(query),
+            "selected_evidence": [
+                {
+                    "title": "具身智能 2026年3月1日 产品更新",
+                    "url": "https://example.com/recent-1",
+                    "snippet": "具身智能产品进入新阶段。",
+                    "source_type": "商业/产业媒体",
+                    "evidence_role": "fresh_news",
+                },
+                {
+                    "title": "具身智能 2026年2月15日 行业动向",
+                    "url": "https://example.com/recent-2",
+                    "snippet": "具身智能行业继续推进。",
+                    "source_type": "商业/产业媒体",
+                    "evidence_role": "industry_report",
+                },
+            ],
+            "results": [],
+            "readings": [],
+        }
+
+    monkeypatch.setattr(research_workflows, "build_research_packet", fake_packet)
+
+    report = research_workflows.build_timeline_report("具身智能 最新进展", max_events=2)
+
+    assert [item["date"] for item in report["events"]] == ["2026-03-01", "2026-02-15"]
+    assert report["background_events"] == []
+    assert report["timeline_quality"]["status"] == "warn"
+    assert report["timeline_quality"]["in_window_count"] == 0
+    assert report["timeline_quality"]["fallback_count"] == 2
+    assert "弱兜底" in report["timeline_quality"]["message"]
+
+
 def test_dossier_report_groups_evidence_sections(monkeypatch):
     monkeypatch.setattr(research_workflows, "build_research_packet", lambda query, **_kwargs: _packet(query))
 

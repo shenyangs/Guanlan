@@ -142,6 +142,24 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "专精特新",
             "备案",
             "合规",
+            "住房公积金",
+            "住房公积金贷款",
+            "公积金贷款",
+            "首套房",
+            "最低首付比例",
+            "最低首付款比例",
+            "个人住房贷款",
+            "商业性个人住房贷款",
+            "房地产市场平稳健康发展",
+            "税收政策",
+            "契税",
+            "财政部",
+            "税务总局",
+            "金融监督管理总局",
+            "国家金融监督管理总局",
+            "支付体系运行总体情况",
+            "非银行支付机构网络支付业务管理办法",
+            "支付账户",
         ),
         "scopes": ("gov", "party_central"),
         "fallback": ("local_official", "business"),
@@ -692,6 +710,7 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "ラノベ",
             "弱キャラ友崎くん",
             "違国日記",
+            "异国日记",
             "ぼっち・ざ・ろっく",
             "僕の心のヤバイやつ",
             "僕ヤバ",
@@ -817,6 +836,12 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "color trend",
             "colour trend",
             "palette",
+            "插画",
+            "温柔插画",
+            "ai生成",
+            "ai 生成",
+            "ai插画",
+            "ai 插画",
         ),
         "scopes": ("social_web", "business", "industry_analysis"),
         "fallback": ("ecommerce", "community_sample"),
@@ -1262,6 +1287,18 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "nodejs",
             "node js",
             "node.js 20",
+            "微信支付",
+            "支付宝",
+            "账单导出",
+            "导出账单",
+            "交易账单",
+            "交易记录",
+            "个人账单",
+            "支付开放平台",
+            "icost",
+            "callback url",
+            "x-callback-url",
+            "url scheme",
         ),
         "scopes": ("company_primary", "developer"),
         "fallback": ("global_news", "community_sample"),
@@ -1307,6 +1344,10 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "shipping",
             "tariff",
             "global supply chain",
+            "中国互联网络发展状况统计报告",
+            "互联网络发展状况统计报告",
+            "cnnic",
+            "网络支付 用户规模",
         ),
         "scopes": ("industry_analysis", "global_news", "company_primary"),
         "fallback": ("community_sample",),
@@ -1423,7 +1464,7 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
     },
     {
         "intent": "podcast",
-        "terms": ("播客", "小宇宙", "音频", "节目", "单集", "主播", "podcast", "rss audio"),
+        "terms": ("播客", "小宇宙", "音频", "节目", "单集", "主播", "电台", "声线", "粤语电台", "podcast", "rss audio"),
         "scopes": ("podcast", "social_web", "tech_dev"),
         "fallback": ("business", "community_sample"),
         "sites": ("xiaoyuzhoufm.com", "podcasts.apple.com", "spotify.com", "listennotes.com"),
@@ -1527,6 +1568,16 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "lts",
             "安装包",
             "下载地址",
+            "url scheme",
+            "urlscheme",
+            "callback url",
+            "x-callback-url",
+            "notificationlistenerservice",
+            "notification listener service",
+            "通知监听服务",
+            "android 通知监听",
+            "tasker",
+            "icost",
             *_ROBOTICS_AI_TERMS,
         ),
         "scopes": ("tech_dev",),
@@ -1653,6 +1704,10 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "小王子 阅读",
             "小王子 经典",
             "小王子 狐狸",
+            "人月神话",
+            "被讨厌的勇气",
+            "阿德勒",
+            "课题分离",
             "caldecott",
             "caldecott medal",
             "medal winners",
@@ -1835,6 +1890,21 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "经济增长",
             "预期 上调",
             "上调",
+            "lpr",
+            "贷款市场报价利率",
+            "5年期以上",
+            "住房贷款利率",
+            "个人住房贷款利率",
+            "个人住房公积金贷款利率",
+            "住房公积金贷款利率",
+            "商品住宅销售价格",
+            "70个大中城市",
+            "居民收入和消费支出",
+            "全国居民人均消费支出",
+            "支付体系运行总体情况",
+            "移动支付",
+            "业务金额",
+            "业务笔数",
         ),
         "scopes": ("finance_macro", "finance_news", "global_official"),
         "fallback": ("finance_research", "business"),
@@ -2020,6 +2090,31 @@ def build_route_plan(
     if _should_demote_broad_finance_sentiment(text, matched_rules):
         matched_rules = [rule for rule in matched_rules if rule.get("intent") != "finance_sentiment"]
         reasons = [reason for reason in reasons if not reason.startswith("finance_sentiment:")]
+    if _should_demote_official_macro_stock_finance(text, matched_rules):
+        matched_rules = [
+            rule
+            for rule in matched_rules
+            if rule.get("intent") not in {"finance", "finance_quote", "finance_disclosure"}
+        ]
+        reasons = [
+            reason
+            for reason in reasons
+            if not (
+                reason.startswith("finance:")
+                or reason.startswith("finance_quote:")
+                or reason.startswith("finance_disclosure:")
+            )
+        ]
+    if _should_demote_real_estate_ecommerce(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "ecommerce"]
+        reasons = [reason for reason in reasons if not reason.startswith("ecommerce:")]
+    if _should_demote_technical_docs_official_policy(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") not in {"policy", "official_position"}]
+        reasons = [
+            reason
+            for reason in reasons
+            if not (reason.startswith("policy:") or reason.startswith("official_position:"))
+        ]
     if _should_demote_game_patch_cybersecurity(text, matched_rules):
         matched_rules = [rule for rule in matched_rules if rule.get("intent") != "cybersecurity"]
         reasons = [reason for reason in reasons if not reason.startswith("cybersecurity:")]
@@ -3272,6 +3367,25 @@ def _topic_specific_target_sites(query: str) -> list[str]:
         sites.extend(["cac.gov.cn", "npc.gov.cn", "samr.gov.cn", "court.gov.cn"])
     if any(term in text for term in ("教师职称", "副高评审", "职称评审", "课题申报", "学术伦理", "广东省")):
         sites.extend(["gd.gov.cn", "hrss.gd.gov.cn", "edu.gd.gov.cn", "szeb.sz.gov.cn"])
+    if "深圳" in text and any(term in text for term in ("住房公积金", "公积金贷款", "首套房", "最低首付")):
+        sites.extend(["gjj.sz.gov.cn", "zjj.sz.gov.cn", "sz.gov.cn"])
+    if any(term in text for term in ("贷款市场报价利率", "lpr", "中国人民银行", "支付体系运行总体情况", "移动支付", "非银行支付机构")):
+        sites.extend(["pbc.gov.cn", "chinamoney.com.cn"])
+    if any(term in text for term in ("国家统计局", "70个大中城市", "商品住宅销售价格", "居民收入和消费支出", "全国居民人均消费支出")):
+        sites.extend(["stats.gov.cn"])
+    if any(term in text for term in ("契税", "税收政策", "房地产市场平稳健康发展", "财政部", "税务总局")):
+        sites.extend(["mof.gov.cn", "chinatax.gov.cn", "gov.cn"])
+    if any(term in text for term in ("中国互联网络发展状况统计报告", "互联网络发展状况统计报告", "cnnic", "网络支付 用户规模")):
+        sites.extend(["cnnic.net.cn"])
+    bill_export_terms = ("账单导出", "导出账单", "交易账单", "交易记录", "个人账单", "csv", "邮箱")
+    if "微信支付" in text and any(term in text for term in bill_export_terms):
+        sites.extend(["pay.weixin.qq.com", "kf.qq.com"])
+    if "支付宝" in text and any(term in text for term in bill_export_terms):
+        sites.extend(["help.alipay.com", "opendocs.alipay.com"])
+    if any(term in text for term in ("notificationlistenerservice", "notification listener service", "通知监听服务", "android 通知监听")):
+        sites.extend(["developer.android.com"])
+    if any(term in text for term in ("icost", "callback url", "x-callback-url", "url scheme")):
+        sites.extend(["help.icostapp.com"])
     if any(term in text for term in ("postgresql", "postgres")):
         sites.extend(["postgresql.org", "nvd.nist.gov", "cisa.gov"])
     if any(term in text for term in ("node.js", "nodejs", "node js")):
@@ -3397,6 +3511,117 @@ def _confidence(rules: list[dict[str, Any]], **kwargs: Any) -> float:
 
 def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
     return any(term.lower() in text for term in terms)
+
+
+def _should_demote_official_macro_stock_finance(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Official housing, tax, payment, and statistics lookups are not stock tasks."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if not {"finance", "finance_quote", "finance_disclosure"} & intents:
+        return False
+    official_macro_terms = (
+        "中国人民银行",
+        "央行",
+        "贷款市场报价利率",
+        "lpr",
+        "支付体系运行总体情况",
+        "移动支付",
+        "业务金额",
+        "业务笔数",
+        "非银行支付机构",
+        "支付账户",
+        "住房公积金",
+        "公积金贷款",
+        "个人住房贷款",
+        "最低首付",
+        "首套房",
+        "契税",
+        "税收政策",
+        "房地产市场平稳健康发展",
+        "财政部",
+        "税务总局",
+        "商品住宅销售价格",
+        "二手住宅",
+        "居民收入和消费支出",
+        "国家统计局",
+        "互联网络发展状况统计报告",
+        "cnnic",
+    )
+    capital_market_terms = (
+        "股票",
+        "股价",
+        "上市公司",
+        "交易所",
+        "财报",
+        "年报",
+        "季报",
+        "研报",
+        "减持",
+        "质押",
+        "雪球",
+        "股吧",
+        "基金净值",
+        "etf",
+        "cninfo",
+        "sse",
+        "szse",
+    )
+    return _contains_any(text, official_macro_terms) and not _contains_any(text, capital_market_terms)
+
+
+def _should_demote_real_estate_ecommerce(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Real-estate statistics and housing policy should not be treated as second-hand commerce."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "ecommerce" not in intents:
+        return False
+    real_estate_terms = (
+        "商品住宅",
+        "二手住宅",
+        "住宅销售价格",
+        "房地产",
+        "住房公积金",
+        "公积金贷款",
+        "首套房",
+        "最低首付",
+        "个人住房贷款",
+    )
+    return _contains_any(text, real_estate_terms) and bool({"policy", "finance_macro", "local"} & intents)
+
+
+def _should_demote_technical_docs_official_policy(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Generic 官方/通知 terms inside developer docs should not force gov routing."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if not {"policy", "official_position"} & intents:
+        return False
+    if not {"tech", "company_primary"} & intents:
+        return False
+    doc_terms = ("官方文档", "文档", "docs", "documentation", "developer", "开发者文档")
+    technical_terms = (
+        "android",
+        "notificationlistenerservice",
+        "notification listener service",
+        "通知监听服务",
+        "api",
+        "sdk",
+        "url scheme",
+        "callback url",
+        "x-callback-url",
+        "icost",
+        "tasker",
+        "github",
+    )
+    hard_policy_terms = (
+        "政策",
+        "法规",
+        "监管",
+        "办法",
+        "条例",
+        "征求意见",
+        "数据安全法",
+        "个人信息保护法",
+        "合规",
+        "法律风险",
+    )
+    return _contains_any(text, doc_terms) and _contains_any(text, technical_terms) and not _contains_any(text, hard_policy_terms)
 
 
 def _should_demote_broad_legal(text: str, rules: list[dict[str, Any]]) -> bool:

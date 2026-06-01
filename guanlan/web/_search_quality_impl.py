@@ -95,6 +95,7 @@ def detect_search_quality_profile(
         "career",
         "reading_notes",
         "local_life",
+        "design_trend",
         "purchase_advice",
         "wps_office",
         "global_entertainment",
