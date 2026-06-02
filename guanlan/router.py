@@ -160,6 +160,18 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "支付体系运行总体情况",
             "非银行支付机构网络支付业务管理办法",
             "支付账户",
+            "中医药振兴发展重大工程",
+            "中医药振兴发展重大工程实施方案",
+            "中医药传承创新发展",
+            "中医药文化",
+            "中医养生保健服务规范",
+            "医疗广告管理办法",
+            "广告法",
+            "中医药法",
+            "不得保证治愈",
+            "不得从事医疗活动",
+            "国家中医药管理局",
+            "国家市场监督管理总局",
         ),
         "scopes": ("gov", "party_central"),
         "fallback": ("local_official", "business"),
@@ -335,6 +347,12 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "药",
             "药品",
             "治疗",
+            "治未病",
+            "中医药",
+            "中医养生",
+            "中医养生保健",
+            "宣传疗效",
+            "医疗广告",
             "诊断",
             "症状",
             "临床",
@@ -405,6 +423,12 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "法院",
             "裁判文书",
             "条例",
+            "广告法",
+            "中医药法",
+            "医疗广告管理办法",
+            "中医养生保健服务规范",
+            "不得保证治愈",
+            "不得从事医疗活动",
             "law",
             "legal",
             "court",
@@ -439,6 +463,9 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "Citywalk",
             "citywalk",
             "热门店",
+            "小店",
+            "文艺小店",
+            "安静小店",
             "人気店",
             "焼き鳥",
             "美食",
@@ -446,6 +473,8 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "餐馆",
             "咖啡店",
             "咖啡馆",
+            "书吧",
+            "晨间",
             "brunch",
             "早午餐",
             "不排队",
@@ -730,6 +759,7 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "漫改动画新番",
             "代餐",
             "同人壁纸",
+            "壁紙",
             "相反的你和我",
             "ost",
             "歌单",
@@ -779,6 +809,11 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "赛博朋克",
             "cyberpunk",
             "玩家反响",
+            "类似剧推荐",
+            "剧推荐",
+            "婚姻剧毒",
+            "观后感",
+            "无剧透",
             "pearl abyss",
             "红色沙漠",
             "crimson desert",
@@ -790,6 +825,12 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "space marine",
             "桌面游戏",
             "新规则",
+            "绝区零",
+            "比利·基德",
+            "比利基德",
+            "星辉骑士",
+            "背景故事",
+            "真实身份",
             "动漫",
             "二次元",
             "漫画",
@@ -1177,6 +1218,30 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "910c",
             "中标",
             "招标",
+            "深远海",
+            "柔直",
+            "柔性直流",
+            "输电技术",
+            "海上风电",
+            "海缆",
+            "组织架构",
+            "组织结构",
+            "组织变革",
+            "业务线划分",
+            "事业部",
+            "大客户管理",
+            "中创新航",
+            "calb",
+            "国轩高科",
+            "gotion",
+            "亿纬锂能",
+            "宁德时代",
+            "catl",
+            "evogo",
+            "时代电服",
+            "巧克力换电",
+            "骐骥换电",
+            "华为",
             *_ROBOTICS_AI_TERMS,
         ),
         "scopes": ("business", "finance", "ecommerce"),
@@ -1299,6 +1364,32 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "callback url",
             "x-callback-url",
             "url scheme",
+            "组织架构",
+            "组织结构",
+            "组织变革",
+            "管理层调整",
+            "业务线",
+            "事业部",
+            "营销中心",
+            "销售组织架构",
+            "大客户管理",
+            "直销模式",
+            "全球布局",
+            "中创新航",
+            "calb",
+            "国轩高科",
+            "gotion",
+            "亿纬锂能",
+            "宁德时代",
+            "catl",
+            "evogo",
+            "时代电服",
+            "巧克力换电",
+            "骐骥换电",
+            "换电品牌",
+            "华为",
+            "铁三角",
+            "ar sr fr",
         ),
         "scopes": ("company_primary", "developer"),
         "fallback": ("global_news", "community_sample"),
@@ -1555,6 +1646,20 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "firefly",
             "ai tool",
             "ai工具",
+            "ai读书笔记工具",
+            "读书笔记工具",
+            "多agent",
+            "多 agent",
+            "multi-agent",
+            "multi agent",
+            "ai内容生成",
+            "ai 内容生成",
+            "系统架构",
+            "实践案例",
+            "多轮对话",
+            "确认节点",
+            "交互设计",
+            "用户引导",
             "ai陪伴",
             "ai 陪伴",
             "ai companion",
@@ -1708,6 +1813,20 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "被讨厌的勇气",
             "阿德勒",
             "课题分离",
+            "三体",
+            "给岁月以文明",
+            "给文明以岁月",
+            "礼记",
+            "聘义",
+            "君子比德于玉",
+            "黄帝内经",
+            "上古天真论",
+            "法于阴阳",
+            "和于术数",
+            "食饮有节",
+            "起居有常",
+            "天人相应",
+            "顺四时",
             "caldecott",
             "caldecott medal",
             "medal winners",
@@ -2210,6 +2329,27 @@ def build_route_plan(
     if _should_demote_sports_venue_rental(text, matched_rules):
         matched_rules = [rule for rule in matched_rules if rule.get("intent") != "sports"]
         reasons = [reason for reason in reasons if not reason.startswith("sports:")]
+    if _should_demote_broad_sports_score(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "sports"]
+        reasons = [reason for reason in reasons if not reason.startswith("sports:")]
+    if _should_demote_local_life_ecommerce(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "ecommerce"]
+        reasons = [reason for reason in reasons if not reason.startswith("ecommerce:")]
+    if _should_demote_company_business_ecommerce(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "ecommerce"]
+        reasons = [reason for reason in reasons if not reason.startswith("ecommerce:")]
+    if _should_demote_ai_tool_reading_notes(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "reading_notes"]
+        reasons = [reason for reason in reasons if not reason.startswith("reading_notes:")]
+    if _should_demote_energy_infrastructure_tech(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "tech"]
+        reasons = [reason for reason in reasons if not reason.startswith("tech:")]
+    if _should_demote_health_policy_entertainment(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "entertainment"]
+        reasons = [reason for reason in reasons if not reason.startswith("entertainment:")]
+    if _should_demote_regulator_market_industry(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "industry"]
+        reasons = [reason for reason in reasons if not reason.startswith("industry:")]
     matched_rules = _prioritize_sample_intelligence_rules(matched_rules)
 
     if preset and preset not in {"", "general"}:
@@ -2843,6 +2983,7 @@ def _recommended_commands(
     effective_read_top = 5 if read_top is None else max(read_top, 0)
     reading_discovery = _is_reading_discovery(query.lower())
     finance_intents = {"finance", "finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"}
+    capital_finance_intents = {"finance_quote", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"}
 
     search_limit = DEFAULT_SEARCH_LIMIT
     research_limit = DEFAULT_RESEARCH_LIMIT
@@ -2968,6 +3109,22 @@ def _recommended_commands(
             commands.append("guanlan feeds curated --category ai --limit 80")
             commands.append("guanlan feeds wechat-rss --limit 80")
             commands.append("guanlan hotnews hotboard:catalog:tech --limit 30")
+    elif capital_finance_intents & set(intents):
+        stock_commands = _structured_stock_commands(query, intents)
+        commands.extend(stock_commands[:3])
+        commands.extend(direct_reads[: 1 if stock_commands else 3])
+        commands.append(f"guanlan research {quoted} --preset finance{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
+        if "finance_quote" in intents:
+            commands.append(f"guanlan search {quoted}{profile_part} --scope finance_quote --limit {search_limit} --trace")
+        if "finance_disclosure" in intents or "finance" in intents:
+            commands.append(f"guanlan search {quoted}{profile_part} --scope finance_disclosure --limit {search_limit} --trace")
+        if "finance_macro" in intents:
+            commands.append(f"guanlan search {quoted}{profile_part} --scope finance_macro --limit {search_limit} --trace")
+        if "finance_sentiment" in intents:
+            commands.append("guanlan hotnews hotboard:catalog:finance --limit 30")
+            commands.append(f"guanlan search {quoted}{profile_part} --scope finance_sentiment --limit {search_limit} --trace")
+        if "finance_research" in intents:
+            commands.append(f"guanlan search {quoted}{profile_part} --scope finance_research --limit {search_limit} --trace")
     elif "company_primary" in intents:
         commands.append(f"guanlan research {quoted} --preset company{profile_part} --limit {research_limit} --read-top {max(effective_read_top, 5)}")
     elif "career" in intents:
@@ -3355,6 +3512,10 @@ def _topic_specific_target_sites(query: str) -> list[str]:
     sites: list[str] = []
     if any(term in text for term in ("yd/t", "工信部", "信息无障碍", "适老化", "无障碍环境建设法", "公共场所数字化指示")):
         sites.extend(["miit.gov.cn", "std.samr.gov.cn", "samr.gov.cn", "w3.org"])
+    if any(term in text for term in ("中医药", "治未病", "中医养生", "中医药法", "中医养生保健")):
+        sites.extend(["natcm.gov.cn", "gov.cn", "nhc.gov.cn", "npc.gov.cn"])
+    if any(term in text for term in ("医疗广告", "广告法", "宣传疗效", "不得保证治愈", "市场监督管理总局", "市场监管总局")):
+        sites.extend(["samr.gov.cn", "npc.gov.cn", "gov.cn"])
     if any(term in text for term in ("非遗", "非物质文化遗产", "非遺", "制香", "申报政策", "申報政策")):
         sites.extend(["ihchina.cn", "mct.gov.cn", "gov.cn"])
     if any(term in text for term in ("伊春", "香养基地", "伊春森工", "林下经济")):
@@ -3377,6 +3538,18 @@ def _topic_specific_target_sites(query: str) -> list[str]:
         sites.extend(["mof.gov.cn", "chinatax.gov.cn", "gov.cn"])
     if any(term in text for term in ("中国互联网络发展状况统计报告", "互联网络发展状况统计报告", "cnnic", "网络支付 用户规模")):
         sites.extend(["cnnic.net.cn"])
+    if any(term in text for term in ("深远海", "柔直", "柔性直流", "输电技术", "海上风电", "海缆")):
+        sites.extend(["nea.gov.cn", "sgcc.com.cn", "csg.cn", "csee.org.cn"])
+    if any(term in text for term in ("中创新航", "calb")):
+        sites.extend(["calb-tech.com", "hkexnews.hk"])
+    if any(term in text for term in ("国轩高科", "gotion")):
+        sites.extend(["gotion.com.cn", "gotion.com", "cninfo.com.cn"])
+    if any(term in text for term in ("亿纬锂能", "eve energy", "evebattery")):
+        sites.extend(["evebattery.com", "cninfo.com.cn"])
+    if any(term in text for term in ("宁德时代", "catl", "evogo", "时代电服", "巧克力换电", "骐骥换电")):
+        sites.extend(["catl.com", "cninfo.com.cn"])
+    if any(term in text for term in ("华为", "huawei", "铁三角", "销售组织架构")):
+        sites.extend(["huawei.com", "consumer.huawei.com", "carrier.huawei.com"])
     bill_export_terms = ("账单导出", "导出账单", "交易账单", "交易记录", "个人账单", "csv", "邮箱")
     if "微信支付" in text and any(term in text for term in bill_export_terms):
         sites.extend(["pay.weixin.qq.com", "kf.qq.com"])
@@ -3414,6 +3587,8 @@ def _topic_specific_target_sites(query: str) -> list[str]:
         sites.extend(["consumerreports.org", "nhtsa.gov"])
     if any(term in text for term in ("pearl abyss", "红色沙漠", "crimson desert")):
         sites.extend(["pearlabyss.com"])
+    if any(term in text for term in ("绝区零", "比利·基德", "比利基德", "星辉骑士")):
+        sites.extend(["zenless.hoyoverse.com", "hoyolab.com", "miyoushe.com"])
     if any(term in text for term in ("可灵", "kling", "即梦", "海螺", "通义万相")):
         sites.extend(["klingai.com", "jimeng.jianying.com", "hailuoai.video", "tongyi.aliyun.com"])
     if any(term in text for term in ("军事领域", "军事热点", "国防部")):
@@ -3454,6 +3629,12 @@ def _topic_specific_target_sites(query: str) -> list[str]:
         sites.extend(["adcommission.gov.au", "industry.gov.au"])
     if any(term in text for term in ("战锤", "warhammer", "星际战士", "space marine")):
         sites.extend(["warhammer-community.com", "games-workshop.com"])
+    if any(term in text for term in ("青秀山", "青秀山风景区", "兰湖", "国玉堂艺术馆")):
+        sites.extend(["qxsfjq.com", "nanning.gov.cn", "gxzf.gov.cn"])
+    if any(term in text for term in ("三体", "给岁月以文明", "给文明以岁月")):
+        sites.extend(["book.douban.com", "douban.com", "weread.qq.com"])
+    if any(term in text for term in ("礼记", "聘义", "君子比德于玉", "黄帝内经", "上古天真论", "法于阴阳")):
+        sites.extend(["ctext.org", "zh.wikisource.org", "guoxue.com"])
     return _unique(sites)
 
 
@@ -3702,6 +3883,136 @@ def _should_demote_sports_venue_rental(text: str, rules: list[dict[str, Any]]) -
     venue_terms = ("体育馆", "场馆", "运动场", "篮球馆", "羽毛球馆")
     rental_terms = ("出租", "招租", "租赁", "场地", "招商")
     return _contains_any(text, venue_terms) and _contains_any(text, rental_terms)
+
+
+def _should_demote_broad_sports_score(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Keep 对比/对比分析 from matching the sports score term 比分."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "sports" not in intents:
+        return False
+    sports_entities = (
+        "体育",
+        "赛程",
+        "比赛",
+        "比分直播",
+        "伤病",
+        "转会",
+        "梅西",
+        "姆巴佩",
+        "mbappe",
+        "messi",
+        "nba",
+        "fifa",
+        "uefa",
+        "lpl",
+        "电竞",
+    )
+    non_sports_context = ("对比", "对比分析", "产品流程", "用户体验", "ppt", "wps", "ai ppt", "gamma", "tome")
+    return _contains_any(text, non_sports_context) and not _contains_any(text, sports_entities)
+
+
+def _should_demote_local_life_ecommerce(text: str, rules: list[dict[str, Any]]) -> bool:
+    """横琴/到店攻略里的小店不是抖音小店/零售电商。"""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if not {"local_life", "ecommerce"} <= intents:
+        return False
+    local_visit_terms = (
+        "横琴",
+        "咖啡",
+        "咖啡店",
+        "咖啡馆",
+        "书店",
+        "书吧",
+        "文艺小店",
+        "安静小店",
+        "早午餐",
+        "brunch",
+        "周末",
+        "晨间",
+        "看书",
+    )
+    marketplace_terms = ("抖音小店", "淘宝", "天猫", "京东", "拼多多", "亚马逊", "shopify", "shopee", "lazada")
+    return _contains_any(text, local_visit_terms) and not _contains_any(text, marketplace_terms)
+
+
+def _should_demote_company_business_ecommerce(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Battery/company business-model lookups can contain 品牌 but need company/industry sources."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "ecommerce" not in intents or not {"company_primary", "industry", "global_industry"} & intents:
+        return False
+    company_business_terms = (
+        "宁德时代",
+        "catl",
+        "evogo",
+        "时代电服",
+        "巧克力换电",
+        "骐骥换电",
+        "换电品牌",
+        "中创新航",
+        "calb",
+        "国轩高科",
+        "gotion",
+        "亿纬锂能",
+        "华为",
+        "组织架构",
+        "组织结构",
+        "组织变革",
+        "业务模式",
+        "管理层调整",
+        "事业部",
+        "销售组织架构",
+    )
+    marketplace_terms = ("淘宝", "天猫", "京东", "拼多多", "亚马逊", "抖音小店", "shopify", "shopee", "lazada")
+    return _contains_any(text, company_business_terms) and not _contains_any(text, marketplace_terms)
+
+
+def _should_demote_ai_tool_reading_notes(text: str, rules: list[dict[str, Any]]) -> bool:
+    """AI 读书笔记工具是产品/口碑任务，不是书摘或读者笔记任务。"""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "reading_notes" not in intents:
+        return False
+    tool_context = ("ai", "ai工具", "工具", "神器", "产品")
+    reading_tool_terms = ("读书笔记工具", "阅读笔记工具", "ai读书笔记", "ai 读书笔记")
+    return _contains_any(text, reading_tool_terms) and _contains_any(text, tool_context)
+
+
+def _should_demote_energy_infrastructure_tech(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Power-infrastructure technology news needs industry/official energy sources, not dev feeds."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "tech" not in intents or not {"industry", "global_industry"} & intents:
+        return False
+    energy_terms = ("深远海", "柔直", "柔性直流", "输电技术", "海上风电", "海缆", "电网")
+    dev_terms = ("github", "sdk", "api", "源码", "代码", "部署", "bug", "开源", "开发者", "文档")
+    return _contains_any(text, energy_terms) and not _contains_any(text, dev_terms)
+
+
+def _should_demote_health_policy_entertainment(text: str, rules: list[dict[str, Any]]) -> bool:
+    """医疗广告/中医政策里的治愈是法规语境，不是文娱治愈题材。"""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "entertainment" not in intents or not {"medical_health", "legal_judicial", "policy"} & intents:
+        return False
+    health_policy_terms = (
+        "医疗广告",
+        "中医药",
+        "中医养生",
+        "中医养生保健",
+        "宣传疗效",
+        "不得保证治愈",
+        "不得从事医疗活动",
+        "国家市场监督管理总局",
+        "国家中医药管理局",
+    )
+    hard_entertainment_terms = ("电影", "电视剧", "动漫", "漫画", "番剧", "游戏", "演员", "票房")
+    return _contains_any(text, health_policy_terms) and not _contains_any(text, hard_entertainment_terms)
+
+
+def _should_demote_regulator_market_industry(text: str, rules: list[dict[str, Any]]) -> bool:
+    """市场监督管理总局 is a regulator, not a market/industry signal."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "industry" not in intents or not {"policy", "legal_judicial", "medical_health"} & intents:
+        return False
+    regulator_terms = ("国家市场监督管理总局", "市场监督管理总局", "市场监管总局", "市场监管")
+    return _contains_any(text, regulator_terms)
 
 
 def _should_demote_secondhand_company_primary(text: str, rules: list[dict[str, Any]]) -> bool:

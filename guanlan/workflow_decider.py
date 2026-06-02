@@ -759,6 +759,10 @@ def _select_primary_agent_command(
     official_finance_scope = _official_finance_scope(query, decision)
     if official_finance_scope:
         return _generated_search_command(query, decision, profile=profile, scope=official_finance_scope)
+    if _is_ai_reading_tool_review_query(query):
+        return _generated_search_command(query, decision, profile=profile, scope="social_web")
+    if _is_ai_hardware_performance_query(query, decision):
+        return _generated_search_command(query, decision, profile=profile, scope="tech_dev")
     if _is_marketplace_rules_query(query):
         return f"guanlan search {quote_query(query)} --profile {profile or 'china'} --scope ecommerce --limit {max(decision.recommended_limit, DEFAULT_SEARCH_LIMIT)} --trace"
     if _is_secondhand_market_query(query):
@@ -1245,6 +1249,10 @@ def _agent_scoped_search_fallback(query: str, decision: WorkflowDecision, *, pro
     official_finance_scope = _official_finance_scope(query, decision)
     if official_finance_scope:
         scope = official_finance_scope
+    elif _is_ai_reading_tool_review_query(query):
+        scope = "social_web"
+    elif _is_ai_hardware_performance_query(query, decision):
+        scope = "tech_dev"
     elif _is_marketplace_rules_query(query):
         scope = "ecommerce"
     elif _is_secondhand_market_query(query):
@@ -1577,6 +1585,20 @@ def _is_ai_model_release_query(query: str, decision: WorkflowDecision) -> bool:
     return any(term in text for term in model_terms)
 
 
+def _is_ai_hardware_performance_query(query: str, decision: WorkflowDecision) -> bool:
+    text = (query or "").lower()
+    if "tech" not in set(decision.route_intents):
+        return False
+    hardware_terms = ("昇腾", "910b", "910c", "gpu", "npu", "ai芯片", "ai 硬件", "ai hardware")
+    performance_terms = ("性能", "对标", "benchmark", "算力", "吞吐", "推理", "训练")
+    org_terms = ("组织架构", "组织结构", "销售组织", "铁三角", "事业部", "管理层")
+    return (
+        any(term in text for term in hardware_terms)
+        and any(term in text for term in performance_terms)
+        and not any(term in text for term in org_terms)
+    )
+
+
 def _is_macro_finance_query(query: str, decision: WorkflowDecision) -> bool:
     text = (query or "").lower()
     macro_terms = (
@@ -1706,6 +1728,15 @@ def _is_social_style_query(query: str) -> bool:
         return False
     reputation_terms = ("评价", "口碑", "投诉", "避雷", "差评", "好评", "风评", "舆情", "被骂")
     return not any(term in text for term in reputation_terms)
+
+
+def _is_ai_reading_tool_review_query(query: str) -> bool:
+    text = (query or "").lower()
+    if not any(term in text for term in ("读书笔记工具", "阅读笔记工具", "ai读书笔记", "ai 读书笔记")):
+        return False
+    product_terms = ("ai", "工具", "神器", "产品")
+    review_terms = ("好用", "推荐", "评价", "口碑", "测评", "体验", "对比", "怎么样")
+    return any(term in text for term in product_terms) and any(term in text for term in review_terms)
 
 
 def _is_ai_discovery_query(query: str, decision: WorkflowDecision) -> bool:

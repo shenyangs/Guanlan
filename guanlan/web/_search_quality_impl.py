@@ -88,6 +88,7 @@ def detect_search_quality_profile(
         "weather_disaster",
         "medical_health",
         "legal_judicial",
+        "finance",
         "sports",
         "science",
         "podcast",
@@ -121,6 +122,9 @@ def detect_search_quality_profile(
                 + list(wps_analysis.get("context_terms") or [])
             )
         if terms:
+            if candidate == "finance" and _is_industry_funding_context(text):
+                reasons.append(f"skip:{candidate}:industry_funding_context")
+                continue
             if candidate == "university_admissions" and _should_prefer_entertainment_over_university(text):
                 reasons.append(f"skip:{candidate}:acg_disambiguation")
                 continue
@@ -1023,6 +1027,43 @@ def _quality_term_matches(text: str, term: str) -> bool:
     if re.fullmatch(r"[a-z0-9_+-]+", term):
         return bool(re.search(rf"\b{re.escape(term)}\b", text, flags=re.I))
     return term.lower() in text
+
+
+def _is_industry_funding_context(text: str) -> bool:
+    """Treat financing/valuation as industry unless capital-market terms are explicit."""
+    industry_terms = (
+        "具身智能",
+        "机器人",
+        "robotics",
+        "robot",
+        "企业 融资",
+        "企业融资",
+        "智元",
+        "宇树",
+        "傅利叶",
+        "市场",
+        "行业",
+        "产业",
+        "创业",
+    )
+    capital_market_terms = (
+        "股票",
+        "股价",
+        "上市公司",
+        "财报",
+        "公告",
+        "研报",
+        "基金",
+        "etf",
+        "债券",
+        "行情",
+        "净值",
+        "stock",
+        "share price",
+        "earnings",
+        "filing",
+    )
+    return _quality_term_matches(text, "融资") and any(term in text for term in industry_terms) and not any(term in text for term in capital_market_terms)
 
 
 def detect_recency_intent(query: str) -> dict[str, Any]:
