@@ -19,6 +19,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from guanlan.social_evidence import (
+    build_social_evidence_protocol,
+    infer_social_platform,
+    normalize_social_evidence_payload,
+    social_browser_assist_template,
+    social_visible_output_schema,
+)
+
 ALLOWED_BROWSER_ASSIST_ACTIONS = [
     "open_target_page",
     "read_visible_text",
@@ -70,7 +78,17 @@ PLATFORM_HINTS: dict[str, str] = {
     "zhihu.com": "zhihu",
     "weibo.com": "weibo",
     "m.weibo.cn": "weibo",
+    "s.weibo.com": "weibo",
     "bilibili.com": "bilibili",
+    "b23.tv": "bilibili",
+    "space.bilibili.com": "bilibili",
+    "m.bilibili.com": "bilibili",
+    "douyin.com": "douyin",
+    "iesdouyin.com": "douyin",
+    "v.douyin.com": "douyin",
+    "kuaishou.com": "kuaishou",
+    "v.kuaishou.com": "kuaishou",
+    "tieba.baidu.com": "tieba",
     "douban.com": "douban",
     "linkedin.com": "linkedin",
 }
@@ -87,6 +105,9 @@ BROWSER_ASSIST_TRIGGER_PLATFORMS = {
     "zhihu",
     "weibo",
     "bilibili",
+    "douyin",
+    "kuaishou",
+    "tieba",
     "douban",
     "linkedin",
 }
@@ -361,6 +382,7 @@ def build_browser_assist_plan(
         "reason": "；".join(reasons) if reasons else "当前页面可走普通公开读取，不建议升级到浏览器辅助补证。",
         "platform": platform,
         "platform_template": template,
+        "social_evidence_protocol": build_social_evidence_protocol(platform),
         "evidence_role": template.get("evidence_role") or ("user_visible_sample" if recommended else ""),
         "candidate_urls": urls,
         "allowed_actions": ALLOWED_BROWSER_ASSIST_ACTIONS,
@@ -466,6 +488,7 @@ def build_browser_assist_adapter_contract(adapter: str = "openguanlan", *, platf
         "openguanlan_profile": _openguanlan_browser_profile(command_template=command_template)
         if adapter_id in {"openguanlan", "openguanlan-bridge"}
         else {},
+        "social_evidence_protocol": build_social_evidence_protocol(platform),
         "setup_guidance": _opencli_setup_guidance(opencli_profile) if adapter_id == "open-cli" else {},
         "native_setup_guidance": _openguanlan_setup_guidance()
         if adapter_id in {"openguanlan", "openguanlan-bridge"}
@@ -1206,6 +1229,25 @@ def build_browser_assist_task(
         [*(template.get("extract_fields") or []), "url", "title", "visible_text", "captured_at", "skipped_reason"]
     )
     platform_quality_checks = list(template.get("quality_checks") or [])
+    social_protocol = build_social_evidence_protocol(platform)
+    output_schema = {
+        "url": "string",
+        "title": "string",
+        "visible_text": "string",
+        "author": "string",
+        "published_at": "string",
+        "captured_at": "unix_timestamp_or_iso8601",
+        "visible_context": "string",
+        "platform": "string",
+        "source_mode": "browser_visible",
+        "browser_assisted": True,
+        "user_authorized": True,
+        "visible_page_only": True,
+        "private_account_evidence": False,
+        "session_dependent": True,
+    }
+    if social_protocol.get("enabled"):
+        output_schema.update(social_visible_output_schema(platform))
     return {
         "task_type": "open_and_read_visible_page",
         "status": "requires_user_approval",
@@ -1223,6 +1265,7 @@ def build_browser_assist_task(
             "使用宿主 Agent 已有浏览器能力打开任务 urls；如果用户需要登录、验证或切换账号，请让用户在可见浏览器里完成。",
             "只读取任务目标页的浏览器可见内容；如需滚动，只为读取目标页可见正文或公开评论摘要。",
             "按 platform_template.extract_fields 提取字段；平台无模板时提取标题、URL、可见正文、作者/账号、发布时间、采集时间和可见上下文说明。",
+            "当前浏览器会话可以继续复用已有登录态、Cookie 和浏览历史上下文让目标页可见，但默认不导出这些材料，也不把它们写进 browser-visible payload。",
             "如果页面要求登录但浏览器已可见，只读取当前页面可见内容；不要在本任务里读取 Cookie、Token、浏览器 profile、localStorage、sessionStorage、钥匙串、浏览器数据库或无关个人资料。",
             "如果目标任务就是私信、订单、后台或账号设置页，必须确认用户已对该目标页、用途和只读范围单独授权，并在输出中标记 private_account_evidence=true。",
             "如果私域页不是任务目标，或授权不清楚，立即跳过并在输出中标记 skipped_reason=private_area_not_authorized。",
@@ -1230,22 +1273,8 @@ def build_browser_assist_task(
             "遇到支付确认、发布框、提交表单或任何写操作入口，立即跳过并在输出中标记 skipped_reason。",
         ],
         "extract_fields": extract_fields,
-        "output_schema": {
-            "url": "string",
-            "title": "string",
-            "visible_text": "string",
-            "author": "string",
-            "published_at": "string",
-            "captured_at": "unix_timestamp_or_iso8601",
-            "visible_context": "string",
-            "platform": "string",
-            "source_mode": "browser_visible",
-            "browser_assisted": True,
-            "user_authorized": True,
-            "visible_page_only": True,
-            "private_account_evidence": False,
-            "session_dependent": True,
-        },
+        "social_evidence_protocol": social_protocol,
+        "output_schema": output_schema,
         "execution_contract": build_browser_assist_execution_contract(
             clean_urls[:max_pages],
             platform=platform,
@@ -1271,6 +1300,7 @@ def build_browser_assist_task(
         "host_browser_contract": {
             "requires_host_browser_tool": True,
             "uses_existing_browser_session": True,
+            "may_reuse_existing_cookie_and_history_context_for_rendering": True,
             "user_may_login_or_verify_in_browser": True,
             "agent_may_read_visible_dom_text": True,
             "agent_must_not_install_or_launch_own_browser": True,
@@ -1278,6 +1308,7 @@ def build_browser_assist_task(
             "agent_must_not_extract_credentials_or_storage": True,
             "agent_may_read_target_private_account_visible_page_after_explicit_authorization": True,
             "cookie_access_requires_separate_explicit_authorization": True,
+            "exporting_cookie_or_history_artifacts_requires_separate_explicit_authorization": True,
             "manual_copy_is_fallback_only": True,
         },
         "if_no_host_browser_tool": {
@@ -1347,6 +1378,29 @@ def build_browser_assist_execution_contract(
     """Stable instructions that host agents can execute with their own browser tool."""
 
     fields = _unique(extract_fields or [])
+    output_schema = {
+        "url": "string",
+        "title": "string",
+        "visible_text": "string",
+        "author": "string",
+        "published_at": "string",
+        "captured_at": "iso8601_or_unix_timestamp",
+        "visible_context": "string",
+        "skipped_reason": "string",
+        "requested_min_items": "integer",
+        "collected_count": "integer",
+        "partial_reason": "string",
+        "platform": "string",
+        "source_mode": "browser_visible",
+        "browser_assisted": True,
+        "visible_page_only": True,
+        "user_authorized": True,
+        "private_account_evidence": False,
+        "session_dependent": True,
+    }
+    social_protocol = build_social_evidence_protocol(platform)
+    if social_protocol.get("enabled"):
+        output_schema.update(social_visible_output_schema(platform))
     return {
         "version": "browser_visible_v2",
         "task": "open_target_urls_and_extract_visible_page_only",
@@ -1373,26 +1427,8 @@ def build_browser_assist_execution_contract(
             "private_account_evidence is true only for target private/account pages with explicit authorization",
         ],
         "failure_reasons": list(browser_assist_failure_taxonomy().keys()),
-        "output_schema": {
-            "url": "string",
-            "title": "string",
-            "visible_text": "string",
-            "author": "string",
-            "published_at": "string",
-            "captured_at": "iso8601_or_unix_timestamp",
-            "visible_context": "string",
-            "skipped_reason": "string",
-            "requested_min_items": "integer",
-            "collected_count": "integer",
-            "partial_reason": "string",
-            "platform": "string",
-            "source_mode": "browser_visible",
-            "browser_assisted": True,
-            "visible_page_only": True,
-            "user_authorized": True,
-            "private_account_evidence": False,
-            "session_dependent": True,
-        },
+        "social_evidence_protocol": social_protocol,
+        "output_schema": output_schema,
     }
 
 
@@ -1400,7 +1436,24 @@ def browser_assist_platform_template(platform: str = "") -> dict[str, Any]:
     """Return a platform-specific visible-page extraction template."""
 
     normalized = str(platform or "").strip().lower()
+    social_template = dict(social_browser_assist_template(normalized) or {})
     template = dict(BROWSER_ASSIST_PLATFORM_TEMPLATES.get(normalized) or {})
+    if social_template:
+        merged = dict(social_template)
+        for key, value in template.items():
+            if key in {"extract_fields", "field_hints", "quality_checks", "risk_tags", "content_types"}:
+                merged[key] = _unique([*(merged.get(key) or []), *(value or [])])
+            elif key == "session_policy":
+                session_policy = dict(merged.get("session_policy") or {})
+                session_policy.update(dict(value or {}))
+                merged[key] = session_policy
+            elif key == "supported_capabilities":
+                capabilities = dict(merged.get("supported_capabilities") or {})
+                capabilities.update(dict(value or {}))
+                merged[key] = capabilities
+            else:
+                merged[key] = value
+        return merged
     if not template:
         return {
             "name": "通用可见页",
@@ -1444,12 +1497,14 @@ def build_browser_assist_session_contract(
         "requires_user_authorization": True,
         "user_may_login_or_verify": True,
         "agent_allowed_to_bind_visible_tab": True,
+        "existing_cookie_or_history_context_may_keep_target_page_renderable": True,
         "agent_must_not_create_private_browser_profile": True,
         "agent_must_not_read_browser_profile_or_storage": True,
         "same_session_rules": [
             "同一补证任务使用同一 session_id_hint，避免把多个平台或多个账号的页面混在一起。",
             "每次读取前确认当前 tab 的 URL 与 target_url 或候选 URL 同源/同任务。",
             "登录、验证、SPA 跳转、排序/筛选变化后重新获取标题、URL、正文和结果数，不复用旧快照。",
+            "当前浏览器已有 Cookie 和浏览历史上下文只用于保持目标页可见，不导出、不入库。",
             "多 tab 场景必须显式记录读取的是哪个目标页；不读取无关 tab。",
         ],
         "readiness_signals": browser_assist_readiness_contract(platform=inferred_platform),
@@ -1737,18 +1792,26 @@ def normalize_browser_visible_payload(payload: dict[str, Any]) -> dict[str, Any]
     if sensitive_keys:
         raise ValueError("browser visible payload contains forbidden keys: " + ", ".join(sorted(sensitive_keys)))
     visible_text = str(payload.get("visible_text") or payload.get("text") or payload.get("content") or "").strip()
+    inferred_platform = infer_social_platform(str(payload.get("platform") or payload.get("url") or "")) or str(payload.get("platform") or "").strip()
+    social_payload = normalize_social_evidence_payload(payload, platform=inferred_platform) if inferred_platform else {}
     return {
         "url": str(payload.get("url") or "").strip(),
         "title": str(payload.get("title") or "").strip(),
         "visible_text": visible_text,
-        "platform": str(payload.get("platform") or "").strip(),
+        "platform": inferred_platform,
         "author": str(payload.get("author") or "").strip(),
         "published_at": str(payload.get("published_at") or "").strip(),
         "captured_at": payload.get("captured_at"),
         "visible_context": str(payload.get("visible_context") or "").strip(),
         "skipped_reason": str(payload.get("skipped_reason") or "").strip(),
+        "content_type": str(social_payload.get("content_type") or payload.get("content_type") or "").strip(),
+        "content_id": str(social_payload.get("content_id") or payload.get("content_id") or "").strip(),
         "engagement_summary": str(payload.get("engagement_summary") or "").strip(),
         "visible_comment_summary": str(payload.get("visible_comment_summary") or "").strip(),
+        "creator_profile_summary": str(social_payload.get("creator_profile_summary") or payload.get("creator_profile_summary") or "").strip(),
+        "creator_profile": dict(social_payload.get("creator_profile") or {}),
+        "metric_snapshots": list(social_payload.get("metric_snapshots") or []),
+        "comment_samples": list(social_payload.get("comment_samples") or []),
         "requested_min_items": int(payload.get("requested_min_items") or 0),
         "collected_count": int(payload.get("collected_count") or 0),
         "partial_reason": str(payload.get("partial_reason") or "").strip(),
@@ -2173,6 +2236,9 @@ def _parse_visible_payload_text(raw: str) -> list[dict[str, Any]]:
 def platform_hint(url: str) -> str:
     """Return a coarse platform label from URL host."""
 
+    social_platform = infer_social_platform(url)
+    if social_platform:
+        return social_platform
     host = urlparse(str(url or "")).netloc.lower()
     for suffix, label in PLATFORM_HINTS.items():
         if host == suffix or host.endswith("." + suffix):
@@ -2184,6 +2250,7 @@ def _cookie_access_policy(platform: str = "") -> dict[str, Any]:
     platform_label = platform or "target_platform"
     return {
         "default": "forbidden_for_visible_page_task",
+        "existing_browser_session_context": "current browser session may keep the target page logged in or warm; Cookie/history artifacts still stay outside payload by default",
         "can_escalate": "yes_but_only_after_separate_explicit_credential_authorization",
         "required_before_cookie_access": [
             "说明需要哪个平台的 Cookie",
@@ -2204,10 +2271,20 @@ def _cookie_access_policy(platform: str = "") -> dict[str, Any]:
 
 def _sensitive_keys_in_payload(payload: dict[str, Any]) -> set[str]:
     found: set[str] = set()
-    for key in payload.keys():
-        normalized = str(key or "").strip().lower().replace("-", "_")
-        if normalized in SENSITIVE_PAYLOAD_KEYS:
-            found.add(str(key))
+    stack: list[tuple[str, Any]] = [("", payload)]
+    while stack:
+        prefix, current = stack.pop()
+        if isinstance(current, dict):
+            for key, value in current.items():
+                normalized = str(key or "").strip().lower().replace("-", "_")
+                full_key = f"{prefix}.{key}" if prefix else str(key)
+                if normalized in SENSITIVE_PAYLOAD_KEYS:
+                    found.add(full_key)
+                stack.append((full_key, value))
+        elif isinstance(current, list):
+            for index, value in enumerate(current):
+                list_key = f"{prefix}[{index}]" if prefix else f"[{index}]"
+                stack.append((list_key, value))
     return found
 
 

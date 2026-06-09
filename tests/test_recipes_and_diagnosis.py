@@ -150,9 +150,14 @@ def test_browser_assist_plan_is_read_only_and_user_authorized():
     assert plan["browser_assist_task"]["output_contract"]["session_dependent"] is True
     assert plan["browser_assist_task"]["execution_contract"]["version"] == "browser_visible_v2"
     assert "visible_comment_summary" in plan["browser_assist_task"]["extract_fields"]
+    assert "metric_snapshots" in plan["browser_assist_task"]["extract_fields"]
+    assert plan["social_evidence_protocol"]["enabled"] is True
+    assert plan["browser_assist_task"]["social_evidence_protocol"]["session_policy"]["cookie_reuse_supported"] is True
     assert plan["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
+    assert plan["browser_assist_task"]["host_browser_contract"]["may_reuse_existing_cookie_and_history_context_for_rendering"] is True
     assert plan["browser_assist_task"]["host_browser_contract"]["manual_copy_is_fallback_only"] is True
     assert plan["browser_assist_task"]["host_browser_contract"]["cookie_access_requires_separate_explicit_authorization"] is True
+    assert plan["cookie_access_policy"]["existing_browser_session_context"].startswith("current browser session may keep")
     assert plan["cookie_access_policy"]["can_escalate"] == "yes_but_only_after_separate_explicit_credential_authorization"
     assert "Cookie" in plan["user_prompt"]
 

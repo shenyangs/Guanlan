@@ -997,6 +997,7 @@ def summary():
     current = now_ms()
     day = current - 24 * 3600 * 1000
     week = current - 7 * 24 * 3600 * 1000
+    month = current - 30 * 24 * 3600 * 1000
     conn = db_connect()
     try:
         prune_active(conn, current)
@@ -1010,6 +1011,11 @@ def summary():
             conn,
             "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_start'",
             (week,),
+        )
+        calls_30d = query_one(
+            conn,
+            "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_start'",
+            (month,),
         )
         unique_agents_24h = query_one(
             conn,
@@ -1077,6 +1083,7 @@ def summary():
             ),
             "calls_24h": calls_24h,
             "calls_7d": calls_7d,
+            "calls_30d": calls_30d,
             "active_installs_24h": active_installs_24h,
             "active_installs_7d": query_one(
                 conn,
@@ -2335,7 +2342,7 @@ def render_dashboard():
         {"label": "当前并发 / Active Concurrency", "value": metric_text(data["active_now"]), "tone": "neutral"},
         {"label": "最近事件 / Last Event", "value": fmt_ms(data["last_event_age_ms"]) + " 前", "tone": "neutral"},
         {"label": "24h 调用 / 24h Calls", "value": data["calls_24h"], "tone": "neutral"},
-        {"label": "7d 调用 / 7d Calls", "value": data["calls_7d"], "tone": "neutral"},
+        {"label": "30d 调用 / 30d Calls", "value": data["calls_30d"], "tone": "neutral"},
         {"label": "7d 官网独立 IP / 7d Website Unique IPs", "value": data["site_unique_ips_7d"], "tone": "neutral"},
         {"label": "24h 官网访问 / 24h Website Visits", "value": data["site_visits_24h"], "tone": "neutral"},
         {"label": "7d 官网访问 / 7d Website Visits", "value": data["site_visits_7d"], "tone": "neutral"},

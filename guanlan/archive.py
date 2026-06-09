@@ -329,8 +329,14 @@ def add_browser_visible_payload(
         extra_metadata={
             key: row.get(key, "")
             for key in (
+                "content_type",
+                "content_id",
                 "engagement_summary",
                 "visible_comment_summary",
+                "creator_profile_summary",
+                "creator_profile",
+                "metric_snapshots",
+                "comment_samples",
                 "question",
                 "account",
                 "session_dependent",

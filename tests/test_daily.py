@@ -151,6 +151,7 @@ def test_build_daily_report_can_reuse_watch_intent(monkeypatch):
             ],
         },
     )
+    monkeypatch.setattr("guanlan.daily.fetch_feed_source", lambda *_args, **_kwargs: [])
     monkeypatch.setattr("guanlan.daily.fetch_hotnews", lambda **_kwargs: [])
     monkeypatch.setattr("guanlan.daily.build_trend_report", lambda *_args, **_kwargs: {"trend_count": 0, "sample_count": 0, "trends": [], "source_distribution": {}, "sample_boundaries": []})
     monkeypatch.setattr("guanlan.daily.build_hotnews_brief", lambda *_args, **_kwargs: {"sample_count": 0, "trend_count": 0, "sample_boundaries": [], "warnings": [], "highlights": []})

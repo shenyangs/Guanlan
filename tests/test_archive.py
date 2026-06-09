@@ -190,6 +190,14 @@ def test_archive_cli_add_browser_note_from_json_ingests_host_browser_payload(tmp
                 "author": "可见作者",
                 "engagement_summary": "点赞 12，收藏 3",
                 "visible_comment_summary": "可见评论集中讨论使用体验。",
+                "creator_profile_summary": "家居博主，常发空间整理内容。",
+                "creator_profile": {
+                    "display_name": "可见作者",
+                    "handle": "@demo",
+                    "verification_hint": "生活方式博主",
+                },
+                "metric_snapshots": [{"metric": "likes", "value": 12, "value_text": "12赞"}],
+                "comment_samples": [{"text": "这个整理法真不错", "author": "用户A"}],
                 "captured_at": "2026-05-04T10:00:00+08:00",
                 "source_mode": "browser_visible",
                 "browser_assisted": True,
@@ -227,6 +235,9 @@ def test_archive_cli_add_browser_note_from_json_ingests_host_browser_payload(tmp
     assert record["metadata"]["schema_version"] == "browser_visible_v2"
     assert record["metadata"]["session_dependent"] is True
     assert record["metadata"]["browser_visible_fields"]["engagement_summary"] == "点赞 12，收藏 3"
+    assert record["metadata"]["browser_visible_fields"]["creator_profile"]["handle"] == "@demo"
+    assert record["metadata"]["browser_visible_fields"]["metric_snapshots"][0]["metric"] == "likes"
+    assert record["metadata"]["browser_visible_fields"]["comment_samples"][0]["text"] == "这个整理法真不错"
     assert record["metadata"]["browser_visible_quality"]["usable"] is True
 
 
