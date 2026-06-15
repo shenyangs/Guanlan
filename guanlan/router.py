@@ -221,6 +221,11 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "欧盟贸易",
             "斯塔默",
             "改革党",
+            "dtv签证",
+            "dtv visa",
+            "泰国dtv",
+            "泰国签证",
+            "destination thailand visa",
             "反倾销",
             "anti-dumping",
             "antidumping",
@@ -359,6 +364,14 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "指南",
             "医生",
             "医院",
+            "枕头高度",
+            "颈椎健康",
+            "睡姿",
+            "睡眠医学",
+            "aasm",
+            "cervical lordosis",
+            "neck pain",
+            "pillow height",
             "副作用",
             "适应症",
             "禁忌",
@@ -812,6 +825,8 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "类似剧推荐",
             "剧推荐",
             "婚姻剧毒",
+            "大明王朝1566",
+            "大明王朝",
             "观后感",
             "无剧透",
             "pearl abyss",
@@ -1334,6 +1349,19 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "doubao",
             "字节跳动",
             "volcengine",
+            "特斯拉",
+            "tesla",
+            "ai6",
+            "google gemini",
+            "gemini deep research",
+            "deep research",
+            "minimax",
+            "coinbase",
+            "cdp bridge",
+            "worldarena",
+            "openclaw",
+            "hermesclaw",
+            "wechatferry",
             "character.ai",
             "c.ai",
             "peloton",
@@ -1683,6 +1711,29 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "android 通知监听",
             "tasker",
             "icost",
+            "go 1.23",
+            "golang",
+            "range over func",
+            "泛型",
+            "芯片",
+            "算力",
+            "晶圆",
+            "music generation",
+            "音乐生成",
+            "ai音乐",
+            "ai 音乐",
+            "gemini deep research",
+            "deep research",
+            "google gemini",
+            "minimax",
+            "cdp bridge",
+            "coinbase",
+            "worldarena",
+            "leaderboard",
+            "world models",
+            "wechatferry",
+            "openclaw",
+            "hermesclaw",
             *_ROBOTICS_AI_TERMS,
         ),
         "scopes": ("tech_dev",),
@@ -1697,6 +1748,7 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "研究生招生",
             "博士招生",
             "硕士招生",
+            "博士生导师",
             "招生目录",
             "招生简章",
             "导师",
@@ -1705,7 +1757,9 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "导师情况",
             "院系",
             "计算机系",
+            "安泰",
             "研究生院",
+            "研究方向",
             "教务处",
             "期末考试",
             "考试时间",
@@ -1813,6 +1867,11 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "被讨厌的勇气",
             "阿德勒",
             "课题分离",
+            "书推荐",
+            "原研哉",
+            "适合迷茫",
+            "林语堂",
+            "散文合集",
             "三体",
             "给岁月以文明",
             "给文明以岁月",
@@ -1891,6 +1950,11 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "机构观点",
             "利空",
             "下跌原因",
+            "财经要闻",
+            "a股",
+            "港股",
+            "固收加",
+            "固收+",
         ),
         "scopes": ("finance_disclosure", "finance_company", "finance_news", "finance_quote"),
         "fallback": ("finance_macro", "finance_research", "finance_sentiment", "business"),
@@ -1917,6 +1981,11 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "纳指",
             "道指",
             "板块",
+            "a股",
+            "港股",
+            "美债收益率",
+            "treasury yield",
+            "us treasury yield",
             "etf",
             "etf联接",
             "基金概况",
@@ -2000,6 +2069,15 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "imf",
             "bank of england",
             "boe",
+            "逆回购",
+            "买断式逆回购",
+            "mlf",
+            "流动性",
+            "资金面",
+            "债市",
+            "美债收益率",
+            "treasury yield",
+            "us treasury yield",
             "interest rate",
             "inflation",
             "uk economy",
@@ -2066,6 +2144,12 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "券商",
             "机构观点",
             "行业报告",
+            "固收加",
+            "固收+",
+            "基金配置",
+            "配置价值",
+            "存款利率",
+            "理财收益率",
             "估值",
             "评级",
             "目标价",
@@ -2350,6 +2434,20 @@ def build_route_plan(
     if _should_demote_regulator_market_industry(text, matched_rules):
         matched_rules = [rule for rule in matched_rules if rule.get("intent") != "industry"]
         reasons = [reason for reason in reasons if not reason.startswith("industry:")]
+    if _should_demote_ai_music_entertainment(text, matched_rules):
+        matched_rules = [rule for rule in matched_rules if rule.get("intent") != "entertainment"]
+        reasons = [reason for reason in reasons if not reason.startswith("entertainment:")]
+    if _should_demote_university_advisor_overlays(text, matched_rules):
+        matched_rules = [
+            rule
+            for rule in matched_rules
+            if rule.get("intent") not in {"local", "industry", "ecommerce"}
+        ]
+        reasons = [
+            reason
+            for reason in reasons
+            if not (reason.startswith("local:") or reason.startswith("industry:") or reason.startswith("ecommerce:"))
+        ]
     matched_rules = _prioritize_sample_intelligence_rules(matched_rules)
 
     if preset and preset not in {"", "general"}:
@@ -3358,6 +3456,8 @@ def _structured_stock_commands(query: str, intents: list[str]) -> list[str]:
         return []
     normalized = normalize_symbol(target)
     raw = " ".join((query or "").split()).strip()
+    if _is_generic_finance_topic_query(raw, target):
+        return []
     looks_symbol = bool(re.fullmatch(r"(?:sh|sz|bj)\d{6}|hk\d{5}|us[A-Z]{1,5}", normalized))
     cleaned_target = target != raw
     if not (looks_symbol or cleaned_target or "finance_quote" in intents):
@@ -3369,6 +3469,33 @@ def _structured_stock_commands(query: str, intents: list[str]) -> list[str]:
     if "finance_sentiment" in intents or re.search(r"资金流向|主力|净流入|fund\s*flow", query, flags=re.I):
         commands.append(f"guanlan stock fundflow {quoted_target}")
     return commands
+
+
+def _is_generic_finance_topic_query(query: str, target: str) -> bool:
+    text = (query or "").lower()
+    target_text = (target or "").lower()
+    generic_terms = (
+        "财经要闻",
+        "今日财经",
+        "a股",
+        "港股",
+        "固收加",
+        "固收+",
+        "基金配置",
+        "配置价值",
+        "理财收益率",
+        "存款利率",
+        "美债收益率",
+        "逆回购",
+        "mlf",
+        "债市",
+        "资金面",
+    )
+    if not _contains_any(text, generic_terms):
+        return False
+    symbol_like = bool(re.fullmatch(r"(?:sh|sz|bj)\d{6}|hk\d{5}|us[A-Z]{1,5}", target_text, flags=re.I))
+    named_company_terms = ("宁德时代", "贵州茅台", "金山办公", "格力电器", "英伟达", "nvidia", "tesla", "特斯拉")
+    return not symbol_like and not _contains_any(text, named_company_terms)
 
 
 def _shell_quote(value: str) -> str:
@@ -3530,8 +3657,10 @@ def _topic_specific_target_sites(query: str) -> list[str]:
         sites.extend(["gd.gov.cn", "hrss.gd.gov.cn", "edu.gd.gov.cn", "szeb.sz.gov.cn"])
     if "深圳" in text and any(term in text for term in ("住房公积金", "公积金贷款", "首套房", "最低首付")):
         sites.extend(["gjj.sz.gov.cn", "zjj.sz.gov.cn", "sz.gov.cn"])
-    if any(term in text for term in ("贷款市场报价利率", "lpr", "中国人民银行", "支付体系运行总体情况", "移动支付", "非银行支付机构")):
+    if any(term in text for term in ("贷款市场报价利率", "lpr", "中国人民银行", "支付体系运行总体情况", "移动支付", "非银行支付机构", "逆回购", "买断式逆回购", "mlf", "公开市场业务", "流动性", "资金面")):
         sites.extend(["pbc.gov.cn", "chinamoney.com.cn"])
+    if any(term in text for term in ("美债收益率", "treasury yield", "us treasury yield", "bond yields")):
+        sites.extend(["treasury.gov", "fred.stlouisfed.org", "cmegroup.com"])
     if any(term in text for term in ("国家统计局", "70个大中城市", "商品住宅销售价格", "居民收入和消费支出", "全国居民人均消费支出")):
         sites.extend(["stats.gov.cn"])
     if any(term in text for term in ("契税", "税收政策", "房地产市场平稳健康发展", "财政部", "税务总局")):
@@ -3563,6 +3692,8 @@ def _topic_specific_target_sites(query: str) -> list[str]:
         sites.extend(["postgresql.org", "nvd.nist.gov", "cisa.gov"])
     if any(term in text for term in ("node.js", "nodejs", "node js")):
         sites.extend(["nodejs.org", "github.com/nodejs/node"])
+    if any(term in text for term in ("go 1.23", "golang", "range over func", "泛型")):
+        sites.extend(["go.dev", "tip.golang.org", "github.com/golang/go"])
     if any(term in text for term in ("vscode", "vs code", "visual studio code", "调试新特性")):
         sites.extend(["code.visualstudio.com", "github.com/microsoft/vscode"])
     if any(term in text for term in ("wordpress", "woocommerce", "spectra")):
@@ -3573,6 +3704,20 @@ def _topic_specific_target_sites(query: str) -> list[str]:
         sites.extend(["juhe.cn", "www.juhe.cn"])
     if any(term in text for term in ("seedance", "豆包", "doubao", "字节跳动", "volcengine")):
         sites.extend(["volcengine.com", "doubao.com", "coze.cn", "bytedance.com"])
+    if any(term in text for term in ("google gemini", "gemini deep research", "deep research")):
+        sites.extend(["blog.google", "gemini.google.com", "ai.google.dev"])
+    if any(term in text for term in ("特斯拉", "tesla", "ai6")):
+        sites.extend(["tesla.com", "x.com"])
+    if any(term in text for term in ("minimax", "music generation", "音乐生成")):
+        sites.extend(["minimax.chat", "minimax.io"])
+    if any(term in text for term in ("wechatferry", "微信机器人")):
+        sites.extend(["github.com", "github.com/lich0821/WeChatFerry"])
+    if any(term in text for term in ("openclaw", "hermesclaw")):
+        sites.extend(["github.com", "github.com/jackwener"])
+    if any(term in text for term in ("cdp bridge", "coinbase")):
+        sites.extend(["docs.cdp.coinbase.com", "github.com/coinbase"])
+    if any(term in text for term in ("worldarena", "world models leaderboard", "model rankings")):
+        sites.extend(["worldarena.ai", "github.com", "huggingface.co"])
     if any(term in text for term in ("coze", "扣子")):
         sites.extend(["coze.cn", "coze.com", "volcengine.com", "bytedance.com"])
     if any(term in text for term in ("notion", "notion ai")):
@@ -3631,6 +3776,12 @@ def _topic_specific_target_sites(query: str) -> list[str]:
         sites.extend(["warhammer-community.com", "games-workshop.com"])
     if any(term in text for term in ("青秀山", "青秀山风景区", "兰湖", "国玉堂艺术馆")):
         sites.extend(["qxsfjq.com", "nanning.gov.cn", "gxzf.gov.cn"])
+    if any(term in text for term in ("aasm", "睡眠医学", "枕头高度", "颈椎健康", "cervical lordosis", "pillow height", "neck pain")):
+        sites.extend(["aasm.org", "pubmed.ncbi.nlm.nih.gov", "nih.gov"])
+    if any(term in text for term in ("上海交大", "上海交通大学", "安泰", "博士生导师")):
+        sites.extend(["acem.sjtu.edu.cn", "sjtu.edu.cn", "yzb.sjtu.edu.cn"])
+    if any(term in text for term in ("泰国dtv", "dtv签证", "dtv visa", "destination thailand visa", "泰国签证")):
+        sites.extend(["thaievisa.go.th", "mfa.go.th", "thaiconsular.go.th"])
     if any(term in text for term in ("三体", "给岁月以文明", "给文明以岁月")):
         sites.extend(["book.douban.com", "douban.com", "weread.qq.com"])
     if any(term in text for term in ("礼记", "聘义", "君子比德于玉", "黄帝内经", "上古天真论", "法于阴阳")):
@@ -4013,6 +4164,38 @@ def _should_demote_regulator_market_industry(text: str, rules: list[dict[str, An
         return False
     regulator_terms = ("国家市场监督管理总局", "市场监督管理总局", "市场监管总局", "市场监管")
     return _contains_any(text, regulator_terms)
+
+
+def _should_demote_ai_music_entertainment(text: str, rules: list[dict[str, Any]]) -> bool:
+    """AI music-generation tool discovery should start from tech/product sources, not pure entertainment."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if not {"tech", "entertainment"} <= intents:
+        return False
+    music_generation_terms = ("音乐生成", "music generation", "ai音乐", "ai 音乐")
+    hard_entertainment_terms = ("电影", "电视剧", "动漫", "漫画", "番剧", "演员", "票房", "专辑", "演唱会")
+    return _contains_any(text, music_generation_terms) and not _contains_any(text, hard_entertainment_terms)
+
+
+def _should_demote_university_advisor_overlays(text: str, rules: list[dict[str, Any]]) -> bool:
+    """Advisor/faculty lookups should not be stolen by city, supply-chain, or ecommerce terms."""
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if "university_admissions" not in intents:
+        return False
+    real_university_terms = (
+        "大学",
+        "高校",
+        "上海交大",
+        "上海交通大学",
+        "安泰",
+        "博士生导师",
+        "导师",
+        "研究方向",
+        "研究生招生",
+        "faculty",
+        "advisor",
+    )
+    fictional_terms = ("魔法学院", "漫画", "角色", "动漫", "番剧", "游戏")
+    return _contains_any(text, real_university_terms) and not _contains_any(text, fictional_terms)
 
 
 def _should_demote_secondhand_company_primary(text: str, rules: list[dict[str, Any]]) -> bool:

@@ -763,6 +763,11 @@ def _select_primary_agent_command(
         return _generated_search_command(query, decision, profile=profile, scope="social_web")
     if _is_ai_hardware_performance_query(query, decision):
         return _generated_search_command(query, decision, profile=profile, scope="tech_dev")
+    if _is_ai_news_or_music_generation_query(query, decision):
+        return _generated_search_command(query, decision, profile=profile, scope="tech_dev")
+    medical_scope = _medical_health_primary_scope(decision)
+    if medical_scope:
+        return _generated_search_command(query, decision, profile=profile, scope=medical_scope)
     if _is_marketplace_rules_query(query):
         return f"guanlan search {quote_query(query)} --profile {profile or 'china'} --scope ecommerce --limit {max(decision.recommended_limit, DEFAULT_SEARCH_LIMIT)} --trace"
     if _is_secondhand_market_query(query):
@@ -1253,6 +1258,8 @@ def _agent_scoped_search_fallback(query: str, decision: WorkflowDecision, *, pro
         scope = "social_web"
     elif _is_ai_hardware_performance_query(query, decision):
         scope = "tech_dev"
+    elif _is_ai_news_or_music_generation_query(query, decision):
+        scope = "tech_dev"
     elif _is_marketplace_rules_query(query):
         scope = "ecommerce"
     elif _is_secondhand_market_query(query):
@@ -1276,6 +1283,8 @@ def _agent_scoped_search_fallback(query: str, decision: WorkflowDecision, *, pro
     elif "policy" in intents or "official_position" in intents:
         scope = "gov"
     elif "standards_compliance" in intents:
+        scope = "global_official"
+    elif "medical_health" in intents:
         scope = "global_official"
     elif "cybersecurity" in intents:
         scope = "cybersecurity"
@@ -1474,7 +1483,7 @@ def _is_generic_finance_product_query(query: str) -> bool:
     education_service_context = ("夏令营", "冬令营", "研学", "营地", "家长评价", "小学生", "青少年", "户外", "投诉")
     if any(term in text for term in education_service_context):
         return False
-    product_terms = ("理财", "银行理财", "存款", "贷款", "车险", "保险", "保费", "利率", "回撤")
+    product_terms = ("理财", "银行理财", "存款", "贷款", "车险", "保险", "保费", "利率", "回撤", "固收加", "固收+", "基金配置", "配置价值", "理财收益率", "存款利率")
     if not any(term in text for term in product_terms):
         return False
     capital_market_terms = ("股票", "股价", "etf", "指数", "行情", "财报", "公告", "雪球", "股吧", "研报", "代码", "ipo")
@@ -1599,6 +1608,15 @@ def _is_ai_hardware_performance_query(query: str, decision: WorkflowDecision) ->
     )
 
 
+def _is_ai_news_or_music_generation_query(query: str, decision: WorkflowDecision) -> bool:
+    text = (query or "").lower()
+    if "tech" not in set(decision.route_intents):
+        return False
+    ai_news_terms = ("ai新闻", "ai 新闻", "国内ai新闻", "人工智能最新动态", "大模型 最新动态")
+    music_generation_terms = ("音乐生成", "music generation", "ai音乐", "ai 音乐")
+    return any(term in text for term in ai_news_terms + music_generation_terms)
+
+
 def _is_macro_finance_query(query: str, decision: WorkflowDecision) -> bool:
     text = (query or "").lower()
     macro_terms = (
@@ -1625,6 +1643,15 @@ def _is_macro_finance_query(query: str, decision: WorkflowDecision) -> bool:
         "通胀",
         "降息",
         "宏观",
+        "逆回购",
+        "买断式逆回购",
+        "mlf",
+        "流动性",
+        "资金面",
+        "债市",
+        "美债收益率",
+        "treasury yield",
+        "us treasury yield",
     )
     return "finance_macro" in decision.route_intents or any(term in text for term in macro_terms)
 
@@ -1668,6 +1695,15 @@ def _official_finance_scope(query: str, decision: WorkflowDecision) -> str:
         "商品住宅销售价格",
         "居民收入和消费支出",
         "全国居民人均消费支出",
+        "逆回购",
+        "买断式逆回购",
+        "mlf",
+        "流动性",
+        "资金面",
+        "债市",
+        "美债收益率",
+        "treasury yield",
+        "us treasury yield",
     )
     if "finance_macro" in decision.route_intents and any(term in text for term in macro_terms):
         return "finance_macro"
@@ -1703,6 +1739,9 @@ def _is_index_or_futures_quote_query(query: str) -> bool:
         "dow",
         "美股收盘",
         "指数",
+        "a股",
+        "港股",
+        "美债收益率",
         "ftse",
         "gilts",
         "bond yields",
@@ -1869,6 +1908,15 @@ def _query_prefers_global_finance(query: str) -> bool:
         "imf",
     )
     return english_profile or any(term in text for term in global_terms)
+
+
+def _medical_health_primary_scope(decision: WorkflowDecision) -> str:
+    intents = set(decision.route_intents)
+    if "medical_health" not in intents:
+        return ""
+    if {"policy", "legal_judicial", "official_position"} & intents:
+        return "gov"
+    return "global_official"
 
 
 def _query_mentions_china_market(query: str) -> bool:

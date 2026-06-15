@@ -162,6 +162,15 @@ _FINANCE_MACRO_TERMS = (
     "移动支付",
     "业务金额",
     "业务笔数",
+    "逆回购",
+    "买断式逆回购",
+    "mlf",
+    "流动性",
+    "资金面",
+    "债市",
+    "美债收益率",
+    "treasury yield",
+    "us treasury yield",
 )
 _FINANCE_SENTIMENT_TERMS = (
     "雪球",
