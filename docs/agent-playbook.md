@@ -64,6 +64,12 @@ AnySearch 是外部搜索后端，适合英文、技术、学术、金融、安�
 
 如果 AnySearch 匿名额度耗尽并返回自动注册 key，Agent 只能在用户确认后保存到 `anysearch_api_key`；不要读取浏览器 Cookie、Token、密码、控制台页面或浏览器存储来“无感获取” key。推荐路径是用户自带 key：`guanlan configure anysearch-key <key>`。
 
+### 搜索入口目录
+
+Guanlan 内部维护了一个只读搜索入口目录，用来解释 Baidu、Bing、DuckDuckGo、搜狗微信、头条搜索、集思录、Google、Brave、WolframAlpha 等入口的适用场景、风控边界和高级检索语法。这个目录会出现在 `query_strategy.search_entrypoint_policy` 和 `sources explain/export` 中。
+
+它不是“逐个裸抓 17 个搜索引擎”的执行计划。Agent 不应把目录入口当默认后端，也不应把临时 session cookie retry 包装成稳定恢复能力。真正执行仍走 Guanlan 的 `search` 后端顺序、scope/site 约束、AnySearch 策略、quality gate 和 `external_fetch_strategy`。
+
 ### 约束纪律
 
 `--site` 是硬过滤，不是排序偏好。`--site gov.cn` 结果为空时，不要把知乎、SEO 页或泛网页包装成站内结果；应该改为读站点入口、使用站内搜索，或按 Guanlan 输出的 `external_fetch_strategy` 补证。

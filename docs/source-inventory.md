@@ -7,6 +7,7 @@
 - `search scope`：搜索/研究时的域名白名单和优先源池，是事实核验的主入口。
 - `source pack`：把高价值源按研究任务打包，给路由、推荐站点和 hotboard node 提示使用。
 - `source matrix`：热榜、RSS、AI 垂类、arXiv、watchlist 等发现层入口。
+- `search entrypoint catalog`：搜索引擎入口和高级检索语法的只读目录，用于解释 Baidu/Bing/DuckDuckGo/搜狗微信/头条/集思录/Google 等入口边界；不是默认联网后端。
 - `channel catalog`：平台/后端能力目录，说明 auth、风险和稳定性，不等同于具体内容源。
 - `hotboard catalog`：随包附带的大型热榜节点目录，数量很大，本文件按分类统计；全量节点在 `guanlan/data/hotboard_nodes.json`。
 
@@ -20,6 +21,7 @@
 | source packs | 10 |
 | source pack 条目 | 172 |
 | source matrix 条目 | 32 |
+| search entrypoint catalog | 17 |
 | 热榜 source_id 入口 | 25 |
 | feeds 入口 | 7 |
 | Ebrun 垂类频道 | 27 |

@@ -492,6 +492,7 @@ def list_source_cards(scope: str | None = None, limit: int = 200) -> list[dict[s
 def show_source(target: str) -> dict[str, Any]:
     """Show one source by matrix id, alias, domain, or scope id."""
 
+    from guanlan.search_entrypoints import get_search_engine_entrypoint
     from guanlan.search_sources import SEARCH_SCOPES
     from guanlan.source_taxonomy import source_card_for_domain
 
@@ -501,6 +502,9 @@ def show_source(target: str) -> dict[str, Any]:
     matrix = get_source_metadata(key)
     if matrix:
         return {"kind": "matrix_source", **matrix}
+    entrypoint = get_search_engine_entrypoint(key)
+    if entrypoint:
+        return {"kind": "search_entrypoint", **entrypoint}
     if key in SEARCH_SCOPES:
         scope = SEARCH_SCOPES[key]
         rows = list_source_cards(scope=key, limit=len(scope.domains))
@@ -513,6 +517,7 @@ def explain_sources(query: str, *, profile: str | None = None, limit: int = 12) 
     """Explain source routing for a query through the registry adapter."""
 
     from guanlan.router import build_route_plan
+    from guanlan.search_entrypoints import suggest_search_entrypoints
 
     plan = build_route_plan(query, profile=profile, limit=80)
     plan_data = plan.to_dict()
@@ -527,6 +532,11 @@ def explain_sources(query: str, *, profile: str | None = None, limit: int = 12) 
         "query": query,
         "route_plan": plan_data,
         "sources": rows[: max(limit, 1)],
+        "search_entrypoint_policy": suggest_search_entrypoints(
+            query,
+            profile=profile,
+            route_plan=plan_data,
+        ),
         "explain": _source_explain_text(plan_data),
         "boundary": "sources explain 是只读信源解释，不联网，不等同于实际搜索结果。",
     }
@@ -536,16 +546,20 @@ def export_source_registry() -> dict[str, Any]:
     """Export source registry surfaces without rewriting their source modules."""
 
     from guanlan.channel_catalog import CHANNEL_CATALOG
+    from guanlan.search_entrypoints import list_search_engine_entrypoints
 
     cards = list_source_cards(limit=500)
+    search_entrypoints = list_search_engine_entrypoints()
     return {
         "schema": "guanlan-source-registry-2.0",
         "boundary": "只读导出：聚合 source matrix、search scopes、source taxonomy 和 channel catalog；不改写运行时。",
         "matrix_sources": list_sources(),
+        "search_entrypoints": search_entrypoints,
         "source_cards": cards,
         "channel_catalog": CHANNEL_CATALOG,
         "counts": {
             "matrix_sources": len(SOURCE_MATRIX),
+            "search_entrypoints": len(search_entrypoints),
             "source_cards": len(cards),
             "channels": len(CHANNEL_CATALOG),
         },
@@ -682,6 +696,17 @@ def format_source_show_markdown(payload: dict[str, Any]) -> str:
         if payload.get("risk_tags"):
             lines.append("- risk_tags: " + ", ".join(payload.get("risk_tags") or []))
         return "\n".join(lines)
+    if kind == "search_entrypoint":
+        lines = [f"# 观澜搜索入口 / {payload.get('id', '')}", ""]
+        for key in ["name", "region", "status", "integration", "evidence_role", "best_for", "caveat", "url_template"]:
+            if payload.get(key):
+                lines.append(f"- {key}: {payload.get(key)}")
+        if payload.get("operator_support"):
+            lines.append("- operator_support: " + ", ".join(payload.get("operator_support") or []))
+        if payload.get("risk_tags"):
+            lines.append("- risk_tags: " + ", ".join(payload.get("risk_tags") or []))
+        lines.append("- boundary: 搜索入口是只读目录，不代表 Guanlan 会裸抓该引擎。")
+        return "\n".join(lines)
     return format_sources_markdown([payload], title=f"观澜信源详情 / {payload.get('domain', '')}")
 
 
@@ -692,6 +717,15 @@ def format_source_explain_markdown(payload: dict[str, Any]) -> str:
     for item in payload.get("explain") or []:
         lines.append(f"- {item}")
     lines.append(f"- 边界: {payload.get('boundary', '')}")
+    entrypoint_policy = payload.get("search_entrypoint_policy") or {}
+    if entrypoint_policy:
+        selected = entrypoint_policy.get("selected") or []
+        names = [str(item.get("name") or item.get("id") or "") for item in selected[:5] if item]
+        lines.append(f"- 搜索入口策略: {entrypoint_policy.get('policy', '')}")
+        if names:
+            lines.append(f"- 可解释入口: {', '.join(names)}")
+        if entrypoint_policy.get("boundary"):
+            lines.append(f"- 入口边界: {entrypoint_policy.get('boundary')}")
     lines.append("")
     lines.append(format_sources_markdown(payload.get("sources") or [], title="推荐信源卡"))
     return "\n".join(lines).rstrip()

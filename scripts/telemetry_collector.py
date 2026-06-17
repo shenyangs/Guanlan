@@ -47,6 +47,18 @@ DASHBOARD_CACHE_TTL_SECONDS = max(
     1,
     int(os.environ.get("GUANLAN_DASHBOARD_CACHE_TTL_SECONDS", "30")),
 )
+DASHBOARD_REFRESH_STUCK_SECONDS = max(
+    30,
+    int(os.environ.get("GUANLAN_DASHBOARD_REFRESH_STUCK_SECONDS", "180")),
+)
+RETENTION_CACHE_TTL_SECONDS = max(
+    300,
+    int(os.environ.get("GUANLAN_RETENTION_CACHE_TTL_SECONDS", str(6 * 3600))),
+)
+SLOW_METRICS_CACHE_TTL_SECONDS = max(
+    60,
+    int(os.environ.get("GUANLAN_SLOW_METRICS_CACHE_TTL_SECONDS", "300")),
+)
 SYNTHETIC_QUERY_EXACT = set(
     [
         "query",
@@ -62,11 +74,17 @@ SYNTHETIC_QUERY_EXACT = set(
     ]
 )
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_CACHE = {"built_ms": 0, "html": "", "refreshing": False}
+_DASHBOARD_CACHE = {"built_ms": 0, "html": "", "refreshing": False, "refresh_started_ms": 0}
+_ASYNC_STATS_CACHE_LOCK = threading.Lock()
+_ASYNC_STATS_CACHE = {}
 
 
 def now_ms():
     return int(time.time() * 1000)
+
+
+def log_info(message):
+    sys.stderr.write("[guanlan-telemetry] %s\n" % message)
 
 
 def clamp_text(value, limit=160):
@@ -117,6 +135,108 @@ def feedback_real_sql(column="query_text"):
         + " NOT LIKE 'sample %'"
         + ")"
     )
+
+
+def retention_placeholder(offsets=(1, 3, 7, 14, 30)):
+    return [
+        {
+            "offset": offset,
+            "cohort": 0,
+            "retained": 0,
+            "rate": 0,
+            "pending": True,
+        }
+        for offset in offsets
+    ]
+
+
+def _async_cache_snapshot(name, default_value):
+    with _ASYNC_STATS_CACHE_LOCK:
+        entry = _ASYNC_STATS_CACHE.get(name)
+        if entry is None:
+            entry = {
+                "value": default_value,
+                "built_ms": 0,
+                "refreshing": False,
+                "refresh_started_ms": 0,
+            }
+            _ASYNC_STATS_CACHE[name] = entry
+        return dict(entry)
+
+
+def _async_cache_store(name, value):
+    with _ASYNC_STATS_CACHE_LOCK:
+        entry = _ASYNC_STATS_CACHE.setdefault(name, {})
+        entry["value"] = value
+        entry["built_ms"] = now_ms()
+        entry["refreshing"] = False
+        entry["refresh_started_ms"] = 0
+
+
+def _async_cache_finish(name, keep_value=False):
+    with _ASYNC_STATS_CACHE_LOCK:
+        entry = _ASYNC_STATS_CACHE.setdefault(name, {})
+        entry["refreshing"] = False
+        entry["refresh_started_ms"] = 0
+        if keep_value and "value" not in entry:
+            entry["value"] = None
+
+
+def _async_cache_worker(name, builder):
+    started = time.time()
+    try:
+        value = builder()
+        _async_cache_store(name, value)
+        elapsed = time.time() - started
+        if elapsed >= 1.0:
+            log_info("async cache refreshed %s in %.2fs" % (name, elapsed))
+    except Exception as exc:
+        _async_cache_finish(name, keep_value=True)
+        log_info("async cache refresh failed for %s: %s" % (name, exc))
+
+
+def ensure_async_cache_refresh(name, builder, default_value=None):
+    current = now_ms()
+    with _ASYNC_STATS_CACHE_LOCK:
+        entry = _ASYNC_STATS_CACHE.setdefault(
+            name,
+            {
+                "value": default_value,
+                "built_ms": 0,
+                "refreshing": False,
+                "refresh_started_ms": 0,
+            },
+        )
+        refresh_started_ms = int(entry.get("refresh_started_ms") or 0)
+        if entry.get("refreshing") and refresh_started_ms:
+            if current - refresh_started_ms <= DASHBOARD_REFRESH_STUCK_SECONDS * 1000:
+                return False
+            entry["refreshing"] = False
+            entry["refresh_started_ms"] = 0
+            log_info("async cache refresh reset after timeout: %s" % name)
+        if entry.get("refreshing"):
+            return False
+        entry["refreshing"] = True
+        entry["refresh_started_ms"] = current
+    thread = threading.Thread(
+        target=_async_cache_worker,
+        args=(name, builder),
+        name="guanlan-async-cache-%s" % name,
+        daemon=True,
+    )
+    thread.start()
+    return True
+
+
+def get_async_cached_value(name, ttl_seconds, builder, default_value=None):
+    current = now_ms()
+    snapshot = _async_cache_snapshot(name, default_value)
+    built_ms = int(snapshot.get("built_ms") or 0)
+    value = snapshot.get("value", default_value)
+    if built_ms and current - built_ms < ttl_seconds * 1000:
+        return value
+    ensure_async_cache_refresh(name, builder, default_value)
+    return value
 
 
 def hash_site_ip(remote_addr):
@@ -300,7 +420,10 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_events_received ON events(received_ms);
             CREATE INDEX IF NOT EXISTS idx_events_install ON events(install_id);
+            CREATE INDEX IF NOT EXISTS idx_events_agent ON events(agent_id);
             CREATE INDEX IF NOT EXISTS idx_events_invocation ON events(invocation_id);
+            CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
+            CREATE INDEX IF NOT EXISTS idx_events_event_received ON events(event, received_ms);
 
             CREATE TABLE IF NOT EXISTS active_invocations (
                 invocation_id TEXT PRIMARY KEY,
@@ -337,6 +460,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_feedback_received ON feedback(received_ms);
             CREATE INDEX IF NOT EXISTS idx_feedback_command ON feedback(command);
             CREATE INDEX IF NOT EXISTS idx_feedback_agent ON feedback(agent_id);
+            CREATE INDEX IF NOT EXISTS idx_feedback_install ON feedback(install_id);
 
             CREATE TABLE IF NOT EXISTS site_visits (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -865,6 +989,24 @@ def query_retention_stats(conn, field, offsets=(1, 3, 7, 14, 30)):
     return stats
 
 
+def query_retention_stats_cached(field, offsets=(1, 3, 7, 14, 30)):
+    default_rows = retention_placeholder(offsets)
+
+    def builder():
+        conn = db_connect()
+        try:
+            return query_retention_stats(conn, field, offsets)
+        finally:
+            conn.close()
+
+    return get_async_cached_value(
+        "retention:%s" % field,
+        RETENTION_CACHE_TTL_SECONDS,
+        builder,
+        default_rows,
+    )
+
+
 def query_orphan_starts(conn, since_ms, current_ms):
     cutoff = current_ms - ACTIVE_TTL_SECONDS * 1000
     return query_one(
@@ -943,6 +1085,81 @@ def query_orphan_sources(conn, since_ms, current_ms, limit=12):
     return items
 
 
+def slow_dashboard_metrics_placeholder():
+    return {
+        "pending": True,
+        "all_time_unique_installs": "...",
+        "all_time_unique_agents": "...",
+        "new_installs_24h": "...",
+        "new_installs_7d": "...",
+        "returning_installs_24h": "...",
+        "task_duration_7d": {"avg_ms": 0, "p50_ms": 0, "p95_ms": 0, "p99_ms": 0},
+        "session_24h": {"count": 0, "avg_duration_ms": 0, "p95_duration_ms": 0, "avg_calls": 0},
+        "session_7d": {"count": 0, "avg_duration_ms": 0, "p95_duration_ms": 0, "avg_calls": 0},
+        "platform_unique_devices": [],
+        "platform_unique_agents": [],
+        "platform_unique_devices_all": [],
+        "platform_unique_agents_all": [],
+        "orphan_sources_24h": [],
+        "feedback_commands": [],
+        "feedback_queries": [],
+        "feedback_reasons": [],
+    }
+
+
+def query_slow_dashboard_metrics(current_ms, day_ms, week_ms):
+    conn = db_connect()
+    try:
+        return {
+            "pending": False,
+            "all_time_unique_installs": query_one(
+                conn,
+                """
+                SELECT COUNT(DISTINCT install_id) FROM (
+                    SELECT install_id FROM events WHERE install_id <> ''
+                    UNION
+                    SELECT install_id FROM feedback WHERE install_id <> ''
+                )
+                """,
+            ),
+            "all_time_unique_agents": query_one(
+                conn,
+                """
+                SELECT COUNT(DISTINCT agent_id) FROM (
+                    SELECT agent_id FROM events WHERE agent_id <> ''
+                    UNION
+                    SELECT agent_id FROM feedback WHERE agent_id <> ''
+                )
+                """,
+            ),
+            "new_installs_24h": query_new_installs(conn, day_ms),
+            "new_installs_7d": query_new_installs(conn, week_ms),
+            "returning_installs_24h": query_returning_installs(conn, day_ms),
+            "task_duration_7d": query_duration_stats(conn, week_ms),
+            "session_24h": query_session_stats(conn, day_ms),
+            "session_7d": query_session_stats(conn, week_ms),
+            "platform_unique_devices": query_platform_unique(conn, "install_id", week_ms),
+            "platform_unique_agents": query_platform_unique(conn, "agent_id", week_ms),
+            "platform_unique_devices_all": query_platform_unique(conn, "install_id"),
+            "platform_unique_agents_all": query_platform_unique(conn, "agent_id"),
+            "orphan_sources_24h": query_orphan_sources(conn, day_ms, current_ms),
+            "feedback_commands": query_feedback_groups(conn, "command", week_ms, 12, real_only=True),
+            "feedback_queries": query_feedback_groups(conn, "query_text", week_ms, 12, real_only=True),
+            "feedback_reasons": query_feedback_groups(conn, "reason_text", week_ms, 12, real_only=True),
+        }
+    finally:
+        conn.close()
+
+
+def query_slow_dashboard_metrics_cached(current_ms, day_ms, week_ms):
+    return get_async_cached_value(
+        "dashboard_slow_metrics",
+        SLOW_METRICS_CACHE_TTL_SECONDS,
+        lambda: query_slow_dashboard_metrics(current_ms, day_ms, week_ms),
+        slow_dashboard_metrics_placeholder(),
+    )
+
+
 def fmt_ms(ms):
     ms = int(ms or 0)
     if ms <= 0:
@@ -994,10 +1211,12 @@ def tone_by_threshold(value, good_max, warn_max):
 
 
 def summary():
+    started = time.time()
     current = now_ms()
     day = current - 24 * 3600 * 1000
     week = current - 7 * 24 * 3600 * 1000
     month = current - 30 * 24 * 3600 * 1000
+    slow_metrics = query_slow_dashboard_metrics_cached(current, day, week)
     conn = db_connect()
     try:
         prune_active(conn, current)
@@ -1056,31 +1275,14 @@ def summary():
         )
         data = {
             "generated_ms": current,
+            "slow_metrics_pending": bool(slow_metrics.get("pending")),
             "last_event_age_ms": max(
                 0,
                 current - (query_one(conn, "SELECT MAX(received_ms) FROM events") or current),
             ),
             "active_now": query_one(conn, "SELECT COUNT(*) FROM active_invocations"),
-            "all_time_unique_installs": query_one(
-                conn,
-                """
-                SELECT COUNT(DISTINCT install_id) FROM (
-                    SELECT install_id FROM events WHERE install_id <> ''
-                    UNION
-                    SELECT install_id FROM feedback WHERE install_id <> ''
-                )
-                """,
-            ),
-            "all_time_unique_agents": query_one(
-                conn,
-                """
-                SELECT COUNT(DISTINCT agent_id) FROM (
-                    SELECT agent_id FROM events WHERE agent_id <> ''
-                    UNION
-                    SELECT agent_id FROM feedback WHERE agent_id <> ''
-                )
-                """,
-            ),
+            "all_time_unique_installs": slow_metrics["all_time_unique_installs"],
+            "all_time_unique_agents": slow_metrics["all_time_unique_agents"],
             "calls_24h": calls_24h,
             "calls_7d": calls_7d,
             "calls_30d": calls_30d,
@@ -1096,9 +1298,9 @@ def summary():
                 "SELECT COUNT(DISTINCT agent_id) FROM events WHERE received_ms >= ?",
                 (week,),
             ),
-            "new_installs_24h": query_new_installs(conn, day),
-            "new_installs_7d": query_new_installs(conn, week),
-            "returning_installs_24h": query_returning_installs(conn, day),
+            "new_installs_24h": slow_metrics["new_installs_24h"],
+            "new_installs_7d": slow_metrics["new_installs_7d"],
+            "returning_installs_24h": slow_metrics["returning_installs_24h"],
             "error_24h": errors_24h,
             "error_rate_24h": fmt_rate(errors_24h, calls_24h),
             "orphan_starts_24h": orphan_starts_24h,
@@ -1150,24 +1352,24 @@ def summary():
             if active_installs_24h
             else 0,
             "task_duration_24h": query_duration_stats(conn, day),
-            "task_duration_7d": query_duration_stats(conn, week),
-            "session_24h": query_session_stats(conn, day),
-            "session_7d": query_session_stats(conn, week),
+            "task_duration_7d": slow_metrics["task_duration_7d"],
+            "session_24h": slow_metrics["session_24h"],
+            "session_7d": slow_metrics["session_7d"],
             "surface": query_groups(conn, "surface", week),
             "commands": query_groups(conn, "command", week, 12),
             "agents": query_groups(conn, "agent_kind", week),
             "versions": query_groups(conn, "version", week),
             "platforms": query_groups(conn, "platform", week),
-            "platform_unique_devices": query_platform_unique(conn, "install_id", week),
-            "platform_unique_agents": query_platform_unique(conn, "agent_id", week),
-            "platform_unique_devices_all": query_platform_unique(conn, "install_id"),
-            "platform_unique_agents_all": query_platform_unique(conn, "agent_id"),
-            "retention_devices": query_retention_stats(conn, "install_id"),
-            "retention_agents": query_retention_stats(conn, "agent_id"),
-            "orphan_sources_24h": query_orphan_sources(conn, day, current),
-            "feedback_commands": query_feedback_groups(conn, "command", week, 12, real_only=True),
-            "feedback_queries": query_feedback_groups(conn, "query_text", week, 12, real_only=True),
-            "feedback_reasons": query_feedback_groups(conn, "reason_text", week, 12, real_only=True),
+            "platform_unique_devices": slow_metrics["platform_unique_devices"],
+            "platform_unique_agents": slow_metrics["platform_unique_agents"],
+            "platform_unique_devices_all": slow_metrics["platform_unique_devices_all"],
+            "platform_unique_agents_all": slow_metrics["platform_unique_agents_all"],
+            "retention_devices": query_retention_stats_cached("install_id"),
+            "retention_agents": query_retention_stats_cached("agent_id"),
+            "orphan_sources_24h": slow_metrics["orphan_sources_24h"],
+            "feedback_commands": slow_metrics["feedback_commands"],
+            "feedback_queries": slow_metrics["feedback_queries"],
+            "feedback_reasons": slow_metrics["feedback_reasons"],
             "recent": [],
             "recent_feedback": [],
         }
@@ -1196,6 +1398,9 @@ def summary():
         return data
     finally:
         conn.close()
+        elapsed = time.time() - started
+        if elapsed >= 2.0:
+            log_info("summary built in %.2fs" % elapsed)
 
 
 def format_time(ms):
@@ -1253,21 +1458,28 @@ def render_retention_panel(device_rows, agent_rows):
         for row in rows:
             offset = int(row.get("offset") or 0)
             label = "D{} {}".format(offset, prefix)
+            pending = bool(row.get("pending"))
+            rate_text = "..." if pending else "{}%".format(html.escape(str(row.get("rate") or 0)))
+            retained_text = "... / ..." if pending else "{}/{} retained".format(
+                html.escape(str(row.get("retained") or 0)),
+                html.escape(str(row.get("cohort") or 0)),
+            )
             items.append(
                 """
 <div class="retention-card">
-  <strong>{rate}%</strong>
+  <strong>{rate_text}</strong>
   <span>{label}</span>
-  <em>{retained}/{cohort} retained</em>
+  <em>{retained_text}</em>
 </div>
                 """.strip().format(
-                    rate=html.escape(str(row.get("rate") or 0)),
+                    rate_text=rate_text,
                     label=html.escape(label),
-                    retained=html.escape(str(row.get("retained") or 0)),
-                    cohort=html.escape(str(row.get("cohort") or 0)),
+                    retained_text=retained_text,
                 )
             )
         return "\n".join(items)
+
+    pending = any(bool(row.get("pending")) for row in list(device_rows) + list(agent_rows))
 
     return """
 <section class="panel retention-panel">
@@ -1275,6 +1487,7 @@ def render_retention_panel(device_rows, agent_rows):
     <div>
       <h2>留存分析 / Retention</h2>
       <p>按首次激活日期分群；D1 / D3 / D7 / D14 / D30 表示首次激活后第 N 天是否再次调用 Guanlan。历史不足 N 天的 cohort 不进入分母。</p>
+      {pending_note}
     </div>
   </div>
   <h3>独立设备留存 / Unique Device Retention</h3>
@@ -1283,6 +1496,7 @@ def render_retention_panel(device_rows, agent_rows):
   <div class="retention-grid">{agent_cards}</div>
 </section>
     """.strip().format(
+        pending_note="<p class='panel-note'>留存卡片正在后台刷新，主看板和反馈列表不会再被它拖住。</p>" if pending else "",
         device_cards=cards(device_rows, "设备 / Devices"),
         agent_cards=cards(agent_rows, "Agent"),
     )
@@ -2315,6 +2529,11 @@ def render_dashboard():
     task_24h = data["task_duration_24h"]
     session_24h = data["session_24h"]
     generated_at = format_time(data["generated_ms"])
+    slow_metrics_note = (
+        "<p class='panel-note'>部分历史/诊断指标正在后台刷新，反馈明细和实时调用已经是最新数据。</p>"
+        if data.get("slow_metrics_pending")
+        else ""
+    )
 
     core_cards = [
         {"label": "全部独立设备 / All-time Unique Devices", "value": data["all_time_unique_installs"]},
@@ -2603,6 +2822,7 @@ def render_dashboard():
         </div>
       </div>
       <div class="overview-shell panel">
+        {slow_metrics_note}
         <div class="hero-grid">
           <div class="hero-cards">{core_cards}</div>
           {core_platform_devices}
@@ -2705,6 +2925,7 @@ def render_dashboard():
         core_cards=core_card_html,
         countdown_seconds=countdown_seconds,
         generated_at=generated_at,
+        slow_metrics_note=slow_metrics_note,
         operational_cards=operational_card_html,
         growth_cards=growth_card_html,
         performance_cards=performance_card_html,
@@ -2767,22 +2988,37 @@ def _build_dashboard_html():
         _DASHBOARD_CACHE["html"] = html_text
         _DASHBOARD_CACHE["built_ms"] = now_ms()
         _DASHBOARD_CACHE["refreshing"] = False
+        _DASHBOARD_CACHE["refresh_started_ms"] = 0
     return html_text
 
 
 def _dashboard_refresh_worker():
+    started = time.time()
     try:
         _build_dashboard_html()
+        elapsed = time.time() - started
+        if elapsed >= 1.0:
+            log_info("dashboard cache refreshed in %.2fs" % elapsed)
     except Exception:
         with _DASHBOARD_CACHE_LOCK:
             _DASHBOARD_CACHE["refreshing"] = False
+            _DASHBOARD_CACHE["refresh_started_ms"] = 0
 
 
 def ensure_dashboard_refresh():
+    current = now_ms()
     with _DASHBOARD_CACHE_LOCK:
-        if _DASHBOARD_CACHE.get("refreshing"):
+        refresh_started_ms = int(_DASHBOARD_CACHE.get("refresh_started_ms") or 0)
+        if _DASHBOARD_CACHE.get("refreshing") and refresh_started_ms:
+            if current - refresh_started_ms <= DASHBOARD_REFRESH_STUCK_SECONDS * 1000:
+                return False
+            _DASHBOARD_CACHE["refreshing"] = False
+            _DASHBOARD_CACHE["refresh_started_ms"] = 0
+            log_info("dashboard cache refresh reset after timeout")
+        elif _DASHBOARD_CACHE.get("refreshing"):
             return False
         _DASHBOARD_CACHE["refreshing"] = True
+        _DASHBOARD_CACHE["refresh_started_ms"] = current
     thread = threading.Thread(
         target=_dashboard_refresh_worker,
         name="guanlan-dashboard-refresh",
@@ -2798,6 +3034,14 @@ def render_dashboard_cached(force_refresh=False):
         html_text = _DASHBOARD_CACHE.get("html") or ""
         built_ms = int(_DASHBOARD_CACHE.get("built_ms") or 0)
         refreshing = bool(_DASHBOARD_CACHE.get("refreshing"))
+        refresh_started_ms = int(_DASHBOARD_CACHE.get("refresh_started_ms") or 0)
+    if refreshing and refresh_started_ms:
+        if current - refresh_started_ms > DASHBOARD_REFRESH_STUCK_SECONDS * 1000:
+            with _DASHBOARD_CACHE_LOCK:
+                _DASHBOARD_CACHE["refreshing"] = False
+                _DASHBOARD_CACHE["refresh_started_ms"] = 0
+            refreshing = False
+            log_info("dashboard cache stale refresh lock cleared")
     if force_refresh:
         if not refreshing:
             return _build_dashboard_html()

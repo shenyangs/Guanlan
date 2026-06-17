@@ -6,6 +6,16 @@
 
 ## Unreleased
 
+## v0.6.19 - 2026-06-17
+
+### Changed
+
+- 新增只读搜索入口目录，内化多搜索入口、operator 提示和风控边界，帮助 Agent 更稳地理解 Baidu/Bing/DuckDuckGo/搜狗微信/头条/集思录/Google 等入口适用场景。
+- `query_strategy` 增加 `operator_hints` 与 `search_entrypoint_policy`，强调入口目录只用于解释和补证规划，不作为逐个裸抓搜索引擎的默认执行链路。
+- `sources show/explain/export` 同步展示搜索入口目录，并保留 source registry 的只读信源解释边界。
+- 优化后台看板慢指标刷新链路，避免历史/诊断指标拖住实时调用与反馈明细展示。
+- README、完整指南、遥测文档和官网版本面同步到 `0.6.19`。
+
 ## v0.6.18 - 2026-06-15
 
 ### Changed

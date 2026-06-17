@@ -15,6 +15,10 @@ from typing import Any
 from guanlan.limits import DEFAULT_RESEARCH_LIMIT, DEFAULT_SEARCH_LIMIT
 from guanlan.query_semantics import analyze_query_semantics
 from guanlan.router import build_route_plan
+from guanlan.search_entrypoints import (
+    build_search_operator_hints,
+    suggest_search_entrypoints,
+)
 from guanlan.web._search_quality_support import (
     _LONG_QUERY_KEYPHRASE_HINTS,
     _MEANINGLESS_QUERY_ALLOWLIST,
@@ -1350,6 +1354,16 @@ def build_query_strategy(
         add(str(roles[0]), f"{clean_query} 依据 来源", "按路由证据角色补充查询")
 
     time_window = _query_strategy_time_window(recency)
+    operator_hints = build_search_operator_hints(
+        clean_query,
+        recency=recency,
+        site=str(quality.get("site") or route_plan.get("site") or ""),
+    )
+    entrypoint_policy = suggest_search_entrypoints(
+        clean_query,
+        profile=str(quality.get("profile") or route_plan.get("profile") or ""),
+        route_plan=route_plan,
+    )
     return {
         "primary_query": variants[0]["query"] if variants else clean_query,
         "recency": recency,
@@ -1357,11 +1371,14 @@ def build_query_strategy(
         "intent": quality.get("intent") or (intents[0] if intents else "general"),
         "roles": roles,
         "variants": variants[:14],
+        "operator_hints": operator_hints,
+        "search_entrypoint_policy": entrypoint_policy,
         "search_quality_v2": {
             "prefer_broad_pool": True,
             "minimum_recommended_limit": DEFAULT_RESEARCH_LIMIT,
             "recency_bounded": bool(recency.get("enabled")),
             "source_role_queries": len(variants),
+            "operator_hint_count": len(operator_hints),
         },
         "query_shape": query_shape,
         "agent_hint": "不要只用一个宽泛 query；按证据角色分别搜索，再合并去重和标注边界；涉及近期/热点时必须保留时间窗口。",

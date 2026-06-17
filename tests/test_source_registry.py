@@ -37,6 +37,25 @@ def test_source_matrix_resolves_aliases_and_feed_sources():
     assert source_registry.resolve_source_id("watch") == "watchlist"
 
 
+def test_source_registry_exports_search_entrypoint_catalog():
+    exported = source_registry.export_source_registry()
+
+    assert exported["counts"]["search_entrypoints"] == 17
+    assert exported["search_entrypoints"]["toutiao-search"]["status"] == "experimental"
+    assert exported["search_entrypoints"]["duckduckgo-html"]["integration"] == "guanlan_native_backend"
+
+
+def test_source_show_and_explain_include_search_entrypoint_boundary():
+    shown = source_registry.show_source("jisilu")
+    explained = source_registry.explain_sources("宁德时代 可转债 风险", limit=2)
+
+    assert shown["kind"] == "search_entrypoint"
+    assert shown["id"] == "jisilu-search"
+    assert shown["integration"] == "catalog_only"
+    assert explained["search_entrypoint_policy"]["policy"] == "catalog_only_not_default_backend"
+    assert "只用于解释" in explained["search_entrypoint_policy"]["boundary"]
+
+
 def test_source_matrix_has_stable_required_fields_and_status_values():
     allowed_status = {"stable", "best-effort", "experimental", "optional"}
     allowed_backend = {"native", "optional", "rss", "curated"}

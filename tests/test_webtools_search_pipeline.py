@@ -630,6 +630,8 @@ def test_query_strategy_builds_role_specific_variants():
     assert "fresh_user_sample" in roles
     assert strategy["time_window"]["enabled"] is True
     assert strategy["search_quality_v2"]["recency_bounded"] is True
+    assert strategy["operator_hints"]
+    assert strategy["search_entrypoint_policy"]["policy"] == "catalog_only_not_default_backend"
     assert strategy["agent_hint"]
 
 
