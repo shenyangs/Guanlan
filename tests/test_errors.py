@@ -7,7 +7,7 @@ import json
 import subprocess
 import urllib.error
 
-from guanlan.errors import BLOCKED, NETWORK_ERROR, NETWORK_TIMEOUT, PARSE_ERROR, classify_exception
+from guanlan.errors import BLOCKED, NETWORK_ERROR, NETWORK_TIMEOUT, PARSE_ERROR, classify_exception, user_friendly_message
 
 
 def test_classify_timeout_and_url_errors():
@@ -20,3 +20,9 @@ def test_classify_blocked_and_parse_errors():
     assert classify_exception(urllib.error.HTTPError("https://x", 403, "Forbidden", {}, None)) == BLOCKED
     assert classify_exception(json.JSONDecodeError("bad", "{", 0)) == PARSE_ERROR
     assert classify_exception(RuntimeError("captcha required")) == BLOCKED
+
+
+def test_user_friendly_message():
+    assert "超时" in user_friendly_message(TimeoutError("timed out"))
+    assert "拦截" in user_friendly_message(urllib.error.HTTPError("", 403, "", {}, None))
+    assert "未知" in user_friendly_message(RuntimeError("something weird"))

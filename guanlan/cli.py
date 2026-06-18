@@ -63,6 +63,7 @@ from guanlan.commands.research import (
 )
 from guanlan.commands.search import _cmd_agent, _cmd_route, _cmd_search, _cmd_workflow
 from guanlan.commands.watch import _cmd_watch_intents
+from guanlan.errors import user_friendly_message
 from guanlan.limits import (
     DEFAULT_ARCHIVE_LIST_LIMIT,
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
@@ -1170,10 +1171,16 @@ def main():
         sys.exit(0)
 
     from guanlan.telemetry import telemetry_span
-
-    with telemetry_span(_telemetry_command_name(args), surface="cli"):
-        _dispatch_command(args)
-        _print_background_update_notice_if_available(args)
+    try:
+        with telemetry_span(_telemetry_command_name(args), surface="cli"):  #看问题error
+            _dispatch_command(args)
+            _print_background_update_notice_if_available(args)
+    except Exception as exc:
+        print(f"{user_friendly_message(exc)}", file=sys.stderr) #出中文提示
+        if getattr(args, "verbose", False): #-v时候展开堆栈，方便检查和简洁
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
 
 
 def _telemetry_command_name(args) -> str:
