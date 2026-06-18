@@ -31,7 +31,10 @@ def test_serve_dispatch_health_and_route():
     status, tools = serve.dispatch_request("GET", "/tools")
     assert status == 200
     tool_names = {tool["name"] for tool in tools["tools"]}
-    assert {"guanlan_search", "guanlan_research", "guanlan_daily", "guanlan_archive_search", "guanlan_browser_assist_plan", "guanlan_browser_assist_run"} <= tool_names
+    assert {"guanlan_agent", "guanlan_search", "guanlan_research", "guanlan_daily", "guanlan_archive_search", "guanlan_browser_assist_plan", "guanlan_browser_assist_run"} <= tool_names
+    agent_tool = next(tool for tool in tools["tools"] if tool["name"] == "guanlan_agent")
+    assert agent_tool["http_route"] == "/agent"
+    assert "tool_policy" in agent_tool
     assert "只读工具面" in tools["boundary"]
 
 
@@ -100,6 +103,25 @@ def test_serve_dispatch_search_uses_webtools(monkeypatch):
 
     assert status == 200
     assert body["results"][0]["title"] == "A"
+    assert body["agent_followup"]["next_decision"] == "repair"
+
+
+def test_serve_dispatch_agent_plan_and_review():
+    status, plan = serve.dispatch_request("POST", "/agent", {"query": "WPS AI 灵犀 最近热点", "mode": "fresh"})
+
+    assert status == 200
+    assert plan["schema_version"] == "agent_plan_v2"
+    assert plan["primary_command"] == "guanlan hotnews today --limit 80 --trends"
+
+    status, review = serve.dispatch_request(
+        "POST",
+        "/agent",
+        {"query": "丙烷脱氢 PDH 中国 2024", "phase": "review", "observation": {"results": [], "limit": 5}},
+    )
+
+    assert status == 200
+    assert review["schema_version"] == "agent_review_v1"
+    assert review["next_decision"] == "repair"
 
 
 def test_serve_dispatch_errors_are_classified(monkeypatch):

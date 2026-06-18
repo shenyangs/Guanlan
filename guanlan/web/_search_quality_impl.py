@@ -852,6 +852,10 @@ def _expand_search_query(
     normalized = _collapse_ws(query).strip()
     lowered = normalized.lower()
     additions: list[str] = list(semantic_analysis.get("rewrite_terms") or [])
+    ai_model_query = _canonical_ai_model_search_query(normalized, quality)
+    if ai_model_query and ai_model_query != normalized:
+        normalized = ai_model_query
+        lowered = normalized.lower()
     intent = str(quality.get("intent") or "")
     is_wps_scope = effective_scope == "wps_office" or intent == "wps_office"
     wps_subroute = _wps_office_subroute(normalized) if is_wps_scope else "general"
@@ -901,6 +905,90 @@ def _expand_search_query(
     if semantic_analysis.get("matched_rules"):
         max_additions = max(max_additions, 6)
     return f"{normalized} {' '.join(additions[:max_additions])}".strip()
+
+
+_AI_MODEL_QUERY_FAMILY_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("GLM", r"\bGLM(?:[-\s]?\d+(?:\.\d+)?)?\b|智谱|zhipu|chatglm|bigmodel"),
+    ("Kimi", r"\bKimi(?:[-\s]?K)?(?:[-\s]?\d+(?:\.\d+)?)?\b|moonshot|月之暗面"),
+    ("DeepSeek", r"\bDeepSeek(?:[-\s]?[A-Za-z]?\d+(?:\.\d+)?)?\b|深度求索"),
+    ("Qwen", r"\bQwen(?:[-\s]?\d+(?:\.\d+)?)?\b|通义|千问"),
+    ("Hunyuan", r"\bHunyuan\b|混元"),
+    ("Ernie", r"\bErnie\b|文心|ERNIE"),
+    ("Doubao", r"\bDoubao(?:[-\s]?\d+(?:\.\d+)?)?\b|豆包|seedance"),
+)
+
+_AI_MODEL_QUERY_TASK_TERMS = (
+    "版本",
+    "发布",
+    "声量",
+    "热度",
+    "能力",
+    "强在哪",
+    "谁更强",
+    "对比",
+    "比较",
+    "评测",
+    "横评",
+    "benchmark",
+    "code",
+    "coding",
+    "编程",
+    "模型",
+)
+
+
+def _canonical_ai_model_search_query(query: str, quality: dict[str, Any]) -> str:
+    route_intents = set(quality.get("route_intents") or [])
+    intent = str(quality.get("intent") or "")
+    text = _collapse_ws(query)
+    lowered = text.lower()
+    mentions = _ai_model_query_mentions(text)
+    if not mentions:
+        return ""
+    task_like = (
+        len(mentions) >= 2
+        or bool(route_intents & {"tech", "public_opinion", "company_primary"})
+        or intent in {"tech", "public_opinion"}
+        or any(term in lowered or term in text for term in _AI_MODEL_QUERY_TASK_TERMS)
+    )
+    if not task_like:
+        return ""
+    terms: list[str] = []
+    for mention in mentions:
+        label = mention["family"]
+        version = mention.get("version") or ""
+        terms.append(f"{label} {version}".strip())
+    if any(term in lowered for term in ("code", "coding")) or "编程" in text:
+        terms.append("Code")
+    if len(mentions) >= 2 or any(term in text for term in ("对比", "比较", "比", "谁更强", "强在哪")):
+        terms.append("对比")
+    if "声量" in text or "热度" in text:
+        terms.append("声量")
+    if any(term in text for term in ("能力", "强在哪", "谁更强", "亮点", "优势")):
+        terms.append("能力")
+    if any(term in text for term in ("发布", "版本", "更新")):
+        terms.append("发布")
+    if intent == "tech" or "tech" in route_intents or any(term in lowered for term in ("code", "coding", "benchmark")):
+        terms.append("benchmark")
+    canonical = " ".join(_unique_keep_order(terms)).strip()
+    return canonical if len(canonical) >= 6 else ""
+
+
+def _ai_model_query_mentions(query: str) -> list[dict[str, str]]:
+    hits: list[tuple[int, str, str]] = []
+    for family, pattern in _AI_MODEL_QUERY_FAMILY_PATTERNS:
+        for match in re.finditer(pattern, query or "", flags=re.I):
+            raw = _collapse_ws(match.group(0))
+            version_match = re.search(r"\d+(?:\.\d+)?", raw)
+            hits.append((match.start(), family, version_match.group(0) if version_match else ""))
+    mentions: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for _, family, version in sorted(hits, key=lambda item: item[0]):
+        if family in seen:
+            continue
+        seen.add(family)
+        mentions.append({"family": family, "version": version})
+    return mentions
 
 
 def _query_shape_entities(query: str, *, semantic_analysis: dict[str, Any] | None = None) -> list[str]:
@@ -1223,6 +1311,8 @@ def build_query_strategy(
         quality=quality,
         route_plan=route_plan,
     )
+    rewritten_query = str(query_shape.get("backend_query") or "")
+    search_friendly_query = rewritten_query if query_shape.get("rewritten") and rewritten_query else clean_query
 
     def add(role: str, q: str, reason: str) -> None:
         normalized = _collapse_ws(q)
@@ -1319,8 +1409,8 @@ def build_query_strategy(
         add("industry_report", f"{clean_query} market analysis competitive landscape analyst report", "英文产业问题补分析和市场结构材料")
         add("company_context", f"{clean_query} investor relations annual report official", "补公司一手资料和投资者关系材料")
     if "tech" in intents:
-        add("technical_primary", f"{clean_query} docs release notes changelog API SDK", "技术问题先找官方文档、发布说明和可复现材料")
-        add("developer_discussion", f"{clean_query} github issue benchmark 开源", "技术问题补开发者与可复现线索")
+        add("technical_primary", f"{search_friendly_query} docs release notes changelog API SDK", "技术问题先找官方文档、发布说明和可复现材料")
+        add("developer_discussion", f"{search_friendly_query} github issue benchmark 开源", "技术问题补开发者与可复现线索")
     if "sports" in intents:
         add("official_stat", f"{clean_query} official scoreboard schedule standings", "体育实时问题优先找官方比分、赛程和榜单入口")
         add("sports_report", f"{clean_query} ESPN NBA official scores playoffs schedule", "补可信体育媒体的战报、专题页和实时比分")
@@ -1348,8 +1438,12 @@ def build_query_strategy(
         if {"reputation", "purchase_advice"} & set(intents):
             add("fresh_user_sample", _apply_recency_query(f"{clean_query} 最新 用户 反馈", recency), "近期口碑需要补新鲜用户样本")
     if query_shape.get("multi_entity"):
-        entity_terms = [str(item) for item in query_shape.get("entities") or [] if str(item)]
-        add("entity_compare", f"{' '.join(entity_terms[:4])} 对比 {clean_query}", "多实体问题先显式保留比较意图和前几个关键实体")
+        entity_terms = (
+            _query_shape_entities(search_friendly_query)
+            if search_friendly_query != clean_query
+            else [str(item) for item in query_shape.get("entities") or [] if str(item)]
+        )
+        add("entity_compare", f"{' '.join(entity_terms[:4])} 对比 {search_friendly_query}", "多实体问题先显式保留比较意图和前几个关键实体")
     if roles and len(variants) == 1:
         add(str(roles[0]), f"{clean_query} 依据 来源", "按路由证据角色补充查询")
 

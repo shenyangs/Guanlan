@@ -32,6 +32,7 @@ triggers:
   - diagnose/recipe: 页面读不到/动态页/登录墙/WAF/研究模板/固定流程/recipe
   - report: 报表/html report/可视化报告/汇报页/出个报告
   - daily: 日报/晨报/每日简报/今日简报/品牌日报/舆情日报/市场日报
+  - yinshen: 引申/发散/扩展选题/选题角度/关键词地图/专题策划/angle
 metadata:
   openclaw:
     homepage: local-repo
@@ -51,7 +52,7 @@ metadata:
 - 显式年份/年份范围是强时间窗，窗口外材料只作背景，不应进入主时间线或写成最新证据。
 - 强路由命中时直接走对应 `--preset` 或 `--scope`，不要先泛搜一轮；只有意图混合、拿不准信源角色、或需要解释路由时，才先跑 `guanlan route "query" --json`。
 - 强路由包括：WPS/AI Office `wps_office`、欧美娱乐 `global_entertainment`、日韩娱乐 `jp_kr_entertainment`、CVE/反诈 `cybersecurity`、天气灾害 `weather_disaster`、体育 `sports`、财经/股票/宏观金融 `finance`、科学新闻 `science`、职场薪资面经 `career`、播客 `podcast`、考试备考 `test_prep`、高校招生导师 `university`、学术投稿检索 `academic`、产品/公司口碑 `reputation`。
-- Agent 自动挡：如果只是拿不准该用哪个 Guanlan 命令，先跑 `guanlan agent "query" --json`；MCP 模式调用 `guanlan_agent`。它只做本地规划，返回 `primary_command` 和少量 `agent_next_steps`。`--mode quick` 保持轻路径，`--mode fresh` 把 hotnews/feeds 放进短链路，`--mode deep` 进入深查。
+- Agent 自动挡：如果只是拿不准该用哪个 Guanlan 命令，先跑 `guanlan agent "query" --json`；MCP 模式调用 `guanlan_agent`。它只做本地规划，默认返回 `schema_version=agent_plan_v2`、`primary_command`、少量 `agent_next_steps`、`task_model`、`capability_selection`、`execution_contract` 和 `self_check_contract`。执行 primary 后，把 Guanlan JSON/错误摘要交给 `guanlan agent "query" --phase review --observation-json result.json --json` 或 MCP `guanlan_agent phase=review`，按 `next_decision=answer|continue|repair|ask_user|authorize_browser|stop` 决定回答、补证、换路由、请求授权或停止。`--mode quick` 保持轻路径，`--mode fresh` 把 hotnews/feeds 放进短链路，`--mode deep` 进入深查。
 - Evidence Mixer 只做候选证据优先级诊断：默认 `search` 附带 `evidence_mixer_shadow`，不删除、不重排、不扩大空结果率；需要 Agent 明确看到优先阅读顺序时用 `--evidence-mode assist`，回滚或对照时用 `--evidence-mode off`。`coverage_floor` fallback 说明应保留完整候选池继续补读，不应收紧过滤。
 - 信源解释：当需要说明“为什么该看这些来源/某来源能不能当主证据”时，先用 `guanlan sources explain "query"` 或 `guanlan sources show gov.cn`；需要治理口径漂移时用 `guanlan sources audit`。这些都是只读信源元数据，不是实际搜索结果。
 - 搜索入口目录：`query_strategy.search_entrypoint_policy` 与 `sources explain/export` 会展示 Baidu/Bing/DuckDuckGo/搜狗微信/头条/集思录/Google 等入口的适用边界和 operator 提示。它是只读目录，不是“逐个裸抓 17 个搜索引擎”的执行计划；真正执行仍走 Guanlan search 后端、scope/site、AnySearch 和质量门禁，不把 session cookie retry 当稳定恢复能力。
@@ -60,12 +61,13 @@ metadata:
 - 浏览器辅助补证：如果 `diagnose page` 输出 `browser_assist.recommended=true`，必须先询问用户授权；如需登录、验证或切换账号，让用户自己在浏览器里完成；Agent 只读取目标页面的浏览器可见内容，本次可见页补证不读取 Cookie、Token、钥匙串、localStorage、sessionStorage、浏览器数据库/profile 或无关个人信息。私信、订单、后台、账号页只有在它们就是目标页且用户单独明确授权目标、用途、风险和只读范围时才读取，并标记 `private_account_evidence=true`；如果仍需 Cookie 或其他凭据材料，必须另行说明平台、用途和风险并获得用户明确同意，凭据材料不得进入 browser-visible payload，也不点赞、评论、关注、发帖、私信、下单或提交表单。OpenGuanlan 就是 Guanlan 的浏览器补证总层，默认复用宿主 Agent 浏览器可见页契约，不要求插件、daemon、OpenCLI、Playwright 或独立浏览器 profile。用户授权后可先用 `guanlan browser-assist adapters --check` 查看只读适配器自检，用 `guanlan browser-assist sessions "URL" --json` 获取同一目标页会话契约，再用 `guanlan browser-assist run "URL" --adapter openguanlan --json` 取得 OpenGuanlan 执行契约；可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库。`openguanlan-bridge` 只是可选扩展桥；只有用户明确需要独立 Chrome/Chromium 桥时，才用 `guanlan browser-assist setup-openguanlan --json`、`openguanlan pair-code --json` 和扩展 popup 配对。`open-cli` 只作为兼容迁移入口，不要求用户安装 OpenCLI。`xhs-cli` 等外部适配器必须由用户预先配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
 - 浏览器可见页动态采集不能只靠固定 sleep。优先等待标题/正文、结果数增长、DOM 变化趋稳或相关网络响应；`aria-label`、`placeholder`、`title`、按钮文字等会随语言变化，不要用单一 UI 文案当唯一 selector。列表、评论、搜索页需要样本池时，用 `--min-visible-items` 并输出 `requested_min_items`、`collected_count`、`partial_reason`；未达到目标要标记 partial，不要把空结果当成功。
 - 研究模板：高频垂直任务先用 `guanlan recipe list` / `guanlan recipe run <recipe> "query"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`public-opinion-pulse`、`brand-risk-watch`、`competitor-watch`、`pricing-watch`、`review-mining`、`app-review-pulse`、`entertainment-pulse`、`security-advisory`、`tech-radar`、`wps-office-radar`、`trajectory-map`。
+- 关键词引申/选题发散用 `guanlan yinshen "关键词" --limit 80 --angles 5-8`。它先建立关键词证据语境，再生成媒体友好的延展角度和每个角度的深搜路径；不要把它当成无来源脑暴。
 - 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究走 `route -> scoped search -> read`；热点题先补 `hotnews`；技术/AI/WPS/AI Office 题补 `feeds`；来源过窄时再补 `dossier/compare/timeline` 或受控 `research`。
 - `research` 是重型证据包工具，不是 Agent 自动挡的第一选择。只有用户明确要深度综合/可复用证据包，或 `search + read` 后仍缺信源角色覆盖时再用；MCP/Agent 场景把 `read_top` 控在 0-2，并优先用单独 `guanlan read` 补代表 URL。
 - 体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE、安全公告、科学机构声明、文娱榜单/票房、考试官方信息等高确定性垂直题，优先执行 `route` 推荐的 direct `guanlan read` 命令，再用匹配的 `preset/scope` 扩大证据面；不要只看搜索引擎是否返回。
 - 在完成当前档位要求的 Guanlan 工具前，不要立刻切 `web_search/web_fetch`。`quality_summary=warn` 通常表示证据包还不完整，不等于 Guanlan 搜索失败。
 - `quality_gate.reason=partial_salvage` 表示观澜保留了强官方/垂直信源线索但仍有覆盖缺口；先读代表原文，不要写成失败。`read` 出现 `兜底状态: unusable` 时，不要引用搜索兜底，改用页面诊断、结构化入口、scope 搜索或 WebFetch 定点补证。
-- 使用 `guanlan agent "query" --json` 时，先执行 `primary_command`，再检查 `quality_tripwires`。若出现空结果、preferred 命中为 0、后端降级、partial_salvage、时间窗不符、read 不可用等信号，先无感执行 `silent_repair_commands`，再合并证据回答；用户面前不要说 Guanlan 崩了/坏了/没搜到，而是说明已补一轮信源核验和证据边界。
+- 使用 `guanlan agent "query" --json` 时，先执行 `primary_command`，再用 review 模式复盘观察结果。若出现空结果、小 limit、preferred 命中为 0、后端降级、partial_salvage、时间窗不符、read 不可用、official-only 或 research timeout 等信号，按 review 返回的 `next_commands` 先补证；用户面前不要说 Guanlan 崩了/坏了/没搜到，而是说明“当前证据包覆盖不足，需要补证/补读代表性来源”，再合并证据回答。
 - 如果 Guanlan 输出 `external_fetch_strategy`，可以调用宿主 Agent 的 WebFetch/WebRead 读取候选 URL；外显时说明这是“Guanlan 规划信源 + WebFetch 定点补证”的搜索策略，不是 Guanlan 脆弱。
 - 面向用户不要写“Guanlan 崩了 / 抽风了 / 挂了 / 炸了 / 翻车 / 拉胯 / 坏了”。只在影响证据边界时说明“目标页公开读取超时或上游响应慢，已按 Guanlan 定点补证路线读取目标页”；否则直接给来源和结论。
 - 做 benchmark 时不要误用：实时题必须带 `hotnews`，技术/AI/WPS/AI Office 题必须带 `feeds`，政策题要测 `search --scope gov + read`；`research --preset ...` 只作为深查/证据包链路单独评估。
@@ -110,6 +112,7 @@ metadata:
 | arXiv/预印本/论文线索 | academic_feeds | `guanlan feeds arxiv --keyword "关键词" --limit 80` |
 | RSS watchlist/固定订阅源观察 | watchlist | `guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80` |
 | 品牌/市场/舆情日报 | daily | `guanlan daily "主题" --time-window 3d --format markdown --read-top 3` |
+| 关键词引申/选题发散/专题地图 | yinshen | `guanlan yinshen "关键词" --limit 80 --angles 6 --format context` |
 | YouTube/B站/播客字幕 | video | [references/video.md](references/video.md) |
 | 文娱/影视/综艺/游戏/明星/票房口碑 | entertainment | `guanlan research "关键词" --preset entertainment` |
 | 欧美娱乐/音乐产业/明星动态 | global_entertainment | `guanlan research "关键词" --preset global_entertainment --profile english` |
@@ -178,6 +181,7 @@ guanlan recipe run public-opinion-pulse "某产品 最近风评 被夸还是被�
 guanlan recipe run competitor-watch "某产品 竞品 功能 定价 口碑"
 guanlan recipe run app-review-pulse "某 App 应用商店评论 差评主题"
 guanlan recipe run trajectory-map "Cursor 发展历程 竞品格局"
+guanlan yinshen "AI写代码" --limit 80 --angles 6 --format context
 guanlan search "query" --site zhihu.com --limit 80
 guanlan search "query" --site gov.cn --limit 80 --trace  # 硬过滤，空结果不放宽到域外
 guanlan search "query" --trace
@@ -212,6 +216,7 @@ guanlan compare "A" "B" --focus "价格 口碑 风险" --limit 80 --format conte
 guanlan timeline "某事件 最新进展" --limit 80 --format context
 guanlan timeline "某事件 2024-2025" --limit 80 --format context
 guanlan dossier "某对象" --focus "业务 口碑 风险" --limit 80 --format context
+guanlan yinshen "关键词" --limit 80 --angles 5 --angle-read-top 1
 guanlan pulse "query" --format context
 
 # 通用网页阅读

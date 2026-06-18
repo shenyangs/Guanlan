@@ -52,6 +52,53 @@ _ROBOTICS_AI_TERMS = (
     "robotics",
 )
 
+_AI_MODEL_PRODUCT_TERMS = (
+    "glm",
+    "glm-",
+    "glm ",
+    "glm4",
+    "glm 4",
+    "glm-4",
+    "glm5",
+    "glm 5",
+    "glm-5",
+    "glm5.2",
+    "glm 5.2",
+    "glm-5.2",
+    "智谱",
+    "智谱ai",
+    "智谱 ai",
+    "清言",
+    "zhipu",
+    "zhipuai",
+    "kimi",
+    "k1.5",
+    "k2",
+    "kimi k",
+    "moonshot",
+    "月之暗面",
+    "deepseek",
+    "qwen",
+    "通义千问",
+    "通义",
+    "千问",
+    "hunyuan",
+    "混元",
+    "ernie",
+    "文心一言",
+    "豆包",
+    "doubao",
+    "seedance",
+    "minimax",
+    "abab",
+    "大模型版本",
+    "模型版本",
+    "模型发布",
+    "模型能力",
+    "模型评测",
+    "模型对比",
+)
+
 _WPS_OFFICE_TERMS = tuple(WPS_OFFICE_TERMS)
 
 
@@ -1731,6 +1778,7 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "worldarena",
             "leaderboard",
             "world models",
+            *_AI_MODEL_PRODUCT_TERMS,
             "wechatferry",
             "openclaw",
             "hermesclaw",
@@ -2173,7 +2221,7 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
 
 _DOMAIN_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("auto", ("汽车", "车", "新能源车", "新能源汽车", "智驾", "问界", "赛力斯", "小米yu7", "蔚来", "理想", "小鹏", "特斯拉", "比亚迪")),
-    ("ai", ("ai", "人工智能", "大模型", "agent", "智能体", "llm", "算力", "seedance", "豆包", "doubao", "ai写作", "ai写小说", *_ROBOTICS_AI_TERMS)),
+    ("ai", ("ai", "人工智能", "大模型", "agent", "智能体", "llm", "算力", "ai写作", "ai写小说", *_AI_MODEL_PRODUCT_TERMS, *_ROBOTICS_AI_TERMS)),
     ("wps_office", _WPS_OFFICE_TERMS),
     ("consumer", ("手机", "电脑", "家电", "相机", "耳机", "消费", "购买", "值不值得买")),
     ("career", ("招聘", "求职", "岗位", "薪资", "面试", "简历", "校招", "面经", "salary", "interview")),
@@ -3704,6 +3752,12 @@ def _topic_specific_target_sites(query: str) -> list[str]:
         sites.extend(["juhe.cn", "www.juhe.cn"])
     if any(term in text for term in ("seedance", "豆包", "doubao", "字节跳动", "volcengine")):
         sites.extend(["volcengine.com", "doubao.com", "coze.cn", "bytedance.com"])
+    if any(term in text for term in ("glm", "智谱", "zhipu", "zhipuai", "清言")):
+        sites.extend(["zhipuai.cn", "chatglm.cn", "bigmodel.cn"])
+    if any(term in text for term in ("kimi", "moonshot", "月之暗面")):
+        sites.extend(["moonshot.cn", "kimi.com"])
+    if any(term in text for term in ("deepseek", "qwen", "通义千问", "通义", "千问", "hunyuan", "混元", "ernie", "文心一言")):
+        sites.extend(["deepseek.com", "qwen.ai", "tongyi.aliyun.com", "hunyuan.tencent.com", "yiyan.baidu.com"])
     if any(term in text for term in ("google gemini", "gemini deep research", "deep research")):
         sites.extend(["blog.google", "gemini.google.com", "ai.google.dev"])
     if any(term in text for term in ("特斯拉", "tesla", "ai6")):

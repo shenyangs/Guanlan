@@ -7980,6 +7980,8 @@ def _infer_evidence_role(
     role_hint = str((item.trace or {}).get("evidence_role_hint") or "")
     if role_hint:
         return role_hint
+    if _is_ai_model_low_value_source(item, source_card, quality or {}):
+        return "low_value_seo"
     if "wps_office" in set((quality or {}).get("route_intents") or []) or str((quality or {}).get("intent") or "") == "wps_office":
         if _looks_like_wps_institution_rollout(item, source_card):
             return "institution_rollout"
@@ -8414,7 +8416,9 @@ def _score_result_parts(
         "intent_mismatch_penalty": 0.0,
         "language_mismatch_penalty": 0.0,
         "source_risk_penalty": 0.0,
+        "official_information_penalty": 0.0,
         "entity_match": 0.0,
+        "entity_focus": 0.0,
         "entity_mismatch_penalty": 0.0,
         "cjk_group_fit": 0.0,
         "cjk_group_mismatch_penalty": 0.0,
@@ -8447,6 +8451,33 @@ def _score_result_parts(
         parts["source_risk_penalty"] -= 0.18
     if risk_tags & {"sample_bias", "not_representative"} and route_intents & {"policy", "global_policy", *finance_intents}:
         parts["source_risk_penalty"] -= 0.22
+    if _generic_official_information_penalty(item, source_card, route_intents):
+        parts["official_information_penalty"] -= 0.75
+    if _is_ai_model_version_or_comparison_query(query, quality):
+        ai_fit = _ai_model_source_fit(item, query, source_card)
+        if ai_fit["primary"]:
+            if ai_fit["official_detail"]:
+                parts["authority_fit"] = max(parts["authority_fit"], authority_score * 0.42 + 0.55)
+                parts["intent_fit"] += 0.28
+            else:
+                parts["authority_fit"] = max(parts["authority_fit"], authority_score * 0.28 + 0.2)
+                parts["intent_fit"] += 0.1
+                parts["official_information_penalty"] -= 1.05
+        elif ai_fit["vertical"]:
+            parts["authority_fit"] = max(parts["authority_fit"], authority_score * 0.45 + 0.75)
+            parts["intent_fit"] += 0.5
+        if ai_fit["low_value"]:
+            parts["source_risk_penalty"] -= 0.75
+            parts["semantic_noise_penalty"] = min(parts["semantic_noise_penalty"], -0.75)
+        if ai_fit["version_matches"]:
+            parts["entity_match"] += min(1.2, 0.75 + 0.25 * ai_fit["version_matches"])
+        if ai_fit["family_focus"] == "primary":
+            parts["entity_focus"] += 0.35
+        elif ai_fit["family_focus"] == "mentioned":
+            parts["entity_focus"] += 0.12
+        if ai_fit["version_mismatches"]:
+            parts["entity_mismatch_penalty"] -= min(2.6, 1.45 + 0.35 * ai_fit["version_mismatches"])
+            parts["semantic_noise_penalty"] = min(parts["semantic_noise_penalty"], -1.25)
     if "wps_office" in route_intents:
         if item.evidence_role == "institution_rollout":
             parts["intent_fit"] += 0.42
@@ -8730,6 +8761,261 @@ def _source_quality_weight(source_type: str) -> float:
         "通用网页": 0.0,
     }
     return weights.get(source_type or "通用网页", 0.0)
+
+
+_AI_MODEL_OFFICIAL_DOMAINS = {
+    "zhipuai.cn",
+    "chatglm.cn",
+    "bigmodel.cn",
+    "moonshot.cn",
+    "kimi.com",
+    "deepseek.com",
+    "qwen.ai",
+    "tongyi.aliyun.com",
+    "hunyuan.tencent.com",
+    "yiyan.baidu.com",
+    "volcengine.com",
+    "doubao.com",
+}
+
+_AI_MODEL_DOMAIN_FAMILIES = {
+    "zhipuai.cn": "GLM",
+    "chatglm.cn": "GLM",
+    "bigmodel.cn": "GLM",
+    "moonshot.cn": "Kimi",
+    "kimi.com": "Kimi",
+    "deepseek.com": "DeepSeek",
+    "qwen.ai": "Qwen",
+    "tongyi.aliyun.com": "Qwen",
+    "hunyuan.tencent.com": "Hunyuan",
+    "yiyan.baidu.com": "Ernie",
+    "volcengine.com": "Doubao",
+    "doubao.com": "Doubao",
+}
+
+_AI_MODEL_LOW_VALUE_DOMAINS = {
+    "baijiahao.baidu.com",
+    "zhidao.baidu.com",
+    "jingyan.baidu.com",
+    "wenku.baidu.com",
+    "blog.csdn.net",
+    "csdn.net",
+    "cnblogs.com",
+}
+
+_AI_MODEL_FAMILY_ALIASES: tuple[tuple[str, str], ...] = (
+    ("GLM", r"\bGLM(?:[-\s]?\d+(?:\.\d+)?)?\b|智谱|zhipu|chatglm|bigmodel"),
+    ("Kimi", r"\bKimi(?:[-\s]?K)?(?:[-\s]?\d+(?:\.\d+)?)?\b|moonshot|月之暗面"),
+    ("DeepSeek", r"\bDeepSeek(?:[-\s]?[A-Za-z]?\d+(?:\.\d+)?)?\b|深度求索"),
+    ("Qwen", r"\bQwen(?:[-\s]?\d+(?:\.\d+)?)?\b|通义|千问"),
+    ("Hunyuan", r"\bHunyuan\b|混元"),
+    ("Ernie", r"\bErnie\b|文心|ERNIE"),
+    ("Doubao", r"\bDoubao(?:[-\s]?\d+(?:\.\d+)?)?\b|豆包|seedance"),
+)
+
+
+def _is_ai_model_version_or_comparison_query(query: str, quality: dict[str, Any] | None = None) -> bool:
+    text = _collapse_ws(query).lower()
+    route_intents = set((quality or {}).get("route_intents") or [])
+    model_terms = (
+        "glm",
+        "kimi",
+        "moonshot",
+        "智谱",
+        "zhipu",
+        "月之暗面",
+        "deepseek",
+        "qwen",
+        "通义",
+        "千问",
+        "豆包",
+        "doubao",
+        "seedance",
+        "大模型",
+        "llm",
+    )
+    task_terms = (
+        "版本",
+        "发布",
+        "能力",
+        "对比",
+        "评测",
+        "横评",
+        "benchmark",
+        "声量",
+        "热度",
+        "谁更强",
+        "强在哪",
+        "code",
+        "coding",
+    )
+    has_model = any(term in text for term in model_terms) or bool(_ai_model_version_mentions(text))
+    has_task = any(term in text for term in task_terms) or bool(re.search(r"\b\d+(?:\.\d+)?\b", text))
+    return has_model and has_task and (not route_intents or bool(route_intents & {"tech", "public_opinion", "company_primary"}))
+
+
+def _is_ai_model_low_value_source(
+    item: SearchResult,
+    source_card: dict[str, Any],
+    quality: dict[str, Any] | None = None,
+) -> bool:
+    if not _is_ai_model_version_or_comparison_query(f"{item.title} {item.snippet}", quality):
+        return False
+    return _ai_model_source_fit(item, f"{item.title} {item.snippet}", source_card)["low_value"]
+
+
+def _ai_model_source_fit(item: SearchResult, query: str, source_card: dict[str, Any]) -> dict[str, Any]:
+    domain = (item.domain or _domain(item.url)).lower().removeprefix("www.")
+    risk_tags = {str(tag) for tag in source_card.get("risk_tags") or []}
+    fit_tags = {str(tag) for tag in source_card.get("fit_tags") or []}
+    roles = {str(role) for role in source_card.get("content_roles") or []}
+    authority_role = str(source_card.get("authority_role") or "")
+    text = _collapse_ws(f"{item.title} {item.snippet} {item.url}")
+    alignment = _ai_model_version_alignment(query, text)
+    family = _ai_model_domain_family(domain)
+    query_families = _ai_model_query_families(query)
+    family_focus = ""
+    if family and family in query_families:
+        family_focus = "primary" if query_families[0] == family else "mentioned"
+    low_value = (
+        domain in _AI_MODEL_LOW_VALUE_DOMAINS
+        or any(domain.endswith("." + low_domain) for low_domain in _AI_MODEL_LOW_VALUE_DOMAINS)
+        or bool(risk_tags & {"seo_content", "syndicated_content", "quality_variance"})
+        or authority_role == "low_value_aggregation"
+    )
+    primary = (
+        domain in _AI_MODEL_OFFICIAL_DOMAINS
+        or authority_role in {"company_primary", "product_primary", "developer_source"}
+        or bool({"official_specs", "release_note", "model_card", "documentation", "api_reference"} & roles)
+    )
+    vertical = (
+        authority_role == "ai_vertical_media"
+        or bool({"ai_news_signal", "model_eval_context", "research_context"} & roles)
+        or bool({"model_eval", "china_ai_model"} & fit_tags)
+    ) and not primary
+    return {
+        "primary": primary,
+        "vertical": vertical,
+        "low_value": low_value,
+        "version_matches": alignment["matches"],
+        "version_mismatches": alignment["mismatches"],
+        "family_focus": family_focus,
+        "official_detail": primary and alignment["matches"] > 0 and not _looks_like_generic_official_landing_page(item),
+    }
+
+
+def _generic_official_information_penalty(
+    item: SearchResult,
+    source_card: dict[str, Any],
+    route_intents: set[str],
+) -> bool:
+    if not route_intents & {"public_opinion", "reputation", "purchase_advice", "tech", "industry", "global_industry"}:
+        return False
+    authority_role = str(source_card.get("authority_role") or "")
+    if authority_role not in {"company_primary", "product_primary"}:
+        return False
+    return _looks_like_generic_official_landing_page(item)
+
+
+def _looks_like_generic_official_landing_page(item: SearchResult) -> bool:
+    parsed = urllib.parse.urlparse(item.url or "")
+    path = (parsed.path or "").strip("/")
+    title = _collapse_ws(item.title or "").lower()
+    if not path:
+        return True
+    shallow_path = len([part for part in path.split("/") if part]) <= 1
+    generic_title_terms = (
+        "homepage",
+        "official site",
+        "官网",
+        "首页",
+        "inspiring agi",
+        "moonshot ai",
+        "z.ai",
+    )
+    detail_path_terms = (
+        "docs",
+        "doc",
+        "news",
+        "release",
+        "blog",
+        "changelog",
+        "guide",
+        "model",
+        "coding",
+        "api",
+        "pricing",
+        "overview",
+    )
+    if any(term in path.lower() for term in detail_path_terms):
+        return False
+    return shallow_path and any(term in title for term in generic_title_terms)
+
+
+def _ai_model_domain_family(domain: str) -> str:
+    normalized = (domain or "").lower().removeprefix("www.")
+    for suffix, family in _AI_MODEL_DOMAIN_FAMILIES.items():
+        if normalized == suffix or normalized.endswith("." + suffix):
+            return family
+    return ""
+
+
+def _ai_model_query_families(query: str) -> list[str]:
+    text = query or ""
+    hits: list[tuple[int, str]] = []
+    for family, pattern in _AI_MODEL_FAMILY_ALIASES:
+        for match in re.finditer(pattern, text, flags=re.I):
+            hits.append((match.start(), family))
+    ordered: list[str] = []
+    for _, family in sorted(hits, key=lambda pair: pair[0]):
+        if family not in ordered:
+            ordered.append(family)
+    return ordered
+
+
+def _ai_model_version_mentions(text: str) -> list[dict[str, str]]:
+    patterns = (
+        ("GLM", r"\bGLM[-\s]?\d+(?:\.\d+)?\b"),
+        ("Kimi", r"\bKimi(?:[-\s]?K)?[-\s]?\d+(?:\.\d+)?\b"),
+        ("Qwen", r"\bQwen[-\s]?\d+(?:\.\d+)?\b"),
+        ("DeepSeek", r"\bDeepSeek[-\s]?[A-Za-z]?\d+(?:\.\d+)?\b"),
+        ("Doubao", r"\bDoubao[-\s]?\d+(?:\.\d+)?\b"),
+    )
+    mentions: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for family, pattern in patterns:
+        for match in re.finditer(pattern, text or "", flags=re.I):
+            raw = _collapse_ws(match.group(0))
+            version_match = re.search(r"\d+(?:\.\d+)?", raw)
+            if not version_match:
+                continue
+            version = version_match.group(0)
+            key = (family, version.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            mentions.append({"family": family, "version": version, "mention": f"{family} {version}"})
+    return mentions
+
+
+def _ai_model_version_alignment(query: str, result_text: str) -> dict[str, int]:
+    requested = _ai_model_version_mentions(query)
+    if not requested:
+        return {"matches": 0, "mismatches": 0}
+    observed_by_family: dict[str, set[str]] = {}
+    for mention in _ai_model_version_mentions(result_text):
+        observed_by_family.setdefault(mention["family"], set()).add(mention["version"])
+    matches = 0
+    mismatches = 0
+    for mention in requested:
+        observed = observed_by_family.get(mention["family"], set())
+        if not observed:
+            continue
+        if mention["version"] in observed:
+            matches += 1
+        else:
+            mismatches += 1
+    return {"matches": matches, "mismatches": mismatches}
 
 
 def _assign_topic_clusters(results: list[SearchResult], threshold: str = "conservative") -> None:

@@ -46,7 +46,15 @@ Guanlan 不是“单次泛搜引擎”，而是给 Agent 用的中文互联网�
 guanlan agent "用户需求" --json
 ```
 
-它不会联网，只会把本地 route/workflow 结果压成 `primary_command` 和少量 `agent_next_steps`。默认先执行 `primary_command`；只有质量信号不足、用户要求更深结论，或任务是热点/技术/WPS/AI Office 等需要补线索的场景，才继续执行后续命令。`--mode quick` 适合快速线索，`--mode fresh` 会把 hotnews/feeds 放进短链路，`--mode deep` 直接进入可复用证据包工作流。
+它不会联网，只会把本地 route/workflow 结果压成一张 `agent_plan_v2` 决策卡：`primary_command`、少量 `agent_next_steps`、`task_model`、`capability_selection`、`execution_contract`、`self_check_contract` 和 `user_facing_boundary`。默认先执行 `primary_command`；只有质量信号不足、用户要求更深结论，或任务是热点/技术/WPS/AI Office 等需要补线索的场景，才继续执行后续命令。`--mode quick` 适合快速线索，`--mode fresh` 会把 hotnews/feeds 放进短链路，`--mode deep` 直接进入可复用证据包工作流。
+
+执行后不要让 Agent 自己猜下一步。把 Guanlan 的 JSON 输出、trace 摘要或错误摘要交回 review 模式：
+
+```bash
+guanlan agent "用户需求" --phase review --observation-json result.json --json
+```
+
+review 会返回 `next_decision=answer|continue|repair|ask_user|authorize_browser|stop` 和最短 `next_commands`。常见动作是：空结果或小样本时补 `--limit 80`，read 不可用时先 `diagnose page`，official-only 时补外部报道/社区样本，research timeout 时降级为 `search + read`，不要继续加大 `read_top`。
 
 ### 结果池纪律
 

@@ -76,15 +76,20 @@ def _tool_definitions() -> list[dict]:
         {
             "name": "guanlan_agent",
             "description": (
-                "Auto-plan the smallest safe Guanlan command chain for an agent. Use this when the "
-                "agent is unsure which Guanlan tool or CLI command to run; it returns a primary_command "
-                "and a short agent_next_steps list without searching the web."
+                "Auto-plan or review the smallest safe Guanlan command chain for an agent. Use phase=plan "
+                "when the agent is unsure which Guanlan tool to run; use phase=review after a Guanlan result "
+                "to return next_decision=answer/continue/repair/authorize_browser without saying the tool failed."
             ),
             "inputSchema": {
                 "type": "object",
                 "required": ["query"],
                 "properties": {
                     "query": {"type": "string"},
+                    "phase": {"type": "string", "enum": ["plan", "review"], "default": "plan"},
+                    "observation": {
+                        "type": "object",
+                        "description": "Structured Guanlan result/error summary for phase=review.",
+                    },
                     "mode": {"type": "string", "enum": ["auto", "quick", "deep", "fresh"], "default": "auto"},
                     "preset": {"type": "string", "default": "general"},
                     "scope": {"type": "string"},
@@ -340,6 +345,7 @@ def _tool_definitions() -> list[dict]:
                     },
                     "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
                     "cache_ttl": {"type": "integer", "default": 0, "minimum": 0},
+                    "format": {"type": "string", "enum": ["raw", "json", "context"], "default": "raw"},
                 },
             },
         },
@@ -751,30 +757,45 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         return format_capabilities_markdown()
 
     if name == "guanlan_agent":
-        from guanlan.workflow_decider import build_agent_plan, format_agent_plan_markdown
+        from guanlan.agent_planner import (
+            build_agent_plan_v2,
+            format_agent_plan_v2_markdown,
+            review_agent_observation,
+        )
 
         agent_read_top = (
             None
             if args.get("read_top") is None
             else _bounded_int(args.get("read_top"), 0, 0, MAX_AGENT_RESEARCH_READ_TOP)
         )
-        plan = build_agent_plan(
-            str(args.get("query", "")).strip(),
-            mode=str(args.get("mode") or "auto"),
-            preset=None if args.get("preset") in {None, "", "general"} else str(args.get("preset")),
-            scope=args.get("scope") or None,
-            site=args.get("site") or None,
-            sites=args.get("sites") or None,
-            profile=args.get("profile") or "china",
-            limit=int(args.get("limit") or DEFAULT_SEARCH_LIMIT),
-            read_top=agent_read_top,
-            max_commands=int(args.get("max_commands") or 5),
-        )
+        common_kwargs = {
+            "mode": str(args.get("mode") or "auto"),
+            "preset": None if args.get("preset") in {None, "", "general"} else str(args.get("preset")),
+            "scope": args.get("scope") or None,
+            "site": args.get("site") or None,
+            "sites": args.get("sites") or None,
+            "profile": args.get("profile") or "china",
+            "limit": int(args.get("limit") or DEFAULT_SEARCH_LIMIT),
+            "read_top": agent_read_top,
+            "max_commands": int(args.get("max_commands") or 5),
+        }
+        if str(args.get("phase") or "plan") == "review":
+            plan = review_agent_observation(
+                str(args.get("query", "")).strip(),
+                args.get("observation") or {},
+                **common_kwargs,
+            )
+        else:
+            plan = build_agent_plan_v2(
+                str(args.get("query", "")).strip(),
+                **common_kwargs,
+            )
         if str(args.get("format") or "json") == "markdown":
-            return format_agent_plan_markdown(plan)
-        return plan.to_dict()
+            return format_agent_plan_v2_markdown(plan)
+        return plan
 
     if name == "guanlan_search":
+        from guanlan.agent_planner import build_agent_followup, format_agent_followup_context
         from guanlan.web.renderers import (
             format_search_context,
             format_search_markdown,
@@ -796,15 +817,22 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             cache_ttl=int(args.get("cache_ttl") or 0),
             strict_scope=bool(args.get("strict_scope")),
         )
+        followup = build_agent_followup(
+            "guanlan_search",
+            {"results": results, "limit": int(args.get("limit") or DEFAULT_SEARCH_LIMIT)},
+            query=str(args.get("query", "")).strip(),
+        )
         output_format = str(args.get("format") or "context")
         if output_format == "json":
-            return results
+            return {"results": results, "agent_followup": followup}
         if output_format == "markdown":
             text = format_search_markdown(results, title=f"观澜搜索 / {args.get('query', '')}")
             return text + (format_search_trace(results) if args.get("trace") else "")
         if output_format == "prompt":
             return format_search_prompt(results, query=str(args.get("query") or ""))
-        return format_search_context(results, title=f"观澜搜索上下文 / {args.get('query', '')}")
+        followup_text = format_agent_followup_context(followup)
+        text = format_search_context(results, title=f"观澜搜索上下文 / {args.get('query', '')}")
+        return text + (f"\n\n{followup_text}" if followup_text else "")
 
     if name == "guanlan_stock":
         from guanlan.stock_cli import run_stock_tool
@@ -955,9 +983,10 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         raise ValueError(f"unknown recipe command: {command}")
 
     if name == "guanlan_read":
+        from guanlan.agent_planner import build_agent_followup, format_agent_followup_context
         from guanlan.web.read import read_url
 
-        return read_url(
+        content = read_url(
             str(args.get("url", "")).strip(),
             max_chars=int(args["max_chars"]) if args.get("max_chars") else None,
             backend=str(args.get("backend") or "auto"),
@@ -966,8 +995,16 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             profile=args.get("profile") or "china",
             cache_ttl=int(args.get("cache_ttl") or 0),
         )
+        followup = build_agent_followup("guanlan_read", {"url": str(args.get("url", "")).strip(), "content": content})
+        if str(args.get("format") or "raw") == "json":
+            return {"url": str(args.get("url", "")).strip(), "content": content, "agent_followup": followup}
+        if str(args.get("format") or "raw") == "context":
+            followup_text = format_agent_followup_context(followup)
+            return content + (f"\n\n{followup_text}" if followup_text else "")
+        return content
 
     if name == "guanlan_research":
+        from guanlan.agent_planner import build_agent_followup, format_agent_followup_context
         from guanlan.web.renderers import (
             format_advisor_context,
             format_claim_ledger_context,
@@ -999,6 +1036,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             advisor_style=str(args.get("advisor_style") or "brief"),
             max_search_jobs=1,
         )
+        packet["agent_followup"] = build_agent_followup("guanlan_research", packet, query=str(args.get("query", "")).strip())
         output_format = str(args.get("format") or "markdown")
         if output_format == "json":
             return packet
@@ -1013,6 +1051,9 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
                 text += "\n\n" + format_claim_ledger_context(packet["claim_ledger"])
             if isinstance(packet.get("advisor"), dict):
                 text += "\n\n" + format_advisor_context(packet["advisor"])
+            followup_text = format_agent_followup_context(packet.get("agent_followup"))
+            if followup_text:
+                text += "\n\n" + followup_text
             return text
         if output_format == "prompt":
             return format_research_prompt(packet)
@@ -1234,6 +1275,7 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         return format_feed_items_context(items, title=f"{title} 上下文")
 
     if name == "guanlan_daily":
+        from guanlan.agent_planner import build_agent_followup, format_agent_followup_context
         from guanlan.daily import (
             build_daily_report,
             format_daily_context,
@@ -1273,11 +1315,14 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             history_path=str(args.get("history_path") or ""),
             compare_days=int(args.get("compare_days") or 0),
         )
+        report["agent_followup"] = build_agent_followup("guanlan_daily", report, query=str(args.get("query", "")).strip())
         output_format = str(args.get("format") or "markdown")
         if output_format == "json":
             return report
         if output_format == "context":
-            return format_daily_context(report)
+            text = format_daily_context(report)
+            followup_text = format_agent_followup_context(report.get("agent_followup"))
+            return text + (f"\n\n{followup_text}" if followup_text else "")
         if output_format == "html":
             return format_daily_html(report)
         if output_format == "im":

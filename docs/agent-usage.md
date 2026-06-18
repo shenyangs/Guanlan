@@ -18,7 +18,8 @@
 
 - 用户或 Agent 不知道观澜有哪些能力时，先运行 `guanlan capabilities`；MCP 模式下调用 `guanlan_capabilities`。
 - 新用户问“装好了怎么用”时，先运行 `guanlan welcome`，再按用户目标选择具体能力。
-- 如果 Agent 只是“不知道该跑哪个观澜命令”，先运行 `guanlan agent "用户需求" --json`；MCP 模式下调用 `guanlan_agent`。它会返回 `primary_command` 和少量 `agent_next_steps`，不用浏览完整命令面。
+- 如果 Agent 只是“不知道该跑哪个观澜命令”，先运行 `guanlan agent "用户需求" --json`；MCP 模式下调用 `guanlan_agent`。它会返回 `agent_plan_v2` 决策卡：`primary_command`、少量 `agent_next_steps`、`task_model`、`capability_selection`、`execution_contract`、`self_check_contract`，不用浏览完整命令面。
+- 执行 `primary_command` 后，把 Guanlan JSON/trace 摘要或错误摘要交回 `guanlan agent "用户需求" --phase review --observation-json result.json --json`；MCP/HTTP 同样传 `phase=review` 和 `observation`。按 `next_decision=answer|continue|repair|ask_user|authorize_browser|stop` 决定回答、补证、请求授权或停止。
 - 先读公开信息，不主动读取浏览器 Cookie。
 - 先搜索和阅读，不自动发布、评论、点赞、私信。
 - 输出结论时保留来源链接。
@@ -54,7 +55,7 @@
 
 ## 轻重分流
 
-- 最低选择成本入口是 `guanlan agent "关键词" --json`。它只做本地规划，不联网；执行 `primary_command` 后，再根据质量信号决定是否跑 `agent_next_steps`。
+- 最低选择成本入口是 `guanlan agent "关键词" --json`。它只做本地规划，不联网；执行 `primary_command` 后，再用 `--phase review` 复盘观察结果，而不是让 Agent 临场猜该补 `hotnews`、`feeds`、`read`、`daily` 还是降级 search。
 - 需要强调速度时用 `--mode quick`，需要最新热点/三天内情报时用 `--mode fresh`，需要深查或可复用证据包时用 `--mode deep`。
 - 不确定该轻搜还是深查时，先跑 `guanlan workflow "关键词" --json`。它只做本地判断，不联网，不会改变基础搜索行为。
 - `direct`：简单官网、链接、事实入口和轻量资料，直接 `search -> read optional`，不要过度规划。

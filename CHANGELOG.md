@@ -6,6 +6,16 @@
 
 ## Unreleased
 
+## v0.7.0 - 2026-06-18
+
+### Changed
+
+- 升级 Agent Planner v2：`guanlan agent` 现在默认输出任务决策卡，包含任务理解、能力选择、执行契约、自检契约和用户表述边界。
+- 新增 `guanlan agent --phase review --observation-json ...`，支持在执行后根据空结果、小样本、弱正文、official-only、research timeout 等信号返回 `next_decision` 和补证命令。
+- `guanlan_agent` 同步支持 MCP/HTTP 三面计划与复盘，并新增本地 HTTP `/agent` 入口。
+- `search/read/research/daily` 在 Agent 面输出轻量 `agent_followup`，帮助下游判断回答、补证、授权或停止。
+- README、完整指南、遥测文档、Skill、Agent playbook 和官网版本面同步到 `0.7.0`。
+
 ## v0.6.19 - 2026-06-17
 
 ### Changed

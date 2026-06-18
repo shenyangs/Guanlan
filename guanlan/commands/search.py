@@ -75,32 +75,46 @@ def _cmd_workflow(args):
 def _cmd_agent(args):
     """Build a compact auto-plan for agent callers."""
 
-    from guanlan.workflow_decider import build_agent_plan, format_agent_plan_markdown
+    from guanlan.agent_planner import (
+        build_agent_plan_v2,
+        format_agent_plan_v2_markdown,
+        load_observation_json,
+        review_agent_observation,
+    )
 
     if not args.query:
         print("Error: query is required", file=sys.stderr)
         sys.exit(2)
     preset_context = None if args.preset in {"", "general"} else args.preset
-    plan = build_agent_plan(
-        args.query,
-        mode=args.mode,
-        preset=preset_context,
-        scope=args.scope or None,
-        site=args.site or None,
-        sites=[s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
-        profile=args.profile or None,
-        limit=max(args.limit, 1),
-        read_top=max(args.read_top, 0) if args.read_top is not None else None,
-        max_commands=max(args.max_commands, 1),
-    )
-    if args.json:
-        print(json.dumps(plan.to_dict(), ensure_ascii=False, indent=2))
+    common_kwargs = {
+        "mode": args.mode,
+        "preset": preset_context,
+        "scope": args.scope or None,
+        "site": args.site or None,
+        "sites": [s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
+        "profile": args.profile or None,
+        "limit": max(args.limit, 1),
+        "read_top": max(args.read_top, 0) if args.read_top is not None else None,
+        "max_commands": max(args.max_commands, 1),
+    }
+    if getattr(args, "phase", "plan") == "review":
+        try:
+            observation = load_observation_json(getattr(args, "observation_json", ""))
+        except Exception as exc:
+            print(f"Error: invalid observation JSON: {exc}", file=sys.stderr)
+            sys.exit(2)
+        plan = review_agent_observation(args.query, observation, **common_kwargs)
     else:
-        print(format_agent_plan_markdown(plan))
+        plan = build_agent_plan_v2(args.query, **common_kwargs)
+    if args.json:
+        print(json.dumps(plan, ensure_ascii=False, indent=2))
+    else:
+        print(format_agent_plan_v2_markdown(plan))
 
 def _cmd_search(args):
     """Search the web and format results for agents."""
 
+    from guanlan.agent_planner import build_agent_followup, format_agent_followup_context
     from guanlan.search_sources import list_search_scopes
     from guanlan.web.renderers import (
         format_search_context,
@@ -141,6 +155,11 @@ def _cmd_search(args):
         sys.exit(1)
 
     _auto_feedback_for_search(args, results)
+    followup = build_agent_followup(
+        "guanlan_search",
+        {"results": results, "limit": max(args.limit, 1), "diagnostics": getattr(results, "diagnostics", {})},
+        query=args.query,
+    )
 
     output_format = "json" if args.json else args.format
     if output_format == "json":
@@ -152,6 +171,10 @@ def _cmd_search(args):
     elif output_format == "context":
         suffix = f" / {args.scope}" if args.scope else ""
         print(format_search_context(results, title=f"观澜搜索上下文{suffix} / {args.query}"))
+        followup_text = format_agent_followup_context(followup)
+        if followup_text:
+            print()
+            print(followup_text)
         if args.source_chart:
             print(format_source_chart(results))
     elif output_format == "prompt":

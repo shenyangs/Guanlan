@@ -302,6 +302,7 @@ def _format_browser_assist_session_markdown(contract: dict) -> str:
 def _cmd_read(args):
     """Read a URL and print Markdown for agents."""
 
+    from guanlan.agent_planner import build_agent_followup, format_agent_followup_context
     from guanlan.web.read import (
         format_read_batch_context,
         format_read_batch_markdown,
@@ -377,9 +378,19 @@ def _cmd_read(args):
             )
         if args.format == "json":
             payload = read_packet if read_packet is not None else {"url": args.url, "content": content}
+            payload["agent_followup"] = build_agent_followup("guanlan_read", payload)
             print(json.dumps(payload, ensure_ascii=False, indent=2))
         elif args.format == "context":
             print(format_read_context(content, url=args.url))
+            followup_text = format_agent_followup_context(
+                build_agent_followup(
+                    "guanlan_read",
+                    read_packet if read_packet is not None else {"url": args.url, "content": content},
+                )
+            )
+            if followup_text:
+                print()
+                print(followup_text)
             if args.quality_report and read_packet is not None:
                 print()
                 print(format_read_quality_report(read_packet))

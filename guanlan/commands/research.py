@@ -11,6 +11,7 @@ from guanlan.limits import DEFAULT_RESEARCH_LIMIT
 def _cmd_research(args):
     """Build an agent-ready research evidence packet."""
 
+    from guanlan.agent_planner import build_agent_followup, format_agent_followup_context
     from guanlan.router import format_route_chart
     from guanlan.web.renderers import (
         format_advisor_context,
@@ -58,6 +59,7 @@ def _cmd_research(args):
         sys.exit(1)
 
     _auto_feedback_for_research(args, packet)
+    packet["agent_followup"] = build_agent_followup("guanlan_research", packet, query=args.query)
 
     output_format = "json" if args.json else args.format
     if output_format == "json":
@@ -84,6 +86,10 @@ def _cmd_research(args):
             print(format_source_chart(packet.get("results", [])))
         if args.route_chart:
             print(format_route_chart(packet.get("route_plan", {})))
+        followup_text = format_agent_followup_context(packet.get("agent_followup"))
+        if followup_text:
+            print()
+            print(followup_text)
     elif output_format == "prompt":
         print(format_research_prompt(packet, style=args.prompt_style))
     else:
@@ -343,6 +349,45 @@ def _cmd_dossier(args):
     else:
         print(format_dossier_markdown(report))
 
+def _cmd_yinshen(args):
+    """Expand one keyword into evidence-backed media angles."""
+    from guanlan.research_workflows import (
+        build_yinshen_report,
+        format_workflow_context,
+        format_yinshen_markdown,
+    )
+
+    if not args.keyword:
+        print("Error: keyword is required", file=sys.stderr)
+        sys.exit(2)
+    try:
+        report = build_yinshen_report(
+            args.keyword,
+            preset=args.preset,
+            profile=args.profile,
+            limit=max(args.limit, 1),
+            read_top=max(args.read_top, 0),
+            angle_limit=max(args.angle_limit, 1) if args.angle_limit is not None else None,
+            angle_read_top=max(args.angle_read_top, 0),
+            angles=max(min(args.angles, 8), 1),
+            search_backend=args.search_backend,
+            read_backend=args.read_backend,
+            max_read_chars=max(args.max_read_chars, 1) if args.max_read_chars is not None else None,
+            select_top=max(args.select_top, 1),
+            plan_only=bool(args.plan_only),
+        )
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    output_format = "json" if args.json else args.format
+    if output_format == "json":
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    elif output_format == "context":
+        print(format_workflow_context(report, title="观澜引申上下文"))
+    else:
+        print(format_yinshen_markdown(report))
+
 def _cmd_prompt(args):
     """Build a local-LLM prompt from a broad Guanlan research packet."""
 
@@ -409,4 +454,4 @@ def _cmd_feedback(args):
         print(f"❌ 反馈提交失败: {result.get('message')}", file=sys.stderr)
         sys.exit(1)
 
-__all__ = ['_cmd_research', '_cmd_investigate', '_cmd_recipe', '_cmd_sources', '_cmd_compare', '_cmd_timeline', '_cmd_dossier', '_cmd_prompt', '_cmd_feedback']
+__all__ = ['_cmd_research', '_cmd_investigate', '_cmd_recipe', '_cmd_sources', '_cmd_compare', '_cmd_timeline', '_cmd_dossier', '_cmd_yinshen', '_cmd_prompt', '_cmd_feedback']

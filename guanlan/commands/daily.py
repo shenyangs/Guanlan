@@ -7,6 +7,7 @@ import sys
 
 def _cmd_daily(args):
     """Build a Guanlan-native daily brief."""
+    from guanlan.agent_planner import build_agent_followup
     from guanlan.daily import (
         build_daily_report,
         format_daily_context,
@@ -53,10 +54,21 @@ def _cmd_daily(args):
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 
+    report["agent_followup"] = build_agent_followup(
+        "guanlan_daily",
+        report,
+        query=str(getattr(args, "query", "") or ""),
+    )
+
     if output_format == "json":
         rendered = json.dumps(report, ensure_ascii=False, indent=2)
     elif output_format == "context":
+        from guanlan.agent_planner import format_agent_followup_context
+
         rendered = format_daily_context(report)
+        followup_text = format_agent_followup_context(report.get("agent_followup"))
+        if followup_text:
+            rendered = f"{rendered}\n\n{followup_text}"
     elif output_format == "html":
         rendered = format_daily_html(report)
     elif output_format == "im":

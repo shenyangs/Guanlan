@@ -98,7 +98,7 @@ guanlan hotnews today --brief
 - **网页阅读与降级**：`guanlan read "URL"`，Jina Reader、直连 HTML、搜索兜底组合使用。
 - **热榜观察**：原生多源入口 `guanlan hotnews today`，覆盖百度、微博、B站、IT之家、V2EX；NewsNow 可选增强源 `guanlan hotnews newsnow:36kr-quick`
 - **研究证据包**：`guanlan research "关键词" --format context`
-- **高阶研究工作流**：`compare` 做多对象对比，`timeline` 抽时间线，`dossier` 生成研究档案。
+- **高阶研究工作流**：`yinshen` 做关键词引申和选题发散，`compare` 做多对象对比，`timeline` 抽时间线，`dossier` 生成研究档案。
 - **本地知识库**：`guanlan archive add/search/export`
 
 ## 为什么是“观澜”
@@ -137,7 +137,7 @@ guanlan hotnews today --brief
 | RSS | RSS/Atom 订阅源解析 | 可用 |
 | GitHub | 公开仓库、Issue、PR、搜索；认证后可访问更多能力 | 可用 |
 | 搜索 | Baidu/Bing/DuckDuckGo 多后端聚合、去重、信源分类、可信度评分、中文/英文 scope | 可用，持续优化 |
-| 研究工作流 | `compare`、`timeline`、`dossier` 把证据包整理成对比、时间线和档案 | 可用 |
+| 研究工作流 | `yinshen`、`compare`、`timeline`、`dossier` 把证据包整理成引申角度、对比、时间线和档案 | 可用 |
 | 视频 | YouTube、B站字幕与元信息读取 | 可用 |
 | 开发者社区 | V2EX 热门、节点、帖子与回复 | 可用 |
 | 微博 | 热搜、搜索、用户与话题读取 | best-effort，按环境和授权波动 |
@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.6.19`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.7.0`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -466,6 +466,7 @@ guanlan configure --from-browser chrome
 | `guanlan research "关键词" --advisor` | 在证据包后追加助理视角规则，帮助 Agent 基于证据生成建议。 |
 | `guanlan research "关键词" --advisor --advisor-style risk` | 按风险/决策/策略等风格生成更自然的 Agent 作答骨架。 |
 | `guanlan recipe run trajectory-map "Cursor 发展历程 竞品格局"` | 对产品、公司、技术概念或人物生成对象脉络/同类格局研究链路，串起 `research/timeline/dossier/compare`。 |
+| `guanlan yinshen "AI写代码" --limit 80 --angles 6 --format context` | 先建立关键词证据语境，再扩展出 5-8 个媒体友好的引申角度、深搜路径和选题方向。 |
 | `guanlan recipe run public-opinion-pulse "某产品 最近风评"` | 把公开讨论、评论样本、媒体报道和时间窗分层，避免把单个平台热帖当全网舆情。 |
 | `guanlan recipe run brand-risk-watch "某品牌 负面 投诉 道歉 澄清"` | 观察品牌负面、公关风险、投诉扩散和公司/官方回应，保留已证实与待核验边界。 |
 | `guanlan recipe run competitor-watch "某产品 竞品 功能 定价 口碑"` | 组织竞品、价格页、功能更新、评价样本和行业报道，形成可追踪的竞品证据链。 |
@@ -724,6 +725,7 @@ guanlan search "清华大学计算机系研究生招生 导师" --profile china 
 
 ```bash
 guanlan compare "LangGraph" "AutoGen" "CrewAI" --focus "中文资料 技术选型 社区反馈" --preset tech --limit 80 --format context
+guanlan yinshen "AI写代码" --limit 80 --angles 6 --format context
 guanlan timeline "低空经济 广东 政策 最新进展" --preset local --limit 80
 guanlan dossier "某公司" --focus "业务 口碑 风险 近期动态" --limit 80 --read-top 5
 guanlan recipe run trajectory-map "Manus Agent 来龙去脉 同类格局"
@@ -731,6 +733,7 @@ guanlan recipe run trajectory-map "Manus Agent 来龙去脉 同类格局"
 
 三者适用边界：
 
+- `yinshen`：适合从一个关键词扩展选题和专题地图；它先建立基础证据语境，再按技术、商业、政策、用户、风险、时间线、数据等镜头生成角度。
 - `compare`：适合多产品、多公司、多政策方案、多技术路线对照；它会按官方/产业/用户样本/近期动态/风险维度提示“证据足不足”。
 - `timeline`：适合近期进展、事件演变、政策发布、版本发布；日期来自公开材料可见线索，缺日期的重要证据会单列。
 - `dossier`：适合做公司、产品、政策、事件的研究档案；输出的是可继续补证的骨架，不是最终定论。

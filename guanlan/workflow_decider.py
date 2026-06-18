@@ -889,6 +889,19 @@ def _build_agent_commands(
             )
         return commands[:max_commands]
 
+    for official_command in _agent_ai_model_official_site_commands(query, decision, profile=profile):
+        if official_command == primary or len(commands) >= max_commands:
+            continue
+        commands.append(
+            _agent_command(
+                "official_primary",
+                official_command,
+                "AI 模型版本/能力对比要补官方或产品一手入口，避免只看 CSDN、百家号、门户转载或社区单点样本。",
+                required=True,
+                evidence_boundary="官方/产品站点定向搜索；用于核验版本、发布时间、能力边界和模型名称，不替代社区声量样本。",
+            )
+        )
+
     if _needs_agent_freshness(decision, mode) and not _has_kind(commands, "hotnews") and len(commands) < max_commands:
         commands.append(
             _agent_command(
@@ -1468,6 +1481,67 @@ def _needs_agent_feeds(decision: WorkflowDecision) -> bool:
     )
 
 
+_AI_MODEL_OFFICIAL_SITE_FAMILIES = {
+    "zhipu": ("zhipuai.cn", "chatglm.cn", "bigmodel.cn"),
+    "moonshot": ("moonshot.cn", "kimi.com"),
+    "deepseek": ("deepseek.com",),
+    "qwen": ("qwen.ai", "tongyi.aliyun.com"),
+    "doubao": ("volcengine.com", "doubao.com"),
+    "hunyuan": ("hunyuan.tencent.com",),
+    "ernie": ("yiyan.baidu.com",),
+}
+
+
+def _agent_ai_model_official_site_commands(query: str, decision: WorkflowDecision, *, profile: str | None) -> list[str]:
+    if not _is_ai_model_release_query(query, decision):
+        return []
+    route_data = dict(decision.route_plan or {})
+    target_sites = [str(site).strip().lower() for site in route_data.get("target_sites") or [] if str(site).strip()]
+    text = (query or "").lower()
+    if any(term in text for term in ("glm", "智谱", "zhipu", "chatglm")):
+        target_sites.extend(_AI_MODEL_OFFICIAL_SITE_FAMILIES["zhipu"])
+    if any(term in text for term in ("kimi", "moonshot", "月之暗面")):
+        target_sites.extend(_AI_MODEL_OFFICIAL_SITE_FAMILIES["moonshot"])
+    if "deepseek" in text:
+        target_sites.extend(_AI_MODEL_OFFICIAL_SITE_FAMILIES["deepseek"])
+    if any(term in text for term in ("qwen", "通义", "千问")):
+        target_sites.extend(_AI_MODEL_OFFICIAL_SITE_FAMILIES["qwen"])
+    if any(term in text for term in ("doubao", "豆包", "seedance", "volcengine", "字节跳动")):
+        target_sites.extend(_AI_MODEL_OFFICIAL_SITE_FAMILIES["doubao"])
+    if any(term in text for term in ("hunyuan", "混元")):
+        target_sites.extend(_AI_MODEL_OFFICIAL_SITE_FAMILIES["hunyuan"])
+    if any(term in text for term in ("ernie", "文心一言")):
+        target_sites.extend(_AI_MODEL_OFFICIAL_SITE_FAMILIES["ernie"])
+
+    selected: list[str] = []
+    seen_families: set[str] = set()
+    seen_sites: set[str] = set()
+    for site in target_sites:
+        normalized = site.removeprefix("www.")
+        if normalized in seen_sites:
+            continue
+        family = _ai_model_official_site_family(normalized)
+        if not family or family in seen_families:
+            continue
+        seen_sites.add(normalized)
+        seen_families.add(family)
+        selected.append(normalized)
+        if len(selected) >= 2:
+            break
+    effective_profile = profile or "china"
+    return [
+        f"guanlan search {quote_query(query)} --site {site} --profile {effective_profile} --limit 80 --trace"
+        for site in selected
+    ]
+
+
+def _ai_model_official_site_family(site: str) -> str:
+    for family, domains in _AI_MODEL_OFFICIAL_SITE_FAMILIES.items():
+        if site in domains:
+            return family
+    return ""
+
+
 def _needs_finance_research(decision: WorkflowDecision) -> bool:
     finance_intents = {"finance", "finance_disclosure", "finance_macro", "finance_sentiment", "finance_research"}
     return decision.recommended_entrypoint == "stock" and bool(finance_intents & set(decision.route_intents)) and decision.tier != DIRECT
@@ -1590,8 +1664,50 @@ def _is_ai_model_release_query(query: str, decision: WorkflowDecision) -> bool:
     text = (query or "").lower()
     if "tech" not in set(decision.route_intents):
         return False
-    model_terms = ("seedance", "视频生成模型", "豆包", "doubao", "字节跳动", "volcengine")
-    return any(term in text for term in model_terms)
+    model_terms = (
+        "seedance",
+        "视频生成模型",
+        "豆包",
+        "doubao",
+        "字节跳动",
+        "volcengine",
+        "glm",
+        "智谱",
+        "zhipu",
+        "zhipuai",
+        "chatglm",
+        "kimi",
+        "moonshot",
+        "月之暗面",
+        "deepseek",
+        "qwen",
+        "通义千问",
+        "通义",
+        "千问",
+        "hunyuan",
+        "混元",
+        "ernie",
+        "文心一言",
+        "大模型",
+    )
+    comparison_terms = (
+        "发布",
+        "版本",
+        "能力",
+        "强在哪",
+        "对比",
+        "评测",
+        "benchmark",
+        "声量",
+        "热度",
+        "讨论",
+        "最新",
+    )
+    return any(term in text for term in model_terms) and (
+        any(term in text for term in comparison_terms)
+        or bool(re.search(r"\b\d+(?:\.\d+)?\b", text))
+        or bool(re.search(r"\b(?:glm|k?imi|qwen|deepseek|hunyuan|ernie)[-\s]?\d", text))
+    )
 
 
 def _is_ai_hardware_performance_query(query: str, decision: WorkflowDecision) -> bool:

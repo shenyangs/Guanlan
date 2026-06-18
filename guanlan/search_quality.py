@@ -332,7 +332,7 @@ def assess_backend_batch_quality(
         reasons.append("dictionary_definition_drift")
     if (
         pollution["severity"] == "high"
-        and len(batch) >= 3
+        and (len(batch) >= 3 or pollution.get("critical_count", 0))
         and not official_salvage["salvaged_count"]
     ):
         reasons.append("low_value_domain_pollution")
@@ -593,8 +593,10 @@ def backend_pollution_summary(query: str, batch: list[SearchResultLike]) -> dict
     if not batch:
         return {"enabled": False, "severity": "none", "polluted_count": 0, "ratio": 0.0}
     semantic_aliases = [alias.lower() for alias in semantic_alias_terms(query)]
+    requested_versions = _model_version_mentions(query)
     samples: list[dict[str, str]] = []
     polluted_count = 0
+    critical_count = 0
     for item in batch:
         domain = (getattr(item, "domain", "") or _domain(getattr(item, "url", ""))).lower().removeprefix("www.")
         title = collapse_ws(getattr(item, "title", ""))
@@ -603,6 +605,10 @@ def backend_pollution_summary(query: str, batch: list[SearchResultLike]) -> dict
         reasons: list[str] = []
         if domain in LOW_VALUE_SAMPLE_DOMAINS:
             reasons.append(f"low_value_domain:{domain}")
+        mismatch = _requested_model_version_mismatch(requested_versions, text)
+        if mismatch and domain in LOW_VALUE_SAMPLE_DOMAINS:
+            reasons.append(f"model_version_mismatch:{mismatch}")
+            critical_count += 1
         if any(term.lower() in text for term in SEO_TITLE_TERMS):
             reasons.append("seo_or_service_phone_title")
         if domain in DICTIONARY_DRIFT_DOMAINS or any(term.lower() in text for term in DICTIONARY_DRIFT_TERMS):
@@ -628,6 +634,7 @@ def backend_pollution_summary(query: str, batch: list[SearchResultLike]) -> dict
         "enabled": bool(polluted_count),
         "severity": severity,
         "polluted_count": polluted_count,
+        "critical_count": critical_count,
         "total": len(batch),
         "ratio": round(ratio, 3),
         "samples": samples,
@@ -638,6 +645,48 @@ def backend_pollution_summary(query: str, batch: list[SearchResultLike]) -> dict
             else ""
         ),
     }
+
+
+def _model_version_mentions(text: str) -> list[dict[str, str]]:
+    patterns = (
+        ("GLM", r"\bGLM[-\s]?\d+(?:\.\d+)?\b"),
+        ("Kimi", r"\bKimi[-\s]?\d+(?:\.\d+)?\b"),
+        ("Qwen", r"\bQwen[-\s]?\d+(?:\.\d+)?\b"),
+        ("DeepSeek", r"\bDeepSeek[-\s]?[A-Za-z]?\d+(?:\.\d+)?\b"),
+        ("Doubao", r"\bDoubao[-\s]?\d+(?:\.\d+)?\b"),
+    )
+    mentions: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for family, pattern in patterns:
+        for match in re.finditer(pattern, text or "", flags=re.I):
+            raw = collapse_ws(match.group(0))
+            normalized = re.sub(r"[-_\s]+", " ", raw).strip()
+            version = normalized.split(maxsplit=1)[1] if len(normalized.split(maxsplit=1)) > 1 else ""
+            canonical = f"{family} {version}".strip()
+            key = (family, canonical.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            mentions.append({"family": family, "mention": canonical})
+    return mentions
+
+
+def _requested_model_version_mismatch(requested_versions: list[dict[str, str]], result_text: str) -> str:
+    if not requested_versions:
+        return ""
+    result_versions = _model_version_mentions(result_text)
+    if not result_versions:
+        return ""
+    result_by_family: dict[str, set[str]] = {}
+    for mention in result_versions:
+        result_by_family.setdefault(mention["family"], set()).add(mention["mention"].lower())
+    for requested in requested_versions:
+        family = requested["family"]
+        wanted = requested["mention"].lower()
+        observed = result_by_family.get(family, set())
+        if observed and wanted not in observed:
+            return requested["mention"]
+    return ""
 
 
 def unsafe_search_result_reason(item: SearchResultLike) -> str:

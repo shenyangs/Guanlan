@@ -82,6 +82,7 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     diagnose_tool = next(tool for tool in tools if tool["name"] == "guanlan_page_diagnose")
     browser_assist_tool = next(tool for tool in tools if tool["name"] == "guanlan_browser_assist_plan")
     browser_assist_run_tool = next(tool for tool in tools if tool["name"] == "guanlan_browser_assist_run")
+    read_tool = next(tool for tool in tools if tool["name"] == "guanlan_read")
     feeds_tool = next(tool for tool in tools if tool["name"] == "guanlan_feeds")
     recipe_tool = next(tool for tool in tools if tool["name"] == "guanlan_recipe")
     investigate_tool = next(tool for tool in tools if tool["name"] == "guanlan_investigate")
@@ -99,8 +100,11 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "prompt" in search_tool["inputSchema"]["properties"]["format"]["enum"]
     assert "cache_ttl=3600" in search_tool["description"]
     assert "do not shrink the evidence pool" in search_tool["description"]
-    assert "primary_command" in agent_tool["description"]
+    assert "phase" in agent_tool["inputSchema"]["properties"]
+    assert "observation" in agent_tool["inputSchema"]["properties"]
+    assert "next_decision" in agent_tool["description"]
     assert "mode" in agent_tool["inputSchema"]["properties"]
+    assert "format" in read_tool["inputSchema"]["properties"]
     assert "dynamic finance pages" in stock_tool["description"]
     assert "stocks" in stock_tool["description"]
     assert "plan" in stock_tool["inputSchema"]["properties"]["command"]["enum"]
@@ -284,11 +288,29 @@ def test_mcp_agent_returns_low_choice_plan():
     )
     commands = [item["command"] for item in payload["agent_next_steps"]]
 
+    assert payload["schema_version"] == "agent_plan_v2"
+    assert "self_check_contract" in payload
     assert payload["primary_command"] == "guanlan hotnews today --limit 80 --trends"
     assert "guanlan hotnews today --limit 80 --trends" in commands
     assert "guanlan feeds curated --category ai --limit 80" in commands
     assert any("--scope wps_office" in command for command in commands)
     assert not any(command.startswith("guanlan research") for command in commands)
+
+
+def test_mcp_agent_review_returns_next_decision():
+    payload = mcp_server._run_tool(
+        "guanlan_agent",
+        {
+            "query": "丙烷脱氢 PDH 中国 2024",
+            "phase": "review",
+            "observation": {"results": [], "limit": 5},
+            "format": "json",
+        },
+    )
+
+    assert payload["schema_version"] == "agent_review_v1"
+    assert payload["next_decision"] == "repair"
+    assert "empty_results" in payload["signals"]
 
 
 def test_mcp_research_is_guarded_and_clamps_heavy_knobs(monkeypatch):

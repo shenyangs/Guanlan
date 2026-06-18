@@ -55,6 +55,99 @@ _BUCKETS: tuple[dict[str, Any], ...] = (
     {"id": "recent", "name": "近期动态", "roles": _DIMENSIONS[3]["roles"], "keywords": _DIMENSIONS[3]["source_keywords"]},
 )
 
+_YINSHEN_LENSES: tuple[dict[str, Any], ...] = (
+    {
+        "id": "tech_mechanism",
+        "title": "技术/产品机制",
+        "relation_type": "mechanism",
+        "query_suffix": "技术 产品机制 工作流 能力边界 原理",
+        "keywords": ("技术", "产品", "功能", "模型", "算法", "系统", "工具", "API", "代码", "开发", "workflow", "agent"),
+        "roles": {"technical_primary", "developer_discussion", "company_primary", "standard_original"},
+        "why": "把关键词从现象拆到产品、系统和执行机制，适合解释稿和产品分析。",
+    },
+    {
+        "id": "business_market",
+        "title": "商业模式/市场格局",
+        "relation_type": "incentive",
+        "query_suffix": "商业模式 定价 竞品 市场 公司 收入",
+        "keywords": ("商业", "市场", "价格", "定价", "收入", "融资", "竞品", "公司", "行业", "增长"),
+        "roles": {"industry_report", "market_news", "company_context", "company_primary"},
+        "why": "追问谁在投入、谁能获利、竞争格局如何变化，适合产业报道。",
+    },
+    {
+        "id": "policy_governance",
+        "title": "政策/监管/标准",
+        "relation_type": "governance",
+        "query_suffix": "政策 监管 标准 合规 官方",
+        "keywords": ("政策", "监管", "标准", "合规", "法律", "治理", "规定", "办法", "官方", "政府"),
+        "roles": {"official_primary", "statute_original", "standard_original", "database_official"},
+        "why": "把话题放进规则、责任和公共治理框架，适合公共议题和高风险选题。",
+    },
+    {
+        "id": "user_public_opinion",
+        "title": "用户体验/公开讨论",
+        "relation_type": "lived_experience",
+        "query_suffix": "用户 评价 体验 投诉 社区 讨论",
+        "keywords": ("用户", "评价", "体验", "投诉", "吐槽", "社区", "知乎", "微博", "小红书", "评论", "差评"),
+        "roles": {"user_sample", "community_discussion", "developer_discussion", "review", "public_discussion"},
+        "why": "补足普通用户、社区和一线使用语言，适合舆情快照、服务稿和案例线索。",
+    },
+    {
+        "id": "risk_ethics",
+        "title": "风险/伦理/安全边界",
+        "relation_type": "future_risk",
+        "query_suffix": "风险 伦理 隐私 安全 合规 争议",
+        "keywords": ("风险", "伦理", "隐私", "安全", "漏洞", "未成年人", "侵权", "版权", "诈骗", "争议"),
+        "roles": {"risk", "case_record", "clinical_guideline", "statute_original"},
+        "why": "检查好处背后的红线、伤害和责任链，适合深稿、核验和风险提示。",
+    },
+    {
+        "id": "timeline_inflection",
+        "title": "时间线/关键拐点",
+        "relation_type": "turning_point",
+        "query_suffix": "最新 进展 时间线 发布 关键节点",
+        "keywords": ("最新", "近期", "发布", "上线", "更新", "进展", "趋势", "时间线", "2025", "2026"),
+        "roles": {"fresh_news", "fresh_trend_signal", "public_discussion"},
+        "why": "找到为什么现在值得写，适合快稿、解释稿和事件脉络。",
+    },
+    {
+        "id": "measurement_data",
+        "title": "数据/评测/指标",
+        "relation_type": "measurement_gap",
+        "query_suffix": "数据 评测 榜单 指标 研究 报告",
+        "keywords": ("数据", "报告", "评测", "排名", "榜单", "指标", "研究", "论文", "benchmark", "survey"),
+        "roles": {"database_official", "research_data", "industry_report", "standard_original"},
+        "why": "核对哪些指标能支撑判断、哪些榜单可能误导，适合数据稿和评测稿。",
+    },
+    {
+        "id": "labor_organization",
+        "title": "劳动/组织变化",
+        "relation_type": "implementation_gap",
+        "query_suffix": "工作方式 岗位 组织 流程 人才 技能",
+        "keywords": ("工作", "岗位", "招聘", "薪资", "组织", "流程", "员工", "人才", "技能", "职业"),
+        "roles": {"industry_report", "developer_discussion", "user_sample"},
+        "why": "观察话题如何改变岗位、流程和组织协作，适合职场、管理和产业选题。",
+    },
+    {
+        "id": "international_comparison",
+        "title": "国际比较/外部参照",
+        "relation_type": "comparison",
+        "query_suffix": "海外 国际 对比 regulation market case",
+        "keywords": ("国际", "海外", "全球", "美国", "欧洲", "日本", "韩国", "对比", "global", "overseas"),
+        "roles": {"authoritative_report", "industry_report", "official_primary"},
+        "why": "用外部市场、监管和案例形成参照，适合解释差异和寻找预警。",
+    },
+    {
+        "id": "service_guidance",
+        "title": "服务新闻/行动指南",
+        "relation_type": "service_use",
+        "query_suffix": "怎么判断 使用指南 避坑 选择 建议",
+        "keywords": ("指南", "怎么", "如何", "避坑", "选择", "教程", "清单", "建议", "评测"),
+        "roles": {"review", "developer_discussion", "industry_report"},
+        "why": "把复杂议题转成读者可操作的判断清单，适合服务稿和工具型内容。",
+    },
+)
+
 
 def build_compare_report(
     subjects: list[str],
@@ -219,6 +312,87 @@ def build_dossier_report(
     }
 
 
+def build_yinshen_report(
+    keyword: str,
+    *,
+    preset: str = "general",
+    profile: str | None = "china",
+    limit: int = DEFAULT_RESEARCH_LIMIT,
+    read_top: int = 0,
+    angle_limit: int | None = None,
+    angle_read_top: int = 0,
+    angles: int = 5,
+    search_backend: str = "auto",
+    read_backend: str = "auto",
+    max_read_chars: int | None = None,
+    select_top: int = 12,
+    plan_only: bool = False,
+) -> dict[str, Any]:
+    """Expand one keyword into evidence-backed media angles."""
+    clean_keyword = _collapse_ws(keyword)
+    if not clean_keyword:
+        raise ValueError("keyword is required")
+    base_packet = build_research_packet(
+        clean_keyword,
+        preset=preset,
+        profile=profile,
+        limit=max(limit, 1),
+        read_top=max(read_top, 0),
+        search_backend=search_backend,
+        read_backend=read_backend,
+        max_read_chars=max_read_chars,
+        advisor=True,
+        advisor_style="brief",
+        select_top=max(select_top, 1),
+    )
+    base_evidence = _compact_evidence(_packet_evidence(base_packet), limit=max(select_top, 1))
+    selected_lenses = _select_yinshen_lenses(clean_keyword, base_packet, count=max(min(angles, 8), 1))
+    angle_reports: list[dict[str, Any]] = []
+    per_angle_limit = max(angle_limit if angle_limit is not None else limit, 1)
+    for lens in selected_lenses:
+        deep_query = _yinshen_deep_query(clean_keyword, lens)
+        packet: dict[str, Any] | None = None
+        if not plan_only:
+            packet = build_research_packet(
+                deep_query,
+                preset=preset,
+                profile=profile,
+                limit=per_angle_limit,
+                read_top=max(angle_read_top, 0),
+                search_backend=search_backend,
+                read_backend=read_backend,
+                max_read_chars=max_read_chars,
+                advisor=False,
+                select_top=6,
+            )
+        angle_reports.append(_yinshen_angle_report(clean_keyword, lens, packet, deep_query=deep_query))
+    return {
+        "mode": "yinshen",
+        "keyword": clean_keyword,
+        "preset": preset,
+        "profile": profile or "",
+        "limit": max(limit, 1),
+        "read_top": max(read_top, 0),
+        "angle_limit": per_angle_limit,
+        "angle_read_top": max(angle_read_top, 0),
+        "plan_only": bool(plan_only),
+        "base": {
+            "query": base_packet.get("query", clean_keyword),
+            "result_count": base_packet.get("result_count", len(base_packet.get("results") or [])),
+            "source_mix": base_packet.get("source_mix", {}),
+            "source_diagnostics": base_packet.get("source_diagnostics", {}),
+            "route_plan": base_packet.get("route_plan", {}),
+            "read_quality_summary": base_packet.get("read_quality_summary", {}),
+            "evidence": base_evidence,
+            "summary": _yinshen_base_summary(clean_keyword, base_packet, base_evidence),
+        },
+        "angles": angle_reports,
+        "priority_shortlist": _yinshen_priority_shortlist(angle_reports),
+        "suggested_next": _yinshen_suggested_next(clean_keyword, angle_reports, preset=preset, profile=profile or "china"),
+        "boundary": "yinshen 先用公开证据建立关键词语境，再把关键词扩展为可继续报道/思考的角度；社交和热榜材料只作样本线索，关键事实仍需回读原文。",
+    }
+
+
 def format_compare_markdown(report: dict[str, Any]) -> str:
     """Render a compare report as Markdown."""
     subjects = [str(item) for item in report.get("subjects") or []]
@@ -331,6 +505,55 @@ def format_dossier_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def format_yinshen_markdown(report: dict[str, Any]) -> str:
+    """Render a keyword expansion report as Markdown."""
+    keyword = str(report.get("keyword") or "")
+    lines = [f"# 观澜引申 / {keyword}", "", f"- 边界: {report.get('boundary', '')}"]
+    base = report.get("base") or {}
+    if base.get("summary"):
+        lines.extend(["", "## 搜索小结", str(base["summary"])])
+    source_mix = base.get("source_mix") or {}
+    if source_mix:
+        lines.append("- 来源结构: " + "；".join(f"{key}: {value}" for key, value in list(source_mix.items())[:6]))
+    evidence = base.get("evidence") or []
+    if evidence:
+        lines.extend(["", "## 基础饱和搜索结果"])
+        for idx, item in enumerate(evidence[:12], start=1):
+            lines.append(f"{idx}. {item.get('title')} | {item.get('url')}")
+            if item.get("snippet"):
+                lines.append(f"   - {item.get('snippet')}")
+            lines.append(f"   - 角色: {item.get('source_type', '通用网页')} / {item.get('evidence_role', '')}")
+    lines.extend(["", "## 引申角度总览"])
+    for idx, angle in enumerate(report.get("angles") or [], start=1):
+        lines.append(f"{idx}. **{angle.get('title')}**：{angle.get('rationale')}")
+    lines.extend(["", "## 分角度深搜"])
+    for idx, angle in enumerate(report.get("angles") or [], start=1):
+        lines.extend(["", f"### 角度 {idx}: {angle.get('title')}"])
+        lines.append(f"- 与关键词关系: {angle.get('relation_type')}")
+        lines.append(f"- 深搜路径: `{angle.get('deep_query')}`")
+        lines.append(f"- 深搜总结: {angle.get('synthesis')}")
+        for item in angle.get("results") or []:
+            lines.append(f"- {item.get('title')} | {item.get('url')}")
+            if item.get("snippet"):
+                lines.append(f"  - {item.get('snippet')}")
+        directions = angle.get("story_directions") or []
+        if directions:
+            lines.append("- 可写方向: " + "；".join(directions))
+        caveats = angle.get("caveats") or []
+        if caveats:
+            lines.append("- 证据边界: " + "；".join(caveats))
+    shortlist = report.get("priority_shortlist") or []
+    if shortlist:
+        lines.extend(["", "## 优先级建议"])
+        for item in shortlist:
+            lines.append(f"{item.get('rank')}. {item.get('title')}：{item.get('reason')}")
+    suggested = report.get("suggested_next") or []
+    if suggested:
+        lines.extend(["", "## 下一步补证"])
+        lines.extend(f"- `{command}`" for command in suggested)
+    return "\n".join(lines)
+
+
 def format_workflow_context(report: dict[str, Any], title: str = "观澜研究上下文") -> str:
     """Render a compact context form for agents."""
     mode = str(report.get("mode") or "workflow")
@@ -340,7 +563,125 @@ def format_workflow_context(report: dict[str, Any], title: str = "观澜研究�
         return format_timeline_markdown(report)
     if mode == "dossier":
         return format_dossier_markdown(report)
+    if mode == "yinshen":
+        return format_yinshen_markdown(report)
     return f"# {title}\n\n{report}"
+
+
+def _select_yinshen_lenses(keyword: str, packet: dict[str, Any], *, count: int) -> list[dict[str, Any]]:
+    evidence = _packet_evidence(packet)
+    scored = []
+    for idx, lens in enumerate(_YINSHEN_LENSES):
+        score = _yinshen_lens_score(keyword, evidence, lens)
+        scored.append((score, idx, lens))
+    ordered = [lens for _score, _idx, lens in sorted(scored, key=lambda row: (-row[0], row[1]))]
+    return [dict(lens) for lens in ordered[:count]]
+
+
+def _yinshen_lens_score(keyword: str, evidence: list[Evidence], lens: dict[str, Any]) -> float:
+    text = _collapse_ws(
+        " ".join([keyword] + [_evidence_text(item) + " " + str(item.get("source_type") or "") for item in evidence])
+    ).lower()
+    score = 0.0
+    for kw in lens.get("keywords") or ():
+        if str(kw).lower() in text:
+            score += 2.0
+    roles = set(lens.get("roles") or set())
+    for item in evidence:
+        role = str(item.get("evidence_role") or "")
+        if role in roles:
+            score += 2.5
+        source_type = str(item.get("source_type") or "")
+        if any(str(kw) in source_type for kw in lens.get("keywords") or ()):
+            score += 1.0
+    return score
+
+
+def _yinshen_deep_query(keyword: str, lens: dict[str, Any]) -> str:
+    return _collapse_ws(f"{keyword} {lens.get('query_suffix', '')}")
+
+
+def _yinshen_angle_report(keyword: str, lens: dict[str, Any], packet: dict[str, Any] | None, *, deep_query: str) -> dict[str, Any]:
+    evidence = _compact_evidence(_packet_evidence(packet or {}), limit=6)
+    source_mix = (packet or {}).get("source_mix", {}) if packet else {}
+    return {
+        "id": lens.get("id", ""),
+        "title": lens.get("title", ""),
+        "relation_type": lens.get("relation_type", ""),
+        "rationale": lens.get("why", ""),
+        "deep_query": deep_query,
+        "source_mix": source_mix,
+        "result_count": (packet or {}).get("result_count", len((packet or {}).get("results") or [])) if packet else 0,
+        "results": evidence,
+        "synthesis": _yinshen_angle_synthesis(lens, evidence, source_mix=source_mix),
+        "story_directions": _yinshen_story_directions(keyword, lens),
+        "caveats": _yinshen_caveats(lens, evidence, packet),
+    }
+
+
+def _yinshen_base_summary(keyword: str, packet: dict[str, Any], evidence: list[dict[str, Any]]) -> str:
+    source_mix = packet.get("source_mix") or {}
+    route_plan = packet.get("route_plan") or {}
+    intents = ", ".join(str(item) for item in route_plan.get("primary_intents") or []) or "general"
+    top_titles = "；".join(str(item.get("title") or "") for item in evidence[:3] if item.get("title"))
+    source_text = "；".join(f"{key}: {value}" for key, value in list(source_mix.items())[:4]) or "公开网页和可用垂直来源"
+    if top_titles:
+        return f"`{keyword}` 当前主要由这些材料定义：{top_titles}。路由意图为 {intents}，来源结构以 {source_text} 为主。"
+    return f"`{keyword}` 已建立基础语境；路由意图为 {intents}，下一步应按来源角色继续补强代表材料。"
+
+
+def _yinshen_angle_synthesis(lens: dict[str, Any], evidence: list[dict[str, Any]], *, source_mix: dict[str, Any]) -> str:
+    if evidence:
+        titles = "；".join(str(item.get("title") or "") for item in evidence[:2] if item.get("title"))
+        source_text = "、".join(str(key) for key in list(source_mix.keys())[:3]) or "公开来源"
+        return f"该角度的代表材料集中在 {source_text}，可从 {titles} 切入。"
+    return f"该角度适合作为补证方向，优先补读与「{lens.get('title')}」直接相关的一手来源、专业报道或公开样本。"
+
+
+def _yinshen_story_directions(keyword: str, lens: dict[str, Any]) -> list[str]:
+    title = str(lens.get("title") or "引申角度")
+    relation = str(lens.get("relation_type") or "angle")
+    return [
+        f"把「{keyword}」写成「{title}」解释稿，突出 {relation} 关系。",
+        f"围绕「{keyword}」建立一张来源分层图，区分一手事实、产业叙事和公开样本。",
+    ]
+
+
+def _yinshen_caveats(lens: dict[str, Any], evidence: list[dict[str, Any]], packet: dict[str, Any] | None) -> list[str]:
+    caveats: list[str] = []
+    if not evidence:
+        caveats.append("需要补强代表来源后再写成结论。")
+    roles = {str(item.get("evidence_role") or "") for item in evidence}
+    if roles & {"user_sample", "community_discussion", "developer_discussion", "review", "public_discussion"}:
+        caveats.append("社区和评论只代表公开样本，不外推总体态度。")
+    diagnostics = (packet or {}).get("source_diagnostics") or {}
+    for warning in diagnostics.get("warnings") or []:
+        caveats.append(str(warning))
+    if str(lens.get("id") or "") in {"risk_ethics", "policy_governance"}:
+        caveats.append("涉及规则、风险或责任判断时，优先补官方、法律、标准或权威机构材料。")
+    return _unique(caveats)[:4]
+
+
+def _yinshen_priority_shortlist(angle_reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    ranked = sorted(angle_reports, key=lambda item: (len(item.get("results") or []), int(item.get("result_count") or 0)), reverse=True)
+    output = []
+    for idx, item in enumerate(ranked[:3], start=1):
+        result_count = len(item.get("results") or [])
+        reason = (
+            f"已有 {result_count} 条代表材料，可较快形成选题骨架。"
+            if result_count
+            else "适合作为下一步补证方向，先补强一手来源和专业报道。"
+        )
+        output.append({"rank": idx, "id": item.get("id", ""), "title": item.get("title", ""), "reason": reason})
+    return output
+
+
+def _yinshen_suggested_next(keyword: str, angles: list[dict[str, Any]], *, preset: str, profile: str) -> list[str]:
+    commands = [f"guanlan research {keyword!r} --preset {preset} --profile {profile} --limit 80 --read-top 2"]
+    for angle in angles[:3]:
+        query = str(angle.get("deep_query") or keyword)
+        commands.append(f"guanlan research {query!r} --preset {preset} --profile {profile} --limit 80 --read-top 1 --format context")
+    return _unique(commands)
 
 
 def _subject_query(subject: str, focus: str) -> str:

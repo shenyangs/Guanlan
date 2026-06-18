@@ -25,6 +25,14 @@ class AgentTool:
     service_entrypoint: str = ""
     request_schema: dict[str, Any] = field(default_factory=dict)
     mcp_description: str = ""
+    when_to_use: tuple[str, ...] = ()
+    avoid_when: tuple[str, ...] = ()
+    default_limit: int = 0
+    timeout_budget_seconds: int = 90
+    timeout_budget_ms: int = 90000
+    success_signals: tuple[str, ...] = ()
+    repair_signals: tuple[str, ...] = ()
+    requires_user_authorization: bool = False
 
     def to_dict(self) -> dict[str, object]:
         payload = asdict(self)
@@ -32,6 +40,17 @@ class AgentTool:
         payload["mcp_description"] = self.mcp_description or self.role
         payload["cli_handler"] = self.cli_handler or _DEFAULT_CLI_HANDLERS.get(self.name, "")
         payload["service_entrypoint"] = self.service_entrypoint or _DEFAULT_SERVICE_ENTRYPOINTS.get(self.name, "")
+        payload["default_limit"] = self.default_limit or self.min_default_limit
+        payload["tool_policy"] = {
+            "when_to_use": list(self.when_to_use),
+            "avoid_when": list(self.avoid_when),
+            "default_limit": payload["default_limit"],
+            "timeout_budget_seconds": self.timeout_budget_seconds,
+            "timeout_budget_ms": self.timeout_budget_ms,
+            "success_signals": list(self.success_signals),
+            "repair_signals": list(self.repair_signals),
+            "requires_user_authorization": self.requires_user_authorization,
+        }
         return payload
 
 
@@ -57,7 +76,7 @@ _DEFAULT_CLI_HANDLERS = {
 _DEFAULT_SERVICE_ENTRYPOINTS = {
     "guanlan_status": "guanlan.doctor.check_all",
     "guanlan_capabilities": "guanlan.capabilities.list_capabilities",
-    "guanlan_agent": "guanlan.workflow_decider.build_agent_plan",
+    "guanlan_agent": "guanlan.agent_planner.build_agent_plan_v2",
     "guanlan_search": "guanlan.web.search.search_web",
     "guanlan_route": "guanlan.router.build_route_plan",
     "guanlan_browser_assist_plan": "guanlan.browser_assist.build_browser_assist_plan",
@@ -77,7 +96,41 @@ _DEFAULT_SERVICE_ENTRYPOINTS = {
 CORE_AGENT_TOOLS: tuple[AgentTool, ...] = (
     AgentTool("guanlan_status", ("cli", "mcp", "http"), "stable", "guanlan status", "install_and_runtime_diagnostics", "/health"),
     AgentTool("guanlan_capabilities", ("cli", "mcp"), "stable", "guanlan capabilities", "tool_selection"),
-    AgentTool("guanlan_agent", ("cli", "mcp"), "stable", "guanlan agent", "low_choice_auto_plan"),
+    AgentTool(
+        "guanlan_agent",
+        ("cli", "mcp", "http"),
+        "stable",
+        "guanlan agent",
+        "low_choice_auto_plan_and_review",
+        "/agent",
+        request_schema={
+            "type": "object",
+            "required": ["query"],
+            "properties": {
+                "query": {"type": "string"},
+                "phase": {"type": "string", "enum": ["plan", "review"], "default": "plan"},
+                "observation": {"type": "object"},
+                "mode": {"type": "string", "enum": ["auto", "quick", "deep", "fresh"], "default": "auto"},
+                "preset": {"type": "string", "default": "general"},
+                "scope": {"type": "string"},
+                "site": {"type": "string"},
+                "sites": {"type": "array", "items": {"type": "string"}},
+                "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
+                "limit": {"type": "integer", "default": 80},
+                "read_top": {"type": "integer", "minimum": 0, "maximum": 2},
+                "max_commands": {"type": "integer", "default": 5},
+                "format": {"type": "string", "enum": ["markdown", "json"], "default": "json"},
+            },
+        },
+        mcp_description=(
+            "Return an Agent Planner v2 decision card, or review a Guanlan observation and return "
+            "next_decision=answer|continue|repair|ask_user|authorize_browser|stop."
+        ),
+        when_to_use=("unsure which Guanlan capability to run", "after a Guanlan result needs quality review"),
+        avoid_when=("simple known command path is obvious",),
+        success_signals=("primary_command present", "next_decision=answer in review"),
+        repair_signals=("empty_results", "small_limit", "read_unusable", "research_failed", "official_only"),
+    ),
     AgentTool("guanlan_search", ("cli", "mcp", "http"), "stable", "guanlan search", "broad_search", "/search", 80),
     AgentTool("guanlan_route", ("cli", "mcp", "http"), "stable", "guanlan route", "source_routing", "/route", 80),
     AgentTool("guanlan_browser_assist_plan", ("cli", "mcp", "http"), "stable", "guanlan browser-assist plan", "browser_visible_evidence_plan", "/browser-assist/plan"),

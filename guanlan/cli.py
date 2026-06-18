@@ -60,6 +60,7 @@ from guanlan.commands.research import (
     _cmd_research,
     _cmd_sources,
     _cmd_timeline,
+    _cmd_yinshen,
 )
 from guanlan.commands.search import _cmd_agent, _cmd_route, _cmd_search, _cmd_workflow
 from guanlan.commands.watch import _cmd_watch_intents
@@ -280,6 +281,10 @@ def main():
     # ── agent ──
     p_agent = sub.add_parser("agent", help="Auto-plan the smallest safe Guanlan command chain for agents")
     p_agent.add_argument("query", nargs="?", default="", help="User need to turn into an agent command plan")
+    p_agent.add_argument("--phase", choices=["plan", "review"], default="plan",
+                         help="plan returns a decision card; review inspects a Guanlan observation and returns next_decision")
+    p_agent.add_argument("--observation-json", default="",
+                         help="JSON string or file path with a Guanlan result/error summary for --phase review")
     p_agent.add_argument("--mode", choices=["auto", "quick", "deep", "fresh"], default="auto",
                          help="Planning bias: auto keeps defaults, quick stays light, deep investigates, fresh adds hot signals")
     p_agent.add_argument("--preset", default="general", help="Optional research preset context")
@@ -578,6 +583,28 @@ def main():
     p_dossier.add_argument("--select-top", type=int, default=10, help="Representative evidence items")
     p_dossier.add_argument("--format", choices=["markdown", "json", "context"], default="markdown", help="Output format")
     p_dossier.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+
+    # ── yinshen ──
+    p_yinshen = sub.add_parser(
+        "yinshen",
+        aliases=["angle"],
+        help="Expand one keyword into evidence-backed media angles",
+    )
+    p_yinshen.add_argument("keyword", nargs="?", default="", help="Keyword or topic to expand")
+    p_yinshen.add_argument("--preset", default="general", help="Research preset")
+    p_yinshen.add_argument("--profile", choices=VALID_PROFILES, default="china", help="Region profile")
+    p_yinshen.add_argument("--limit", type=int, default=DEFAULT_RESEARCH_LIMIT, help="Base search pool size")
+    p_yinshen.add_argument("--read-top", type=int, default=0, help="Representative URLs to read for the base keyword")
+    p_yinshen.add_argument("--angle-limit", type=int, default=None, help="Search pool per extension angle; defaults to --limit")
+    p_yinshen.add_argument("--angle-read-top", type=int, default=0, help="Representative URLs to read per angle")
+    p_yinshen.add_argument("--angles", type=int, default=5, help="Number of extension angles, clamped to 1-8")
+    p_yinshen.add_argument("--search-backend", default="auto", help="Search backend")
+    p_yinshen.add_argument("--read-backend", choices=["auto", "jina", "direct"], default="auto", help="Read backend")
+    p_yinshen.add_argument("--max-read-chars", type=int, default=None, help="Maximum characters per read excerpt")
+    p_yinshen.add_argument("--select-top", type=int, default=12, help="Representative base evidence items")
+    p_yinshen.add_argument("--plan-only", action="store_true", help="Build the angle map and queries without running per-angle deep searches")
+    p_yinshen.add_argument("--format", choices=["markdown", "json", "context"], default="markdown", help="Output format")
+    p_yinshen.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
 
     # ── sources ──
     p_sources = sub.add_parser("sources", help="Inspect Guanlan's read-only source registry")
@@ -1259,6 +1286,8 @@ def _dispatch_command(args):
         _cmd_timeline(args)
     elif args.command == "dossier":
         _cmd_dossier(args)
+    elif args.command in {"yinshen", "angle"}:
+        _cmd_yinshen(args)
     elif args.command == "sources":
         _cmd_sources(args)
     elif args.command in {"prompt", "context"}:

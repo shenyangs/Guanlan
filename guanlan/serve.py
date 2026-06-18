@@ -53,6 +53,36 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 "tools": list_agent_tools(),
                 "boundary": "只读工具面登记表；用于 Agent/HTTP/MCP 集成自检，不触发搜索或授权。",
             }
+        if method == "POST" and route == "/agent":
+            from guanlan.agent_planner import (
+                build_agent_plan_v2,
+                format_agent_plan_v2_markdown,
+                review_agent_observation,
+            )
+
+            common_kwargs = {
+                "mode": str(payload.get("mode") or "auto"),
+                "preset": None if payload.get("preset") in {None, "", "general"} else str(payload.get("preset")),
+                "scope": payload.get("scope") or None,
+                "site": payload.get("site") or None,
+                "sites": payload.get("sites") if isinstance(payload.get("sites"), list) else None,
+                "profile": payload.get("profile") or "china",
+                "limit": _int(payload.get("limit"), DEFAULT_SEARCH_LIMIT),
+                "read_top": _optional_int(payload.get("read_top")),
+                "max_commands": _int(payload.get("max_commands"), 5),
+            }
+            if str(payload.get("phase") or "plan") == "review":
+                plan = review_agent_observation(
+                    str(payload.get("query", "")).strip(),
+                    payload.get("observation") or {},
+                    **common_kwargs,
+                )
+            else:
+                plan = build_agent_plan_v2(str(payload.get("query", "")).strip(), **common_kwargs)
+            if str(payload.get("format") or "json").lower() == "markdown":
+                plan["rendered"] = format_agent_plan_v2_markdown(plan)
+                plan["rendered_format"] = "markdown"
+            return 200, plan
         if method == "POST" and route == "/route":
             from guanlan.router import build_route_plan
 
@@ -107,6 +137,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 task_goal=str(payload.get("task_goal") or ""),
             )
         if method == "POST" and route == "/search":
+            from guanlan.agent_planner import build_agent_followup
             from guanlan.web.search import search_web
 
             results = search_web(
@@ -118,8 +149,16 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 profile=payload.get("profile") or "china",
                 trace=bool(payload.get("trace")),
             )
-            return 200, {"results": results}
+            return 200, {
+                "results": results,
+                "agent_followup": build_agent_followup(
+                    "guanlan_search",
+                    {"results": results, "limit": _int(payload.get("limit"), DEFAULT_SEARCH_LIMIT)},
+                    query=str(payload.get("query", "")),
+                ),
+            }
         if method == "POST" and route == "/research":
+            from guanlan.agent_planner import build_agent_followup
             from guanlan.web.research import build_research_packet
 
             packet = build_research_packet(
@@ -140,6 +179,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 advisor=bool(payload.get("advisor", False)),
                 max_search_jobs=1,
             )
+            packet["agent_followup"] = build_agent_followup("guanlan_research", packet, query=str(payload.get("query", "")))
             return 200, packet
         if method == "POST" and route == "/compare":
             from guanlan.research_workflows import build_compare_report
@@ -218,6 +258,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 "prompt": format_research_prompt(packet, style=str(payload.get("style") or "deep")),
             }
         if method == "POST" and route == "/read":
+            from guanlan.agent_planner import build_agent_followup
             from guanlan.web.read import read_url
 
             content = read_url(
@@ -227,7 +268,14 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 fallback_search=bool(payload.get("fallback_search", True)),
                 profile=payload.get("profile") or "china",
             )
-            return 200, {"url": payload.get("url", ""), "content": content}
+            return 200, {
+                "url": payload.get("url", ""),
+                "content": content,
+                "agent_followup": build_agent_followup(
+                    "guanlan_read",
+                    {"url": payload.get("url", ""), "content": content},
+                ),
+            }
         if method == "GET" and route == "/hotnews":
             from guanlan.hotnews import (
                 build_hotnews_brief,
@@ -279,6 +327,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
             )
             return 200, {"items": compact_feed_items(items) if _bool(query_args.get("compact")) else items}
         if method == "POST" and route == "/daily":
+            from guanlan.agent_planner import build_agent_followup
             from guanlan.daily import (
                 build_daily_report,
                 format_daily_context,
@@ -318,6 +367,7 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 history_path=str(payload.get("history_path") or ""),
                 compare_days=_int(payload.get("compare_days"), 0),
             )
+            report["agent_followup"] = build_agent_followup("guanlan_daily", report, query=str(payload.get("query", "")))
             output_format = str(payload.get("format") or "json").lower()
             if output_format == "markdown":
                 report["rendered"] = format_daily_markdown(report)
@@ -352,7 +402,7 @@ def run_server(host: str = "127.0.0.1", port: int = 8765, token: str = "") -> No
     server = ThreadingHTTPServer((host, int(port)), _GuanlanHandler)
     server.guanlan_token = token or os.environ.get("GUANLAN_SERVE_TOKEN", "")
     print(f"观澜只读服务启动: http://{host}:{port}")
-    print("Endpoints: /health, /tools, /sources, /route, /browser-assist/plan, /search, /research, /compare, /timeline, /dossier, /read, /hotnews, /feeds, /daily, /archive/search")
+    print("Endpoints: /health, /tools, /sources, /agent, /route, /browser-assist/plan, /search, /research, /compare, /timeline, /dossier, /read, /hotnews, /feeds, /daily, /archive/search")
     if server.guanlan_token:
         print("Access: token required via Authorization: Bearer <token> or X-Guanlan-Token")
     server.serve_forever()

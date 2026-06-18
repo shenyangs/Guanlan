@@ -169,11 +169,29 @@ class TestCLI:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         commands = [item["command"] for item in data["agent_next_steps"]]
+        assert data["schema_version"] == "agent_plan_v2"
+        assert data["task_model"]["time_sensitivity"] == "today"
+        assert "feeds" in data["capability_selection"]["recommended_chain"]
         assert data["primary_command"] == "guanlan hotnews today --limit 80 --trends"
         assert "guanlan hotnews today --limit 80 --trends" in commands
         assert "guanlan feeds curated --category ai --limit 80" in commands
         assert any("--scope wps_office" in command for command in commands)
         assert not any(command.startswith("guanlan research") for command in commands)
+
+    def test_agent_command_review_returns_next_decision_json(self, capsys):
+        observation = '{"results": [], "limit": 5}'
+        with patch(
+            "sys.argv",
+            ["guanlan", "agent", "丙烷脱氢 PDH 中国 2024", "--phase", "review", "--observation-json", observation, "--json"],
+        ):
+            main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["schema_version"] == "agent_review_v1"
+        assert data["next_decision"] == "repair"
+        assert "small_limit" in data["signals"]
+        assert any("--limit 80" in command for command in data["next_commands"])
 
     def test_route_json_includes_workflow_decision(self, capsys):
         with patch("sys.argv", ["guanlan", "route", "人工智能 政策 最新", "--json"]):

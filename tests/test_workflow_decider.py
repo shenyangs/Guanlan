@@ -146,6 +146,16 @@ def test_agent_plan_tech_latest_keeps_hotnews_feeds_and_tech_research():
     assert not any(command.startswith("guanlan research") for command in commands)
 
 
+def test_agent_plan_ai_model_comparison_includes_official_site_searches():
+    plan = build_agent_plan("好像这次 GLM 5.2 的声量比 kimi 2.7 高，前者强在哪儿", profile="china")
+    commands = [item.command for item in plan.recommended_commands]
+
+    assert "--scope tech_dev" in plan.primary_command
+    assert any("--site zhipuai.cn" in command for command in commands)
+    assert any("--site moonshot.cn" in command for command in commands)
+    assert any("feeds curated --category ai" in command for command in commands)
+
+
 def test_agent_plan_finance_risk_keeps_stock_and_finance_research():
     plan = build_agent_plan("宁德时代 股价 财报 公告 最近风险", profile="china")
     commands = [item.command for item in plan.recommended_commands]

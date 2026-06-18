@@ -168,6 +168,46 @@ def test_dossier_report_groups_evidence_sections(monkeypatch):
     assert "观澜研究档案" in research_workflows.format_dossier_markdown(report)
 
 
+def test_yinshen_report_expands_keyword_into_angles(monkeypatch):
+    calls = []
+
+    def fake_build(query, **kwargs):
+        calls.append((query, kwargs))
+        return _packet(query)
+
+    monkeypatch.setattr(research_workflows, "build_research_packet", fake_build)
+
+    report = research_workflows.build_yinshen_report("AI写代码", angles=5, limit=80, angle_read_top=0)
+    rendered = research_workflows.format_yinshen_markdown(report)
+
+    assert report["mode"] == "yinshen"
+    assert report["keyword"] == "AI写代码"
+    assert len(report["angles"]) == 5
+    assert len(calls) == 6
+    assert calls[0][0] == "AI写代码"
+    assert all("deep_query" in angle for angle in report["angles"])
+    assert "观澜引申" in rendered
+    assert "引申角度总览" in rendered
+    assert "没有搜到" not in rendered
+
+
+def test_yinshen_plan_only_skips_angle_deep_search(monkeypatch):
+    calls = []
+
+    def fake_build(query, **kwargs):
+        calls.append((query, kwargs))
+        return _packet(query)
+
+    monkeypatch.setattr(research_workflows, "build_research_packet", fake_build)
+
+    report = research_workflows.build_yinshen_report("短剧出海", angles=3, plan_only=True)
+
+    assert report["plan_only"] is True
+    assert len(calls) == 1
+    assert len(report["angles"]) == 3
+    assert all(angle["deep_query"].startswith("短剧出海") for angle in report["angles"])
+
+
 def test_cli_compare_outputs_json(capsys, monkeypatch):
     monkeypatch.setattr(
         "guanlan.research_workflows.build_compare_report",
@@ -239,3 +279,17 @@ def test_cli_timeline_and_dossier_markdown(capsys, monkeypatch):
     with patch("sys.argv", ["guanlan", "dossier", "某公司"]):
         main()
     assert "观澜研究档案" in capsys.readouterr().out
+
+
+def test_cli_yinshen_outputs_json(capsys, monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.research_workflows.build_yinshen_report",
+        lambda keyword, **_kwargs: {"mode": "yinshen", "keyword": keyword, "angles": [], "priority_shortlist": []},
+    )
+
+    with patch("sys.argv", ["guanlan", "yinshen", "AI写代码", "--json"]):
+        main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "yinshen"
+    assert payload["keyword"] == "AI写代码"

@@ -131,6 +131,21 @@ CAPABILITIES: tuple[Capability, ...] = (
         examples=["查股票风险该怎么跑？", "高校导师清单应该按什么流程搜？"],
     ),
     Capability(
+        id="yinshen",
+        name="关键词引申",
+        description="先建立关键词的公开证据语境，再扩展出 5-8 个媒体友好的延展角度，并为每个角度生成深搜路径、代表材料、选题方向和补证边界。",
+        when_to_use="用户给一个关键词，希望找关联选题、衍生角度、专题地图、公众号/媒体策划方向，或把一个词扩展成多条可继续研究的路线时。",
+        cli=[
+            "guanlan yinshen \"AI写代码\" --limit 80 --angles 6",
+            "guanlan yinshen \"AI陪伴产品\" --preset reputation --format context",
+            "guanlan angle \"梅西帽子戏法\" --profile china --limit 80 --angle-read-top 1",
+            "guanlan yinshen \"短剧出海\" --plan-only --json",
+        ],
+        mcp=None,
+        boundary="引申不是凭空脑暴；它基于公开证据生成角度。社交和热榜只作样本线索，关键事实仍需 read/research 回读原文。",
+        examples=["围绕这个词帮我找 6 个选题角度。", "把这个关键词扩展成专题策划地图。"],
+    ),
+    Capability(
         id="watch",
         name="长期意图雷达",
         description="把用户的长期关注点保存成本地 standing intent，按需 fire 一次，复用 Guanlan 的 route/search/feeds/archive 能力发现新线索。",
