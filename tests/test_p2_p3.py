@@ -31,7 +31,7 @@ def test_serve_dispatch_health_and_route():
     status, tools = serve.dispatch_request("GET", "/tools")
     assert status == 200
     tool_names = {tool["name"] for tool in tools["tools"]}
-    assert {"guanlan_agent", "guanlan_search", "guanlan_research", "guanlan_daily", "guanlan_archive_search", "guanlan_browser_assist_plan", "guanlan_browser_assist_run"} <= tool_names
+    assert {"guanlan_agent", "guanlan_search", "guanlan_map", "guanlan_research", "guanlan_daily", "guanlan_archive_search", "guanlan_browser_assist_plan", "guanlan_browser_assist_run"} <= tool_names
     agent_tool = next(tool for tool in tools["tools"] if tool["name"] == "guanlan_agent")
     assert agent_tool["http_route"] == "/agent"
     assert "tool_policy" in agent_tool
@@ -182,6 +182,25 @@ def test_serve_dispatch_feeds_uses_curated(monkeypatch):
     assert status == 200
     assert body["items"][0]["title"] == "A"
     assert body["items"][0]["limit"] == 3
+
+
+def test_serve_dispatch_read_returns_read_evidence(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.web.read.read_url_with_trace",
+        lambda *_args, **_kwargs: {
+            "url": "https://example.com",
+            "content": "# Article",
+            "quality_report": {"usable": True},
+            "structured": {"title": "Article"},
+            "read_evidence": {"schema_version": "read_evidence_v1", "usable": True},
+        },
+    )
+
+    status, body = serve.dispatch_request("POST", "/read", {"url": "https://example.com"})
+
+    assert status == 200
+    assert body["read_evidence"]["schema_version"] == "read_evidence_v1"
+    assert body["structured"]["title"] == "Article"
 
 
 def test_serve_dispatch_daily_uses_daily_builder(monkeypatch):

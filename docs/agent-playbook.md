@@ -84,6 +84,16 @@ Guanlan 内部维护了一个只读搜索入口目录，用来解释 Baidu、Bin
 
 显式年份和年份范围是强时间窗。`2024`、`2024-2025`、`2026年` 这类约束下，窗口外材料只放在背景，不要进入主时间线或被写成“最新进展”。
 
+### 已知站点入口发现
+
+当用户给出明确网站/域名，并要求“在这个站里找文档、价格、公告、API、联系方式、下载页”时，先用：
+
+```bash
+guanlan map "https://example.com" --query "pricing docs" --limit 80 --read-top 2
+```
+
+`map` 只从公开 `robots.txt`、sitemap XML 和页面链接里发现候选 URL；它不是全网搜索，也不是规模化爬取。加 `--read-top 2` 时会顺手读取少量代表页并返回 `read_pack.readings` / `readings` 质量报告；回答只能引用 `read_evidence_v1.usable=true` 的正文，未读 URL 仍只是入口线索。没有可用 `readings` 时，必须继续 `guanlan read "URL" --quality-report` 后再引用事实。
+
 ### 2-step
 
 适用于：结果已经可用，只需要核正文。

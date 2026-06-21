@@ -134,6 +134,38 @@ def _tool_definitions() -> list[dict]:
             },
         },
         {
+            "name": "guanlan_map",
+            "description": (
+                "Discover public candidate URLs inside a known site using robots.txt sitemap hints, sitemap XML, "
+                "and page links. Use this before guanlan_read when the user knows a site/domain and needs docs, "
+                "pricing, announcements, contact pages, or other site-local entrypoints. This is URL discovery, "
+                "not whole-web search; set read_top=1-5 to read representative pages with quality reports."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                    "url": {"type": "string"},
+                    "query": {"type": "string", "default": ""},
+                    "limit": {
+                        "type": "integer",
+                        "default": DEFAULT_SEARCH_LIMIT,
+                        "minimum": 1,
+                        "maximum": MAX_SEARCH_LIMIT,
+                    },
+                    "include_subdomains": {"type": "boolean", "default": False},
+                    "sitemap": {"type": "string", "enum": ["auto", "only", "skip"], "default": "auto"},
+                    "include_patterns": {"type": "array", "items": {"type": "string"}},
+                    "exclude_patterns": {"type": "array", "items": {"type": "string"}},
+                    "timeout": {"type": "integer", "default": 8, "minimum": 1, "maximum": 30},
+                    "read_top": {"type": "integer", "default": 0, "minimum": 0, "maximum": 5},
+                    "read_backend": {"type": "string", "enum": ["auto", "jina", "direct"], "default": "auto"},
+                    "max_read_chars": {"type": "integer", "default": 4000, "minimum": 1, "maximum": 20000},
+                    "format": {"type": "string", "enum": ["markdown", "context", "json"], "default": "context"},
+                },
+            },
+        },
+        {
             "name": "guanlan_stock",
             "description": (
                 "Fetch structured public stock, ETF, fund, and market data without reading dynamic finance pages: quote/NAV, detail, "
@@ -834,6 +866,37 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         text = format_search_context(results, title=f"观澜搜索上下文 / {args.get('query', '')}")
         return text + (f"\n\n{followup_text}" if followup_text else "")
 
+    if name == "guanlan_map":
+        from guanlan.site_map import (
+            build_site_map,
+            format_site_map_context,
+            format_site_map_markdown,
+        )
+
+        packet = build_site_map(
+            str(args.get("url", "")).strip(),
+            query=str(args.get("query") or ""),
+            limit=int(args.get("limit") or DEFAULT_SEARCH_LIMIT),
+            include_subdomains=bool(args.get("include_subdomains", False)),
+            sitemap=str(args.get("sitemap") or "auto"),
+            include_patterns=[str(item) for item in args.get("include_patterns", [])]
+            if isinstance(args.get("include_patterns"), list)
+            else [],
+            exclude_patterns=[str(item) for item in args.get("exclude_patterns", [])]
+            if isinstance(args.get("exclude_patterns"), list)
+            else [],
+            timeout=max(int(args.get("timeout") or 8), 1),
+            read_top=max(min(int(args.get("read_top") or 0), 5), 0),
+            read_backend=str(args.get("read_backend") or "auto"),
+            max_read_chars=max(min(int(args.get("max_read_chars") or 4000), 20000), 1),
+        )
+        output_format = str(args.get("format") or "context")
+        if output_format == "json":
+            return packet
+        if output_format == "markdown":
+            return format_site_map_markdown(packet)
+        return format_site_map_context(packet)
+
     if name == "guanlan_stock":
         from guanlan.stock_cli import run_stock_tool
 
@@ -984,8 +1047,20 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
 
     if name == "guanlan_read":
         from guanlan.agent_planner import build_agent_followup, format_agent_followup_context
-        from guanlan.web.read import read_url
+        from guanlan.web.read import read_url, read_url_with_trace
 
+        if str(args.get("format") or "raw") == "json":
+            packet = read_url_with_trace(
+                str(args.get("url", "")).strip(),
+                max_chars=int(args["max_chars"]) if args.get("max_chars") else None,
+                backend=str(args.get("backend") or "auto"),
+                fallback_search=bool(args.get("fallback_search", True)),
+                fallback_limit=int(args.get("fallback_limit") or DEFAULT_READ_FALLBACK_LIMIT),
+                profile=args.get("profile") or "china",
+                cache_ttl=int(args.get("cache_ttl") or 0),
+            )
+            packet["agent_followup"] = build_agent_followup("guanlan_read", packet)
+            return packet
         content = read_url(
             str(args.get("url", "")).strip(),
             max_chars=int(args["max_chars"]) if args.get("max_chars") else None,
@@ -996,8 +1071,6 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             cache_ttl=int(args.get("cache_ttl") or 0),
         )
         followup = build_agent_followup("guanlan_read", {"url": str(args.get("url", "")).strip(), "content": content})
-        if str(args.get("format") or "raw") == "json":
-            return {"url": str(args.get("url", "")).strip(), "content": content, "agent_followup": followup}
         if str(args.get("format") or "raw") == "context":
             followup_text = format_agent_followup_context(followup)
             return content + (f"\n\n{followup_text}" if followup_text else "")

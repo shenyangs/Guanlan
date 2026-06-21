@@ -71,6 +71,21 @@ CAPABILITIES: tuple[Capability, ...] = (
         examples=["这个问题该去哪搜？", "帮我区分官方、媒体和用户评价。"],
     ),
     Capability(
+        id="site_map",
+        name="站点入口发现",
+        description="从已知站点的 robots.txt、sitemap XML 和公开页面链接里发现候选 URL，并可读取少量代表页质量报告。",
+        when_to_use="用户给出明确网站/域名，并想在站内找文档、价格、公告、API、联系方式、下载页或政策页入口时。",
+        cli=[
+            "guanlan map \"https://example.com\" --query \"pricing docs\" --limit 80 --read-top 2",
+            "guanlan map \"docs.example.com\" --sitemap only --format context",
+            "guanlan map \"example.com\" --include-subdomains --include \"*/docs/*\" --json",
+        ],
+        mcp="guanlan_map",
+        status="experimental",
+        boundary="只做公开 URL 发现和少量代表页读取；不是全网搜索、不是规模化爬取。只引用 readings 中 usable=true 的正文，未读 URL 不能当事实证据。",
+        examples=["在这个官网里找 API 文档。", "帮我找这个站点的价格页和更新日志。"],
+    ),
+    Capability(
         id="workflow",
         name="轻重分流",
         description="判断一个任务应保持轻量 search/read，还是升级到 route/research/hotnews/feeds/compare/timeline/dossier/investigate。",

@@ -188,4 +188,40 @@ def _cmd_search(args):
         if args.source_chart:
             print(format_source_chart(results))
 
-__all__ = ['_cmd_route', '_cmd_workflow', '_cmd_agent', '_cmd_search']
+
+def _cmd_map(args):
+    """Discover public URLs inside a known site for follow-up reads."""
+
+    from guanlan.site_map import build_site_map, format_site_map_context, format_site_map_markdown
+
+    if not args.url:
+        print("Error: url is required", file=sys.stderr)
+        sys.exit(2)
+    try:
+        packet = build_site_map(
+            args.url,
+            query=args.query or "",
+            limit=max(args.limit, 1),
+            include_subdomains=bool(args.include_subdomains),
+            sitemap=args.sitemap,
+            include_patterns=list(args.include_patterns or []),
+            exclude_patterns=list(args.exclude_patterns or []),
+            timeout=max(args.timeout, 1),
+            read_top=max(min(int(args.read_top or 0), 5), 0),
+            read_backend=args.read_backend,
+            max_read_chars=max(args.max_read_chars, 1),
+        )
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    output_format = "json" if args.json else args.format
+    if output_format == "json":
+        print(json.dumps(packet, ensure_ascii=False, indent=2))
+    elif output_format == "context":
+        print(format_site_map_context(packet))
+    else:
+        print(format_site_map_markdown(packet))
+
+
+__all__ = ['_cmd_route', '_cmd_workflow', '_cmd_agent', '_cmd_search', '_cmd_map']

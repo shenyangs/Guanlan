@@ -43,7 +43,7 @@ from guanlan.claim_ledger import (
 )
 from guanlan.limits import (
     DEFAULT_FEEDS_LIMIT,
-    DEFAULT_READ_FALLBACK_LIMIT,
+    DEFAULT_READ_FALLBACK_LIMIT,  # noqa: F401 - compatibility export for guanlan.webtools
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
 )
@@ -4824,29 +4824,21 @@ def build_research_packet(
         search_errors.extend(feed_errors)
     if feed_results:
         results = _merge_ranked_result_dicts(results + feed_results, limit=effective_limit)
-    readings: list[dict[str, Any]] = []
-    for item in _select_reading_candidates(results, effective_read_top):
-        try:
-            content = read_url(
-                item["url"],
-                max_chars=effective_max_read_chars,
-                backend=read_backend,
-                fallback_search=True,
-                fallback_limit=DEFAULT_READ_FALLBACK_LIMIT,
-                profile=effective_profile,
-            )
-            read_quality = assess_read_quality(content)
-            readings.append(
-                _reading_record(
-                    item,
-                    status="ok",
-                    content=content,
-                    read_quality=read_quality,
-                    quality_report=build_read_quality_report(content, url=str(item.get("url", "")), quality=read_quality),
-                )
-            )
-        except Exception as e:
-            readings.append(_reading_record(item, status="error", error=str(e)))
+    selected_evidence = _select_representative_evidence(results, effective_select_top)
+    from guanlan.read_evidence import build_representative_read_pack
+
+    read_pack = build_representative_read_pack(
+        selected_evidence + results,
+        read_top=effective_read_top,
+        read_backend=read_backend,
+        max_read_chars=effective_max_read_chars,
+        profile=effective_profile or "china",
+        cache_ttl=max(cache_ttl, 0),
+        fallback_search=True,
+        source="research",
+        max_read_top=5,
+    )
+    readings = list(read_pack.get("readings") or [])
 
     source_diagnostics = build_source_diagnostics(results, route_plan=route_plan.to_dict())
     freshness_guard = build_freshness_guard(results, route_plan=route_plan.to_dict(), recency=recency)
@@ -4879,8 +4871,9 @@ def build_research_packet(
         "search_errors": search_errors,
         "result_groups": result_groups,
         "results": results,
-        "selected_evidence": _select_representative_evidence(results, effective_select_top),
+        "selected_evidence": selected_evidence,
         "readings": readings,
+        "read_pack": read_pack,
         "read_quality_summary": _read_quality_summary(readings),
         "guidance": list(preset_config.get("guidance", [])) + [
             *(

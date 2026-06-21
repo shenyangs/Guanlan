@@ -122,7 +122,7 @@ def read_url_with_trace(
                 quality=quality,
                 trace=packet["trace"],
             )
-            return packet
+            return _attach_read_evidence(packet)
 
     backend = (backend or "auto").lower()
     errors: list[str] = []
@@ -251,6 +251,16 @@ def read_url_with_trace(
         )
     packet = {"url": url, "content": text, "quality": quality, "trace": trace_payload}
     packet["quality_report"] = build_read_quality_report(text, url=url, quality=quality, trace=trace_payload)
+    return _attach_read_evidence(packet)
+
+
+def _attach_read_evidence(packet: dict[str, Any]) -> dict[str, Any]:
+    from guanlan.read_evidence import build_read_evidence, build_structured_page
+
+    content = str(packet.get("content") or "")
+    structured = build_structured_page(content, url=str(packet.get("url") or ""))
+    packet["structured"] = structured
+    packet["read_evidence"] = build_read_evidence(read_packet=packet, content=content)
     return packet
 
 

@@ -325,8 +325,9 @@ def build_daily_report(
     items = _select_daily_items(ranked_items, limit=effective_limit)
     overflow_items = _build_daily_overflow_items(ranked_items, selected_items=items, limit=effective_overflow_limit, query=report_query)
     read_evidence: list[dict[str, Any]] = []
+    read_pack: dict[str, Any] = {}
     if read_top and int(read_top) > 0:
-        read_evidence = _enrich_daily_reads(
+        read_evidence, read_pack = _enrich_daily_reads(
             items,
             read_top=int(read_top),
             read_backend=read_backend,
@@ -334,6 +335,7 @@ def build_daily_report(
             profile=profile or "china",
             cache_ttl=max(int(cache_ttl or 0), 0),
         )
+        read_summary = dict(read_pack.get("summary") or {})
         read_errors = [row for row in read_evidence if row.get("status") == "error"]
         read_status = "skipped"
         if read_evidence:
@@ -345,9 +347,9 @@ def build_daily_report(
                 read_status = "ok"
         diagnostics["read"] = {
             "status": read_status,
-            "count": len([row for row in read_evidence if row.get("status") in {"ok", "weak"}]),
+            "count": int(read_summary.get("usable_count") or 0),
             "error": "; ".join(str(row.get("error") or "") for row in read_errors if row.get("error"))[:500],
-            "limit": int(read_top),
+            "limit": int(read_summary.get("requested") or read_top),
             "backend": read_backend or "auto",
             "max_chars": max_read_chars,
         }
@@ -424,6 +426,7 @@ def build_daily_report(
         "source_health": source_health,
         "sections": sections,
         "read_evidence": read_evidence,
+        "read_pack": read_pack,
         "editorial_health": editorial_health,
         "hotnews_brief": hotnews_brief,
         "trend_report": trend_report,
@@ -548,7 +551,10 @@ def format_daily_markdown(report: dict[str, Any]) -> str:
                 status = str(row.get("status") or "")
                 summary = str(row.get("summary") or "")
                 title_text = str(row.get("title") or "")
-                lines.append(f"- {title_text}（{status}）: {summary}")
+                if row.get("usable"):
+                    lines.append(f"- {title_text}（{status}）: {summary}")
+                else:
+                    lines.append(f"- {title_text}（{status}，弱线索）: {summary or '正文不足，需补读。'}")
 
         lines.extend(["", "## 风险与争议"])
         risk_stories = [
@@ -646,7 +652,7 @@ def format_daily_markdown(report: dict[str, Any]) -> str:
                     lines.append("")
                     lines.append(f"**事实锚点**：{item.get('summary')}")
                 read_evidence = item.get("read_evidence") or {}
-                if read_evidence.get("summary"):
+                if read_evidence.get("usable") and read_evidence.get("summary"):
                     lines.append("")
                     lines.append(f"**原文回读**：{read_evidence.get('summary')}")
                 why = _daily_story_why_it_matters(item)
@@ -795,7 +801,7 @@ def format_daily_context(report: dict[str, Any]) -> str:
             if row.get("summary"):
                 lines.append(f"    summary={row.get('summary')}")
             read_evidence = row.get("read_evidence") or {}
-            if read_evidence.get("summary"):
+            if read_evidence.get("usable") and read_evidence.get("summary"):
                 lines.append(f"    read_summary={read_evidence.get('summary')}")
             if read_evidence.get("status"):
                 lines.append(
@@ -1644,9 +1650,9 @@ def _enrich_daily_reads(
     max_read_chars: int,
     profile: str,
     cache_ttl: int,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Read a small representative set of daily URLs and attach summaries."""
-    from guanlan.web.read import read_url_with_trace
+    from guanlan.read_evidence import build_representative_read_pack
 
     candidates = _daily_read_candidates(items, limit=max(int(read_top or 0), 0))
     by_key = {
@@ -1657,52 +1663,30 @@ def _enrich_daily_reads(
         ): item
         for item in items
     }
+    read_pack = build_representative_read_pack(
+        candidates,
+        read_top=max(int(read_top or 0), 0),
+        read_backend=read_backend or "auto",
+        max_read_chars=max(int(max_read_chars or 1800), 300),
+        profile=profile or "china",
+        cache_ttl=max(int(cache_ttl or 0), 0),
+        fallback_search=False,
+        source="daily",
+        max_read_top=3,
+    )
     evidence: list[dict[str, Any]] = []
-    for row in candidates:
+    for row in list(read_pack.get("readings") or []):
         url = str(row.get("url") or "")
         key = _daily_fingerprint(title=str(row.get("title") or ""), url=url, source=str(row.get("source") or ""))
-        try:
-            packet = read_url_with_trace(
-                url,
-                max_chars=max(int(max_read_chars or 1800), 300),
-                backend=read_backend or "auto",
-                fallback_search=False,
-                profile=profile or "china",
-                cache_ttl=max(int(cache_ttl or 0), 0),
-                use_cache=bool(cache_ttl and cache_ttl > 0),
-            )
-            content = str(packet.get("content") or "")
-            quality_report = dict(packet.get("quality_report") or {})
-            trace = dict(packet.get("trace") or {})
-            score = int(quality_report.get("score") or 0)
-            status = "ok" if quality_report.get("usable") or score >= 55 else "weak"
-            summary = _daily_read_summary(content, title=str(row.get("title") or ""))
-            record = {
-                "status": status,
-                "title": str(row.get("title") or ""),
-                "url": url,
-                "summary": summary,
-                "chars": len(content),
-                "score": score,
-                "label": str(quality_report.get("label") or ""),
-                "selected_backend": str(trace.get("selected_backend") or ""),
-            }
-        except Exception as exc:
-            record = {
-                "status": "error",
-                "title": str(row.get("title") or ""),
-                "url": url,
-                "summary": "",
-                "chars": 0,
-                "score": 0,
-                "label": "",
-                "selected_backend": read_backend or "auto",
-                "error": str(exc),
-            }
+        record = dict(row)
+        record["summary"] = _daily_read_summary(str(row.get("content") or ""), title=str(row.get("title") or ""))
+        record["chars"] = int(row.get("content_chars") or 0)
+        record["score"] = int((row.get("quality_report") or {}).get("score") or row.get("score") or 0)
+        record["label"] = str((row.get("quality_report") or {}).get("label") or row.get("label") or "")
         evidence.append(record)
         if key and key in by_key:
             by_key[key]["read_evidence"] = record
-    return evidence
+    return evidence, read_pack
 
 
 def _daily_read_candidates(items: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:

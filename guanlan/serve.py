@@ -2,7 +2,7 @@
 """Read-only local HTTP service for Guanlan.
 
 The service is intentionally local-first and conservative: by default it binds
-to 127.0.0.1 and exposes only search/read/research/workflow/hotnews/feeds/daily/archive lookup.
+to 127.0.0.1 and exposes only search/map/read/research/workflow/hotnews/feeds/daily/archive lookup.
 """
 
 from __future__ import annotations
@@ -157,6 +157,38 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                     query=str(payload.get("query", "")),
                 ),
             }
+        if method == "POST" and route == "/map":
+            from guanlan.site_map import (
+                build_site_map,
+                format_site_map_context,
+                format_site_map_markdown,
+            )
+
+            packet = build_site_map(
+                str(payload.get("url", "")).strip(),
+                query=str(payload.get("query") or ""),
+                limit=_int(payload.get("limit"), DEFAULT_SEARCH_LIMIT),
+                include_subdomains=bool(payload.get("include_subdomains", False)),
+                sitemap=str(payload.get("sitemap") or "auto"),
+                include_patterns=[str(item) for item in payload.get("include_patterns", [])]
+                if isinstance(payload.get("include_patterns"), list)
+                else [],
+                exclude_patterns=[str(item) for item in payload.get("exclude_patterns", [])]
+                if isinstance(payload.get("exclude_patterns"), list)
+                else [],
+                timeout=max(_int(payload.get("timeout"), 8), 1),
+                read_top=_bounded_int(payload.get("read_top"), 0, 0, 5),
+                read_backend=str(payload.get("read_backend") or "auto"),
+                max_read_chars=_bounded_int(payload.get("max_read_chars"), 4000, 1, 20000),
+            )
+            output_format = str(payload.get("format") or "json").lower()
+            if output_format == "markdown":
+                packet["rendered"] = format_site_map_markdown(packet)
+                packet["rendered_format"] = "markdown"
+            elif output_format == "context":
+                packet["rendered"] = format_site_map_context(packet)
+                packet["rendered_format"] = "context"
+            return 200, packet
         if method == "POST" and route == "/research":
             from guanlan.agent_planner import build_agent_followup
             from guanlan.web.research import build_research_packet
@@ -176,6 +208,8 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                     0,
                     MAX_MCP_RESEARCH_READ_TOP,
                 ),
+                read_backend=str(payload.get("read_backend") or "auto"),
+                max_read_chars=_optional_int(payload.get("max_read_chars")),
                 advisor=bool(payload.get("advisor", False)),
                 max_search_jobs=1,
             )
@@ -248,6 +282,8 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                     0,
                     MAX_MCP_RESEARCH_READ_TOP,
                 ),
+                read_backend=str(payload.get("read_backend") or "auto"),
+                max_read_chars=_optional_int(payload.get("max_read_chars")),
                 advisor=bool(payload.get("advisor", True)),
                 advisor_style=str(payload.get("advisor_style") or "brief"),
                 max_search_jobs=1,
@@ -259,23 +295,17 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
             }
         if method == "POST" and route == "/read":
             from guanlan.agent_planner import build_agent_followup
-            from guanlan.web.read import read_url
+            from guanlan.web.read import read_url_with_trace
 
-            content = read_url(
+            packet = read_url_with_trace(
                 str(payload.get("url", "")),
                 max_chars=_optional_int(payload.get("max_chars")),
                 backend=str(payload.get("backend") or "auto"),
                 fallback_search=bool(payload.get("fallback_search", True)),
                 profile=payload.get("profile") or "china",
             )
-            return 200, {
-                "url": payload.get("url", ""),
-                "content": content,
-                "agent_followup": build_agent_followup(
-                    "guanlan_read",
-                    {"url": payload.get("url", ""), "content": content},
-                ),
-            }
+            packet["agent_followup"] = build_agent_followup("guanlan_read", packet)
+            return 200, packet
         if method == "GET" and route == "/hotnews":
             from guanlan.hotnews import (
                 build_hotnews_brief,
@@ -402,7 +432,7 @@ def run_server(host: str = "127.0.0.1", port: int = 8765, token: str = "") -> No
     server = ThreadingHTTPServer((host, int(port)), _GuanlanHandler)
     server.guanlan_token = token or os.environ.get("GUANLAN_SERVE_TOKEN", "")
     print(f"观澜只读服务启动: http://{host}:{port}")
-    print("Endpoints: /health, /tools, /sources, /agent, /route, /browser-assist/plan, /search, /research, /compare, /timeline, /dossier, /read, /hotnews, /feeds, /daily, /archive/search")
+    print("Endpoints: /health, /tools, /sources, /agent, /route, /browser-assist/plan, /search, /map, /research, /compare, /timeline, /dossier, /read, /hotnews, /feeds, /daily, /archive/search")
     if server.guanlan_token:
         print("Access: token required via Authorization: Bearer <token> or X-Guanlan-Token")
     server.serve_forever()

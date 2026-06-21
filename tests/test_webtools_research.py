@@ -49,7 +49,18 @@ def test_build_research_packet_reads_representative_results(monkeypatch):
     ]
 
     monkeypatch.setattr(webtools, "search_web", lambda *args, **kwargs: search_results)
-    monkeypatch.setattr(webtools, "read_url", lambda url, **kwargs: f"READ {url}")
+
+    def fake_read(url, **_kwargs):
+        content = f"READ {url}"
+        return {
+            "url": url,
+            "content": content,
+            "quality": {"score": 80, "chars": len(content), "label": "clean"},
+            "quality_report": {"usable": True, "score": 80, "label": "clean"},
+            "trace": {"selected_backend": "direct"},
+        }
+
+    monkeypatch.setattr("guanlan.web.read.read_url_with_trace", fake_read)
 
     packet = webtools.build_research_packet("人工智能", read_top=2)
 
@@ -66,6 +77,9 @@ def test_build_research_packet_reads_representative_results(monkeypatch):
         "https://gov.cn/c",
     ]
     assert packet["readings"][0]["content"] == "READ https://example.com/a"
+    assert packet["readings"][0]["schema_version"] == "read_evidence_v1"
+    assert packet["read_pack"]["schema_version"] == "representative_read_pack_v1"
+    assert packet["read_pack"]["summary"]["usable_count"] == 2
     assert packet["readings"][0]["read_quality"]["chars"] > 0
     assert packet["read_quality_summary"]["count"] == 2
     assert "recommendation" in packet["read_quality_summary"]

@@ -32,6 +32,7 @@ triggers:
   - diagnose/recipe: 页面读不到/动态页/登录墙/WAF/研究模板/固定流程/recipe
   - report: 报表/html report/可视化报告/汇报页/出个报告
   - daily: 日报/晨报/每日简报/今日简报/品牌日报/舆情日报/市场日报
+  - site_map: 站内/站点/网站/官网/文档/价格/API/公告/联系方式/下载页/sitemap
   - yinshen: 引申/发散/扩展选题/选题角度/关键词地图/专题策划/angle
 metadata:
   openclaw:
@@ -56,6 +57,7 @@ metadata:
 - Evidence Mixer 只做候选证据优先级诊断：默认 `search` 附带 `evidence_mixer_shadow`，不删除、不重排、不扩大空结果率；需要 Agent 明确看到优先阅读顺序时用 `--evidence-mode assist`，回滚或对照时用 `--evidence-mode off`。`coverage_floor` fallback 说明应保留完整候选池继续补读，不应收紧过滤。
 - 信源解释：当需要说明“为什么该看这些来源/某来源能不能当主证据”时，先用 `guanlan sources explain "query"` 或 `guanlan sources show gov.cn`；需要治理口径漂移时用 `guanlan sources audit`。这些都是只读信源元数据，不是实际搜索结果。
 - 搜索入口目录：`query_strategy.search_entrypoint_policy` 与 `sources explain/export` 会展示 Baidu/Bing/DuckDuckGo/搜狗微信/头条/集思录/Google 等入口的适用边界和 operator 提示。它是只读目录，不是“逐个裸抓 17 个搜索引擎”的执行计划；真正执行仍走 Guanlan search 后端、scope/site、AnySearch 和质量门禁，不把 session cookie retry 当稳定恢复能力。
+- 站点入口发现：用户给出明确网站/域名并要找站内文档、价格、公告、API、联系方式或下载页时，用 `guanlan map "https://example.com" --query "pricing docs" --limit 80 --read-top 2`。`map` 只从公开 robots.txt、sitemap XML 和页面链接发现候选 URL；不是全网搜索、不是规模化爬取。`--read-top` 只读取少量代表页，回答只能引用 `read_pack.readings` / `readings` 中 `read_evidence_v1.usable=true` 的正文，未读 URL 仍只是入口线索。
 - 轻重分流：不确定任务该轻搜还是深查时，先跑 `guanlan workflow "query" --json`；simple/direct 任务不要过度规划，复杂/高风险/对比/时间线/档案任务才用 `guanlan investigate "query" --limit 80 --format context`。
 - 页面诊断：当 `read` 读到动态页壳、登录墙、WAF、安全验证、搜索兜底或弱正文时，先跑 `guanlan diagnose page "URL"`；诊断只解释页面是否能当证据，不读取 Cookie，不执行浏览器动作。
 - 浏览器辅助补证：如果 `diagnose page` 输出 `browser_assist.recommended=true`，必须先询问用户授权；如需登录、验证或切换账号，让用户自己在浏览器里完成；Agent 只读取目标页面的浏览器可见内容，本次可见页补证不读取 Cookie、Token、钥匙串、localStorage、sessionStorage、浏览器数据库/profile 或无关个人信息。私信、订单、后台、账号页只有在它们就是目标页且用户单独明确授权目标、用途、风险和只读范围时才读取，并标记 `private_account_evidence=true`；如果仍需 Cookie 或其他凭据材料，必须另行说明平台、用途和风险并获得用户明确同意，凭据材料不得进入 browser-visible payload，也不点赞、评论、关注、发帖、私信、下单或提交表单。OpenGuanlan 就是 Guanlan 的浏览器补证总层，默认复用宿主 Agent 浏览器可见页契约，不要求插件、daemon、OpenCLI、Playwright 或独立浏览器 profile。用户授权后可先用 `guanlan browser-assist adapters --check` 查看只读适配器自检，用 `guanlan browser-assist sessions "URL" --json` 获取同一目标页会话契约，再用 `guanlan browser-assist run "URL" --adapter openguanlan --json` 取得 OpenGuanlan 执行契约；可见页结果优先由宿主 Agent 直接提取 JSON/JSONL，并用 `guanlan archive add-browser-note --from-json browser-notes.jsonl` 入库。`openguanlan-bridge` 只是可选扩展桥；只有用户明确需要独立 Chrome/Chromium 桥时，才用 `guanlan browser-assist setup-openguanlan --json`、`openguanlan pair-code --json` 和扩展 popup 配对。`open-cli` 只作为兼容迁移入口，不要求用户安装 OpenCLI。`xhs-cli` 等外部适配器必须由用户预先配置；不要临时下载 Playwright、启动独立浏览器或读取浏览器 profile。`--url "URL" --text-file notes.md` 只是无浏览器提取能力时的手动兜底，并保留 `browser_assisted` / `visible_page_only` 边界。
@@ -109,6 +111,7 @@ metadata:
 | 招聘/职位/LinkedIn | career | [references/career.md](references/career.md) |
 | GitHub/代码 | dev | [references/dev.md](references/dev.md) |
 | 网页/文章/公众号/RSS | web | [references/web.md](references/web.md) |
+| 已知网站内找文档/价格/API/公告/联系方式 | site_map | `guanlan map "https://example.com" --query "pricing docs" --limit 80 --read-top 2`，必要时再 `guanlan read "URL" --quality-report` |
 | arXiv/预印本/论文线索 | academic_feeds | `guanlan feeds arxiv --keyword "关键词" --limit 80` |
 | RSS watchlist/固定订阅源观察 | watchlist | `guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80` |
 | 品牌/市场/舆情日报 | daily | `guanlan daily "主题" --time-window 3d --format markdown --read-top 3` |

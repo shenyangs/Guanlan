@@ -103,6 +103,15 @@ zero results after filtering, do not relax to Zhihu, generic SEO pages, or other
 years or year ranges, treat the requested window as a strong constraint: window-outside materials can
 be background, not the main timeline or "latest" evidence.
 
+Site map rule: when the user gives a known website/domain and asks for site-local docs, pricing,
+API pages, announcements, contact pages, downloads, or similar entrypoints, use
+`guanlan map "https://example.com" --query "pricing docs" --limit 80 --read-top 2`. `map` only
+discovers public URLs from robots.txt, sitemap XML, and page links by default; `--read-top` reads a
+small number of representative pages with quality reports. It is not whole-web search, not
+large-scale crawling, and unread URLs are not page-body evidence. Cite facts only from usable
+`read_pack.readings` / `readings` or from follow-up `guanlan read "URL" --quality-report`. In JSON
+outputs, `read_evidence_v1.usable=true` is the citation boundary; unread links remain clues.
+
 External fetch strategy rule: when Guanlan emits `external_fetch_strategy`, the Agent may call the
 host platform's WebFetch/WebRead tool to read Guanlan-selected candidate URLs. Report this as "Guanlan
 planned the source route, then I used WebFetch to read target pages for extra evidence"; do not frame
@@ -190,6 +199,7 @@ guanlan welcome
 guanlan agent "query" --json
 guanlan search "query" --limit 80
 guanlan search "中文问题" --profile china --limit 80
+guanlan map "https://example.com" --query "pricing docs" --limit 80 --read-top 2
 guanlan search "政策或产业问题" --profile china --scope party_central
 guanlan search "电商零售问题" --profile china --scope ecommerce
 guanlan hotnews ebrun:cross-border --limit 10

@@ -36,6 +36,7 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "guanlan_capabilities" in names
     assert "guanlan_agent" in names
     assert "guanlan_search" in names
+    assert "guanlan_map" in names
     assert "guanlan_stock" in names
     assert "guanlan_route" in names
     assert "guanlan_workflow" in names
@@ -75,6 +76,7 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "im" in daily_tool["inputSchema"]["properties"]["format"]["enum"]
     assert "daily brief" in daily_tool["description"]
     search_tool = next(tool for tool in tools if tool["name"] == "guanlan_search")
+    map_tool = next(tool for tool in tools if tool["name"] == "guanlan_map")
     agent_tool = next(tool for tool in tools if tool["name"] == "guanlan_agent")
     stock_tool = next(tool for tool in tools if tool["name"] == "guanlan_stock")
     route_tool = next(tool for tool in tools if tool["name"] == "guanlan_route")
@@ -100,6 +102,11 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "prompt" in search_tool["inputSchema"]["properties"]["format"]["enum"]
     assert "cache_ttl=3600" in search_tool["description"]
     assert "do not shrink the evidence pool" in search_tool["description"]
+    assert "URL discovery" in map_tool["description"]
+    assert "sitemap" in map_tool["inputSchema"]["properties"]
+    assert "query" in map_tool["inputSchema"]["properties"]
+    assert "read_top" in map_tool["inputSchema"]["properties"]
+    assert map_tool["inputSchema"]["properties"]["read_top"]["maximum"] == 5
     assert "phase" in agent_tool["inputSchema"]["properties"]
     assert "observation" in agent_tool["inputSchema"]["properties"]
     assert "next_decision" in agent_tool["description"]
@@ -390,6 +397,25 @@ def test_mcp_recipe_renders_plan():
 
     assert payload["recipe"]["id"] == "finance-risk"
     assert any("guanlan stock detail" in command for command in payload["commands"])
+    assert "read_contract" in payload
+
+
+def test_mcp_read_json_returns_read_evidence(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.web.read.read_url_with_trace",
+        lambda *_args, **_kwargs: {
+            "url": "https://example.com",
+            "content": "# Article",
+            "quality_report": {"usable": True},
+            "structured": {"title": "Article"},
+            "read_evidence": {"schema_version": "read_evidence_v1", "usable": True},
+        },
+    )
+
+    payload = mcp_server._run_tool("guanlan_read", {"url": "https://example.com", "format": "json"})
+
+    assert payload["read_evidence"]["schema_version"] == "read_evidence_v1"
+    assert payload["structured"]["title"] == "Article"
 
 
 def test_mcp_capabilities_explains_entrypoints():

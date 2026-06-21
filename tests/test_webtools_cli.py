@@ -247,13 +247,23 @@ def test_read_cli_outputs_text(capsys):
 def test_read_cli_outputs_json(capsys):
     from guanlan.cli import main
 
-    with patch("guanlan.web.read.read_url", return_value="content"):
+    with patch(
+        "guanlan.web.read.read_url_with_trace",
+        return_value={
+            "url": "https://example.com",
+            "content": "content",
+            "quality_report": {"usable": True},
+            "structured": {"title": "Example"},
+            "read_evidence": {"schema_version": "read_evidence_v1", "usable": True},
+        },
+    ):
         with patch("sys.argv", ["guanlan", "read", "https://example.com", "--format", "json"]):
             main()
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["url"] == "https://example.com"
     assert payload["content"] == "content"
+    assert payload["read_evidence"]["schema_version"] == "read_evidence_v1"
 
 
 def test_read_cli_outputs_context(capsys):

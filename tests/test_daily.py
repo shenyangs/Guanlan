@@ -214,7 +214,10 @@ def test_build_daily_report_can_read_representative_urls(monkeypatch):
     report = build_daily_report("WPS AI", profile="china", limit=4, read_top=2)
 
     assert report["diagnostics"]["read"]["status"] == "ok"
+    assert report["read_pack"]["schema_version"] == "representative_read_pack_v1"
+    assert report["read_pack"]["summary"]["usable_count"] == 2
     assert len(report["read_evidence"]) == 2
+    assert report["read_evidence"][0]["schema_version"] == "read_evidence_v1"
     assert any(item.get("read_evidence", {}).get("summary") for item in report["items"])
     markdown = format_daily_markdown(report)
     assert "原文回读" in markdown

@@ -349,7 +349,7 @@ def _cmd_read(args):
             print("Error: URL is required", file=sys.stderr)
             sys.exit(2)
         read_packet = None
-        if args.trace or args.quality_report:
+        if args.trace or args.quality_report or args.format == "json":
             read_packet = read_url_with_trace(
                 args.url,
                 max_chars=args.max_chars or None,

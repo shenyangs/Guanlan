@@ -782,6 +782,25 @@ class TestCLI:
         capsys.readouterr()
         assert calls[0]["fallback_limit"] == DEFAULT_READ_FALLBACK_LIMIT
 
+    def test_read_json_includes_read_evidence(self, capsys, monkeypatch):
+        def fake_read_url_with_trace(*_args, **_kwargs):
+            return {
+                "url": "https://example.com",
+                "content": "# Article\n正文足够。",
+                "quality_report": {"usable": True, "score": 80, "label": "clean"},
+                "structured": {"title": "Article"},
+                "read_evidence": {"schema_version": "read_evidence_v1", "usable": True},
+            }
+
+        monkeypatch.setattr("guanlan.web.read.read_url_with_trace", fake_read_url_with_trace)
+
+        with patch("sys.argv", ["guanlan", "read", "https://example.com", "--format", "json"]):
+            main()
+
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["read_evidence"]["schema_version"] == "read_evidence_v1"
+        assert payload["structured"]["title"] == "Article"
+
     def test_archive_search_default_limit_is_expanded(self, capsys, monkeypatch):
         calls = []
 

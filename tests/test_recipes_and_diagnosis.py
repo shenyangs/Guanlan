@@ -25,7 +25,9 @@ def test_recipe_plan_builds_finance_workflow():
     assert any("guanlan stock detail" in command for command in plan["commands"])
     assert any("--scope finance_disclosure" in command for command in plan["commands"])
     assert "不输出买入、卖出或持有建议。" in plan["boundaries"]
+    assert any("usable=true" in item for item in plan["read_contract"])
     assert "结构化行情" in format_recipe_plan_markdown(plan)
+    assert "代表页读取契约" in format_recipe_plan_markdown(plan)
 
 
 def test_recipe_list_and_suggestion_cover_university():

@@ -9,6 +9,7 @@ Guanlan tells the host Agent what to run, what to inspect, and when to stop.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -65,6 +66,8 @@ def build_agent_plan_v2(
         decision=decision,
         route_plan=route_plan,
         mode=str(payload.get("mode") or mode or "auto"),
+        site=site,
+        sites=sites,
     )
     capability_selection = _capability_selection(
         primary_command,
@@ -72,7 +75,15 @@ def build_agent_plan_v2(
         decision=decision,
         route_plan=route_plan,
         task_model=task_model,
+        query=str(payload.get("query") or query or ""),
+        site=site,
+        sites=sites,
     )
+    site_map_command = _site_map_command_for_query(str(payload.get("query") or query or ""), site=site, sites=sites)
+    if task_model.get("task_type") == "site_entry_discovery" and site_map_command:
+        payload = _promote_site_map_command(payload, site_map_command)
+        primary_command = str(payload.get("primary_command") or primary_command)
+        capability_selection["primary_capability"] = "map"
     execution_contract = _execution_contract(
         payload,
         decision=decision,
@@ -276,6 +287,16 @@ def normalize_agent_observation(observation: Any) -> dict[str, Any]:
         summary["result_count"] = 0
         signals.append("empty_results")
 
+    read_pack_summary = _extract_read_pack_summary(observation)
+    if read_pack_summary:
+        summary["read_pack"] = read_pack_summary
+        attempted = int(read_pack_summary.get("attempted") or 0)
+        usable_count = int(read_pack_summary.get("usable_count") or 0)
+        if attempted and usable_count <= 0:
+            signals.append("read_pack_unusable")
+        elif usable_count > 0:
+            signals.append("read_pack_usable")
+
     limit = _find_number(observation, ("limit", "requested_limit", "max_results"))
     if limit:
         summary["limit"] = limit
@@ -306,13 +327,72 @@ def normalize_agent_observation(observation: Any) -> dict[str, Any]:
     return {"signals": _unique(signals), "summary": summary, "raw": observation}
 
 
-def _task_model(query: str, *, decision: dict[str, Any], route_plan: dict[str, Any], mode: str) -> dict[str, Any]:
+def _extract_read_pack_summary(observation: dict[str, Any]) -> dict[str, Any]:
+    pack = observation.get("read_pack")
+    if isinstance(pack, dict):
+        summary = dict(pack.get("summary") or {})
+        if not summary:
+            summary = {
+                "attempted": pack.get("attempted"),
+                "usable_count": pack.get("usable_count"),
+                "weak_count": pack.get("weak_count"),
+                "error_count": pack.get("error_count"),
+            }
+        summary["schema_version"] = pack.get("schema_version") or ""
+        return {key: value for key, value in summary.items() if value not in (None, "")}
+    read_summary = observation.get("read_summary")
+    readings = observation.get("readings")
+    if isinstance(read_summary, dict):
+        summary = dict(read_summary)
+        if isinstance(readings, list) and "attempted" not in summary:
+            summary["attempted"] = len(readings)
+        return summary
+    if isinstance(readings, list):
+        attempted = len(readings)
+        usable_count = sum(1 for row in readings if isinstance(row, dict) and row.get("usable"))
+        error_count = sum(
+            1
+            for row in readings
+            if isinstance(row, dict) and str(row.get("status") or row.get("read_status") or "") == "error"
+        )
+        if attempted:
+            return {
+                "attempted": attempted,
+                "usable_count": usable_count,
+                "weak_count": max(attempted - usable_count - error_count, 0),
+                "error_count": error_count,
+            }
+    return {}
+
+
+def _read_pack_next_commands(observation: dict[str, Any]) -> list[str]:
+    pack = observation.get("read_pack") if isinstance(observation.get("read_pack"), dict) else {}
+    commands = [str(item) for item in (pack.get("next_read_commands") or []) if str(item).strip()]
+    if commands:
+        return commands
+    summary = pack.get("summary") if isinstance(pack.get("summary"), dict) else {}
+    commands = [str(item) for item in (summary.get("next_read_commands") or []) if str(item).strip()]
+    if commands:
+        return commands
+    followup = observation.get("agent_followup") if isinstance(observation.get("agent_followup"), dict) else {}
+    return [str(item) for item in (followup.get("next_commands") or []) if str(item).strip()]
+
+
+def _task_model(
+    query: str,
+    *,
+    decision: dict[str, Any],
+    route_plan: dict[str, Any],
+    mode: str,
+    site: str | None = None,
+    sites: list[str] | None = None,
+) -> dict[str, Any]:
     intents = _unique(
         [str(item) for item in decision.get("route_intents") or []]
         + [str(item) for item in route_plan.get("primary_intents") or []]
         + [str(item) for item in route_plan.get("secondary_intents") or []]
     )
-    task_type = _task_type(query, intents, mode)
+    task_type = _task_type(query, intents, mode, site=site, sites=sites)
     return {
         "task_type": task_type,
         "route_intents": intents,
@@ -332,6 +412,9 @@ def _capability_selection(
     decision: dict[str, Any],
     route_plan: dict[str, Any],
     task_model: dict[str, Any],
+    query: str = "",
+    site: str | None = None,
+    sites: list[str] | None = None,
 ) -> dict[str, Any]:
     chain = _chain_from_commands(commands)
     if not chain and primary_command:
@@ -343,6 +426,8 @@ def _capability_selection(
         downranked.append("research")
     if task_model.get("time_sensitivity") in {"today", "fresh"} and "hotnews" not in chain:
         chain.insert(0, "hotnews")
+    if _is_site_entry_task(query, site=site, sites=sites) and "map" not in chain:
+        chain.insert(0, "map")
     if any(intent in {"tech", "wps_office"} for intent in task_model.get("route_intents") or []) and "feeds" not in chain:
         chain.insert(0 if "hotnews" not in chain else 1, "feeds")
     if task_type in {"brand_reputation", "market_daily"} and "daily" not in chain:
@@ -373,8 +458,14 @@ def _execution_contract(
         for item in payload.get("agent_next_steps") or []
         if (item.get("command") if isinstance(item, dict) else str(item))
     ]
+    first_steps: list[str] = []
+    if payload.get("primary_command"):
+        first_steps.append(str(payload["primary_command"]))
+    for command in commands:
+        if command not in first_steps:
+            first_steps.append(command)
     return {
-        "first_steps": commands[:3] or ([payload.get("primary_command")] if payload.get("primary_command") else []),
+        "first_steps": first_steps[:3],
         "continue_when": [
             "结果池为空、少于 30、或 trace/quality 明确提示证据角色不足。",
             "只得到官方/官网材料，但任务需要全网、媒体、社区或用户样本。",
@@ -402,6 +493,8 @@ def _self_check_contract(payload: dict[str, Any], *, decision: dict[str, Any], t
     ]
     if task_model.get("time_sensitivity") in {"today", "fresh"}:
         must_check.append("是否补过 hotnews/时间窗证据，旧材料不能写成今日事实。")
+    if task_model.get("task_type") == "site_entry_discovery":
+        must_check.append("map 的未读 URL 只是站内入口；只有 readings 中 usable 的代表页可作为正文证据。")
     if any(intent in {"tech", "wps_office"} for intent in task_model.get("route_intents") or []):
         must_check.append("是否补过 feeds/开发者或产业线索，避免只看官网。")
     if decision.get("risk_level") in {"medium", "high"}:
@@ -429,6 +522,8 @@ def _next_decision(observation: dict[str, Any]) -> tuple[str, str]:
     signals = set(observation.get("signals") or [])
     if "page_needs_diagnosis_or_browser" in signals:
         return "authorize_browser", "目标页公开读取不足，先按诊断路线或用户授权的浏览器可见页补证。"
+    if "read_pack_unusable" in signals:
+        return "repair", "代表页证据包没有可引用正文，需要换代表页、诊断页面或补结构化来源。"
     if "research_failed" in signals or "timeout_or_aborted" in signals:
         return "repair", "重型 research/网络读取未完成，降级为 search + read，不继续加大 read_top。"
     if "empty_results" in signals:
@@ -470,6 +565,11 @@ def _review_next_commands(
         return _unique(repairs + next_steps)[:3] or [
             f"guanlan search {quote_query(query)} --profile {profile or 'china'} --limit 80 --trace"
         ]
+    if "read_pack_unusable" in signals:
+        commands = _read_pack_next_commands(observation.get("raw", {}))
+        if commands:
+            return commands[:3]
+        return _unique(next_steps + repairs)[:3]
     if "read_unusable" in signals or "page_needs_diagnosis_or_browser" in signals:
         url = _find_url(observation.get("raw", {}))
         if url:
@@ -510,6 +610,8 @@ def _followup_command_seed(tool_name: str, query: str, observation: dict[str, An
         url = _find_url(observation.get("raw", {}))
         if url:
             return [f"guanlan diagnose page {quote_query(url)} --json"]
+    if "read_pack_unusable" in signals:
+        return _read_pack_next_commands(observation.get("raw", {}))[:3]
     if tool_name in {"guanlan_research", "research"} and ("research_failed" in signals or "timeout_or_aborted" in signals):
         if query:
             return [
@@ -519,8 +621,10 @@ def _followup_command_seed(tool_name: str, query: str, observation: dict[str, An
     return []
 
 
-def _task_type(query: str, intents: list[str], mode: str) -> str:
+def _task_type(query: str, intents: list[str], mode: str, *, site: str | None = None, sites: list[str] | None = None) -> str:
     q = query.lower()
+    if _is_site_entry_task(query, site=site, sites=sites):
+        return "site_entry_discovery"
     if mode == "deep" or any(term in query for term in ("深度", "研究", "调研", "证据包", "报告")):
         return "deep_research"
     if any(term in query for term in ("日报", "舆情", "品牌", "公关", "市场")) or any(
@@ -567,6 +671,8 @@ def _output_expectation(task_type: str, query: str, mode: str) -> str:
         return "官方/开发者/产业/RSS 线索分层，而不是只看官网。"
     if task_type == "deep_research":
         return "可复用证据包；先 search/read，再 guarded research。"
+    if task_type == "site_entry_discovery":
+        return "先发现站内公开入口，再 read 代表性页面，不把 URL 列表当证据。"
     return "可引用的搜索结果与代表性原文阅读。"
 
 
@@ -602,6 +708,8 @@ def _tool_from_command(command: str) -> str:
 
 
 def _selection_reason(task_model: dict[str, Any], decision: dict[str, Any], route_plan: dict[str, Any]) -> str:
+    if task_model.get("task_type") == "site_entry_discovery":
+        return "已知站点内找文档/价格/公告/API 等入口时，先 map 发现候选 URL，再 read 代表性页面。"
     if task_model.get("task_type") == "brand_reputation":
         return "品牌/舆情任务优先日报、脉冲、recipe、search/read；research 只在缺证据角色后启用。"
     if task_model.get("time_sensitivity") in {"today", "fresh"}:
@@ -613,9 +721,135 @@ def _selection_reason(task_model: dict[str, Any], decision: dict[str, Any], rout
 
 def _execution_do_not_run(capability_selection: dict[str, Any]) -> list[str]:
     items = ["不要在普通查询首步直接调用 research。", "不要因超时把 limit 缩到 30 以下后给强结论。"]
+    if "map" in capability_selection.get("recommended_chain", []):
+        items.append("不要把 map 返回的 URL 列表直接当正文证据；先 read 代表性 URL。")
     if "research" in capability_selection.get("downranked_capabilities", []):
         items.append("除非用户明确要深度证据包，或 search+read 后仍缺关键证据角色，否则不升级 research。")
     return items
+
+
+_SITE_ENTRY_TERMS = (
+    "文档",
+    "官网",
+    "站内",
+    "价格",
+    "定价",
+    "公告",
+    "更新日志",
+    "联系方式",
+    "帮助中心",
+    "隐私",
+    "条款",
+    "下载",
+    "安装",
+    "docs",
+    "documentation",
+    "pricing",
+    "release notes",
+    "changelog",
+    "api",
+    "contact",
+    "terms",
+    "privacy",
+)
+
+_DOMAIN_RE = re.compile(
+    r"https?://[^\s\"'<>]+|(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?:/[^\s\"'<>]*)?"
+)
+
+
+def _is_site_entry_task(query: str, *, site: str | None = None, sites: list[str] | None = None) -> bool:
+    q = str(query or "")
+    has_target = bool(site or sites or _DOMAIN_RE.search(q))
+    if not has_target:
+        return False
+    lowered = q.lower()
+    return any(term in q or term in lowered for term in _SITE_ENTRY_TERMS)
+
+
+def _site_entry_target(query: str, *, site: str | None = None, sites: list[str] | None = None) -> str:
+    if site:
+        return str(site).strip()
+    if sites:
+        for item in sites:
+            if str(item).strip():
+                return str(item).strip()
+    match = _DOMAIN_RE.search(str(query or ""))
+    return match.group(0).strip("，。；、)") if match else ""
+
+
+def _site_map_filter_query(query: str, target: str) -> str:
+    text = str(query or "")
+    if target:
+        text = text.replace(target, " ")
+    text = _DOMAIN_RE.sub(" ", text)
+    for term in ("在", "里", "里面", "站内", "找", "查", "看看", "帮我", "需要", "官网", "网站"):
+        text = text.replace(term, " ")
+    return " ".join(text.split())
+
+
+def _site_map_command_for_query(query: str, *, site: str | None = None, sites: list[str] | None = None) -> str:
+    if not _is_site_entry_task(query, site=site, sites=sites):
+        return ""
+    target = _site_entry_target(query, site=site, sites=sites)
+    if not target:
+        return ""
+    filter_query = _site_map_filter_query(query, target)
+    command = f"guanlan map {quote_query(target)} --limit 80 --read-top 2"
+    if filter_query:
+        command += f" --query {quote_query(filter_query)}"
+    return command
+
+
+def _promote_site_map_command(payload: dict[str, Any], command: str) -> dict[str, Any]:
+    updated = dict(payload)
+    old_primary = str(updated.get("primary_command") or "")
+    updated["primary_command"] = command
+    map_step = {
+        "role": "primary",
+        "command": command,
+        "reason": "已知站点入口任务先发现公开 URL，并读取少量代表页质量报告。",
+        "required": True,
+        "timeout_budget_seconds": 90,
+        "timeout_budget_ms": 90000,
+        "evidence_boundary": "只引用 readings 中 usable=true 的正文；未读 URL 只是入口线索。",
+    }
+    updated["summary"] = f"先跑 `{command}`；如果 readings 不足，再补 scoped search/read。"
+    recommended = []
+    for item in list(updated.get("recommended_commands") or []):
+        if not isinstance(item, dict):
+            continue
+        normalized = dict(item)
+        if normalized.get("role") == "primary" and normalized.get("command") != command:
+            normalized["role"] = "fallback_search"
+            normalized["required"] = False
+            normalized["reason"] = "map/readings 不足，或用户其实需要全网搜索时再补这一路。"
+        recommended.append(normalized)
+    updated["recommended_commands"] = _dedupe_command_steps([map_step] + recommended)
+    steps = list(updated.get("agent_next_steps") or [])
+    if old_primary and old_primary != command:
+        steps.insert(
+            0,
+            {
+                "command": old_primary,
+                "when": "map 没有发现足够站内入口，或用户其实需要全网搜索时再使用。",
+            },
+        )
+    updated["agent_next_steps"] = _dedupe_command_steps(steps)
+    return updated
+
+
+def _dedupe_command_steps(steps: list[Any]) -> list[Any]:
+    seen: set[str] = set()
+    out: list[Any] = []
+    for step in steps:
+        command = str(step.get("command") if isinstance(step, dict) else step or "").strip()
+        if command and command in seen:
+            continue
+        if command:
+            seen.add(command)
+        out.append(step)
+    return out
 
 
 def _boundary_for_task(task_model: dict[str, Any], decision: dict[str, Any]) -> str:

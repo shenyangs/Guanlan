@@ -62,7 +62,7 @@ from guanlan.commands.research import (
     _cmd_timeline,
     _cmd_yinshen,
 )
-from guanlan.commands.search import _cmd_agent, _cmd_route, _cmd_search, _cmd_workflow
+from guanlan.commands.search import _cmd_agent, _cmd_map, _cmd_route, _cmd_search, _cmd_workflow
 from guanlan.commands.watch import _cmd_watch_intents
 from guanlan.limits import (
     DEFAULT_ARCHIVE_LIST_LIMIT,
@@ -439,6 +439,33 @@ def main():
                           help="Reuse identical search results for this many seconds")
     p_search.add_argument("--no-cache", action="store_true",
                           help="Bypass local cache even when --cache-ttl is set")
+
+    # ── site map ──
+    p_map = sub.add_parser("map", help="Discover public URLs inside a known site for follow-up reads")
+    p_map.add_argument("url", nargs="?", default="", help="Site URL or domain, e.g. example.com/docs")
+    p_map.add_argument("--query", default="", help="Filter discovered URLs by title/path text")
+    p_map.add_argument("--limit", type=int, default=DEFAULT_SEARCH_LIMIT,
+                       help="Maximum number of discovered URLs to return")
+    p_map.add_argument("--include-subdomains", action="store_true",
+                       help="Allow subdomains of the target host")
+    p_map.add_argument("--sitemap", choices=["auto", "only", "skip"], default="auto",
+                       help="Use sitemap discovery: auto, only, or skip")
+    p_map.add_argument("--include", dest="include_patterns", action="append", default=[],
+                       help="Only keep URLs matching this substring or glob pattern; can repeat")
+    p_map.add_argument("--exclude", dest="exclude_patterns", action="append", default=[],
+                       help="Drop URLs matching this substring or glob pattern; can repeat")
+    p_map.add_argument("--timeout", type=int, default=8,
+                       help="Per-source fetch timeout in seconds")
+    p_map.add_argument("--read-top", type=int, default=0,
+                       help="Read the top N discovered URLs immediately (0-5); default is URL discovery only")
+    p_map.add_argument("--read-backend", choices=["auto", "jina", "direct"], default="auto",
+                       help="Backend used when --read-top is greater than 0")
+    p_map.add_argument("--max-read-chars", type=int, default=4000,
+                       help="Maximum characters per representative read when --read-top is used")
+    p_map.add_argument("--format", choices=["markdown", "json", "context"], default="markdown",
+                       help="Output format")
+    p_map.add_argument("--json", action="store_true",
+                       help="Print JSON instead of Markdown")
 
     # ── feedback ──
     from guanlan.stock_cli import add_stock_parser
@@ -1272,6 +1299,8 @@ def _dispatch_command(args):
         _cmd_wechat_exporter(args)
     elif args.command == "search":
         _cmd_search(args)
+    elif args.command == "map":
+        _cmd_map(args)
     elif args.command == "feedback":
         _cmd_feedback(args)
     elif args.command == "research":

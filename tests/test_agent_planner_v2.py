@@ -33,6 +33,19 @@ def test_agent_plan_v2_brand_reputation_prefers_daily_path():
     assert "品牌" in payload["task_model"]["target_audience"]
 
 
+def test_agent_plan_v2_known_site_entry_prefers_map_then_read():
+    payload = build_agent_plan_v2("在 docs.example.com 里找 pricing API 文档")
+
+    assert payload["task_model"]["task_type"] == "site_entry_discovery"
+    assert payload["primary_command"].startswith("guanlan map docs.example.com")
+    assert "--read-top 2" in payload["primary_command"]
+    assert payload["summary"].startswith("先跑 `guanlan map")
+    assert payload["recommended_commands"][0]["command"].startswith("guanlan map docs.example.com")
+    assert "map" in payload["capability_selection"]["recommended_chain"]
+    assert payload["capability_selection"]["primary_capability"] == "map"
+    assert "readings 中 usable" in " ".join(payload["self_check_contract"]["must_check"])
+
+
 def test_agent_review_empty_or_small_result_repairs_with_large_pool():
     payload = review_agent_observation("LPG 丙烷 进口增长 2024", {"results": [], "limit": 5})
 
@@ -60,3 +73,36 @@ def test_agent_review_research_timeout_downgrades_to_search_read():
     assert "research_failed" in payload["signals"]
     assert any(command.startswith("guanlan search") for command in payload["next_commands"])
     assert any("read <selected_url>" in command for command in payload["next_commands"])
+
+
+def test_agent_review_read_pack_unusable_repairs_with_next_reads():
+    payload = review_agent_observation(
+        "站点文档",
+        {
+            "read_pack": {
+                "schema_version": "representative_read_pack_v1",
+                "summary": {"attempted": 2, "usable_count": 0, "error_count": 2},
+                "next_read_commands": ["guanlan read https://example.com/docs --quality-report"],
+            }
+        },
+    )
+
+    assert payload["next_decision"] == "repair"
+    assert "read_pack_unusable" in payload["signals"]
+    assert payload["next_commands"] == ["guanlan read https://example.com/docs --quality-report"]
+
+
+def test_agent_review_read_pack_usable_can_answer():
+    payload = review_agent_observation(
+        "站点文档",
+        {
+            "read_pack": {
+                "schema_version": "representative_read_pack_v1",
+                "summary": {"attempted": 1, "usable_count": 1, "error_count": 0},
+                "readings": [{"url": "https://example.com/docs", "usable": True}],
+            }
+        },
+    )
+
+    assert payload["next_decision"] == "answer"
+    assert "read_pack_usable" in payload["signals"]

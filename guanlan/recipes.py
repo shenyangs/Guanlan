@@ -49,6 +49,7 @@ class RecipePlan:
     commands: list[str] = field(default_factory=list)
     workflow_contract: list[str] = field(default_factory=list)
     timeout_unit_contract: list[str] = field(default_factory=list)
+    read_contract: list[str] = field(default_factory=list)
     expected_output: list[str] = field(default_factory=list)
     boundaries: list[str] = field(default_factory=list)
 
@@ -352,6 +353,7 @@ def build_recipe_plan(
             "只有当前链路仍缺关键证据时，才调用宿主 Agent 的通用 WebFetch/WebSearch 补证。",
         ],
         timeout_unit_contract=timeout_unit_contract(timeout_seconds),
+        read_contract=_read_contract_for_recipe(recipe, effective_read_top),
         expected_output=[
             "来源分层清楚的证据包",
             "可引用材料与不可引用线索分开",
@@ -395,6 +397,9 @@ def format_recipe_plan_markdown(plan: dict[str, Any]) -> str:
     lines.extend(f"- {item}" for item in plan.get("workflow_contract") or [])
     lines.extend(["", "## Timeout 单位契约"])
     lines.extend(f"- {item}" for item in plan.get("timeout_unit_contract") or [])
+    if plan.get("read_contract"):
+        lines.extend(["", "## 代表页读取契约"])
+        lines.extend(f"- {item}" for item in plan.get("read_contract") or [])
     lines.extend(["", "## 预期输出"])
     lines.extend(f"- {item}" for item in plan.get("expected_output") or [])
     if plan.get("boundaries"):
@@ -405,6 +410,20 @@ def format_recipe_plan_markdown(plan: dict[str, Any]) -> str:
 
 def format_recipe_json(payload: dict[str, Any] | list[dict[str, Any]]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _read_contract_for_recipe(recipe: ResearchRecipe, read_top: int) -> list[str]:
+    contract = [
+        "搜索、route、feeds、hotnews 产出的是 URL/信号入口；只有 read/read_pack 中 usable=true 的正文可作为事实证据。",
+        "未读 URL、弱正文、下载站/镜像站/SEO 聚合只能进入线索池，不能撑主结论。",
+    ]
+    if read_top <= 0:
+        contract.append("当前 read_top=0：本 recipe 默认只给入口和证据角色，引用事实前需补 `guanlan read URL --quality-report`。")
+    else:
+        contract.append(f"当前 read_top={read_top}：优先读取官方/垂直/高质量代表页，保留 weak/error 页面边界。")
+    if recipe.id in {"pricing-watch", "competitor-watch", "wps-office-radar", "trajectory-map"}:
+        contract.append("若任务给出明确官网或产品站点，先用 `guanlan map SITE --query ... --read-top 2` 找代表页，再补全网来源。")
+    return contract
 
 
 def _commands_for_recipe(recipe: ResearchRecipe, query: str, *, profile: str, limit: int, read_top: int) -> list[str]:

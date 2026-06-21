@@ -6,6 +6,15 @@
 
 ## Unreleased
 
+## v0.7.1 - 2026-06-21
+
+### Changed
+
+- 新增代表页证据层：`read`、`map`、`research`、`daily` 的 JSON 输出统一补齐 `read_evidence_v1` / `representative_read_pack_v1`，让 Agent 区分可引用正文和未读 URL 线索。
+- `map --read-top`、`research`、`daily` 复用统一代表页读取包，并在 Agent review 中根据 `read_pack.usable_count` 判断回答、补证或修复。
+- `recipe` 增加代表页读取契约，明确只有 `usable=true` 的已读正文可作为事实证据。
+- README、完整指南、遥测文档、Skill、Agent playbook 和官网版本面同步到 `0.7.1`。
+
 ## v0.7.0 - 2026-06-18
 
 ### Changed
