@@ -6,6 +6,16 @@
 
 ## Unreleased
 
+## v0.7.2 - 2026-06-29
+
+### Changed
+
+- 收紧本地 HTTP 服务、浏览器补证适配器、遥测采集器和自动反馈的安全边界，非本地暴露与外部命令执行默认 fail closed。
+- 修复发布同步链路的误报风险，公开官网、源站、本地安装路径和 doctor 检查现在必须一致通过，跳过同步不再宣称完整发布成功。
+- 强化搜索、日报和代表页证据包的 Agent 诊断链，空结果、弱读与全失败 read_pack 会保留 diagnostics 并给出可执行补证命令。
+- 补实 canonical tool surface，MCP/HTTP/CLI 共享更完整的 schema、policy 与双向一致性检查。
+- README、完整指南、遥测文档和官网版本面同步到 `0.7.2`。
+
 ## v0.7.1 - 2026-06-21
 
 ### Changed

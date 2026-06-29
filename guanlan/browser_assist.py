@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from guanlan.sensitive import redact_sensitive_text
 from guanlan.social_evidence import (
     build_social_evidence_protocol,
     infer_social_platform,
@@ -2193,20 +2194,21 @@ def _execute_adapter_command(
         response.update({"status": "timeout", "error": f"adapter_timeout_after_{max(timeout, 1)}s"})
         return response
     except Exception as exc:
-        response.update({"status": "error", "error": str(exc)})
+        response.update({"status": "error", "error": redact_sensitive_text(str(exc))})
         return response
     response["returncode"] = completed.returncode
-    response["stdout_preview"] = (completed.stdout or "")[:800]
-    response["stderr_preview"] = (completed.stderr or "")[:800]
+    response["stdout_preview"] = redact_sensitive_text(completed.stdout or "")[:800]
+    response["stderr_preview"] = redact_sensitive_text(completed.stderr or "")[:800]
     if completed.returncode != 0:
-        response.update({"status": "adapter_failed", "error": completed.stderr.strip() or f"exit={completed.returncode}"})
+        error_text = completed.stderr.strip() or f"exit={completed.returncode}"
+        response.update({"status": "adapter_failed", "error": redact_sensitive_text(error_text)})
         return response
     payloads: list[dict[str, Any]] = []
     if parse_stdout and completed.stdout.strip():
         try:
             payloads = _parse_visible_payload_text(completed.stdout)
         except Exception as exc:
-            response["parse_error"] = str(exc)
+            response["parse_error"] = redact_sensitive_text(str(exc))
     response["payloads"] = payloads
     if payloads and output_path:
         with open(output_path, "w", encoding="utf-8") as f:

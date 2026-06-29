@@ -23,6 +23,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from guanlan import __version__
 from guanlan.config import Config
+from guanlan.sensitive import contains_sensitive_text, redact_sensitive_text
 
 DEFAULT_TIMEOUT_SECONDS = 1.2
 DEFAULT_SCHEMA_VERSION = 1
@@ -257,8 +258,10 @@ def submit_feedback(
     backend: str = "",
     config: Config | None = None,
 ) -> dict[str, object]:
-    query = _clamp(query_text, 200)
-    reason = _clamp(reason_text, 600)
+    if contains_sensitive_text(query_text) or contains_sensitive_text(reason_text):
+        return {"ok": False, "queued": False, "message": "feedback contains sensitive text; not sent"}
+    query = _clamp(redact_sensitive_text(query_text), 200)
+    reason = _clamp(redact_sensitive_text(reason_text), 600)
     if not query or not reason:
         return {"ok": False, "queued": False, "message": "query/reason required"}
 

@@ -223,6 +223,60 @@ def test_build_daily_report_can_read_representative_urls(monkeypatch):
     assert "原文回读" in markdown
 
 
+def test_daily_marks_all_attempted_reads_unusable(monkeypatch):
+    monkeypatch.setattr(
+        "guanlan.daily.build_route_plan",
+        lambda *args, **kwargs: _Plan(
+            {
+                "query": args[0],
+                "primary_intents": ["wps_office"],
+                "secondary_intents": [],
+                "preferred_scopes": ["wps_office"],
+                "warnings": [],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "guanlan.daily.search_web",
+        lambda *_args, **_kwargs: [
+            {
+                "title": "WPS AI 官方入口",
+                "url": "https://www.wps.cn/ai",
+                "snippet": "官方说明。",
+                "source_type": "办公软件/AI Office/SaaS",
+                "evidence_role": "company_primary",
+            },
+            {
+                "title": "WPS AI 外部线索",
+                "url": "https://media.example.com/wps-ai-review",
+                "snippet": "外部评测。",
+                "source_type": "科技/开发者社区",
+                "evidence_role": "fresh_news",
+            },
+        ],
+    )
+    monkeypatch.setattr("guanlan.daily.fetch_feed_source", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr("guanlan.daily.fetch_hotnews", lambda **_kwargs: [])
+    monkeypatch.setattr("guanlan.daily.build_trend_report", lambda *_args, **_kwargs: {"trend_count": 0, "sample_count": 0, "trends": [], "source_distribution": {}, "sample_boundaries": []})
+    monkeypatch.setattr("guanlan.daily.build_hotnews_brief", lambda *_args, **_kwargs: {"sample_count": 0, "trend_count": 0, "sample_boundaries": [], "warnings": [], "highlights": []})
+    monkeypatch.setattr(
+        "guanlan.web.read.read_url_with_trace",
+        lambda url, **_kwargs: {
+            "url": url,
+            "content": "短",
+            "trace": {"selected_backend": "direct"},
+            "quality_report": {"score": 20, "label": "weak", "usable": False},
+        },
+    )
+
+    report = build_daily_report("WPS AI", profile="china", limit=4, read_top=2)
+
+    assert report["diagnostics"]["read"]["status"] == "unusable"
+    assert report["diagnostics"]["read"]["attempted"] == 2
+    assert report["editorial_health"]["status"] in {"warn", "block"}
+    assert any("代表原文回读不完整" in item for item in report["editorial_health"]["warnings"])
+
+
 def test_daily_prefers_ai_vertical_for_plain_ai_queries():
     assert _resolve_daily_feed_source(feed_source="auto", query="AI 行业", route_intents=["industry"], preset="") == "ai-vertical"
 

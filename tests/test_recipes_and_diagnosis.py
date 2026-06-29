@@ -328,3 +328,21 @@ def test_browser_assist_external_adapter_requires_template_before_execution(monk
     assert result["adapter"] == "xhs-cli"
     assert result["status"] == "adapter_config_required"
     assert "GUANLAN_BROWSER_ASSIST_XHS_CLI_COMMAND" in result["setup_hint"]
+
+
+def test_browser_assist_execution_redacts_sensitive_output(monkeypatch):
+    monkeypatch.setenv(
+        "GUANLAN_BROWSER_ASSIST_XHS_CLI_COMMAND",
+        "printf 'token=ghp_abcdefghijklmnopqrstuvwxyz123456\\nBearer sk-testsecretsecretsecret'",
+    )
+
+    result = run_browser_assist_adapter(
+        "https://www.xiaohongshu.com/explore/demo",
+        adapter="xhs-cli",
+        execute=True,
+    )
+
+    combined = f"{result.get('stdout_preview', '')}\n{result.get('stderr_preview', '')}\n{result.get('error', '')}"
+    assert "ghp_abcdefghijklmnopqrstuvwxyz123456" not in combined
+    assert "sk-testsecretsecretsecret" not in combined
+    assert "[redacted]" in combined

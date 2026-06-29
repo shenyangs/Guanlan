@@ -57,6 +57,20 @@ def test_post_release_sync_script_handles_github_rate_limit_and_uv_version_verif
     assert "--no-sources --default-index https://pypi.org/simple guanlan" in script
     assert "uv tool path resolved v" in script
     assert "verify_single_bin_version \"uv tool\"" in script
+    assert "https://guanlan.xin/" in script
+    assert "https://www.guanlan.xin/" in script
+    assert "http://101.37.70.222/" in script
+    assert "source_deployed_but_public_site_blocked" in script
+    assert "release incomplete: source-only website validation used" in script
+    assert "returned unknown version" in script
+    assert "guanlan doctor --install-check || true" not in script
+
+
+def test_publish_release_skip_sync_does_not_claim_complete_release():
+    script = (ROOT / "scripts" / "publish_release.sh").read_text(encoding="utf-8")
+
+    assert "push/tag complete; release sync skipped" in script
+    assert "release incomplete: GUANLAN_RELEASE_SKIP_SYNC=1" in script
 
 
 def test_agent_update_docs_require_full_reinstall_and_smoke():

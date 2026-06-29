@@ -210,7 +210,18 @@ def build_representative_read_pack(
                     )
                 )
     summary = summarize_read_evidence(readings, requested=requested)
-    next_commands = _next_read_commands(items, skip_urls={row.get("url", "") for row in readings}, limit=3)
+    if readings and summary["usable_count"] == 0:
+        next_commands = _attempted_repair_commands(readings, limit=3)
+        next_commands.extend(
+            _next_read_commands(
+                items,
+                skip_urls={row.get("url", "") for row in readings},
+                limit=max(0, 3 - len(next_commands)),
+            )
+        )
+        next_commands = next_commands[:3]
+    else:
+        next_commands = _next_read_commands(items, skip_urls={row.get("url", "") for row in readings}, limit=3)
     summary["next_read_commands"] = next_commands
     pack = {
         "schema_version": READ_PACK_SCHEMA_VERSION,
@@ -383,6 +394,24 @@ def _next_read_commands(items: list[dict[str, Any]], *, skip_urls: set[str], lim
         commands.append(str(item.get("read_command") or f"guanlan read {shlex.quote(url)} --quality-report"))
         if len(commands) >= limit:
             break
+    return commands
+
+
+def _attempted_repair_commands(readings: list[dict[str, Any]], *, limit: int) -> list[str]:
+    commands: list[str] = []
+    seen: set[str] = set()
+    for row in readings:
+        url = str(row.get("url") or "").strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        quoted = shlex.quote(url)
+        commands.append(f"guanlan diagnose page {quoted} --json")
+        if len(commands) >= limit:
+            return commands
+        commands.append(f"guanlan read {quoted} --quality-report --backend direct")
+        if len(commands) >= limit:
+            return commands
     return commands
 
 

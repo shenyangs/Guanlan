@@ -108,4 +108,5 @@ def test_representative_pack_repairs_when_all_reads_fail(monkeypatch):
     assert pack["summary"]["error_count"] == 1
     assert pack["usable_count"] == 0
     assert pack["agent_followup"]["next_decision"] == "repair"
-    assert pack["next_read_commands"]
+    assert pack["next_read_commands"][0] == "guanlan diagnose page https://example.com/a --json"
+    assert "guanlan read https://example.com/a --quality-report --backend direct" in pack["next_read_commands"]

@@ -26,7 +26,7 @@ from socketserver import ThreadingMixIn
 from urllib.parse import parse_qs, urlencode, urlparse
 
 DB_PATH = os.environ.get("GUANLAN_DB", "/var/lib/guanlan-telemetry/events.db")
-BIND_HOST = os.environ.get("GUANLAN_HOST", "0.0.0.0")
+BIND_HOST = os.environ.get("GUANLAN_HOST", "127.0.0.1")
 BIND_PORT = int(os.environ.get("GUANLAN_PORT", "8080"))
 ADMIN_USER = os.environ.get("GUANLAN_ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.environ.get("GUANLAN_ADMIN_PASSWORD", "")
@@ -3082,7 +3082,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def authorized(self):
         if not ADMIN_PASSWORD:
-            return True
+            return False
         header = self.headers.get("Authorization", "")
         if not header.startswith("Basic "):
             return False
@@ -3104,7 +3104,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def ingest_authorized(self, parsed):
         if not INGEST_TOKEN:
-            return True
+            return False
         token = self.headers.get("X-Guanlan-Token", "")
         if not token:
             token = (parse_qs(parsed.query).get("token") or [""])[0]
@@ -3203,11 +3203,32 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    validate_bind_security()
     init_db()
     ensure_dashboard_refresh()
     httpd = ThreadedHTTPServer((BIND_HOST, BIND_PORT), Handler)
     print("Guanlan telemetry collector listening on %s:%s" % (BIND_HOST, BIND_PORT))
     httpd.serve_forever()
+
+
+def validate_bind_security():
+    if is_local_bind_host(BIND_HOST):
+        return
+    missing = []
+    if not ADMIN_PASSWORD:
+        missing.append("GUANLAN_ADMIN_PASSWORD")
+    if not INGEST_TOKEN:
+        missing.append("GUANLAN_INGEST_TOKEN")
+    if missing:
+        sys.stderr.write(
+            "telemetry collector refused non-local bind without secrets: %s\n"
+            % ", ".join(missing)
+        )
+        sys.exit(2)
+
+
+def is_local_bind_host(host):
+    return str(host or "").strip().lower() in {"127.0.0.1", "localhost", "::1"}
 
 
 if __name__ == "__main__":

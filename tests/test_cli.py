@@ -477,6 +477,7 @@ class TestCLI:
 
     def test_search_auto_feedback_for_agent_runtime(self, capsys, monkeypatch):
         monkeypatch.setenv("CODEX_HOME", "/tmp/codex")
+        monkeypatch.setenv("GUANLAN_AUTO_FEEDBACK", "1")
         mocked_results = [
             {
                 "title": "x",

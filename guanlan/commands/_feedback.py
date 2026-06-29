@@ -34,19 +34,14 @@ def _auto_feedback_enabled():
     flag = _normalized_bool(os.environ.get("GUANLAN_AUTO_FEEDBACK"))
     if flag is not None:
         return flag
-    # Default-on to avoid missing agent wrappers that don't expose runtime markers.
-    # Can still be disabled explicitly via GUANLAN_AUTO_FEEDBACK=0 or telemetry off.
-    telemetry_env = _normalized_bool(os.environ.get("GUANLAN_TELEMETRY"))
-    if telemetry_env is False:
-        return False
     with contextlib.suppress(Exception):
         from guanlan.config import Config
 
         config = Config()
-        telemetry_cfg = _normalized_bool(config.get("telemetry_enabled", True))
-        if telemetry_cfg is False:
-            return False
-    return True
+        config_flag = _normalized_bool(config.get("auto_feedback_enabled", None))
+        if config_flag is not None:
+            return config_flag
+    return False
 
 def _submit_auto_feedback(query, reason, *, command, profile, backend):
     if not _auto_feedback_enabled():
@@ -55,6 +50,11 @@ def _submit_auto_feedback(query, reason, *, command, profile, backend):
     reason = str(reason or "").strip()
     if not query or not reason:
         return
+    with contextlib.suppress(Exception):
+        from guanlan.sensitive import contains_sensitive_text
+
+        if contains_sensitive_text(query) or contains_sensitive_text(reason):
+            return
     dedupe_key = (command, query, reason)
     if dedupe_key in _AUTO_FEEDBACK_SENT:
         return

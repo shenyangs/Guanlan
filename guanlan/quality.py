@@ -1230,16 +1230,19 @@ def _check_tool_registry_contract() -> list[dict[str, Any]]:
     from guanlan.serve import dispatch_request
     from guanlan.tool_registry import (
         CORE_AGENT_TOOLS,
-        core_agent_tool_names,
         http_routes,
         mcp_projection_defaults,
     )
 
     mcp_names = {tool.get("name") for tool in _tool_definitions()}
-    missing = sorted(core_agent_tool_names() - mcp_names)
+    registry_mcp_names = {tool.name for tool in CORE_AGENT_TOOLS if "mcp" in tool.surfaces}
+    missing = sorted(registry_mcp_names - mcp_names)
+    extra_mcp = sorted(name for name in mcp_names - registry_mcp_names if name)
     status, tools_payload = dispatch_request("GET", "/tools")
     http_tool_names = {tool.get("name") for tool in tools_payload.get("tools", [])} if status == 200 else set()
-    http_missing = sorted(core_agent_tool_names() - http_tool_names)
+    registry_names = {tool.name for tool in CORE_AGENT_TOOLS}
+    http_missing = sorted(registry_names - http_tool_names)
+    http_extra = sorted(name for name in http_tool_names - registry_names if name)
     registered_http_routes = http_routes()
     canonical_projection = mcp_projection_defaults()
     low_limits = [
@@ -1252,13 +1255,22 @@ def _check_tool_registry_contract() -> list[dict[str, Any]]:
         for name, projection in canonical_projection.items()
         if not projection.get("cli_handler") or not projection.get("service_entrypoint")
     )
+    missing_schema = sorted(
+        tool.name
+        for tool in CORE_AGENT_TOOLS
+        if ("mcp" in tool.surfaces or "http" in tool.surfaces)
+        and not (tool.to_dict().get("request_schema") or {}).get("type")
+    )
     ok = (
         not missing
+        and not extra_mcp
         and not http_missing
+        and not http_extra
         and status == 200
         and registered_http_routes
         and not low_limits
         and not missing_projection
+        and not missing_schema
     )
     return [
         {
@@ -1266,8 +1278,9 @@ def _check_tool_registry_contract() -> list[dict[str, Any]]:
             "dimension": "robustness",
             "status": "pass" if ok else "fail",
             "message": (
-                f"mcp_missing={missing}, http_missing={http_missing}, low_limits={low_limits}, "
-                f"missing_projection={missing_projection}, "
+                f"mcp_missing={missing}, mcp_extra={extra_mcp}, "
+                f"http_missing={http_missing}, http_extra={http_extra}, low_limits={low_limits}, "
+                f"missing_projection={missing_projection}, missing_schema={missing_schema}, "
                 f"registry={len(CORE_AGENT_TOOLS)}, mcp={len(mcp_names)}, http_routes={len(registered_http_routes)}"
             ),
         }

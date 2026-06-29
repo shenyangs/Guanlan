@@ -337,19 +337,22 @@ def build_daily_report(
         )
         read_summary = dict(read_pack.get("summary") or {})
         read_errors = [row for row in read_evidence if row.get("status") == "error"]
+        attempted_reads = int(read_summary.get("attempted") or len(read_evidence) or 0)
+        usable_reads = int(read_summary.get("usable_count") or 0)
         read_status = "skipped"
-        if read_evidence:
-            if read_errors and len(read_errors) == len(read_evidence):
-                read_status = "error"
+        if attempted_reads:
+            if usable_reads == 0:
+                read_status = "unusable"
             elif read_errors:
                 read_status = "partial"
             else:
                 read_status = "ok"
         diagnostics["read"] = {
             "status": read_status,
-            "count": int(read_summary.get("usable_count") or 0),
+            "count": usable_reads,
             "error": "; ".join(str(row.get("error") or "") for row in read_errors if row.get("error"))[:500],
             "limit": int(read_summary.get("requested") or read_top),
+            "attempted": attempted_reads,
             "backend": read_backend or "auto",
             "max_chars": max_read_chars,
         }
@@ -1819,7 +1822,7 @@ def _build_editorial_health(
         warnings.append("AI/WPS 主题的订阅或垂类动态层没有命中，日报不能宣称覆盖了今日 AI 圈动态。")
     if diagnostics.get("hotnews", {}).get("status") == "error":
         warnings.append("热度层本轮不可用，不能判断今天是否形成公开水势。")
-    if diagnostics.get("read", {}).get("status") in {"error", "partial"}:
+    if diagnostics.get("read", {}).get("status") in {"error", "partial", "unusable"}:
         warnings.append("代表原文回读不完整；已保留可读条目的边界，弱读页面需要后续 `read --quality-report` 或页面诊断。")
     source_health = source_health or {}
     warnings.extend(str(item) for item in source_health.get("warnings") or [] if str(item))

@@ -77,6 +77,23 @@ def test_serve_dispatch_browser_assist_run_returns_adapter_contract():
     assert body["contract"]["safety"]["cookie_access_requires_separate_explicit_authorization"] is True
 
 
+def test_serve_browser_assist_run_rejects_execution_fields():
+    status, body = serve.dispatch_request(
+        "POST",
+        "/browser-assist/run",
+        {
+            "url": "https://example.com",
+            "execute": True,
+            "command_template": "echo {url}",
+            "output": "browser-notes.jsonl",
+        },
+    )
+
+    assert status == 403
+    assert body["status"] == "rejected"
+    assert body["error"] == "browser_assist_execution_not_allowed_http"
+
+
 def test_serve_dispatch_feeds_passes_watchlist_path(monkeypatch):
     seen = {}
 
@@ -94,15 +111,23 @@ def test_serve_dispatch_feeds_passes_watchlist_path(monkeypatch):
 
 
 def test_serve_dispatch_search_uses_webtools(monkeypatch):
+    class EmptyResults(list):
+        diagnostics = {
+            "backend_diagnostics": [{"backend": "baidu", "status": "blocked"}],
+            "external_fetch_strategy": {"enabled": True},
+        }
+
     monkeypatch.setattr(
         "guanlan.web.search.search_web",
-        lambda *args, **kwargs: [{"title": "A", "url": "https://example.com", "rank": 1}],
+        lambda *args, **kwargs: EmptyResults(),
     )
 
     status, body = serve.dispatch_request("POST", "/search", {"query": "A", "limit": 1})
 
     assert status == 200
-    assert body["results"][0]["title"] == "A"
+    assert body["results"] == []
+    assert body["diagnostics"]["backend_diagnostics"][0]["status"] == "blocked"
+    assert body["agent_followup"]["summary"]["diagnostics"]["external_fetch_strategy"]["enabled"] is True
     assert body["agent_followup"]["next_decision"] == "repair"
 
 
@@ -297,6 +322,17 @@ def test_serve_token_auth_helper_accepts_header_or_bearer():
     assert serve.is_authorized_request({"X-Guanlan-Token": "secret"}, "secret") is True
     assert serve.is_authorized_request({"Authorization": "Bearer secret"}, "secret") is True
     assert serve.is_authorized_request({"Authorization": "Bearer wrong"}, "secret") is False
+
+
+def test_serve_nonlocal_bind_requires_token():
+    with patch.dict("os.environ", {"GUANLAN_SERVE_TOKEN": ""}), patch.object(serve, "ThreadingHTTPServer") as server:
+        try:
+            serve.run_server(host="0.0.0.0", port=8765, token="")
+        except SystemExit as exc:
+            assert "非本地监听必须设置" in str(exc)
+        else:  # pragma: no cover - defensive assertion
+            raise AssertionError("run_server should fail closed for non-local bind without token")
+        server.assert_not_called()
 
 
 def test_serve_cli_can_print_random_token(capsys):

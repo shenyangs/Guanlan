@@ -419,10 +419,11 @@ def _cmd_serve(args):
         print(f"Generated GUANLAN_SERVE_TOKEN: {token}", file=sys.stderr)
     if args.host not in {"127.0.0.1", "localhost", "::1"} and not token:
         print(
-            "[!] 默认建议只监听 127.0.0.1；当前未设置 --token / GUANLAN_SERVE_TOKEN。服务虽只读，但可能暴露本地 archive 内容和搜索行为。",
+            "Error: 非本地监听必须设置 --token 或 GUANLAN_SERVE_TOKEN；已拒绝启动，避免暴露本地 archive、搜索行为和只读服务面。",
             file=sys.stderr,
         )
-    elif args.host not in {"127.0.0.1", "localhost", "::1"}:
+        sys.exit(2)
+    if args.host not in {"127.0.0.1", "localhost", "::1"}:
         print("[i] 非本地监听已启用 token 校验；请仍确认网络边界。", file=sys.stderr)
     from guanlan.serve import run_server
 

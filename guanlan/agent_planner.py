@@ -183,6 +183,7 @@ def build_agent_followup(tool_name: str, observation: Any, *, query: str = "") -
         "should_answer": should_answer,
         "next_decision": decision,
         "reason": reason,
+        "summary": normalized.get("summary", {}),
         "next_commands": command_seed,
         "boundary": _review_boundary(decision, reason, normalized),
     }

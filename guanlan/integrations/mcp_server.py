@@ -50,7 +50,7 @@ def _doctor_report() -> str:
 
 def _tool_definitions() -> list[dict]:
     """Return MCP tool definitions as plain dictionaries for easy testing."""
-    return [
+    return _apply_registry_tool_definitions([
         {
             "name": "guanlan_status",
             "description": (
@@ -753,11 +753,46 @@ def _tool_definitions() -> list[dict]:
                 },
             },
         },
-    ]
+    ])
+
+
+def _apply_registry_tool_definitions(tools: list[dict]) -> list[dict]:
+    """Project canonical registry descriptions/schemas onto MCP definitions."""
+
+    try:
+        from guanlan.tool_registry import tool_by_name
+    except Exception:  # pragma: no cover - defensive fallback for broken installs
+        return tools
+
+    projected: list[dict] = []
+    for tool in tools:
+        spec = tool_by_name(str(tool.get("name") or ""))
+        if spec is None:
+            projected.append(tool)
+            continue
+        payload = spec.to_dict()
+        next_tool = dict(tool)
+        next_tool["description"] = str(spec.mcp_description or tool.get("description") or payload.get("mcp_description") or "")
+        next_tool["inputSchema"] = spec.request_schema or tool.get("inputSchema") or {"type": "object", "properties": {}}
+        projected.append(next_tool)
+    return projected
 
 
 def _as_text(result) -> str:
     return json.dumps(result, ensure_ascii=False, indent=2) if isinstance(result, (dict, list)) else str(result)
+
+
+def _truthy(value) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _browser_assist_mcp_execution_requested(args: dict) -> bool:
+    if _truthy(args.get("execute")):
+        return True
+    for key in ("command_template", "output"):
+        if str(args.get(key) or "").strip():
+            return True
+    return False
 
 
 def _bounded_int(value, default: int, minimum: int, maximum: int) -> int:
@@ -849,14 +884,19 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             cache_ttl=int(args.get("cache_ttl") or 0),
             strict_scope=bool(args.get("strict_scope")),
         )
+        diagnostics = getattr(results, "diagnostics", {}) or {}
         followup = build_agent_followup(
             "guanlan_search",
-            {"results": results, "limit": int(args.get("limit") or DEFAULT_SEARCH_LIMIT)},
+            {
+                "results": results,
+                "limit": int(args.get("limit") or DEFAULT_SEARCH_LIMIT),
+                "diagnostics": diagnostics,
+            },
             query=str(args.get("query", "")).strip(),
         )
         output_format = str(args.get("format") or "context")
         if output_format == "json":
-            return {"results": results, "agent_followup": followup}
+            return {"results": results, "diagnostics": diagnostics, "agent_followup": followup}
         if output_format == "markdown":
             text = format_search_markdown(results, title=f"观澜搜索 / {args.get('query', '')}")
             return text + (format_search_trace(results) if args.get("trace") else "")
@@ -998,13 +1038,25 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             run_browser_assist_adapter,
         )
 
+        if _browser_assist_mcp_execution_requested(args):
+            payload = {
+                "error": "browser_assist_execution_not_allowed_mcp",
+                "status": "rejected",
+                "message": (
+                    "MCP guanlan_browser_assist_run 只返回浏览器补证执行契约；外部命令执行仅限本地 CLI 显式调用。"
+                ),
+                "boundary": "fail_closed; execute/command_template/output are CLI-only fields",
+            }
+            if str(args.get("format") or "json") == "json":
+                return payload
+            return format_browser_assist_run_markdown(payload)
         payload = run_browser_assist_adapter(
             str(args.get("url", "")).strip(),
             adapter=str(args.get("adapter") or "openguanlan"),
-            execute=bool(args.get("execute", False)),
-            command_template=str(args.get("command_template") or ""),
+            execute=False,
+            command_template="",
             timeout=max(int(args.get("timeout") or 90), 1),
-            output_path=str(args.get("output") or ""),
+            output_path="",
             page_type=str(args.get("page_type") or "access_gate"),
             signals=[str(item) for item in args.get("signals", [])] if isinstance(args.get("signals"), list) else [],
             platform=str(args.get("platform") or ""),

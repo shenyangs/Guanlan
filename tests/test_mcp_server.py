@@ -95,6 +95,9 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "format" in browser_assist_tool["inputSchema"]["properties"]
     assert "min_visible_items" in browser_assist_tool["inputSchema"]["properties"]
     assert "min_visible_items" in browser_assist_run_tool["inputSchema"]["properties"]
+    assert "execute" not in browser_assist_run_tool["inputSchema"]["properties"]
+    assert "command_template" not in browser_assist_run_tool["inputSchema"]["properties"]
+    assert "output" not in browser_assist_run_tool["inputSchema"]["properties"]
     assert "watchlist" in feeds_tool["inputSchema"]["properties"]
     assert "watchlist_path" in feeds_tool["inputSchema"]["properties"]
     assert "stable multi-step workflow" in recipe_tool["description"]
@@ -387,6 +390,22 @@ def test_mcp_browser_assist_plan_returns_task():
     assert payload["browser_assist_task"]["host_browser_contract"]["uses_existing_browser_session"] is True
     assert payload["browser_assist_task"]["sufficiency_contract"]["requested_min_items"] == 12
     assert "read_cookies" in payload["browser_assist_task"]["forbidden_actions"]
+
+
+def test_mcp_browser_assist_run_rejects_execution_fields():
+    payload = mcp_server._run_tool(
+        "guanlan_browser_assist_run",
+        {
+            "url": "https://example.com",
+            "execute": True,
+            "command_template": "echo {url}",
+            "output": "browser-notes.jsonl",
+            "format": "json",
+        },
+    )
+
+    assert payload["status"] == "rejected"
+    assert payload["error"] == "browser_assist_execution_not_allowed_mcp"
 
 
 def test_mcp_recipe_renders_plan():

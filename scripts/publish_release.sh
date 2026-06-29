@@ -42,7 +42,14 @@ git tag -a "$tag" -m "发布 Guanlan $tag"
 git push "$REMOTE" "$tag"
 
 if [ "$SKIP_SYNC" = "1" ]; then
-  echo "publish-release note: skipped post-release sync (GUANLAN_RELEASE_SKIP_SYNC=1)"
+  cat <<EOF
+push/tag complete; release sync skipped
+version=$VERSION
+branch=$BRANCH
+tag=$tag
+release incomplete: GUANLAN_RELEASE_SKIP_SYNC=1
+EOF
+  exit 0
 else
   scripts/post_release_sync.sh "$VERSION"
 fi

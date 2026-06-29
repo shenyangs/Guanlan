@@ -121,13 +121,22 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
         if method == "POST" and route == "/browser-assist/run":
             from guanlan.browser_assist import run_browser_assist_adapter
 
+            if _browser_assist_http_execution_requested(payload):
+                return 403, {
+                    "error": "browser_assist_execution_not_allowed_http",
+                    "status": "rejected",
+                    "message": (
+                        "HTTP /browser-assist/run 只返回浏览器补证执行契约；外部命令执行仅限本地 CLI 显式调用。"
+                    ),
+                    "boundary": "fail_closed; execute/command_template/output are CLI-only fields",
+                }
             return 200, run_browser_assist_adapter(
                 str(payload.get("url", "")).strip(),
                 adapter=str(payload.get("adapter") or "openguanlan"),
-                execute=bool(payload.get("execute", False)),
-                command_template=str(payload.get("command_template") or ""),
+                execute=False,
+                command_template="",
                 timeout=max(_int(payload.get("timeout"), 90), 1),
-                output_path=str(payload.get("output") or ""),
+                output_path="",
                 page_type=str(payload.get("page_type") or "access_gate"),
                 signals=[str(item) for item in payload.get("signals", [])] if isinstance(payload.get("signals"), list) else [],
                 platform=str(payload.get("platform") or ""),
@@ -149,11 +158,17 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 profile=payload.get("profile") or "china",
                 trace=bool(payload.get("trace")),
             )
+            diagnostics = getattr(results, "diagnostics", {}) or {}
             return 200, {
                 "results": results,
+                "diagnostics": diagnostics,
                 "agent_followup": build_agent_followup(
                     "guanlan_search",
-                    {"results": results, "limit": _int(payload.get("limit"), DEFAULT_SEARCH_LIMIT)},
+                    {
+                        "results": results,
+                        "limit": _int(payload.get("limit"), DEFAULT_SEARCH_LIMIT),
+                        "diagnostics": diagnostics,
+                    },
                     query=str(payload.get("query", "")),
                 ),
             }
@@ -429,8 +444,13 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
 
 def run_server(host: str = "127.0.0.1", port: int = 8765, token: str = "") -> None:
     """Run the read-only local HTTP server."""
+    resolved_token = token or os.environ.get("GUANLAN_SERVE_TOKEN", "")
+    if not _is_local_bind_host(host) and not resolved_token:
+        raise SystemExit(
+            "非本地监听必须设置 --token 或 GUANLAN_SERVE_TOKEN；已拒绝启动。"
+        )
     server = ThreadingHTTPServer((host, int(port)), _GuanlanHandler)
-    server.guanlan_token = token or os.environ.get("GUANLAN_SERVE_TOKEN", "")
+    server.guanlan_token = resolved_token
     print(f"观澜只读服务启动: http://{host}:{port}")
     print("Endpoints: /health, /tools, /sources, /agent, /route, /browser-assist/plan, /search, /map, /research, /compare, /timeline, /dossier, /read, /hotnews, /feeds, /daily, /archive/search")
     if server.guanlan_token:
@@ -508,6 +528,19 @@ def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
 
 def _bool(value: Any) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _browser_assist_http_execution_requested(payload: dict[str, Any]) -> bool:
+    if _bool(payload.get("execute")):
+        return True
+    for key in ("command_template", "output"):
+        if str(payload.get(key) or "").strip():
+            return True
+    return False
+
+
+def _is_local_bind_host(host: str) -> bool:
+    return str(host or "").strip().lower() in {"127.0.0.1", "localhost", "::1"}
 
 
 def is_authorized_request(headers: Any, token: str) -> bool:

@@ -11,7 +11,12 @@ RELEASE_WORKFLOW_PATH="${GUANLAN_RELEASE_WORKFLOW_PATH:-release-pypi.yml}"
 PYPI_PACKAGE="${GUANLAN_PYPI_PACKAGE:-guanlan}"
 TAP_REPO="${GUANLAN_HOMEBREW_TAP_REPO:-shenyangs/homebrew-tap}"
 TAP_FORMULA_PATH="${GUANLAN_HOMEBREW_FORMULA_PATH:-Formula/guanlan.rb}"
-SITE_URL="${GUANLAN_RELEASE_SITE_URL:-http://101.37.70.222}"
+SOURCE_SITE_URL="${GUANLAN_RELEASE_SOURCE_SITE_URL:-http://101.37.70.222/}"
+if [ "${GUANLAN_RELEASE_SOURCE_ONLY:-0}" = "1" ]; then
+  SITE_URLS="${GUANLAN_RELEASE_SITE_URLS:-$SOURCE_SITE_URL}"
+else
+  SITE_URLS="${GUANLAN_RELEASE_SITE_URLS:-https://guanlan.xin/ https://www.guanlan.xin/ $SOURCE_SITE_URL}"
+fi
 SYNC_TIMEOUT_SECONDS="${GUANLAN_SYNC_TIMEOUT_SECONDS:-1500}"
 SYNC_INTERVAL_SECONDS="${GUANLAN_SYNC_INTERVAL_SECONDS:-15}"
 SKIP_DIST_WAIT="${GUANLAN_SYNC_SKIP_DISTRIBUTION_WAIT:-0}"
@@ -161,8 +166,43 @@ check_homebrew_tap_release() {
   curl -fsSL --max-time 12 "$formula_url" | grep -q "guanlan-${VERSION}\.tar\.gz"
 }
 
+_site_is_source() {
+  local url="$1"
+  [ "$url" = "$SOURCE_SITE_URL" ] || [ "$url" = "${SOURCE_SITE_URL%/}" ]
+}
+
 check_website_release() {
-  curl -fsSL --max-time 12 "$SITE_URL" | grep -q "Guanlan v${VERSION}"
+  local url body ok_any source_ok public_failures
+  ok_any=0
+  source_ok=0
+  public_failures=()
+  for url in $SITE_URLS; do
+    if body="$(curl -fsSL --max-time 12 -H "Cache-Control: no-cache" "$url" 2>/dev/null)"; then
+      if printf '%s' "$body" | grep -q "Guanlan v${VERSION}"; then
+        ok_any=1
+        if _site_is_source "$url"; then
+          source_ok=1
+        fi
+        continue
+      fi
+      public_failures+=("$url:old_or_block_page")
+    else
+      public_failures+=("$url:request_failed")
+    fi
+  done
+  if [ "${GUANLAN_RELEASE_SOURCE_ONLY:-0}" = "1" ]; then
+    [ "$ok_any" = "1" ]
+    return
+  fi
+  if [ "${#public_failures[@]}" -gt 0 ]; then
+    if [ "$source_ok" = "1" ]; then
+      echo "source_deployed_but_public_site_blocked: ${public_failures[*]}" >&2
+    else
+      echo "public_site_not_ready: ${public_failures[*]}" >&2
+    fi
+    return 1
+  fi
+  return 0
 }
 
 deploy_website_if_needed() {
@@ -255,14 +295,17 @@ verify_local_entrypoints() {
     [ -z "$path" ] && continue
     version="$(extract_version "$path")"
     echo "  - $path => v${version:-unknown}"
-    if [ -n "$version" ] && [ "$version" != "$VERSION" ]; then
+    if [ -z "$version" ]; then
+      fail "entrypoint $path returned unknown version"
+    fi
+    if [ "$version" != "$VERSION" ]; then
       fail "entrypoint $path version $version != expected $VERSION"
     fi
   done <<< "$unique_paths"
 
   if command -v guanlan >/dev/null 2>&1; then
     echo "[sync] running install-check..."
-    guanlan doctor --install-check || true
+    guanlan doctor --install-check
   fi
 }
 
@@ -278,11 +321,15 @@ else
 fi
 
 deploy_website_if_needed
-wait_for_condition "website ${SITE_URL} version ${VERSION}" "check_website_release"
+wait_for_condition "website public surfaces version ${VERSION}" "check_website_release"
 sync_local_installs
 verify_local_entrypoints
 
-echo "post-release sync ok"
+if [ "${GUANLAN_RELEASE_SOURCE_ONLY:-0}" = "1" ]; then
+  echo "release incomplete: source-only website validation used (GUANLAN_RELEASE_SOURCE_ONLY=1)"
+else
+  echo "post-release sync ok"
+fi
 echo "version=$VERSION"
 echo "tag=$TAG"
-echo "site_url=$SITE_URL"
+echo "site_urls=$SITE_URLS"
