@@ -660,6 +660,10 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "伤病",
             "转会",
             "续约",
+            "世界杯",
+            "美加墨",
+            "淘汰赛",
+            "球场",
             "梅西",
             "姆巴佩",
             "mbappe",
@@ -668,12 +672,15 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "nba",
             "fifa",
             "uefa",
+            "world cup",
+            "stadium",
+            "venue",
             "lpl",
             "电竞",
         ),
         "scopes": ("sports", "global_news", "community_sample"),
         "fallback": ("social_web", "entertainment"),
-        "sites": ("espn.com", "skysports.com", "theathletic.com", "fifa.com", "uefa.com", "hupu.com", "dongqiudi.com"),
+        "sites": ("fifa.com", "espn.com", "foxsports.com", "olympics.com", "skysports.com", "theathletic.com", "uefa.com", "hupu.com", "dongqiudi.com"),
         "roles": ("official_stat", "sports_report", "transfer_report", "fan_discussion"),
         "warning": "体育信息应区分官方赛程/伤病、媒体报道、转会爆料和球迷讨论；爆料不能直接当事实。",
     },
@@ -2496,6 +2503,7 @@ def build_route_plan(
             for reason in reasons
             if not (reason.startswith("local:") or reason.startswith("industry:") or reason.startswith("ecommerce:"))
         ]
+    matched_rules = _prioritize_sports_event_location_rules(text, matched_rules)
     matched_rules = _prioritize_sample_intelligence_rules(matched_rules)
 
     if preset and preset not in {"", "general"}:
@@ -4116,6 +4124,10 @@ def _should_demote_broad_sports_score(text: str, rules: list[dict[str, Any]]) ->
         "赛程",
         "比赛",
         "比分直播",
+        "世界杯",
+        "美加墨",
+        "淘汰赛",
+        "球场",
         "伤病",
         "转会",
         "梅西",
@@ -4125,6 +4137,9 @@ def _should_demote_broad_sports_score(text: str, rules: list[dict[str, Any]]) ->
         "nba",
         "fifa",
         "uefa",
+        "world cup",
+        "stadium",
+        "venue",
         "lpl",
         "电竞",
     )
@@ -4877,6 +4892,35 @@ def _prioritize_sample_intelligence_rules(rules: list[dict[str, Any]]) -> list[d
         "review_intel": 1,
         "public_opinion": 8,
     }
+    ordered = sorted(enumerate(rules), key=lambda item: (priority.get(str(item[1].get("intent") or ""), 10), item[0]))
+    return [rule for _, rule in ordered]
+
+
+def _prioritize_sports_event_location_rules(text: str, rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    intents = {str(rule.get("intent") or "") for rule in rules}
+    if not {"sports", "local"} <= intents:
+        return rules
+    event_terms = (
+        "世界杯",
+        "美加墨",
+        "fifa",
+        "world cup",
+        "赛程",
+        "比赛",
+        "比分",
+        "赛果",
+        "淘汰赛",
+        "季后赛",
+        "决赛",
+        "半决赛",
+        "球场",
+        "stadium",
+        "venue",
+    )
+    if not _contains_any(text, event_terms):
+        return rules
+    rules = [rule for rule in rules if str(rule.get("intent") or "") != "local"]
+    priority = {"sports": 0, "local": 1}
     ordered = sorted(enumerate(rules), key=lambda item: (priority.get(str(item[1].get("intent") or ""), 10), item[0]))
     return [rule for _, rule in ordered]
 

@@ -36,9 +36,21 @@ _LIVE_SPORTS_TERMS = (
     "scores",
     "scoreboard",
     "schedule",
+    "fixtures",
     "standings",
     "bracket",
     "results",
+    "knockout",
+    "stadium",
+    "venue",
+    "球场",
+    "比赛城市",
+    "小组赛",
+    "淘汰赛",
+    "开球",
+    "16强",
+    "八分之一",
+    "四分之一",
 )
 _SPORTS_ENTITY_TERMS = (
     "nba",
@@ -51,6 +63,8 @@ _SPORTS_ENTITY_TERMS = (
     "英超",
     "欧冠",
     "世界杯",
+    "美加墨",
+    "world cup",
     "lpl",
     "电竞",
 )
@@ -559,7 +573,76 @@ def _sports_seeds(query: str) -> list[dict[str, Any]]:
                 ),
             ]
         )
-    if _contains_any(text, ("足球", "英超", "欧冠", "fifa", "uefa", "soccer", "football")):
+    if _contains_any(text, ("足球", "英超", "欧冠", "世界杯", "美加墨", "淘汰赛", "world cup", "fifa", "uefa", "soccer", "football")):
+        is_world_cup_lookup = _contains_any(text, ("世界杯", "美加墨", "world cup", "fifa"))
+        if is_world_cup_lookup:
+            seeds.extend(
+                [
+                    _seed(
+                        "sports:fifa:worldcup_2026_scores_fixtures",
+                        "FIFA World Cup 2026 scores and fixtures",
+                        "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/scores-fixtures",
+                        "FIFA 2026 世界杯官方赛程与赛果入口，适合核对日期、对阵、比赛城市和球场。",
+                        scope="sports",
+                        source_type="体育/赛事/转会",
+                        role="official_stat",
+                        trust=5,
+                    ),
+                    _seed(
+                        "sports:fifa:worldcup_2026_match_schedule",
+                        "FIFA World Cup 2026 match schedule, fixtures, results, teams and stadiums",
+                        "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/match-schedule-fixtures-results-teams-stadiums",
+                        "FIFA 官方 2026 世界杯赛程说明页，通常覆盖比赛日程、城市、球场和晋级阶段安排。",
+                        scope="sports",
+                        source_type="体育/赛事/转会",
+                        role="official_stat",
+                        trust=5,
+                    ),
+                    _seed(
+                        "sports:fifa:espn_worldcup_schedule",
+                        "ESPN FIFA World Cup schedule",
+                        "https://www.espn.com/soccer/schedule/_/league/fifa.world",
+                        "ESPN 世界杯结构化赛程入口，适合补充对阵、开球时间和转播式赛程视图。",
+                        scope="sports",
+                        source_type="体育/赛事/转会",
+                        role="official_stat",
+                        trust=4,
+                    ),
+                    _seed(
+                        "sports:fifa:foxsports_worldcup_schedule",
+                        "FOX Sports FIFA World Cup schedule",
+                        "https://www.foxsports.com/soccer/fifa-world-cup-men/scores",
+                        "FOX Sports 世界杯比分/赛程入口，适合补充转播侧时间、比分和赛程展示。",
+                        scope="sports",
+                        source_type="体育/赛事/转会",
+                        role="sports_report",
+                        trust=4,
+                    ),
+                    _seed(
+                        "sports:fifa:olympics_worldcup_schedule",
+                        "Olympics.com FIFA World Cup schedule",
+                        "https://olympics.com/en/football/fifa-world-cup/schedule-results",
+                        "Olympics.com 世界杯赛程/赛果入口，适合补充赛事制式、日程和赛果说明。",
+                        scope="sports",
+                        source_type="体育/赛事/转会",
+                        role="sports_report",
+                        trust=4,
+                    ),
+                ]
+            )
+            seeds.append(
+                _seed(
+                    "sports:soccer:espn_scoreboard",
+                    "ESPN Soccer Scoreboard",
+                    "https://www.espn.com/soccer/scoreboard",
+                    "ESPN 足球比分入口，适合核对近期赛果。",
+                    scope="sports",
+                    source_type="体育/赛事/转会",
+                    role="official_stat",
+                    trust=4,
+                )
+            )
+            return seeds
         seeds.extend(
             [
                 _seed("sports:soccer:espn_scoreboard", "ESPN Soccer Scoreboard", "https://www.espn.com/soccer/scoreboard", "ESPN 足球比分入口，适合核对近期赛果。", scope="sports", source_type="体育/赛事/转会", role="official_stat", trust=4),

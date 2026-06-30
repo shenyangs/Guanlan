@@ -1419,8 +1419,25 @@ def build_query_strategy(
         add("technical_primary", f"{search_friendly_query} docs release notes changelog API SDK", "技术问题先找官方文档、发布说明和可复现材料")
         add("developer_discussion", f"{search_friendly_query} github issue benchmark 开源", "技术问题补开发者与可复现线索")
     if "sports" in intents:
-        add("official_stat", f"{clean_query} official scoreboard schedule standings", "体育实时问题优先找官方比分、赛程和榜单入口")
-        add("sports_report", f"{clean_query} ESPN NBA official scores playoffs schedule", "补可信体育媒体的战报、专题页和实时比分")
+        sports_text = clean_query.lower()
+        is_world_cup = any(
+            term in sports_text
+            for term in ("世界杯", "美加墨", "world cup", "fifa world cup")
+        )
+        if is_world_cup:
+            add(
+                "official_stat",
+                f"{clean_query} FIFA World Cup 2026 official scores fixtures schedule stadium venue",
+                "世界杯赛程/城市/球场先锚定 FIFA 官方 scores-fixtures 与 match schedule。",
+            )
+            add(
+                "sports_report",
+                f"{clean_query} ESPN FOX Sports Olympics FIFA World Cup schedule results",
+                "补 ESPN、FOX Sports、Olympics.com 等可信赛程/赛果视图。",
+            )
+        else:
+            add("official_stat", f"{clean_query} official scoreboard schedule standings", "体育实时问题优先找官方比分、赛程和榜单入口")
+            add("sports_report", f"{clean_query} ESPN NBA official scores playoffs schedule", "补可信体育媒体的战报、专题页和实时比分")
     if "university_admissions" in intents:
         add("university_official", f"{clean_query} 官网 研究生招生 导师 招生目录", "高校招生/导师问题先找学校和招生官网")
         add("department_page", f"{clean_query} 院系 导师 研究方向", "补院系官网和导师主页")

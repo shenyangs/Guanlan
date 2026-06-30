@@ -641,7 +641,7 @@ _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
     },
     "sports": {
         "name": "体育/赛事/转会",
-        "terms": ("体育", "比赛", "赛程", "比分", "伤病", "转会", "合同", "续约", "梅西", "姆巴佩", "mbappe", "messi", "real madrid", "nba", "fifa", "uefa", "lpl", "电竞"),
+        "terms": ("体育", "比赛", "赛程", "比分", "伤病", "转会", "合同", "续约", "世界杯", "美加墨", "淘汰赛", "球场", "梅西", "姆巴佩", "mbappe", "messi", "real madrid", "nba", "fifa", "uefa", "world cup", "stadium", "venue", "lpl", "电竞"),
         "preferred_scopes": ("sports", "global_news", "community_sample"),
         "preferred_source_types": ("体育/赛事/转会", "国际主流媒体", "英文社区样本"),
         "caution_source_types": ("社交/内容平台", "通用网页"),
@@ -868,7 +868,7 @@ RESEARCH_PRESETS: dict[str, dict[str, Any]] = {
         "profile": "hybrid",
         "scope": "sports",
         "scopes": ["sports", "global_news", "community_sample"],
-        "sites": ["espn.com", "skysports.com", "theathletic.com", "fifa.com", "uefa.com"],
+        "sites": ["fifa.com", "espn.com", "foxsports.com", "olympics.com", "skysports.com", "theathletic.com", "uefa.com"],
         "limit": DEFAULT_RESEARCH_LIMIT,
         "read_top": 5,
         "max_read_chars": 2800,
@@ -5760,7 +5760,7 @@ def _query_for_research_job(
             role_preferences = ["industry_report", "fresh_news", "base"]
         elif any(site in target for site in ("openai", "anthropic", "microsoft", "google", "amazon", "meta")):
             role_preferences = ["company_primary", "technical_primary", "fresh_news"]
-        elif any(site in target for site in ("espn", "nba.com", "fifa", "uefa", "skysports", "theathletic")):
+        elif any(site in target for site in ("espn", "nba.com", "fifa", "uefa", "foxsports", "olympics", "skysports", "theathletic")):
             role_preferences = ["official_stat", "sports_report", "fresh_news", "base"]
         elif any(site in target for site in ("cninfo", "sse.com", "szse", "hkexnews", "sec.gov", "csrc.gov")):
             role_preferences = ["company_filing", "regulatory_notice", "exchange_announcement", "base"]

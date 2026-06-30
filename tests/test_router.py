@@ -201,6 +201,24 @@ def test_route_plan_recommends_direct_reads_for_live_nba_lookup():
     assert read_index < search_index
 
 
+def test_route_plan_recommends_direct_reads_for_world_cup_schedule_lookup():
+    plan = build_route_plan(
+        "查一下2026年美加墨世界杯接下来3天 6月30日-7月3日左右 的淘汰赛赛程 重点是比赛城市 球场",
+        profile="china",
+    )
+
+    assert plan.primary_intents[0] == "sports"
+    assert "local" not in plan.primary_intents + plan.secondary_intents
+    assert "gov" not in plan.preferred_scopes
+    assert "local_official" not in plan.preferred_scopes
+    assert plan.target_sites[:4] == ["fifa.com", "espn.com", "foxsports.com", "olympics.com"]
+    assert any("fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/scores-fixtures" in command for command in plan.recommended_commands)
+    assert any("espn.com/soccer/schedule/_/league/fifa.world" in command for command in plan.recommended_commands)
+    read_index = next(idx for idx, command in enumerate(plan.recommended_commands) if command.startswith("guanlan read "))
+    search_index = next(idx for idx, command in enumerate(plan.recommended_commands) if command.startswith("guanlan search "))
+    assert read_index < search_index
+
+
 def test_route_plan_detects_finance_layers_and_commands():
     plan = build_route_plan("宁德时代 股价 财报 公告 最近风险", profile="china")
     intents = plan.primary_intents + plan.secondary_intents

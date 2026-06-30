@@ -48,6 +48,33 @@ def test_search_web_adds_direct_sports_seeds_when_search_is_empty(monkeypatch):
     assert "高确定性垂直场景" in context
 
 
+def test_search_web_adds_world_cup_direct_seeds_when_search_is_empty(monkeypatch):
+    def fake_search(query, limit=10):
+        return []
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web(
+        "2026年美加墨世界杯接下来3天 6月30日-7月3日 淘汰赛赛程 比赛城市 球场",
+        backend="duckduckgo",
+        profile="china",
+        scope="sports",
+        limit=6,
+        trace=True,
+    )
+
+    urls = [item["url"] for item in results]
+    assert any("fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/scores-fixtures" in url for url in urls)
+    assert any("espn.com/soccer/schedule/_/league/fifa.world" in url for url in urls)
+    assert any("foxsports.com/soccer/fifa-world-cup-men/scores" in url for url in urls)
+    assert not any("uefa.com/uefachampionsleague" in url for url in urls)
+    diagnostics = results[0]["trace"]["backend_diagnostics"]
+    assert any(item["backend"].startswith("direct:sports") and item["status"] == "ok" for item in diagnostics)
+    strategy = results[0]["trace"]["query_strategy"]
+    strategy_blob = "\n".join(str(item.get("query") or "") for item in strategy.get("variants") or [])
+    assert "FIFA World Cup 2026 official" in strategy_blob
+
+
 def test_search_web_adds_direct_finance_seeds_even_with_search_results(monkeypatch):
     def fake_search(query, limit=10):
         return [webtools.SearchResult(title="Random generic page", url="https://example.com/random", snippet="noise")]

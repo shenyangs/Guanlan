@@ -712,7 +712,7 @@ _QUALITY_INTENT_PROFILES: dict[str, dict[str, Any]] = {
     },
     "sports": {
         "name": "体育/赛事/转会",
-        "terms": ("体育", "比赛", "赛程", "比分", "伤病", "转会", "合同", "续约", "梅西", "姆巴佩", "mbappe", "messi", "real madrid", "nba", "fifa", "uefa", "lpl", "电竞"),
+        "terms": ("体育", "比赛", "赛程", "比分", "伤病", "转会", "合同", "续约", "世界杯", "美加墨", "淘汰赛", "球场", "梅西", "姆巴佩", "mbappe", "messi", "real madrid", "nba", "fifa", "uefa", "world cup", "stadium", "venue", "lpl", "电竞"),
         "preferred_scopes": ("sports", "global_news", "community_sample"),
         "preferred_source_types": ("体育/赛事/转会", "国际主流媒体", "英文社区样本"),
         "caution_source_types": ("社交/内容平台", "通用网页"),

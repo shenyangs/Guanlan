@@ -238,11 +238,21 @@ def test_direct_source_seeds_cover_vertical_lookups_without_treating_dev_tasks_a
         intents=["sports"],
         scopes=["sports"],
     )
+    worldcup_seeds = direct_source_seeds(
+        "2026年美加墨世界杯接下来3天 6月30日-7月3日 淘汰赛赛程 比赛城市 球场",
+        intents=["sports"],
+        scopes=["sports"],
+    )
     weather_seeds = direct_source_seeds("台风 路径 最新 中央气象台 日本气象厅", intents=["weather_disaster"])
     security_seeds = direct_source_seeds("CVE-2026-12345 OpenSSL 漏洞 影响版本", intents=["cybersecurity"])
     wps_seeds = direct_source_seeds("WPS AI PPT Agent 办公选题", intents=["wps_office"], scopes=["wps_office"])
 
     assert any("espn.com/nba/story" in item["url"] for item in nba_seeds)
+    assert any("fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/scores-fixtures" in item["url"] for item in worldcup_seeds)
+    assert any("espn.com/soccer/schedule/_/league/fifa.world" in item["url"] for item in worldcup_seeds)
+    assert any("foxsports.com/soccer/fifa-world-cup-men/scores" in item["url"] for item in worldcup_seeds)
+    assert any("olympics.com/en/football/fifa-world-cup/schedule-results" in item["url"] for item in worldcup_seeds)
+    assert not any("uefa.com/uefachampionsleague" in item["url"] for item in worldcup_seeds)
     assert any("nmc.cn" in item["url"] for item in weather_seeds)
     assert any("CVE-2026-12345" in item["url"] for item in security_seeds)
     assert any("wps.cn" in item["url"] for item in wps_seeds)
