@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import platform
+import signal
 import sys
 import threading
 import time
@@ -35,7 +36,7 @@ DEFAULT_ENDPOINT = (
 )
 MAX_QUEUE_EVENTS = 2000
 MAX_FLUSH_EVENTS = 5
-END_EVENT_RETRY = 1
+END_EVENT_RETRY = 3
 END_EVENT_RETRY_DELAY_SECONDS = 0.05
 _TRUTHY = {"1", "true", "yes", "on"}
 _FALSY = {"0", "false", "no", "off"}
@@ -397,6 +398,33 @@ def _start_heartbeat(
     return stop, thread
 
 
+def _install_termination_handlers(handler) -> dict[int, object]:
+    """Install temporary handlers so host timeouts can still emit an end event."""
+    if threading.current_thread() is not threading.main_thread():
+        return {}
+    previous: dict[int, object] = {}
+    signals = [signal.SIGINT]
+    for name in ("SIGTERM", "SIGHUP"):
+        signum = getattr(signal, name, None)
+        if signum is not None:
+            signals.append(signum)
+    for signum in signals:
+        try:
+            previous[int(signum)] = signal.getsignal(signum)
+            signal.signal(signum, handler)
+        except (OSError, RuntimeError, ValueError):
+            continue
+    return previous
+
+
+def _restore_termination_handlers(previous: dict[int, object]) -> None:
+    for signum, handler in previous.items():
+        try:
+            signal.signal(signum, handler)
+        except (OSError, RuntimeError, ValueError):
+            continue
+
+
 @contextlib.contextmanager
 def telemetry_span(
     command: str,
@@ -433,16 +461,15 @@ def telemetry_span(
         invocation_id=invocation_id,
     )
     status = "ok"
-    try:
-        yield
-    except SystemExit as exc:
-        if exc.code not in (None, 0):
-            status = "error"
-        raise
-    except BaseException:
-        status = "error"
-        raise
-    finally:
+    ended = False
+    end_lock = threading.Lock()
+
+    def finish(final_status: str) -> None:
+        nonlocal ended
+        with end_lock:
+            if ended:
+                return
+            ended = True
         heartbeat_stop.set()
         heartbeat_thread.join(timeout=0.1)
         duration_ms = int((time.monotonic() - started) * 1000)
@@ -455,10 +482,30 @@ def telemetry_span(
                 session_id=session_id,
                 invocation_id=invocation_id,
                 install_id=settings.install_id,
-                status=status,
+                status=final_status,
                 duration_ms=duration_ms,
             ),
             retries=END_EVENT_RETRY,
         )
         # Push tail events opportunistically; still non-fatal on network failure.
         flush_queue(settings)
+
+    def handle_termination(signum, _frame):
+        finish("error")
+        if int(signum) == int(signal.SIGINT):
+            raise KeyboardInterrupt
+        raise SystemExit(128 + int(signum))
+
+    previous_handlers = _install_termination_handlers(handle_termination)
+    try:
+        yield
+    except SystemExit as exc:
+        if exc.code not in (None, 0):
+            status = "error"
+        raise
+    except BaseException:
+        status = "error"
+        raise
+    finally:
+        _restore_termination_handlers(previous_handlers)
+        finish(status)

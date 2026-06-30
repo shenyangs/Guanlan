@@ -1030,6 +1030,56 @@ def query_orphan_starts(conn, since_ms, current_ms):
     )
 
 
+def query_orphan_breakdown(conn, since_ms, current_ms):
+    cutoff = current_ms - ACTIVE_TTL_SECONDS * 1000
+    row = conn.execute(
+        """
+        WITH starts AS (
+            SELECT invocation_id
+            FROM events
+            WHERE event = 'invocation_start'
+              AND received_ms >= ?
+              AND received_ms < ?
+        ),
+        ended AS (
+            SELECT DISTINCT invocation_id
+            FROM events
+            WHERE event = 'invocation_end'
+        ),
+        active AS (
+            SELECT DISTINCT invocation_id
+            FROM active_invocations
+            WHERE last_seen_ms >= ?
+        ),
+        heartbeats AS (
+            SELECT DISTINCT invocation_id
+            FROM events
+            WHERE event = 'invocation_heartbeat'
+        )
+        SELECT
+            SUM(CASE
+                WHEN ended.invocation_id IS NULL
+                 AND active.invocation_id IS NULL
+                 AND heartbeats.invocation_id IS NOT NULL
+                THEN 1 ELSE 0 END) AS with_heartbeat,
+            SUM(CASE
+                WHEN ended.invocation_id IS NULL
+                 AND active.invocation_id IS NULL
+                 AND heartbeats.invocation_id IS NULL
+                THEN 1 ELSE 0 END) AS without_heartbeat
+        FROM starts
+        LEFT JOIN ended ON ended.invocation_id = starts.invocation_id
+        LEFT JOIN active ON active.invocation_id = starts.invocation_id
+        LEFT JOIN heartbeats ON heartbeats.invocation_id = starts.invocation_id
+        """,
+        (since_ms, cutoff, cutoff),
+    ).fetchone()
+    return {
+        "with_heartbeat": int((row and row["with_heartbeat"]) or 0),
+        "without_heartbeat": int((row and row["without_heartbeat"]) or 0),
+    }
+
+
 def query_orphan_sources(conn, since_ms, current_ms, limit=12):
     cutoff = current_ms - ACTIVE_TTL_SECONDS * 1000
     rows = conn.execute(
@@ -1050,16 +1100,32 @@ def query_orphan_sources(conn, since_ms, current_ms, limit=12):
             SELECT DISTINCT invocation_id
             FROM active_invocations
             WHERE last_seen_ms >= ?
+        ),
+        heartbeats AS (
+            SELECT DISTINCT invocation_id
+            FROM events
+            WHERE event = 'invocation_heartbeat'
         )
         SELECT starts.command AS command,
                starts.agent_kind AS agent_kind,
                starts.version AS version,
                starts.platform AS platform,
                COUNT(*) AS starts,
-               SUM(CASE WHEN ended.invocation_id IS NULL AND active.invocation_id IS NULL THEN 1 ELSE 0 END) AS orphans
+               SUM(CASE WHEN ended.invocation_id IS NULL AND active.invocation_id IS NULL THEN 1 ELSE 0 END) AS orphans,
+               SUM(CASE
+                   WHEN ended.invocation_id IS NULL
+                    AND active.invocation_id IS NULL
+                    AND heartbeats.invocation_id IS NOT NULL
+                   THEN 1 ELSE 0 END) AS with_heartbeat,
+               SUM(CASE
+                   WHEN ended.invocation_id IS NULL
+                    AND active.invocation_id IS NULL
+                    AND heartbeats.invocation_id IS NULL
+                   THEN 1 ELSE 0 END) AS without_heartbeat
         FROM starts
         LEFT JOIN ended ON ended.invocation_id = starts.invocation_id
         LEFT JOIN active ON active.invocation_id = starts.invocation_id
+        LEFT JOIN heartbeats ON heartbeats.invocation_id = starts.invocation_id
         GROUP BY starts.command, starts.agent_kind, starts.version, starts.platform
         HAVING orphans > 0
         ORDER BY orphans DESC, starts DESC
@@ -1079,6 +1145,8 @@ def query_orphan_sources(conn, since_ms, current_ms, limit=12):
                 "platform": row["platform"] or "unknown",
                 "starts": starts,
                 "orphans": orphans,
+                "with_heartbeat": int(row["with_heartbeat"] or 0),
+                "without_heartbeat": int(row["without_heartbeat"] or 0),
                 "rate": fmt_rate(orphans, starts),
             }
         )
@@ -1252,6 +1320,7 @@ def summary():
             (day,),
         )
         orphan_starts_24h = query_orphan_starts(conn, day, current)
+        orphan_breakdown_24h = query_orphan_breakdown(conn, day, current)
         feedback_24h_total = query_one(
             conn,
             "SELECT COUNT(*) FROM feedback WHERE received_ms >= ?",
@@ -1305,6 +1374,8 @@ def summary():
             "error_rate_24h": fmt_rate(errors_24h, calls_24h),
             "orphan_starts_24h": orphan_starts_24h,
             "orphan_rate_24h": fmt_rate(orphan_starts_24h, calls_24h),
+            "orphan_with_heartbeat_24h": orphan_breakdown_24h["with_heartbeat"],
+            "orphan_without_heartbeat_24h": orphan_breakdown_24h["without_heartbeat"],
             "feedback_24h": feedback_24h,
             "feedback_7d": feedback_7d,
             "feedback_24h_total": feedback_24h_total,
@@ -1506,24 +1577,27 @@ def render_orphan_sources_panel(rows):
     items = []
     for row in rows:
         items.append(
-            "<tr><td>{command}</td><td>{agent_kind}</td><td>{version}</td><td>{platform}</td><td>{starts}</td><td>{orphans}</td><td>{rate}</td></tr>".format(
+            "<tr><td>{command}</td><td>{agent_kind}</td><td>{version}</td><td>{platform}</td><td>{starts}</td><td>{orphans}</td><td>{with_heartbeat}</td><td>{without_heartbeat}</td><td>{rate}</td></tr>".format(
                 command=html.escape(str(row.get("command") or "")),
                 agent_kind=html.escape(str(row.get("agent_kind") or "")),
                 version=html.escape(str(row.get("version") or "")),
                 platform=html.escape(str(row.get("platform") or "")),
                 starts=html.escape(str(row.get("starts") or 0)),
                 orphans=html.escape(str(row.get("orphans") or 0)),
+                with_heartbeat=html.escape(str(row.get("with_heartbeat") or 0)),
+                without_heartbeat=html.escape(str(row.get("without_heartbeat") or 0)),
                 rate=html.escape(str(row.get("rate") or "0%")),
             )
         )
     if not items:
-        items.append("<tr><td colspan='7'>暂无异常来源 / No orphan sources</td></tr>")
+        items.append("<tr><td colspan='9'>暂无异常来源 / No orphan sources</td></tr>")
     return """
 <section class="panel data-panel">
   <h2>异常来源 Top / Top Orphan Sources (24h)</h2>
+  <p class="panel-note">见过心跳通常代表任务运行过一段时间后失去结束事件；无心跳更常见于宿主超时、进程被终止或结束事件未发出。</p>
   <table>
     <thead>
-      <tr><th>命令 / Command</th><th>Agent</th><th>版本 / Version</th><th>平台 / Platform</th><th>启动 / Starts</th><th>异常 / Orphans</th><th>异常率 / Rate</th></tr>
+      <tr><th>命令 / Command</th><th>Agent</th><th>版本 / Version</th><th>平台 / Platform</th><th>启动 / Starts</th><th>异常 / Orphans</th><th>见过心跳</th><th>无心跳</th><th>异常率 / Rate</th></tr>
     </thead>
     <tbody>{rows}</tbody>
   </table>
@@ -2660,6 +2734,8 @@ def render_dashboard():
             ("24h 错误率 / 24h Error Rate", data["error_rate_24h"]),
             ("24h 异常结束 / 24h Orphan Starts", data["orphan_starts_24h"]),
             ("24h 异常结束率 / 24h Orphan Rate", data["orphan_rate_24h"]),
+            ("24h 异常中见过心跳 / Orphans With Heartbeat", data["orphan_with_heartbeat_24h"]),
+            ("24h 异常中无心跳 / Orphans Without Heartbeat", data["orphan_without_heartbeat_24h"]),
             ("24h 新增设备 / 24h New Devices", data["new_installs_24h"]),
             ("7d 新增设备 / 7d New Devices", data["new_installs_7d"]),
             ("24h 回访设备 / 24h Returning Devices", data["returning_installs_24h"]),
