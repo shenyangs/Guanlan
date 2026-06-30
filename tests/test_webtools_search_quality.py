@@ -16,6 +16,7 @@ from guanlan.source_seeds import (
     is_finance_lookup,
     is_live_sports_lookup,
     is_wps_office_lookup,
+    wps_office_needs_open_web,
 )
 from tests.support.webtools_helpers import _FakeResponse
 

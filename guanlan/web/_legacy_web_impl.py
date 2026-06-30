@@ -78,6 +78,7 @@ from guanlan.source_seeds import (
     dominant_vertical_preset,
     is_finance_lookup,
     is_live_sports_lookup,
+    wps_office_needs_open_web,
 )
 from guanlan.source_taxonomy import source_card_for_domain
 from guanlan.web.evidence_pipeline import (
@@ -1463,7 +1464,13 @@ def search_web(
         return SearchResults([], diagnostics=shared_diagnostics)
     query = str(query_shape.get("backend_query") or original_query)
     scope_domains: list[str] = []
-    if effective_scope:
+    open_scope_query = _should_search_scope_as_open_web(
+        original_query,
+        effective_scope=effective_scope,
+        route_plan=route_plan.to_dict(),
+        strict_scope=strict_scope,
+    )
+    if effective_scope and not open_scope_query:
         from guanlan.search_sources import resolve_scope, scoped_query
 
         resolved_scope = resolve_scope(effective_scope)
@@ -7813,6 +7820,23 @@ def _effective_search_scope(query: str, scope: str | None) -> str | None:
     return resolved.id
 
 
+def _should_search_scope_as_open_web(
+    query: str,
+    *,
+    effective_scope: str | None,
+    route_plan: dict[str, Any],
+    strict_scope: bool,
+) -> bool:
+    """Keep soft vertical scopes from hiding the outside evidence being requested."""
+    if strict_scope or not effective_scope:
+        return False
+    intents = list(route_plan.get("primary_intents") or []) + list(route_plan.get("secondary_intents") or [])
+    scopes = _unique_keep_order([effective_scope, *(route_plan.get("preferred_scopes") or [])])
+    if effective_scope == "wps_office" and wps_office_needs_open_web(query, intents=intents, scopes=scopes):
+        return True
+    return False
+
+
 def _university_search_domains(route_plan: dict[str, Any], fallback_domains: list[str]) -> list[str]:
     """Keep university scope broad for unknown schools and precise for known schools."""
     target_sites = [str(site).strip() for site in route_plan.get("target_sites") or [] if str(site).strip()]
@@ -8417,6 +8441,8 @@ def _score_result_parts(
         "cjk_group_mismatch_penalty": 0.0,
         "semantic_noise_penalty": 0.0,
         "stale_penalty": 0.0,
+        "wps_external_evidence_boost": 0.0,
+        "wps_official_entry_penalty": 0.0,
     }
     source_card = (item.trace or {}).get("source_card") or {}
     route_intents = set(quality.get("route_intents") or [])
@@ -8480,6 +8506,9 @@ def _score_result_parts(
         if _looks_like_wps_office_seo_noise(item):
             parts["semantic_noise_penalty"] = min(parts["semantic_noise_penalty"], -1.15)
             parts["source_risk_penalty"] -= 0.25
+        external_fit = _wps_external_information_score_fit(item, query, source_card, route_intents)
+        parts["wps_external_evidence_boost"] += external_fit["boost"]
+        parts["wps_official_entry_penalty"] += external_fit["penalty"]
     title_text = (item.title + " " + item.snippet).lower()
     terms = [t.lower() for t in re.split(r"\s+", query) if t and not t.startswith("site:")]
     if terms:
@@ -8564,6 +8593,105 @@ def _score_result_parts(
     total = sum(parts.values())
     parts["total"] = round(max(total, 0.1), 3)
     return {key: round(value, 3) for key, value in parts.items()}
+
+
+_WPS_EXTERNAL_RESULT_SIGNAL_TERMS = (
+    "背刺",
+    "刺客",
+    "c盘刺客",
+    "套娃",
+    "套娃收费",
+    "收费",
+    "涨价",
+    "会员",
+    "广告",
+    "弹窗",
+    "捆绑",
+    "卸载",
+    "吐槽",
+    "投诉",
+    "差评",
+    "争议",
+    "负面",
+    "舆情",
+    "口碑",
+    "评价",
+    "评论",
+    "报道",
+    "观察",
+)
+
+_WPS_OFFICIAL_DOMAIN_SUFFIXES = (
+    "wps.cn",
+    "wps.com",
+    "kdocs.cn",
+    "kingsoft.com",
+)
+
+
+def _wps_external_information_score_fit(
+    item: SearchResult,
+    query: str,
+    source_card: dict[str, Any],
+    route_intents: set[str],
+) -> dict[str, float]:
+    """Rank WPS reputation/media queries by outside evidence, not product entrypoints."""
+    if not wps_office_needs_open_web(query, intents=list(route_intents), scopes=["wps_office"]):
+        return {"boost": 0.0, "penalty": 0.0}
+    domain = (item.domain or _domain(item.url)).lower().removeprefix("www.")
+    authority_role = str(source_card.get("authority_role") or "")
+    is_wps_official = (
+        item.matched_scope == "wps_office"
+        or authority_role in {"company_primary", "product_primary", "official_community", "vendor_security_center"}
+        or any(domain == suffix or domain.endswith("." + suffix) for suffix in _WPS_OFFICIAL_DOMAIN_SUFFIXES)
+    )
+    text = _collapse_ws(f"{item.title} {item.snippet} {item.url}").lower()
+    has_external_signal = _contains_any(text, _WPS_EXTERNAL_RESULT_SIGNAL_TERMS)
+    target_media_hit = _wps_external_query_target_media_hit(query, domain)
+    external_role = item.evidence_role in {
+        "industry_report",
+        "fresh_news",
+        "authoritative_report",
+        "user_sample",
+        "open_web_context",
+        "market_context",
+    }
+
+    boost = 0.0
+    penalty = 0.0
+    if is_wps_official:
+        penalty -= 1.55 if not has_external_signal else 0.55
+    else:
+        if external_role:
+            boost += 0.6
+        if has_external_signal:
+            boost += 0.65
+        if target_media_hit:
+            boost += 0.8
+    return {"boost": boost, "penalty": penalty}
+
+
+def _wps_external_query_target_media_hit(query: str, domain: str) -> bool:
+    text = (query or "").lower()
+    media_domains = {
+        "光明网": ("gmw.cn",),
+        "gmw": ("gmw.cn",),
+        "光明日报": ("gmw.cn",),
+        "新华网": ("xinhuanet.com", "news.cn"),
+        "xinhuanet": ("xinhuanet.com",),
+        "news.cn": ("news.cn",),
+        "人民网": ("people.com.cn",),
+        "people.com.cn": ("people.com.cn",),
+        "人民评论": ("people.com.cn",),
+        "人民时评": ("people.com.cn",),
+        "中新网": ("chinanews.com", "chinanews.com.cn"),
+        "中国新闻网": ("chinanews.com", "chinanews.com.cn"),
+        "chinanews": ("chinanews.com", "chinanews.com.cn"),
+    }
+    for term, suffixes in media_domains.items():
+        if term in text and any(domain == suffix or domain.endswith("." + suffix) for suffix in suffixes):
+            return True
+    return False
 
 
 _DEPARTMENT_LIKE_UNIVERSITY_ENTITY_TERMS = (

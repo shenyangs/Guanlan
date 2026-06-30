@@ -3693,6 +3693,14 @@ def _topic_specific_target_sites(query: str) -> list[str]:
     """Promote known high-signal original sites for recurring niche topics."""
     text = (query or "").lower()
     sites: list[str] = []
+    if any(term in text for term in ("光明网", "gmw", "光明日报")):
+        sites.extend(["gmw.cn"])
+    if any(term in text for term in ("新华网", "xinhuanet", "news.cn")):
+        sites.extend(["xinhuanet.com", "news.cn"])
+    if any(term in text for term in ("人民网", "people.com.cn", "人民评论", "人民时评")):
+        sites.extend(["people.com.cn", "opinion.people.com.cn"])
+    if any(term in text for term in ("中新网", "中国新闻网", "chinanews")):
+        sites.extend(["chinanews.com", "chinanews.com.cn"])
     if any(term in text for term in ("yd/t", "工信部", "信息无障碍", "适老化", "无障碍环境建设法", "公共场所数字化指示")):
         sites.extend(["miit.gov.cn", "std.samr.gov.cn", "samr.gov.cn", "w3.org"])
     if any(term in text for term in ("中医药", "治未病", "中医养生", "中医药法", "中医养生保健")):

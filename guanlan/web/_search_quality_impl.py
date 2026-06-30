@@ -19,6 +19,7 @@ from guanlan.search_entrypoints import (
     build_search_operator_hints,
     suggest_search_entrypoints,
 )
+from guanlan.source_seeds import wps_office_needs_open_web
 from guanlan.web._search_quality_support import (
     _LONG_QUERY_KEYPHRASE_HINTS,
     _MEANINGLESS_QUERY_ALLOWLIST,
@@ -863,6 +864,12 @@ def _expand_search_query(
         len(normalized) <= 16
         or normalized.replace(" ", "").lower() in {"wpsai", "wps灵犀", "wps365"}
     )
+    if is_wps_scope and wps_office_needs_open_web(
+        normalized,
+        intents=[intent] if intent else [],
+        scopes=[effective_scope] if effective_scope else [],
+    ):
+        return normalized
     if normalized == "苹果" and effective_scope in {"ecommerce", "tech_dev", "social_web"}:
         if effective_scope == "ecommerce":
             additions.extend(["iPhone", "手机", "价格", "用户评价"])

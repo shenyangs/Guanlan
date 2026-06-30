@@ -238,6 +238,54 @@ _US_TICKER_STOPWORDS = {
 }
 _WPS_OFFICE_BRAND_TERMS = tuple(WPS_BRAND_TERMS)
 _WPS_OFFICE_VERTICAL_TERMS = tuple(WPS_UNAMBIGUOUS_VERTICAL_TERMS)
+_WPS_NAVIGATION_NEED_TERMS = (
+    "官网",
+    "官方网站",
+    "入口",
+    "下载",
+    "安装",
+    "定价页",
+    "价格页",
+    "产品页",
+    "功能介绍",
+    "发布说明",
+    "release notes",
+)
+_WPS_EXTERNAL_INFORMATION_TERMS = (
+    "背刺",
+    "刺客",
+    "c盘刺客",
+    "套娃",
+    "套娃收费",
+    "收费",
+    "涨价",
+    "会员",
+    "广告",
+    "弹窗",
+    "捆绑",
+    "卸载",
+    "吐槽",
+    "投诉",
+    "差评",
+    "争议",
+    "负面",
+    "舆情",
+    "口碑",
+    "评价",
+    "评论",
+    "报道",
+    "观察",
+    "光明网",
+    "gmw",
+    "新华网",
+    "xinhuanet",
+    "news.cn",
+    "人民网",
+    "people.com.cn",
+    "中新网",
+    "中国新闻网",
+    "chinanews",
+)
 
 
 def direct_source_seeds(
@@ -256,7 +304,11 @@ def direct_source_seeds(
 
     if is_live_sports_lookup(query, intents=intents, scopes=scopes):
         seeds.extend(_sports_seeds(query))
-    if is_wps_office_lookup(query, intents=intents, scopes=scopes):
+    if is_wps_office_lookup(query, intents=intents, scopes=scopes) and not wps_office_needs_open_web(
+        query,
+        intents=intents,
+        scopes=scopes,
+    ):
         seeds.extend(_wps_office_seeds(query))
     if finance_like:
         seeds.extend(_finance_seeds(query, intents=intents, scopes=scopes))
@@ -388,6 +440,27 @@ def is_wps_office_lookup(
     if is_wps_office_semantic_query(query):
         return True
     return False
+
+
+def wps_office_needs_open_web(
+    query: str,
+    *,
+    intents: list[str] | None = None,
+    scopes: list[str] | None = None,
+) -> bool:
+    """Return True for WPS queries where official entry seeds would hide evidence.
+
+    Product-entry seeds are useful for navigation or official fact checks, but
+    they are actively harmful for media, controversy, pricing, complaint, and
+    reputation searches because they displace the outside evidence the agent is
+    actually asking for.
+    """
+    if not is_wps_office_lookup(query, intents=intents, scopes=scopes):
+        return False
+    text = _norm(query)
+    if _contains_any(text, _WPS_NAVIGATION_NEED_TERMS) and not _contains_any(text, _WPS_EXTERNAL_INFORMATION_TERMS):
+        return False
+    return _contains_any(text, _WPS_EXTERNAL_INFORMATION_TERMS)
 
 
 def dominant_vertical_preset(
