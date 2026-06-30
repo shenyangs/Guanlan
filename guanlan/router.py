@@ -3253,6 +3253,8 @@ def _recommended_commands(
         if profile != "english":
             commands.append(f"guanlan pulse {quoted}{profile_part} --limit {pulse_limit} --format context")
             commands.append("guanlan feeds curated --category ai --limit 80")
+            commands.append("guanlan feeds ai-official --limit 80")
+            commands.append("guanlan feeds ai-media --limit 80")
             commands.append("guanlan feeds wechat-rss --limit 80")
             commands.append("guanlan hotnews hotboard:catalog:tech --limit 30")
     elif capital_finance_intents & set(intents):
@@ -3326,6 +3328,12 @@ def _recommended_commands(
         if feed == "curated":
             category = " --category ai" if "ai" in domains else ""
             commands.append(f"guanlan feeds curated{category} --limit {feeds_limit}")
+        elif feed == "ai-official":
+            commands.append(f"guanlan feeds ai-official --limit {feeds_limit}")
+        elif feed == "ai-media":
+            commands.append(f"guanlan feeds ai-media --limit {feeds_limit}")
+        elif feed == "arxiv":
+            commands.append(f"guanlan feeds arxiv --keyword {quoted} --limit {feeds_limit}")
         elif feed == "curated-sources":
             commands.append(f"guanlan feeds curated-sources --keyword {quoted} --limit {feeds_limit}")
         elif feed == "baidu-rss":

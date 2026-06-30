@@ -332,8 +332,12 @@ def test_route_plan_recommends_rss_sources_by_need():
     assert "baidu-rss" in wechat.recommended_feeds
     assert "curated" in reading.recommended_feeds
     assert "curated" in tech.recommended_feeds
+    assert "ai-official" in tech.recommended_feeds
+    assert "ai-media" in tech.recommended_feeds
     assert "ai-vertical" in tech.recommended_feeds
     assert any(command.startswith("guanlan feeds curated") for command in tech.recommended_commands)
+    assert "guanlan feeds ai-official --limit 80" in tech.recommended_commands
+    assert "guanlan feeds ai-media --limit 80" in tech.recommended_commands
     assert not any("feeds aihot" in command or "feeds ai-vertical" in command for command in tech.recommended_commands)
     assert any("RSS" in warning for warning in tech.warnings)
     assert generic.recommended_feeds == []
@@ -358,6 +362,8 @@ def test_route_plan_detects_wps_office_market_radar():
     assert "industry_report" in plan.evidence_roles
     assert "user_sample" in plan.evidence_roles
     assert "curated" in plan.recommended_feeds
+    assert "ai-official" in plan.recommended_feeds
+    assert "ai-media" in plan.recommended_feeds
     assert "ai-vertical" in plan.recommended_feeds
     assert "wechat-rss" in plan.recommended_feeds
     assert plan.read_top >= 5
@@ -369,6 +375,8 @@ def test_route_plan_detects_wps_office_market_radar():
     assert any("国产 AI PPT 工具 横评" in query for query in plan.query_variants)
     assert any("--scope wps_office" in command for command in plan.recommended_commands)
     assert any("feeds curated" in command for command in plan.recommended_commands)
+    assert "guanlan feeds ai-official --limit 80" in plan.recommended_commands
+    assert "guanlan feeds ai-media --limit 80" in plan.recommended_commands
     assert not any("feeds aihot" in command or "feeds ai-vertical" in command for command in plan.recommended_commands)
 
 

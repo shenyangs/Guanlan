@@ -60,9 +60,12 @@ def test_vertical_packs_extend_search_scopes_with_curated_domains():
     assert "hellogithub.com" in developer.domains
     assert "huggingface.co" in developer.domains
     assert "github.blog" in developer.domains
+    assert "developer.nvidia.com" in developer.domains
     assert "deepmind.google" in company_primary.domains
     assert "mistral.ai" in company_primary.domains
     assert "openrouter.ai" in company_primary.domains
+    assert "the-decoder.com" in tech.domains
+    assert "techcrunch.com" in tech.domains
     assert "bair.berkeley.edu" in science.domains
     assert "ml.cmu.edu" in science.domains
     assert "simonwillison.net" in community.domains
@@ -82,8 +85,12 @@ def test_vertical_packs_extend_search_scopes_with_curated_domains():
 
 def test_classify_domain_uses_source_pack_domains():
     assert classify_domain("qbitai.com")["matched_scope"] == "tech_dev"
+    assert classify_domain("the-decoder.com")["matched_scope"] == "tech_dev"
+    assert classify_domain("techcrunch.com")["matched_scope"] == "tech_dev"
     assert classify_domain("deepmind.google")["matched_scope"] == "company_primary"
+    assert classify_domain("news.microsoft.com")["matched_scope"] == "company_primary"
     assert classify_domain("huggingface.co")["matched_scope"] == "developer"
+    assert classify_domain("developer.nvidia.com")["matched_scope"] == "developer"
     assert classify_domain("bair.berkeley.edu")["matched_scope"] == "science"
     assert classify_domain("simonwillison.net")["matched_scope"] == "community_sample"
     assert classify_domain("ebrun.com", preferred_scope="ecommerce")["matched_scope"] == "ecommerce"
@@ -92,6 +99,13 @@ def test_classify_domain_uses_source_pack_domains():
     assert classify_domain("buaa.edu.cn")["matched_scope"] == "university"
     assert classify_domain("apps.apple.com")["matched_scope"] == "market_review"
     assert classify_domain("play.google.com")["matched_scope"] == "market_review"
+
+    media_card = source_card_for_domain("the-decoder.com")
+    assert media_card.authority_role == "ai_media"
+    assert "media_framing" in media_card.risk_tags
+    official_card = source_card_for_domain("news.microsoft.com")
+    assert official_card.authority_role == "company_primary"
+    assert "vendor_framing" in official_card.risk_tags
 
 
 def test_source_pack_recommendations_feed_router_without_overwriting_main_route():

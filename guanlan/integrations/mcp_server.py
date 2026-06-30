@@ -1389,6 +1389,11 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         )
         source_titles = {
             "curated": "精品内容流",
+            "ai-official": "AI 官方更新流",
+            "ai-media": "AI 媒体观察流",
+            "ai-vertical": "AI 垂类精选动态源",
+            "arxiv": "arXiv 预印本",
+            "watchlist": "订阅源观察",
             "baidu-rss": "百度实时热点 RSS",
             "wechat-rss": "微信热门文章 RSS",
         }

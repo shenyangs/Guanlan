@@ -303,6 +303,105 @@ def test_fetch_feed_source_supports_ai_vertical(monkeypatch):
     assert seen["category"] == "industry"
 
 
+def test_fetch_feed_source_supports_ai_official_bundle(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    official_feeds = (
+        {
+            "title": "OpenAI News",
+            "xml_url": "https://example.com/openai/rss.xml",
+            "html_url": "https://openai.com/news",
+            "max_entries": 3,
+        },
+        {
+            "title": "GitHub Changelog",
+            "xml_url": "https://example.com/github/changelog.xml",
+            "html_url": "https://github.blog/changelog/",
+            "include_keywords": "copilot,ai",
+            "max_entries": 3,
+        },
+    )
+    monkeypatch.setattr(feeds, "AI_OFFICIAL_FEEDS", official_feeds)
+    payloads = {
+        "https://example.com/openai/rss.xml": b"""<?xml version="1.0"?>
+        <rss version="2.0"><channel><title>OpenAI News</title>
+          <item>
+            <title>OpenAI launches GPT Agent</title>
+            <link>https://openai.com/news/gpt-agent</link>
+            <description>Official product update.</description>
+            <pubDate>Tue, 30 Jun 2026 08:00:00 GMT</pubDate>
+          </item>
+        </channel></rss>""",
+        "https://example.com/github/changelog.xml": b"""<?xml version="1.0"?>
+        <rss version="2.0"><channel><title>GitHub Changelog</title>
+          <item>
+            <title>Restrict issue creation to collaborators</title>
+            <link>https://github.blog/changelog/non-ai</link>
+            <description>Repository settings update.</description>
+            <pubDate>Tue, 30 Jun 2026 06:00:00 GMT</pubDate>
+          </item>
+          <item>
+            <title>Copilot model update</title>
+            <link>https://github.blog/changelog/copilot-model</link>
+            <description>AI coding model update.</description>
+            <pubDate>Tue, 30 Jun 2026 07:00:00 GMT</pubDate>
+          </item>
+        </channel></rss>""",
+    }
+    monkeypatch.setattr(feeds, "_read_bytes", lambda url, **_kwargs: payloads[url])
+
+    items = feeds.fetch_feed_source("official-ai", limit=5)
+    titles = [item["title"] for item in items]
+
+    assert "OpenAI launches GPT Agent" in titles
+    assert "Copilot model update" in titles
+    assert "Restrict issue creation to collaborators" not in titles
+    assert items[0]["source_id"] == "ai-official"
+    assert items[0]["source_title"] == "AI 官方更新流"
+    assert items[0]["evidence_role"] == "official_ai_update_signal"
+    assert items[0]["feed_source"]["title"] in {"OpenAI News", "GitHub Changelog"}
+    assert "source_requires_original_verification" in items[0]["risk_tags"]
+
+
+def test_fetch_feed_source_supports_ai_media_strict_title_filter(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    media_feeds = (
+        {
+            "title": "The Verge",
+            "xml_url": "https://example.com/verge/rss.xml",
+            "html_url": "https://www.theverge.com/ai-artificial-intelligence",
+            "include_keywords": "ai,openai",
+            "strict_title_filter": True,
+            "max_entries": 3,
+        },
+    )
+    monkeypatch.setattr(feeds, "AI_MEDIA_FEEDS", media_feeds)
+    raw = b"""<?xml version="1.0"?>
+    <rss version="2.0"><channel><title>The Verge</title>
+      <item>
+        <title>Streaming hardware sale</title>
+        <link>https://www.theverge.com/deals/hardware</link>
+        <description>This unrelated summary mentions AI once.</description>
+        <pubDate>Tue, 30 Jun 2026 08:00:00 GMT</pubDate>
+      </item>
+      <item>
+        <title>OpenAI previews new AI coding agent</title>
+        <link>https://www.theverge.com/ai/openai-agent</link>
+        <description>External reporting signal.</description>
+        <pubDate>Tue, 30 Jun 2026 09:00:00 GMT</pubDate>
+      </item>
+    </channel></rss>"""
+    monkeypatch.setattr(feeds, "_read_bytes", lambda *_args, **_kwargs: raw)
+
+    items = feeds.fetch_feed_source("ai-news-media", keyword="coding", limit=5)
+
+    assert len(items) == 1
+    assert items[0]["title"] == "OpenAI previews new AI coding agent"
+    assert items[0]["source_id"] == "ai-media"
+    assert items[0]["source_title"] == "AI 媒体观察流"
+    assert items[0]["evidence_role"] == "ai_media_report_signal"
+    assert "media_framing" in items[0]["risk_tags"]
+
+
 def test_fetch_arxiv_normalizes_public_api_results(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     raw = b"""<?xml version="1.0" encoding="UTF-8"?>
@@ -386,8 +485,20 @@ def test_fetch_watchlist_reports_missing_file_without_external_binary(tmp_path):
 def test_feed_source_catalog_describes_routing():
     catalog = feeds.list_feed_sources()
 
-    assert {"curated", "curated-sources", "baidu-rss", "wechat-rss", "arxiv", "watchlist"} <= set(catalog)
+    assert {
+        "curated",
+        "curated-sources",
+        "ai-official",
+        "ai-media",
+        "ai-vertical",
+        "baidu-rss",
+        "wechat-rss",
+        "arxiv",
+        "watchlist",
+    } <= set(catalog)
     assert catalog["curated"]["backend"] == "native"
+    assert catalog["ai-official"]["evidence_role"] == "official_ai_update_signal"
+    assert catalog["ai-media"]["evidence_role"] == "ai_media_report_signal"
     assert catalog["wechat-rss"]["status"] == "best-effort"
     assert catalog["arxiv"]["evidence_role"] == "preprint_record"
     assert catalog["watchlist"]["evidence_role"] == "watchlist_update_signal"

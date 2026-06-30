@@ -244,7 +244,7 @@ guanlan daily "WPS AI" --record-history --compare-days 7
 3. `feeds`
 4. `read`
 
-技术和 WPS/AI Office 题必须补 RSS/精品内容流。优先显式跑 `guanlan feeds curated --category ai --limit 80` 或 `guanlan feeds curated --limit 80`；`research --preset tech|wps_office` 只在深查/证据包模式下使用，不能替代官方文档、代码仓库、原始公告或产品页面；关键事实要回读原始 URL。
+技术和 WPS/AI Office 题必须补 RSS/精品内容流。优先显式跑 `guanlan feeds curated --category ai --limit 80` 或 `guanlan feeds curated --limit 80`；AI 公司、模型、Agent、开发者平台更新类任务再补 `guanlan feeds ai-official --limit 80` 和 `guanlan feeds ai-media --limit 80`。`research --preset tech|wps_office` 只在深查/证据包模式下使用，不能替代官方文档、代码仓库、原始公告或产品页面；关键事实要回读原始 URL。
 
 学术发现：
 

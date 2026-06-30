@@ -671,7 +671,11 @@ CORE_AGENT_TOOLS: tuple[AgentTool, ...] = (
         request_schema={
             "type": "object",
             "properties": {
-                "source": {"type": "string", "default": "curated"},
+                "source": {
+                    "type": "string",
+                    "default": "curated",
+                    "description": "curated, ai-official, ai-media, ai-vertical, arxiv, watchlist, baidu-rss, wechat-rss, curated-sources, list, or a direct RSS/Atom URL",
+                },
                 "limit": {"type": "integer", "default": DEFAULT_FEEDS_LIMIT, "minimum": 1, "maximum": MAX_FEEDS_LIMIT},
                 "language": {"type": "string", "enum": ["zh", "en"], "default": "zh"},
                 "category": {"type": "string", "enum": ["programming", "ai", "product", "business"]},

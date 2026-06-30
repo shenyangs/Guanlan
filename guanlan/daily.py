@@ -1262,7 +1262,7 @@ def _resolve_daily_feed_source(*, feed_source: str, query: str, route_intents: l
 def _daily_feed_keyword(source: str, query: str) -> str | None:
     if not query:
         return None
-    if source in {"curated", "curated-sources", "arxiv", "ai-vertical"}:
+    if source in {"curated", "curated-sources", "arxiv", "ai-vertical", "ai-official", "ai-media"}:
         return query
     return None
 

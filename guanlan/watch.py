@@ -545,7 +545,7 @@ def _collect_feed_items(
     from guanlan.feeds import fetch_feed_source
 
     query = str(intent.get("query") or "")
-    keyword = query if source in {"curated", "arxiv", "curated-sources"} else None
+    keyword = query if source in {"curated", "arxiv", "curated-sources", "ai-official", "ai-media"} else None
     if source == "watchlist":
         keyword = None
     try:

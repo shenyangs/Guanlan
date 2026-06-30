@@ -719,7 +719,7 @@ def main():
     # ── feeds ──
     p_feeds = sub.add_parser("feeds", help="Discover high-quality public RSS content and source catalogs")
     p_feeds.add_argument("source", nargs="?", default="curated",
-                         help="Source: curated, arxiv, watchlist, curated-sources, baidu-rss, wechat-rss, list, or a direct RSS/Atom URL")
+                         help="Source: curated, ai-official, ai-media, ai-vertical, arxiv, watchlist, curated-sources, baidu-rss, wechat-rss, list, or a direct RSS/Atom URL")
     p_feeds.add_argument("--limit", type=int, default=DEFAULT_FEEDS_LIMIT,
                          help="Maximum number of items or sources")
     p_feeds.add_argument("--language", choices=["zh", "en"], default="zh",
@@ -753,7 +753,7 @@ def main():
     p_daily.add_argument("--site", default="", help="Restrict search to one domain")
     p_daily.add_argument("--preset", default="", help="Research preset hint for the daily brief")
     p_daily.add_argument("--lens", default="", help="Optional analyst lens to keep in the report header")
-    p_daily.add_argument("--feed-source", default="auto", help="Feed source: auto, curated, ai-vertical, arxiv, watchlist, baidu-rss, wechat-rss, or RSS URL")
+    p_daily.add_argument("--feed-source", default="auto", help="Feed source: auto, curated, ai-official, ai-media, ai-vertical, arxiv, watchlist, baidu-rss, wechat-rss, or RSS URL")
     p_daily.add_argument("--watchlist", default="", help="RSS watchlist path when --feed-source watchlist")
     p_daily.add_argument("--hotnews-source", default="today", help="Hotnews source id, default today")
     p_daily.add_argument("--backend", default="auto", help="Search backend")

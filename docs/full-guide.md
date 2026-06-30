@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.7.3`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.7.4`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -482,6 +482,8 @@ guanlan configure --from-browser chrome
 | `guanlan pulse "关键词"` | 安全版话题回响分析，输出讨论倾向、关键词信号和明确边界。 |
 | `guanlan feeds curated --limit 80` | 读取公开精品 RSS，发现技术、AI、产品和商业科技内容；外部源超时时会优先返回最近成功缓存并标记 `stale_cache`。 |
 | `guanlan feeds curated --category ai --min-score 85` | 按分类和评分筛选高质量内容。 |
+| `guanlan feeds ai-official --limit 80` | 读取 AI 公司/平台的一手公开 RSS 更新流，适合追踪官方发布、产品更新和开发者平台动态。 |
+| `guanlan feeds ai-media --limit 80` | 读取精选 AI 媒体公开 RSS，适合补外部报道和产业观察线索。 |
 | `guanlan feeds arxiv --keyword "AI Agent" --limit 80` | 读取 arXiv 公开 API，补充预印本和论文线索；预印本不等同于同行评议结论。 |
 | `guanlan feeds watchlist --watchlist ~/.guanlan/feeds-watchlist.json --limit 80` | 读取本机显式 RSS/Atom 清单，适合长期观察指定博客、机构公告、项目更新和内容源。 |
 | `guanlan feeds baidu-rss --limit 80` | 读取动态百度实时热点 RSS，补充热榜词和热度信号。 |
@@ -683,9 +685,11 @@ guanlan search "某产品 使用体验" --profile china --site bilibili.com --li
 guanlan research "Python Agent 框架 对比" --preset tech --read-top 5
 guanlan search "LangGraph AutoGen CrewAI 对比" --profile china --scope tech_dev --format context
 guanlan feeds curated --category ai --limit 80
+guanlan feeds ai-official --limit 80
+guanlan feeds ai-media --limit 80
 ```
 
-科技、AI、WPS/AI Office、开发者、工程实践类问题有一条硬规则：必须额外补一轮 RSS/精品内容流。`research --preset tech` 和 `research --preset wps_office` 会自动把 `feeds curated` 纳入候选池和 `result_groups`；AI/WPS/Agent/大模型命中时，还会内部纳入 AI 垂类精选动态源作为近 7 天线索层。这个源不是新的用户入口，重要事实仍要回读原始 URL。如果 Agent 只使用 `route` 或 `search`，则需要再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`。RSS 只作为阅读发现和新鲜线索，不替代官方文档、代码仓库、issue、benchmark 原文。
+科技、AI、WPS/AI Office、开发者、工程实践类问题有一条硬规则：必须额外补一轮 RSS/精品内容流。`research --preset tech` 和 `research --preset wps_office` 会自动把 `feeds curated` 纳入候选池和 `result_groups`；AI/WPS/Agent/大模型命中时，还可补 `feeds ai-official` 的一手公开更新流和 `feeds ai-media` 的外部媒体观察流。这个源不是最终事实入口，重要事实仍要回读原始 URL。如果 Agent 只使用 `route` 或 `search`，则需要再跑 `guanlan feeds curated --limit 80` 或 `guanlan feeds curated --category ai --limit 80`；AI 公司/平台动态再加 `guanlan feeds ai-official --limit 80` 和 `guanlan feeds ai-media --limit 80`。RSS 只作为阅读发现和新鲜线索，不替代官方文档、代码仓库、issue、benchmark 原文。
 
 ### 9. 查 WPS/AI Office 选题雷达
 

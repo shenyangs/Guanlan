@@ -11,6 +11,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
@@ -52,6 +53,105 @@ AISHORT_BAIDU_RSS_URL = "https://rss.aishort.top/?type=baidu"
 AISHORT_WECHAT_RSS_URL = "https://rss.aishort.top/?type=wasi"
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 AI_VERTICAL_ITEMS_URL = "https://aihot.virxact.com/api/public/items"
+AI_OFFICIAL_FEEDS: tuple[dict[str, Any], ...] = (
+    {
+        "title": "OpenAI News",
+        "xml_url": "https://openai.com/news/rss.xml",
+        "html_url": "https://openai.com/news",
+        "max_entries": 12,
+    },
+    {
+        "title": "Google DeepMind Blog",
+        "xml_url": "https://deepmind.google/blog/rss.xml",
+        "html_url": "https://deepmind.google/discover/blog/",
+        "max_entries": 12,
+    },
+    {
+        "title": "Google AI Blog",
+        "xml_url": "https://blog.google/technology/ai/rss/",
+        "html_url": "https://blog.google/technology/ai/",
+        "max_entries": 10,
+    },
+    {
+        "title": "Hugging Face Blog",
+        "xml_url": "https://huggingface.co/blog/feed.xml",
+        "html_url": "https://huggingface.co/blog",
+        "max_entries": 10,
+    },
+    {
+        "title": "GitHub AI & ML",
+        "xml_url": "https://github.blog/ai-and-ml/feed/",
+        "html_url": "https://github.blog/ai-and-ml/",
+        "max_entries": 10,
+    },
+    {
+        "title": "GitHub Changelog",
+        "xml_url": "https://github.blog/changelog/feed/",
+        "html_url": "https://github.blog/changelog/",
+        "include_keywords": "ai,artificial intelligence,copilot,github models,agent,agents,claude,gpt,gemini,model,mcp",
+        "max_entries": 6,
+    },
+    {
+        "title": "Microsoft AI Blog",
+        "xml_url": "https://news.microsoft.com/source/topics/ai/feed/",
+        "html_url": "https://news.microsoft.com/source/topics/ai/",
+        "max_entries": 10,
+    },
+    {
+        "title": "NVIDIA Generative AI Blog",
+        "xml_url": "https://developer.nvidia.com/blog/category/generative-ai/feed/",
+        "html_url": "https://developer.nvidia.com/blog/category/generative-ai/",
+        "max_entries": 8,
+    },
+)
+AI_MEDIA_FEEDS: tuple[dict[str, Any], ...] = (
+    {
+        "title": "The Decoder AI News",
+        "xml_url": "https://the-decoder.com/feed/",
+        "html_url": "https://the-decoder.com/",
+        "max_entries": 8,
+    },
+    {
+        "title": "TechCrunch AI",
+        "xml_url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+        "html_url": "https://techcrunch.com/category/artificial-intelligence/",
+        "max_entries": 8,
+    },
+    {
+        "title": "VentureBeat AI",
+        "xml_url": "https://venturebeat.com/category/ai/feed",
+        "html_url": "https://venturebeat.com/category/ai/",
+        "max_entries": 8,
+    },
+    {
+        "title": "Artificial Intelligence News",
+        "xml_url": "https://www.artificialintelligence-news.com/feed/",
+        "html_url": "https://www.artificialintelligence-news.com/",
+        "max_entries": 8,
+    },
+    {
+        "title": "Wired AI",
+        "xml_url": "https://www.wired.com/feed/tag/ai/latest/rss",
+        "html_url": "https://www.wired.com/tag/artificial-intelligence/",
+        "max_entries": 6,
+    },
+    {
+        "title": "The Verge",
+        "xml_url": "https://www.theverge.com/rss/index.xml",
+        "html_url": "https://www.theverge.com/ai-artificial-intelligence",
+        "include_keywords": "ai,artificial intelligence,openai,anthropic,claude,chatgpt,gpt,gemini,llm,agent,copilot",
+        "max_entries": 6,
+        "strict_title_filter": True,
+    },
+    {
+        "title": "MarkTechPost Research",
+        "xml_url": "https://www.marktechpost.com/feed/",
+        "html_url": "https://www.marktechpost.com/",
+        "include_keywords": "paper,research,arxiv,benchmark,dataset,model,llm,agent,diffusion,transformer,multimodal,reasoning,inference,training,open-source",
+        "max_entries": 6,
+        "strict_title_filter": True,
+    },
+)
 AI_VERTICAL_CATEGORY_ALIASES = {
     "model": "ai-models",
     "models": "ai-models",
@@ -143,6 +243,12 @@ _SOURCE_ALIASES = {
     "aihot": "ai-vertical",
     "ai-hot": "ai-vertical",
     "ai": "ai-vertical",
+    "official-ai": "ai-official",
+    "ai-official-rss": "ai-official",
+    "ai-news-official": "ai-official",
+    "curated-ai-media": "ai-media",
+    "ai-news-media": "ai-media",
+    "ai-media-rss": "ai-media",
     "watch": "watchlist",
     "feeds-watch": "watchlist",
 }
@@ -186,6 +292,8 @@ def recommend_feed_sources(query: str) -> list[str]:
             "ai ppt",
         )
     ):
+        recommendations.append("ai-official")
+        recommendations.append("ai-media")
         recommendations.append("ai-vertical")
     if any(term in text for term in ("arxiv", "预印本", "preprint", "论文", "paper")):
         recommendations.append("arxiv")
@@ -667,6 +775,10 @@ def _normalize_feed_entries(
 def _source_title(source_id: str, feed_title: str) -> str:
     if source_id == "curated":
         return "精品内容流"
+    if source_id == "ai-official":
+        return "AI 官方更新流"
+    if source_id == "ai-media":
+        return "AI 媒体观察流"
     if source_id == "arxiv":
         return "arXiv"
     if source_id == "watchlist":
@@ -948,6 +1060,118 @@ def fetch_wechat_rss(limit: int = DEFAULT_FEEDS_LIMIT) -> list[dict[str, Any]]:
     )
 
 
+def _split_keywords(value: Any) -> list[str]:
+    if not value:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        raw = ",".join(str(item) for item in value)
+    else:
+        raw = str(value)
+    return [part.strip().lower() for part in re.split(r"[,，|/]", raw) if part.strip()]
+
+
+def _feed_item_matches_terms(item: dict[str, Any], terms: list[str], *, strict_title: bool = False) -> bool:
+    if not terms:
+        return True
+    title = str(item.get("title") or "").lower()
+    if strict_title:
+        return any(term in title for term in terms)
+    haystack = " ".join(
+        [
+            title,
+            str(item.get("summary") or "").lower(),
+            " ".join(str(tag).lower() for tag in item.get("tags") or []),
+        ]
+    )
+    return any(term in haystack for term in terms)
+
+
+def _feed_sort_value(item: dict[str, Any]) -> float:
+    raw = str(item.get("published_at") or "").strip()
+    if not raw:
+        return 0.0
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        pass
+    try:
+        return parsedate_to_datetime(raw).timestamp()
+    except Exception:
+        return 0.0
+
+
+def fetch_feed_bundle(
+    source_id: str,
+    feed_entries: tuple[dict[str, Any], ...],
+    *,
+    limit: int = DEFAULT_FEEDS_LIMIT,
+    keyword: str | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch a small named bundle of public RSS/Atom feeds with boundaries."""
+    meta = FEED_SOURCE_CATALOG[source_id]
+    per_source_limit = max(3, min(12, (max(limit, 1) + max(len(feed_entries), 1) - 1) // max(len(feed_entries), 1) + 2))
+    items: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    keyword_terms = _split_keywords(keyword)
+    for feed in feed_entries:
+        feed_limit = max(per_source_limit, int(feed.get("max_entries") or per_source_limit))
+        rows = fetch_rss_feed(
+            str(feed["xml_url"]),
+            limit=feed_limit,
+            source_id=source_id,
+            category=str(meta.get("category") or "ai"),
+            content_direction=str(meta.get("content_direction") or ""),
+        )
+        include_terms = _split_keywords(feed.get("include_keywords"))
+        strict_title = bool(feed.get("strict_title_filter", False))
+        for row in rows:
+            status = (row.get("feed_status") or {}).get("status")
+            if status == "error":
+                failures.append(row)
+                continue
+            if not _feed_item_matches_terms(row, include_terms, strict_title=strict_title):
+                continue
+            if keyword_terms and not _feed_item_matches_terms(row, keyword_terms):
+                continue
+            item = dict(row)
+            item["feed_source"] = {
+                "title": str(feed.get("title") or ""),
+                "xml_url": str(feed.get("xml_url") or ""),
+                "html_url": str(feed.get("html_url") or ""),
+            }
+            if feed.get("html_url"):
+                item.setdefault("source_home", str(feed["html_url"]))
+            risk_tags = [str(tag) for tag in item.get("risk_tags", []) if tag]
+            if "source_requires_original_verification" not in risk_tags:
+                risk_tags.append("source_requires_original_verification")
+            item["risk_tags"] = _unique(risk_tags)
+            items.append(item)
+    items.sort(key=_feed_sort_value, reverse=True)
+    for rank, item in enumerate(items[: max(limit, 1)], 1):
+        item["rank"] = rank
+    if items:
+        return items[: max(limit, 1)]
+    return failures[: max(limit, 1)] or [
+        _feed_failure_item(
+            url=", ".join(str(feed.get("xml_url") or "") for feed in feed_entries[:3]),
+            source_id=source_id,
+            category=str(meta.get("category") or "ai"),
+            content_direction=str(meta.get("content_direction") or ""),
+            error="命名 RSS 源包本次没有可用条目；可稍后重试或改用 ai-vertical/curated/search。",
+        )
+    ]
+
+
+def fetch_ai_official_updates(limit: int = DEFAULT_FEEDS_LIMIT, keyword: str | None = None) -> list[dict[str, Any]]:
+    """Fetch first-party AI company and platform update feeds."""
+    return fetch_feed_bundle("ai-official", AI_OFFICIAL_FEEDS, limit=limit, keyword=keyword)
+
+
+def fetch_ai_media_signals(limit: int = DEFAULT_FEEDS_LIMIT, keyword: str | None = None) -> list[dict[str, Any]]:
+    """Fetch curated AI media RSS signals with source-level filters."""
+    return fetch_feed_bundle("ai-media", AI_MEDIA_FEEDS, limit=limit, keyword=keyword)
+
+
 def load_watchlist(path: str | Path | None = None) -> list[dict[str, str]]:
     """Load explicit RSS/Atom watchlist entries from JSON, JSONL, or plain text."""
     watchlist_path = Path(path).expanduser() if path else DEFAULT_FEED_WATCHLIST_PATH
@@ -1091,11 +1315,15 @@ def fetch_feed_source(
             category=category,
             keyword=keyword,
         )
+    if resolved == "ai-official":
+        return fetch_ai_official_updates(limit=limit, keyword=keyword)
+    if resolved == "ai-media":
+        return fetch_ai_media_signals(limit=limit, keyword=keyword)
     if resolved == "watchlist":
         return fetch_watchlist(limit=limit, path=watchlist_path, keyword=keyword)
     if resolved.startswith(("http://", "https://")):
         return fetch_rss_feed(resolved, limit=limit, source_id="rss")
-    raise ValueError("feeds source must be curated, ai-vertical, arxiv, watchlist, baidu-rss, wechat-rss, curated-sources, list, or an RSS/Atom URL")
+    raise ValueError("feeds source must be curated, ai-vertical, ai-official, ai-media, arxiv, watchlist, baidu-rss, wechat-rss, curated-sources, list, or an RSS/Atom URL")
 
 
 def list_curated_sources(
