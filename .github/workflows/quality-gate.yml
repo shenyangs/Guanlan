@@ -1,0 +1,63 @@
+name: quality-gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install project
+        run: uv sync --extra dev
+
+      - name: Version and active docs status
+        run: GUANLAN_RELEASE_ALLOW_DIRTY=1 scripts/pre_release_status.sh
+
+      - name: Ruff
+        run: uv run ruff check .
+
+      - name: Pytest
+        run: uv run pytest -q
+
+      - name: Quality ladder
+        run: |
+          uv run guanlan quality foundational --format json
+          uv run guanlan quality coverage --format json
+          uv run guanlan quality regression --format json
+          uv run guanlan quality robustness --format json
+          uv run guanlan quality backend-fixtures --format json
+          uv run guanlan eval benchmark --format json
+          uv run guanlan eval suite run chinese-web-v1 --format json
+
+      - name: Generate public quality report
+        run: |
+          uv run python scripts/generate_quality_report.py \
+            --format markdown \
+            --output docs/benchmark-report.md \
+            --json-output docs/reports/latest-quality.json
+
+      - name: Build package
+        run: uv build
+
+      - name: Upload quality report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report
+          path: |
+            docs/benchmark-report.md
+            docs/reports/latest-quality.json

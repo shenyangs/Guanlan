@@ -8,6 +8,8 @@ __pycache__/
 dist/
 build/
 reports/
+!docs/reports/
+!docs/reports/latest-quality.json
 .venv/
 .claude/
 .env

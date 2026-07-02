@@ -77,6 +77,8 @@ def read_url_with_trace(
         raise ValueError("url is required")
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
+    original_url = url
+    request_url = _request_safe_url(url)
 
     cache_key = ""
     extract = (extract or "article").lower()
@@ -87,7 +89,7 @@ def read_url_with_trace(
         cache_key = base._cache_key(
             "read",
             {
-                "url": url,
+                "url": request_url,
                 "max_chars": max_chars or 0,
                 "backend": backend,
                 "fallback_search": fallback_search,
@@ -131,9 +133,9 @@ def read_url_with_trace(
     weak_text = ""
     selected_backend = ""
     prefer_direct = extract in {"metadata", "links"}
-    if backend in ("auto", "direct") and extract in {"article", "text"} and base._is_wechat_article_url(url):
+    if backend in ("auto", "direct") and extract in {"article", "text"} and base._is_wechat_article_url(request_url):
         try:
-            candidate = base._read_wechat_article(url)
+            candidate = base._read_wechat_article(request_url)
             candidate_quality = assess_read_quality(candidate)
             if backend == "auto" and base._read_should_fallback(candidate_quality, strict=strict):
                 errors.append("wechat_article: weak or blocked content")
@@ -164,7 +166,7 @@ def read_url_with_trace(
                 raise
     if not text and backend in ("auto", "jina") and not prefer_direct:
         try:
-            candidate = base._read_with_jina(url)
+            candidate = base._read_with_jina(request_url)
             candidate_quality = assess_read_quality(candidate)
             if backend == "auto" and base._read_should_fallback(candidate_quality, strict=strict):
                 errors.append("jina: weak or blocked content")
@@ -185,7 +187,7 @@ def read_url_with_trace(
                 raise
     if not text and backend in ("auto", "direct"):
         try:
-            candidate = base._call_read_direct(url, extract=extract)
+            candidate = base._call_read_direct(request_url, extract=extract)
             candidate_quality = assess_read_quality(candidate)
             if backend == "auto" and base._read_should_fallback(candidate_quality, strict=strict):
                 errors.append("direct: weak or blocked content")
@@ -205,9 +207,9 @@ def read_url_with_trace(
             if backend == "direct":
                 raise
     fallback_used = False
-    if not text and fallback_search and backend == "auto":
+    if not text and fallback_search and backend == "auto" and not strict:
         try:
-            text = _read_search_context(url, errors=errors, limit=fallback_limit, profile=profile)
+            text = _read_search_context(original_url, errors=errors, limit=fallback_limit, profile=profile)
             selected_backend = "search_fallback"
             fallback_used = True
             attempts.append(
@@ -243,14 +245,16 @@ def read_url_with_trace(
         "errors": errors,
         "fallback_search": fallback_used,
     }
+    if request_url != original_url:
+        trace_payload["request_url"] = request_url
     if cache_key:
         base._cache_set(
             "read",
             cache_key,
             {"text": text, "selected_backend": selected_backend or backend, "attempts": attempts},
         )
-    packet = {"url": url, "content": text, "quality": quality, "trace": trace_payload}
-    packet["quality_report"] = build_read_quality_report(text, url=url, quality=quality, trace=trace_payload)
+    packet = {"url": original_url, "content": text, "quality": quality, "trace": trace_payload}
+    packet["quality_report"] = build_read_quality_report(text, url=original_url, quality=quality, trace=trace_payload)
     return _attach_read_evidence(packet)
 
 
@@ -317,6 +321,16 @@ def assess_read_quality(text: str) -> dict[str, Any]:
         label = "noisy"
     else:
         label = "clean"
+    strict_pass = bool(
+        label == "clean" and score >= 70
+        or (
+            label == "noisy"
+            and score >= 70
+            and len(normalized) >= 500
+            and noise_ratio <= 0.15
+            and not mojibake
+        )
+    )
     return {
         "label": label,
         "score": score,
@@ -329,7 +343,7 @@ def assess_read_quality(text: str) -> dict[str, Any]:
         "line_count": line_count,
         "avg_line_len": avg_line_len,
         "noise_ratio": noise_ratio,
-        "strict_pass": bool(label == "clean" and score >= 70),
+        "strict_pass": strict_pass,
     }
 
 
@@ -488,6 +502,30 @@ def _looks_like_dynamic_finance_shell(
 
 def _contains_cjk(text: str) -> bool:
     return any("\u4e00" <= char <= "\u9fff" for char in text or "")
+
+
+def _request_safe_url(url: str) -> str:
+    """Percent-encode non-ASCII URL parts before urllib sees the request."""
+
+    parsed = urllib.parse.urlsplit(url)
+    if not parsed.scheme or not parsed.netloc:
+        return url
+    try:
+        host = parsed.hostname.encode("idna").decode("ascii") if parsed.hostname else ""
+    except UnicodeError:
+        host = parsed.hostname or ""
+    auth = ""
+    if parsed.username:
+        auth = urllib.parse.quote(parsed.username, safe="")
+        if parsed.password:
+            auth += ":" + urllib.parse.quote(parsed.password, safe="")
+        auth += "@"
+    port = f":{parsed.port}" if parsed.port else ""
+    netloc = f"{auth}{host}{port}"
+    path = urllib.parse.quote(parsed.path or "", safe="/%:@!$&'()*+,;=")
+    query = urllib.parse.quote(parsed.query or "", safe="/%:@!$&'()*+,;=?")
+    fragment = urllib.parse.quote(parsed.fragment or "", safe="/%:@!$&'()*+,;=?")
+    return urllib.parse.urlunsplit((parsed.scheme, netloc, path, query, fragment))
 
 
 def read_batch(

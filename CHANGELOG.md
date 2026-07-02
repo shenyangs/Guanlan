@@ -6,6 +6,18 @@
 
 ## Unreleased
 
+## v0.7.7 - 2026-07-01
+
+### Changed
+
+- 新增分发状态检查脚本，统一核对 GitHub tag、PyPI JSON/simple、pip index、Homebrew tap、本机安装路径和官网源站/公开域名。
+- 将本地 release gate 的关键质量链路补到 GitHub `quality-gate` workflow，并在 tag release 后产出分发表面状态 artifact。
+- 新增可复跑公开质量报告生成器，覆盖 deterministic benchmark、eval suite、159 条路由回归、live-smoke 历史、质量门禁和 legacy inventory。
+- 修复中文 URL 读取时的非 ASCII 编码问题，并收紧 `strict` read 的搜索兜底边界。
+- 修复 `guanlan_read` 将高质量但含少量广告/导航噪音的中文正文误判为 `weak_fallback` 的问题。
+- 优化 WPS 争议、投诉和舆情类搜索排序：保留官方入口但优先把外部报道/讨论放进前五条。
+- README、完整指南、遥测文档、安全策略和官网版本面同步到 `0.7.7`。
+
 ## v0.7.6 - 2026-06-30
 
 ### Changed

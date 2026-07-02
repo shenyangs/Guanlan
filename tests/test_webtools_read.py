@@ -179,6 +179,28 @@ def test_read_url_treats_mojibake_jina_as_weak_and_falls_back(monkeypatch):
     assert "����" not in text
 
 
+def test_read_url_percent_encodes_cjk_url_before_network(monkeypatch):
+    requested = []
+
+    def fake_urlopen(req, timeout=None):
+        requested.append(req.full_url)
+        return _FakeResponse("# 百科\n中文路径读取成功")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    packet = webtools.read_url_with_trace(
+        "https://baike.baidu.com/item/2026年WPS被指系统卡顿、强制占C盘事件/68033679",
+        backend="jina",
+    )
+
+    assert requested
+    assert "2026年" not in requested[0]
+    assert "%E5%B9%B4" in requested[0]
+    assert packet["url"].endswith("/68033679")
+    assert packet["trace"]["request_url"].startswith("https://baike.baidu.com/item/2026%E5%B9%B4")
+    assert "中文路径读取成功" in packet["content"]
+
+
 def test_read_url_uses_wechat_article_extractor_before_jina(monkeypatch):
     html = """
     <html>
@@ -317,6 +339,50 @@ def test_read_url_does_not_emit_unverified_numeric_path_fallback(monkeypatch):
     assert "兜底状态: unusable" in text
     assert "不要引用本页搜索兜底作为证据" in text
     assert "台湾 iThome" not in text
+
+
+def test_strict_read_does_not_use_search_fallback(monkeypatch):
+    calls = []
+    monkeypatch.setattr(webtools, "_read_with_jina", lambda url: (_ for _ in ()).throw(OSError("ascii encode")))
+    monkeypatch.setattr(webtools, "_read_direct", lambda url: (_ for _ in ()).throw(OSError("ascii encode")))
+    monkeypatch.setattr(webtools, "search_web", lambda *args, **kwargs: calls.append((args, kwargs)) or [])
+
+    with pytest.raises(RuntimeError, match="ascii encode"):
+        webtools.read_url(
+            "https://baike.baidu.com/item/2026年WPS被指系统卡顿、强制占C盘事件/68033679",
+            backend="auto",
+            fallback_search=True,
+            strict=True,
+        )
+
+    assert calls == []
+
+
+def test_strict_read_accepts_high_score_noisy_article(monkeypatch):
+    article = "\n".join(
+        [
+            "Title: “背刺”用户？WPS吃相难看，金山办公利润涨疯！",
+            "广告",
+            *[
+                "2026年6月21日，WPS相关话题引发用户讨论，正文持续介绍系统卡顿、缓存占用和会员收费争议。"
+                for _ in range(30)
+            ],
+        ]
+    )
+    monkeypatch.setattr(webtools, "_read_with_jina", lambda url: (_ for _ in ()).throw(OSError("jina 503")))
+    monkeypatch.setattr(webtools, "_read_direct", lambda url: article)
+
+    packet = webtools.read_url_with_trace(
+        "https://baijiahao.baidu.com/s?id=1868821907936304170&wfr=spider&for=pc",
+        backend="auto",
+        strict=True,
+    )
+
+    assert packet["trace"]["selected_backend"] == "direct"
+    assert packet["quality"]["label"] == "noisy"
+    assert packet["quality"]["strict_pass"] is True
+    assert packet["quality_report"]["usable"] is True
+    assert "WPS相关话题" in packet["content"]
 
 
 def test_read_batch_keeps_per_url_status(monkeypatch):

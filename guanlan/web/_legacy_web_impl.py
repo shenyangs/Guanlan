@@ -4,6 +4,11 @@
 These helpers are deliberately conservative: default search uses public HTML
 results and page reading uses Jina Reader. No cookies, browser access, or
 Keychain access are involved.
+
+Legacy guardrail: this module is a compatibility carrier while the web stack is
+being split into owner modules. Do not add new business logic here; put new
+search/read/research/rendering behavior in the split module that owns it and
+only re-export here when a legacy import surface still requires it.
 """
 
 from __future__ import annotations
@@ -3543,6 +3548,7 @@ def rank_results(
     ranked = sorted(deduped, key=lambda r: (-r.score, r.rank))
     _assign_topic_clusters(ranked, threshold=cluster_threshold)
     ranked = _order_topic_representatives_first(ranked)
+    ranked = _defer_wps_official_entrypoints_for_external_queries(ranked, query=query, quality=quality)
     for idx, item in enumerate(ranked, start=1):
         item.rank = idx
     return ranked
@@ -8629,6 +8635,43 @@ _WPS_OFFICIAL_DOMAIN_SUFFIXES = (
 )
 
 
+def _defer_wps_official_entrypoints_for_external_queries(
+    ranked: list[SearchResult],
+    *,
+    query: str,
+    quality: dict[str, Any],
+) -> list[SearchResult]:
+    """Keep WPS official entrypoints visible but out of the first five outside-evidence slots."""
+    route_intents = set(quality.get("route_intents") or [])
+    quality_scopes = set(quality.get("preferred_scopes") or [])
+    quality_scope = str(quality.get("requested_scope") or quality.get("scope") or quality.get("intent") or "")
+    if "wps_office" not in route_intents and "wps_office" not in quality_scopes and quality_scope != "wps_office":
+        return ranked
+    if not wps_office_needs_open_web(query, intents=list(route_intents), scopes=["wps_office"]):
+        return ranked
+    official: list[SearchResult] = []
+    outside: list[SearchResult] = []
+    for item in ranked:
+        if _is_wps_official_result(item):
+            official.append(item)
+        else:
+            outside.append(item)
+    if not official or not outside:
+        return ranked
+    if len(outside) >= 5:
+        return outside[:5] + official + outside[5:]
+    return outside + official
+
+
+def _is_wps_official_result(item: SearchResult) -> bool:
+    domain = (item.domain or _domain(item.url)).lower().removeprefix("www.")
+    if any(domain == suffix or domain.endswith("." + suffix) for suffix in _WPS_OFFICIAL_DOMAIN_SUFFIXES):
+        return True
+    source_card = (item.trace or {}).get("source_card") or {}
+    authority_role = str(source_card.get("authority_role") or "")
+    return authority_role in {"company_primary", "product_primary", "official_community", "vendor_security_center"}
+
+
 def _wps_external_information_score_fit(
     item: SearchResult,
     query: str,
@@ -9311,8 +9354,18 @@ def _read_should_fallback(quality: dict[str, Any], strict: bool = False) -> bool
     score = int(quality.get("score") or 0)
     if label in {"weak", "fallback"}:
         return True
-    if strict and (label == "noisy" or score < 70):
-        return True
+    if strict:
+        if score < 70:
+            return True
+        if label == "noisy":
+            # Many Chinese content sites leave a small amount of nav/ad text in
+            # otherwise useful article bodies. Treat high-score, long-form reads
+            # as usable direct evidence and surface the noise in quality_report
+            # instead of downgrading the whole page to weak_fallback.
+            chars = int(quality.get("chars") or 0)
+            noise_ratio = float(quality.get("noise_ratio") or 0)
+            if chars < 500 or noise_ratio > 0.15:
+                return True
     return False
 
 

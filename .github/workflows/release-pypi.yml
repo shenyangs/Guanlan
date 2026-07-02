@@ -17,6 +17,13 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Pre-release version status
+        env:
+          RAW_TAG: ${{ github.ref_name }}
+        run: |
+          expected="${RAW_TAG#v}"
+          GUANLAN_RELEASE_ALLOW_DIRTY=1 scripts/pre_release_status.sh "$expected"
+
       - name: Build package
         run: |
           python -m pip install --upgrade pip
@@ -238,3 +245,35 @@ jobs:
             echo "Expected Guanlan ${expected} from Homebrew tap, got: ${output}"
             exit 1
           fi
+
+  distribution-status:
+    needs:
+      - publish-pypi
+      - update-homebrew-tap
+    if: ${{ always() && needs.publish-pypi.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Capture distribution status
+        env:
+          RAW_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          expected="${RAW_TAG#v}"
+          python scripts/distribution_status.py --version "$expected" --format json --output distribution-status.json || true
+          python scripts/distribution_status.py --version "$expected" --format markdown --output distribution-status.md || true
+
+      - name: Upload distribution status artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-status
+          path: |
+            distribution-status.json
+            distribution-status.md

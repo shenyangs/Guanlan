@@ -1,0 +1,841 @@
+{
+  "benchmark": {
+    "failed_case_ids": [],
+    "limit": 50,
+    "mode": "quick",
+    "principle": "评测重点不是搜到多少页面，而是 Agent 是否拿到了正确的中文信源结构、证据角色和足够大的候选池。",
+    "summary": {
+      "fail": 0,
+      "pass": 24,
+      "score": 100.0,
+      "total": 24,
+      "warn": 0
+    },
+    "warned_case_ids": []
+  },
+  "distribution": {
+    "boundary": "默认报告不触网；运行 scripts/distribution_status.py 可单独验证 GitHub/PyPI/Homebrew/官网。",
+    "status": "not_probed"
+  },
+  "eval_suite": {
+    "boundary": "quick suite 不联网；live suite 可选运行，不阻断基础 release gate。",
+    "category_summary": {
+      "academic": {
+        "fail": 0,
+        "pass": 10,
+        "score": 100.0,
+        "total": 10,
+        "warn": 0
+      },
+      "ecommerce": {
+        "fail": 0,
+        "pass": 10,
+        "score": 100.0,
+        "total": 10,
+        "warn": 0
+      },
+      "entertainment": {
+        "fail": 0,
+        "pass": 10,
+        "score": 100.0,
+        "total": 10,
+        "warn": 0
+      },
+      "finance": {
+        "fail": 0,
+        "pass": 10,
+        "score": 100.0,
+        "total": 10,
+        "warn": 0
+      },
+      "hot": {
+        "fail": 0,
+        "pass": 10,
+        "score": 100.0,
+        "total": 10,
+        "warn": 0
+      },
+      "local": {
+        "fail": 0,
+        "pass": 10,
+        "score": 100.0,
+        "total": 10,
+        "warn": 0
+      },
+      "local_llm": {
+        "fail": 0,
+        "pass": 10,
+        "score": 100.0,
+        "total": 10,
+        "warn": 0
+      },
+      "policy": {
+        "fail": 0,
+        "pass": 10,
+        "score": 100.0,
+        "total": 10,
+        "warn": 0
+      },
+      "reputation": {
+        "fail": 0,
+        "pass": 10,
+        "score": 100.0,
+        "total": 10,
+        "warn": 0
+      },
+      "tech": {
+        "fail": 0,
+        "pass": 10,
+        "score": 100.0,
+        "total": 10,
+        "warn": 0
+      }
+    },
+    "failed_case_ids": [],
+    "limit": 80,
+    "mode": "quick",
+    "suite_id": "chinese-web-v1",
+    "summary": {
+      "fail": 0,
+      "pass": 100,
+      "score": 100.0,
+      "total": 100,
+      "warn": 0
+    },
+    "warned_case_ids": []
+  },
+  "generated_at": "2026-07-01T14:31:42Z",
+  "legacy_inventory": {
+    "buckets": {
+      "compat": [
+        "_ai_model_domain_family",
+        "_ai_model_query_families",
+        "_ai_model_source_fit",
+        "_ai_model_version_alignment",
+        "_ai_model_version_mentions",
+        "_append_direct_source_seed_results",
+        "_append_quality_salvage_results",
+        "_apply_site_hard_filter",
+        "_assign_topic_clusters",
+        "_audit_claim_differences",
+        "_audit_observation",
+        "_audit_version_conflicts",
+        "_backend_diagnostic_summary",
+        "_backend_error_note",
+        "_backend_health_persistence_enabled",
+        "_backend_pollution_diagnostics",
+        "_build_wechat_sogou_api",
+        "_cache_get",
+        "_cache_key",
+        "_cache_path",
+        "_cache_set",
+        "_canonical_url",
+        "_classify_network_exception",
+        "_clean_wechat_article_fragment",
+        "_collapse_ws",
+        "_configured_proxy_url",
+        "_contains_any",
+        "_content_candidates",
+        "_content_score",
+        "_decode_response_body",
+        "_default_ssl_context",
+        "_diagnostic_result_samples",
+        "_domain",
+        "_drop_noise_blocks",
+        "_edu_cn_root_domain",
+        "_evidence_observations",
+        "_exception_backend_status",
+        "_expanded_limit_repair_command",
+        "_extract_article_metadata",
+        "_extract_article_text",
+        "_extract_balanced_tag",
+        "_extract_balanced_tags_by_attr",
+        "_extract_density_text",
+        "_extract_relative_result_date",
+        "_extract_result_date",
+        "_extract_result_date_with_source",
+        "_extract_structured_claims",
+        "_extract_university_entity",
+        "_extract_version_mentions",
+        "_extract_wechat_article_text",
+        "_first_ok_network_mode",
+        "_has_freshness_words",
+        "_has_strong_university_signal",
+        "_high_stakes_query",
+        "_infer_evidence_role",
+        "_infer_university_site_domains",
+        "_interleave_by_source_type",
+        "_is_acg_entertainment_query",
+        "_is_affiliated_college_entity",
+        "_is_ai_model_low_value_source",
+        "_is_ai_model_version_or_comparison_query",
+        "_is_chinese_context_query",
+        "_is_low_relevance_academic_noise",
+        "_is_low_relevance_ai_noise",
+        "_is_noise_content_line",
+        "_is_ugc_result",
+        "_is_university_admissions_query",
+        "_is_wechat_article_url",
+        "_looks_like_ad",
+        "_looks_like_wps_ai_adjacent_market_signal",
+        "_looks_like_wps_institution_rollout",
+        "_looks_like_wps_office_market_signal",
+        "_looks_like_wps_office_seo_noise",
+        "_looks_mojibake",
+        "_multi_entity_coverage_count",
+        "_multi_entity_focus_terms",
+        "_network_failure_message",
+        "_network_failure_status",
+        "_network_modes_for_backend",
+        "_normalize_claim_value",
+        "_normalize_ddg_url",
+        "_normalize_network_mode",
+        "_normalize_site_constraint",
+        "_normalize_sites",
+        "_normalize_topic_text",
+        "_open_url_with_network",
+        "_order_topic_representatives_first",
+        "_parent_university_entity",
+        "_pipe_safe",
+        "_prefer_main_content",
+        "_preferred_quality_scope_for_domain",
+        "_quality_salvage_anchor_terms",
+        "_quality_salvage_company_domain",
+        "_quality_salvage_low_value",
+        "_quality_salvage_score",
+        "_query_from_url",
+        "_recency_relaxed_query_variants",
+        "_record_network_health",
+        "_recovery_needed",
+        "_recovery_target_count",
+        "_redact_proxy_url",
+        "_remove_blocks_by_attr",
+        "_requires_ai_vertical_discovery",
+        "_requires_tech_rss_discovery",
+        "_resolve_plugin_backend_path",
+        "_result_freshness_confidence",
+        "_result_from_dict",
+        "_result_lacks_chinese_context",
+        "_result_mentions_entity",
+        "_result_mentions_time_terms",
+        "_result_quality_trace",
+        "_result_recency_metrics",
+        "_result_recency_trace",
+        "_result_stale_risk",
+        "_route_preset_for_profile",
+        "_route_target_site_coverage_count",
+        "_route_target_site_rescue_domains",
+        "_route_target_site_rescue_needed",
+        "_run_multi_entity_fanout_pass",
+        "_run_recency_relaxed_recovery_pass",
+        "_run_route_target_site_rescue_pass",
+        "_safe_date",
+        "_safe_float",
+        "_safe_iso_date",
+        "_same_topic",
+        "_scope_distinction_diagnostics",
+        "_scope_open_mix_needed",
+        "_score_result_parts",
+        "_select_representative_evidence",
+        "_serializable_safety_filter",
+        "_shell_quote_for_command",
+        "_should_prefer_entertainment_over_university",
+        "_site_matches_constraint",
+        "_source_has",
+        "_source_mix",
+        "_source_quality_weight",
+        "_strip_recency_terms",
+        "_strip_site_filters",
+        "_strip_tags",
+        "_text_body_score",
+        "_topic_tokens",
+        "_unique_keep_order",
+        "_url_identity_parts",
+        "_url_path_is_weak_identity",
+        "_urlopen_with_context",
+        "_usable_candidate_count",
+        "_wechat_article_fragment",
+        "_wechat_image_placeholder",
+        "_wechat_js_string",
+        "_wechat_meta",
+        "_wechat_sogou_result",
+        "_wechat_timestamp",
+        "_wps_external_query_target_media_hit",
+        "_wps_office_subroute",
+        "_zero_result_backend_note",
+        "_zero_result_backend_status"
+      ],
+      "other": [
+        "backend_order",
+        "build_evidence_audit",
+        "build_freshness_guard",
+        "build_network_profile",
+        "build_source_diagnostics",
+        "build_source_mix_guard",
+        "cache_dir",
+        "cache_summary",
+        "network_health_snapshot",
+        "resolve_query_profile",
+        "source_distribution"
+      ],
+      "read": [
+        "_call_read_direct",
+        "_external_fetch_strategy",
+        "_extract_html_links",
+        "_extract_html_metadata",
+        "_html_attrs",
+        "_html_title",
+        "_html_to_markdownish",
+        "_is_weak_read",
+        "_looks_like_generic_official_landing_page",
+        "_read_direct",
+        "_read_quality_summary",
+        "_read_should_fallback",
+        "_read_wechat_article",
+        "_read_with_jina",
+        "_reading_record",
+        "_search_bing_html",
+        "_select_reading_candidates"
+      ],
+      "renderers": [
+        "_format_chart_rows",
+        "_format_empty_search_diagnostics",
+        "_format_unix_date",
+        "_generic_official_information_penalty",
+        "_wps_external_information_score_fit",
+        "format_advisor_context",
+        "format_advisor_markdown",
+        "format_evidence_audit_context",
+        "format_evidence_audit_markdown",
+        "format_freshness_guard_markdown",
+        "format_read_batch_context",
+        "format_read_batch_markdown",
+        "format_read_batch_prompt",
+        "format_read_context",
+        "format_read_prompt",
+        "format_read_trace",
+        "format_research_markdown",
+        "format_research_prompt",
+        "format_search_context",
+        "format_search_markdown",
+        "format_search_prompt",
+        "format_search_trace",
+        "format_source_chart",
+        "format_source_diagnostics_markdown",
+        "format_source_mix_guard_markdown"
+      ],
+      "research": [
+        "_advisor_answer_frame",
+        "_advisor_briefing",
+        "_advisor_intents",
+        "_advisor_limits",
+        "_advisor_natural_guidance",
+        "_advisor_next_steps",
+        "_advisor_primary_angle",
+        "_advisor_response_contract",
+        "_advisor_scenario_advice",
+        "_advisor_source_phrase",
+        "_advisor_strength_phrase",
+        "_advisor_supports",
+        "_advisor_synthesis_rules",
+        "_audit_timeline",
+        "_cap_research_jobs",
+        "_query_for_research_job",
+        "_research_feed_discovery",
+        "_research_preset_for_profile",
+        "_research_scopes",
+        "_research_search",
+        "_research_sites",
+        "build_advisor_view",
+        "build_research_packet",
+        "list_research_presets",
+        "resolve_research_preset"
+      ],
+      "search": [
+        "_anysearch_auto_fallback_satisfied",
+        "_append_duckduckgo_recovery_skip",
+        "_best_baidu_snippet",
+        "_bing_cjk_drift_active",
+        "_bing_cjk_drift_path",
+        "_bing_cjk_query_variants",
+        "_call_search_backend_once",
+        "_dedupe_results",
+        "_duckduckgo_recovery_blocked_by_health",
+        "_duckduckgo_recovery_query_variants",
+        "_effective_search_scope",
+        "_feed_item_to_search_result",
+        "_is_duckduckgo_noise",
+        "_is_wechat_search_intent",
+        "_merge_ranked_result_dicts",
+        "_normalize_bing_url",
+        "_raise_for_search_block",
+        "_record_bing_cjk_drift",
+        "_run_duckduckgo_recovery_attempt",
+        "_run_duckduckgo_recovery_pass",
+        "_search_anysearch",
+        "_search_backend_with_network",
+        "_search_baidu",
+        "_search_bing",
+        "_search_bing_generic",
+        "_search_context_diagnostics",
+        "_search_duckduckgo",
+        "_search_limit_advice",
+        "_search_plugin_backend",
+        "_search_recovery_commands",
+        "_search_shared_diagnostics",
+        "_search_time_constraint",
+        "_search_wechat_sogou",
+        "_should_search_scope_as_open_web",
+        "_try_bing_cjk_variant_recovery",
+        "_try_bing_generic_recovery",
+        "_university_search_domains",
+        "build_search_recovery_plan",
+        "rank_results",
+        "search_web"
+      ]
+    },
+    "file": "guanlan/web/_legacy_web_impl.py",
+    "guardrail": "legacy 层只保留兼容承载；新增业务逻辑应落到 split owner 模块。",
+    "loc": 10065,
+    "top_level_functions": 274
+  },
+  "live_smoke": {
+    "boundary": "未发现本地 live-smoke 历史；公开报告不伪造公网实时分数。",
+    "history_path": "/Users/sam/.guanlan/quality/live-smoke-history.jsonl",
+    "runs_considered": 0,
+    "status": "no_history"
+  },
+  "principles": {
+    "deterministic": "benchmark/eval/routing/quality sections avoid live network by default.",
+    "distribution_boundary": "pip local TLS errors are classified separately from PyPI stale-version evidence.",
+    "live_boundary": "live-smoke trend is diagnostic evidence, not proof that a topic has no results."
+  },
+  "quality_signals": {
+    "backend_fixtures": {
+      "failed_checks": [],
+      "mode": "quick",
+      "summary": {
+        "fail": 0,
+        "pass": 5,
+        "score": 100.0,
+        "total": 5,
+        "warn": 0
+      },
+      "warned_checks": []
+    },
+    "coverage": {
+      "failed_checks": [],
+      "mode": "quick",
+      "summary": {
+        "fail": 0,
+        "pass": 10,
+        "score": 100.0,
+        "total": 10,
+        "warn": 0
+      },
+      "warned_checks": []
+    },
+    "foundational": {
+      "failed_checks": [],
+      "mode": "quick",
+      "summary": {
+        "fail": 0,
+        "pass": 9,
+        "score": 100.0,
+        "total": 9,
+        "warn": 0
+      },
+      "warned_checks": []
+    },
+    "performance": {
+      "failed_checks": [],
+      "mode": "quick",
+      "summary": {
+        "fail": 0,
+        "pass": 4,
+        "score": 100.0,
+        "total": 4,
+        "warn": 0
+      },
+      "warned_checks": []
+    },
+    "regression": {
+      "failed_checks": [],
+      "mode": "quick",
+      "summary": {
+        "fail": 0,
+        "pass": 20,
+        "score": 100.0,
+        "total": 20,
+        "warn": 0
+      },
+      "warned_checks": []
+    },
+    "robustness": {
+      "failed_checks": [],
+      "mode": "quick",
+      "summary": {
+        "fail": 0,
+        "pass": 31,
+        "score": 100.0,
+        "total": 31,
+        "warn": 0
+      },
+      "warned_checks": []
+    }
+  },
+  "routing_regression": {
+    "case_type_distribution": {
+      "near_miss": 40,
+      "negative": 2,
+      "positive": 117
+    },
+    "category_distribution": {
+      "career": {
+        "near_miss": 1,
+        "positive": 1
+      },
+      "company": {
+        "near_miss": 3,
+        "positive": 4
+      },
+      "cybersecurity": {
+        "positive": 3
+      },
+      "design": {
+        "positive": 2
+      },
+      "ecommerce": {
+        "near_miss": 3,
+        "positive": 3
+      },
+      "education": {
+        "positive": 1
+      },
+      "entertainment": {
+        "near_miss": 1,
+        "positive": 14
+      },
+      "finance": {
+        "near_miss": 7,
+        "positive": 9
+      },
+      "industry": {
+        "near_miss": 9,
+        "positive": 8
+      },
+      "local_life": {
+        "near_miss": 1,
+        "positive": 6
+      },
+      "medical": {
+        "positive": 3
+      },
+      "news": {
+        "positive": 1
+      },
+      "podcast": {
+        "positive": 2
+      },
+      "policy": {
+        "near_miss": 5,
+        "positive": 19
+      },
+      "reading": {
+        "near_miss": 1,
+        "positive": 7
+      },
+      "reputation": {
+        "near_miss": 1
+      },
+      "science": {
+        "positive": 1
+      },
+      "sports": {
+        "negative": 1,
+        "positive": 1
+      },
+      "tech": {
+        "near_miss": 5,
+        "negative": 1,
+        "positive": 25
+      },
+      "test_prep": {
+        "positive": 1
+      },
+      "transport": {
+        "positive": 2
+      },
+      "university": {
+        "near_miss": 2,
+        "positive": 1
+      },
+      "weather": {
+        "positive": 1
+      },
+      "wps_office": {
+        "near_miss": 1,
+        "positive": 2
+      }
+    },
+    "expected_field_usage": {
+      "expected_command_contains": 43,
+      "expected_intents_any": 158,
+      "expected_primary_contains": 145,
+      "expected_sites_contains": 81
+    },
+    "fixture": "tests/fixtures/routing_regression_cases.jsonl",
+    "forbidden_field_usage": {
+      "forbidden_command_contains": 47,
+      "forbidden_intents": 112
+    },
+    "high_risk_coverage": {
+      "education_university": {
+        "case_types": {
+          "near_miss": 2,
+          "positive": 3
+        },
+        "categories": [
+          "education",
+          "test_prep",
+          "university"
+        ],
+        "coverage_floor": "pass",
+        "minimum": "positive + near_miss"
+      },
+      "entertainment": {
+        "case_types": {
+          "near_miss": 1,
+          "positive": 14
+        },
+        "categories": [
+          "entertainment"
+        ],
+        "coverage_floor": "pass",
+        "minimum": "positive + near_miss"
+      },
+      "finance": {
+        "case_types": {
+          "near_miss": 7,
+          "positive": 9
+        },
+        "categories": [
+          "finance"
+        ],
+        "coverage_floor": "pass",
+        "minimum": "positive + near_miss"
+      },
+      "legal_policy": {
+        "case_types": {
+          "near_miss": 5,
+          "positive": 19
+        },
+        "categories": [
+          "policy"
+        ],
+        "coverage_floor": "pass",
+        "minimum": "positive + near_miss"
+      },
+      "sports_local_life": {
+        "case_types": {
+          "near_miss": 1,
+          "negative": 1,
+          "positive": 9
+        },
+        "categories": [
+          "local_life",
+          "sports",
+          "transport"
+        ],
+        "coverage_floor": "pass",
+        "minimum": "positive + near_miss"
+      },
+      "tech_wps": {
+        "case_types": {
+          "near_miss": 6,
+          "negative": 1,
+          "positive": 27
+        },
+        "categories": [
+          "tech",
+          "wps_office"
+        ],
+        "coverage_floor": "pass",
+        "minimum": "positive + near_miss"
+      }
+    },
+    "missing_high_risk_coverage": [],
+    "rule_inventory": {
+      "demotion_rules": {
+        "--limit 5": 1,
+        "--preset policy": 1,
+        "--preset sports": 1,
+        "--preset university": 1,
+        "--preset wps_office": 3,
+        "--scope career": 1,
+        "--scope cybersecurity": 1,
+        "--scope ecommerce": 4,
+        "--scope entertainment": 1,
+        "--scope finance_research": 1,
+        "--scope gov": 3,
+        "--scope industry_analysis": 1,
+        "--scope local_official": 1,
+        "--scope sports": 2,
+        "--scope tech_dev": 4,
+        "--scope university": 1,
+        "--scope wps_office": 1,
+        "--site github.com": 1,
+        "--site openai.com": 1,
+        "ec.europa.eu": 1,
+        "espn.com": 1,
+        "feeds curated": 1,
+        "finance_quote": 1,
+        "guanlan stock": 15,
+        "hotboard:catalog:shopping": 1,
+        "known-exploited": 1,
+        "nasa.gov": 1,
+        "openssl.org/news/secadv": 1,
+        "piaofang.maoyan.com": 1
+      },
+      "intent_rules": {
+        "!company_primary": 2,
+        "!entertainment": 2,
+        "!finance_quote": 1,
+        "!general": 94,
+        "!industry": 1,
+        "!local": 2,
+        "!purchase_advice": 2,
+        "!reading_notes": 1,
+        "!sports": 3,
+        "!standards_compliance": 1,
+        "!tech_only": 1,
+        "!university_admissions": 1,
+        "!wps_office": 2,
+        "career": 2,
+        "company_primary": 33,
+        "cybersecurity": 3,
+        "design_trend": 2,
+        "ecommerce": 7,
+        "education_learning": 1,
+        "education_service": 1,
+        "entertainment": 9,
+        "finance": 3,
+        "finance_disclosure": 1,
+        "finance_macro": 9,
+        "finance_quote": 7,
+        "finance_research": 2,
+        "finance_sentiment": 1,
+        "global_entertainment": 1,
+        "global_industry": 5,
+        "global_policy": 7,
+        "hot_trend": 1,
+        "industry": 18,
+        "jp_kr_entertainment": 7,
+        "legal_judicial": 5,
+        "local": 9,
+        "local_life": 7,
+        "medical_health": 6,
+        "official_position": 3,
+        "podcast": 2,
+        "policy": 19,
+        "pricing_watch": 1,
+        "purchase_advice": 1,
+        "reading_notes": 8,
+        "reputation": 3,
+        "science": 1,
+        "sports": 1,
+        "standards_compliance": 6,
+        "tech": 26,
+        "test_prep": 1,
+        "transport": 2,
+        "university_admissions": 2,
+        "weather_disaster": 1,
+        "wps_office": 3
+      },
+      "scope_rules": {},
+      "site_rules": {
+        "12306.cn": 1,
+        "aasm.org": 1,
+        "acem.sjtu.edu.cn": 1,
+        "adcommission.gov.au": 1,
+        "ala.org": 1,
+        "bankofengland.co.uk": 1,
+        "blog.google": 1,
+        "book.douban.com": 3,
+        "cac.gov.cn": 2,
+        "calb-tech.com": 1,
+        "calm.com": 1,
+        "catl.com": 1,
+        "cisa.gov": 1,
+        "clipstudio.net": 1,
+        "cnnic.net.cn": 1,
+        "code.visualstudio.com": 1,
+        "consumerreports.org": 1,
+        "coze.cn": 1,
+        "ctext.org": 2,
+        "damai.cn": 1,
+        "developer.android.com": 1,
+        "developer.tuya.com": 1,
+        "douban.com": 1,
+        "ec.europa.eu": 2,
+        "espn.com": 1,
+        "fifa.com": 1,
+        "foxsports.com": 1,
+        "gd.gov.cn": 1,
+        "github.com": 1,
+        "gjj.sz.gov.cn": 1,
+        "go.dev": 1,
+        "gotion.com.cn": 1,
+        "gov.uk": 1,
+        "groove-x.com": 1,
+        "harness.io": 1,
+        "help.icostapp.com": 1,
+        "huawei.com": 1,
+        "ihchina.cn": 1,
+        "imf.org": 1,
+        "juhe.cn": 1,
+        "khanacademy.org": 1,
+        "klingai.com": 1,
+        "londonstockexchange.com": 1,
+        "miit.gov.cn": 1,
+        "mod.go.jp": 1,
+        "mod.gov.cn": 1,
+        "mof.gov.cn": 1,
+        "moonshot.cn": 1,
+        "natalie.mu": 1,
+        "natcm.gov.cn": 1,
+        "natspec.com.au": 1,
+        "nea.gov.cn": 1,
+        "nodejs.org": 1,
+        "notion.com": 1,
+        "npc.gov.cn": 1,
+        "olympics.com": 1,
+        "pantone.com": 1,
+        "pay.weixin.qq.com": 1,
+        "pbc.gov.cn": 3,
+        "pearlabyss.com": 1,
+        "pixiv.net": 1,
+        "postgresql.org": 1,
+        "qxsfjq.com": 1,
+        "replika.com": 1,
+        "samr.gov.cn": 1,
+        "stats.gov.cn": 1,
+        "std.samr.gov.cn": 1,
+        "tesla.com": 1,
+        "thaievisa.go.th": 1,
+        "treasury.gov": 1,
+        "volcengine.com": 1,
+        "warhammer-community.com": 1,
+        "wordpress.org": 1,
+        "xj.gov.cn": 1,
+        "xjjt.gov.cn": 1,
+        "yichun.gov.cn": 1,
+        "zenless.hoyoverse.com": 1,
+        "zhipuai.cn": 1
+      }
+    },
+    "total_cases": 159
+  },
+  "schema_version": "guanlan_quality_report_v1",
+  "version": "0.7.7"
+}

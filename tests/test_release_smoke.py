@@ -48,6 +48,14 @@ def test_release_gate_runs_full_quality_ladder():
     assert "guanlan version" in script
 
 
+def test_pre_release_status_checks_security_supported_line():
+    script = (ROOT / "scripts" / "pre_release_status.sh").read_text(encoding="utf-8")
+
+    assert "SECURITY.md" in script
+    assert "supported_line" in script
+    assert "Latest $supported_line" in script
+
+
 def test_post_release_sync_script_handles_github_rate_limit_and_uv_version_verification():
     script = (ROOT / "scripts" / "post_release_sync.sh").read_text(encoding="utf-8")
 
@@ -71,6 +79,42 @@ def test_publish_release_skip_sync_does_not_claim_complete_release():
 
     assert "push/tag complete; release sync skipped" in script
     assert "release incomplete: GUANLAN_RELEASE_SKIP_SYNC=1" in script
+
+
+def test_quality_gate_workflow_runs_full_release_quality_ladder():
+    workflow = (ROOT / ".github" / "workflows" / "quality-gate.yml").read_text(encoding="utf-8")
+
+    assert "scripts/pre_release_status.sh" in workflow
+    assert "ruff check ." in workflow
+    assert "pytest -q" in workflow
+    assert "quality foundational" in workflow
+    assert "quality coverage" in workflow
+    assert "quality regression" in workflow
+    assert "quality robustness" in workflow
+    assert "quality backend-fixtures" in workflow
+    assert "eval benchmark" in workflow
+    assert "eval suite run chinese-web-v1" in workflow
+    assert "uv build" in workflow
+    assert "scripts/generate_quality_report.py" in workflow
+
+
+def test_release_workflow_captures_distribution_status_artifact():
+    workflow = (ROOT / ".github" / "workflows" / "release-pypi.yml").read_text(encoding="utf-8")
+
+    assert "scripts/pre_release_status.sh" in workflow
+    assert "scripts/distribution_status.py" in workflow
+    assert "distribution-status.json" in workflow
+    assert "distribution-status.md" in workflow
+    assert "actions/upload-artifact" in workflow
+
+
+def test_security_doc_supported_line_matches_current_minor():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'(?m)^version = "([0-9]+)\.([0-9]+)\.[0-9]+"$', pyproject)
+    security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+
+    assert match is not None
+    assert f"Latest {match.group(1)}.{match.group(2)}.x" in security
 
 
 def test_agent_update_docs_require_full_reinstall_and_smoke():

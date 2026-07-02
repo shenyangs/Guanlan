@@ -33,6 +33,13 @@ for file in README.md docs/full-guide.md docs/telemetry.md website/index.html; d
   fi
 done
 
+if [ -f SECURITY.md ]; then
+  supported_line="$(printf '%s' "$version_from_pyproject" | awk -F. '{print $1 "." $2 ".x"}')"
+  if ! grep -q "Latest $supported_line" SECURITY.md; then
+    fail "SECURITY.md does not mention supported line Latest $supported_line"
+  fi
+fi
+
 if [ -f CHANGELOG.md ] && ! grep -q "## v$version_from_pyproject" CHANGELOG.md; then
   fail "CHANGELOG.md missing v$version_from_pyproject entry"
 fi
