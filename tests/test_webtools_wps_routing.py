@@ -11,8 +11,11 @@ def test_wps_external_information_queries_skip_official_entrypoint_seeds():
 
     assert wps_office_needs_open_web(complaint_query, intents=["wps_office"], scopes=["wps_office"])
     assert wps_office_needs_open_web(media_query, intents=["wps_office"], scopes=["wps_office"])
+    assert wps_office_needs_open_web("WPS 套娃", intents=["wps_office"], scopes=["wps_office"])
+    assert wps_office_needs_open_web("WPS comate", intents=["wps_office"], scopes=["wps_office"])
     assert direct_source_seeds(complaint_query, intents=["wps_office"], scopes=["wps_office"]) == []
     assert direct_source_seeds(media_query, intents=["wps_office"], scopes=["wps_office"]) == []
+    assert direct_source_seeds("WPS comate", intents=["wps_office"], scopes=["wps_office"]) == []
     assert not wps_office_needs_open_web("WPS AI 官网 下载", intents=["wps_office"], scopes=["wps_office"])
 
 
@@ -41,11 +44,74 @@ def test_wps_external_information_scope_uses_open_query_and_skips_entry_seeds(mo
     )
 
     assert requested
-    assert requested[0] == "WPS 背刺 光明网评论"
+    assert requested[0].startswith("WPS 背刺 光明网评论")
     assert "site:wps.cn" not in requested[0]
+    assert "收费" in requested[0]
     urls = [item["url"] for item in results]
     assert "https://news.gmw.cn/example" in urls
     assert not any("365.wps.cn" in url or "lingxi.wps.cn" in url for url in urls)
+
+
+def test_wps_ordinary_query_scope_uses_open_query_and_skips_entry_seeds(monkeypatch):
+    requested = []
+
+    def fake_search(query, limit=10):
+        requested.append(query)
+        return [
+            webtools.SearchResult(
+                title="WPS Comate 讨论",
+                url="https://www.zhihu.com/question/wps-comate",
+                snippet="公开讨论 WPS comate 是什么、体验和替代方案。",
+            )
+        ]
+
+    monkeypatch.setattr(webtools, "_search_duckduckgo", fake_search)
+
+    results = webtools.search_web(
+        "WPS comate",
+        backend="duckduckgo",
+        profile="china",
+        scope="wps_office",
+        limit=10,
+        trace=True,
+    )
+
+    assert requested
+    assert requested[0].startswith("WPS comate")
+    assert "site:wps.cn" not in requested[0]
+    assert "是什么" in requested[0]
+    urls = [item["url"] for item in results]
+    assert "https://www.zhihu.com/question/wps-comate" in urls
+    assert not any("365.wps.cn" in url or "lingxi.wps.cn" in url for url in urls)
+
+
+def test_wps_official_only_candidates_do_not_satisfy_open_web_need():
+    quality = webtools.detect_search_quality_profile("WPS comate", scope="wps_office")
+    route = webtools.build_route_plan("WPS comate", scope="wps_office").to_dict()
+    quality = webtools._quality_with_route_plan(quality, route, explicit_scope="wps_office")
+
+    count = webtools._usable_candidate_count(
+        [
+            webtools.SearchResult(
+                title="WPS 365",
+                url="https://365.wps.cn/",
+                snippet="WPS 365 官方入口，适合协同办公。",
+                source="fixture",
+                rank=1,
+            ),
+            webtools.SearchResult(
+                title="WPS 官网",
+                url="https://www.wps.cn/",
+                snippet="WPS 官方入口，下载和产品介绍。",
+                source="fixture",
+                rank=2,
+            ),
+        ],
+        "WPS comate",
+        quality,
+    )
+
+    assert count == 0
 
 
 def test_wps_external_information_ranking_prefers_outside_evidence():

@@ -464,17 +464,22 @@ def wps_office_needs_open_web(
 ) -> bool:
     """Return True for WPS queries where official entry seeds would hide evidence.
 
-    Product-entry seeds are useful for navigation or official fact checks, but
-    they are actively harmful for media, controversy, pricing, complaint, and
-    reputation searches because they displace the outside evidence the agent is
-    actually asking for.
+    Product-entry seeds are useful for explicit navigation or official fact
+    checks. For ordinary WPS searches, however, the user usually needs the
+    open-web shape of the topic first: product explanations, media mentions,
+    user discussion, pricing/reputation context, or an unknown adjacent term.
+    Keeping those searches scoped to official entrypoints makes a normal search
+    behave like a brand sitemap, so default to open web unless the query asks
+    for an official/navigation page.
     """
     if not is_wps_office_lookup(query, intents=intents, scopes=scopes):
         return False
     text = _norm(query)
-    if _contains_any(text, _WPS_NAVIGATION_NEED_TERMS) and not _contains_any(text, _WPS_EXTERNAL_INFORMATION_TERMS):
+    if _contains_any(text, _WPS_EXTERNAL_INFORMATION_TERMS):
+        return True
+    if _contains_any(text, _WPS_NAVIGATION_NEED_TERMS):
         return False
-    return _contains_any(text, _WPS_EXTERNAL_INFORMATION_TERMS)
+    return True
 
 
 def dominant_vertical_preset(

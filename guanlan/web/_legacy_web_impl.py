@@ -3563,7 +3563,19 @@ def _usable_candidate_count(
     if not results:
         return 0
     deduped = _dedupe_results(list(results))
-    gate = _assess_backend_batch_quality(query, deduped, quality or {})
+    quality = quality or {}
+    route_intents = set(quality.get("route_intents") or [])
+    quality_scopes = set(quality.get("preferred_scopes") or [])
+    quality_scope = str(quality.get("requested_scope") or quality.get("scope") or quality.get("intent") or "")
+    if (
+        ("wps_office" in route_intents or "wps_office" in quality_scopes or quality_scope == "wps_office")
+        and wps_office_needs_open_web(query, intents=list(route_intents), scopes=["wps_office"])
+    ):
+        outside = [item for item in deduped if not _is_wps_official_result(item)]
+        if not outside:
+            return 0
+        deduped = outside
+    gate = _assess_backend_batch_quality(query, deduped, quality)
     if not gate["usable"]:
         return 0
     return len(deduped)
@@ -8139,6 +8151,8 @@ def _looks_like_wps_office_seo_noise(item: SearchResult) -> bool:
     official_domains = ("wps.cn", "kdocs.cn", "wps.com", "kingsoftoffice.com", "kingsoft.com")
     if any(domain == official or domain.endswith("." + official) for official in official_domains):
         return False
+    if "wps" in domain and _contains_any(text, ("官网", "官方网站", "官方首页", "免费高效办公")):
+        return True
     low_value_domains = (
         "zhidao.baidu.com",
         "jingyan.baidu.com",
@@ -8649,18 +8663,18 @@ def _defer_wps_official_entrypoints_for_external_queries(
         return ranked
     if not wps_office_needs_open_web(query, intents=list(route_intents), scopes=["wps_office"]):
         return ranked
-    official: list[SearchResult] = []
+    official_or_noise: list[SearchResult] = []
     outside: list[SearchResult] = []
     for item in ranked:
-        if _is_wps_official_result(item):
-            official.append(item)
+        if _is_wps_official_result(item) or _looks_like_wps_office_seo_noise(item):
+            official_or_noise.append(item)
         else:
             outside.append(item)
-    if not official or not outside:
+    if not official_or_noise or not outside:
         return ranked
     if len(outside) >= 5:
-        return outside[:5] + official + outside[5:]
-    return outside + official
+        return outside[:5] + official_or_noise + outside[5:]
+    return outside + official_or_noise
 
 
 def _is_wps_official_result(item: SearchResult) -> bool:

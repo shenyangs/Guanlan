@@ -245,7 +245,8 @@ def test_direct_source_seeds_cover_vertical_lookups_without_treating_dev_tasks_a
     )
     weather_seeds = direct_source_seeds("台风 路径 最新 中央气象台 日本气象厅", intents=["weather_disaster"])
     security_seeds = direct_source_seeds("CVE-2026-12345 OpenSSL 漏洞 影响版本", intents=["cybersecurity"])
-    wps_seeds = direct_source_seeds("WPS AI PPT Agent 办公选题", intents=["wps_office"], scopes=["wps_office"])
+    wps_seeds = direct_source_seeds("WPS AI 官网 下载", intents=["wps_office"], scopes=["wps_office"])
+    wps_open_seeds = direct_source_seeds("WPS AI PPT Agent 办公选题", intents=["wps_office"], scopes=["wps_office"])
 
     assert any("espn.com/nba/story" in item["url"] for item in nba_seeds)
     assert any("fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/scores-fixtures" in item["url"] for item in worldcup_seeds)
@@ -256,6 +257,7 @@ def test_direct_source_seeds_cover_vertical_lookups_without_treating_dev_tasks_a
     assert any("nmc.cn" in item["url"] for item in weather_seeds)
     assert any("CVE-2026-12345" in item["url"] for item in security_seeds)
     assert any("wps.cn" in item["url"] for item in wps_seeds)
+    assert wps_open_seeds == []
     assert any("365.wps.cn" in item["url"] for item in wps_seeds)
     assert any("lingxi.wps.cn" in item["url"] for item in wps_seeds)
     assert is_live_sports_lookup("NBA季后赛2026年首轮战绩比分", intents=["sports"])

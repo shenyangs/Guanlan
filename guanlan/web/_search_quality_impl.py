@@ -45,6 +45,42 @@ from guanlan.wps_semantics import (
     wps_semantic_summary,
 )
 
+_WPS_NAVIGATION_QUERY_TERMS = (
+    "官网",
+    "官方网站",
+    "入口",
+    "下载",
+    "安装",
+    "定价页",
+    "价格页",
+    "产品页",
+    "功能介绍",
+    "发布说明",
+    "release notes",
+)
+_WPS_REPUTATION_QUERY_TERMS = (
+    "背刺",
+    "刺客",
+    "c盘",
+    "套娃",
+    "收费",
+    "涨价",
+    "会员",
+    "广告",
+    "弹窗",
+    "捆绑",
+    "卸载",
+    "吐槽",
+    "投诉",
+    "差评",
+    "争议",
+    "负面",
+    "舆情",
+    "口碑",
+    "评价",
+    "评论",
+)
+
 
 def detect_search_quality_profile(
     query: str,
@@ -869,7 +905,11 @@ def _expand_search_query(
         intents=[intent] if intent else [],
         scopes=[effective_scope] if effective_scope else [],
     ):
-        return normalized
+        wps_mode = _wps_query_mode(normalized)
+        if wps_mode == "reputation":
+            additions.extend(["会员", "收费", "吐槽", "投诉", "用户评价"])
+        elif wps_mode == "open" and len(normalized) <= 24 and wps_subroute == "general":
+            additions.extend(["是什么", "评价", "讨论"])
     if normalized == "苹果" and effective_scope in {"ecommerce", "tech_dev", "social_web"}:
         if effective_scope == "ecommerce":
             additions.extend(["iPhone", "手机", "价格", "用户评价"])
@@ -1128,6 +1168,15 @@ def _quality_term_matches(text: str, term: str) -> bool:
     return term.lower() in text
 
 
+def _wps_query_mode(query: str) -> str:
+    text = _collapse_ws(query).lower()
+    if any(term.lower() in text for term in _WPS_REPUTATION_QUERY_TERMS):
+        return "reputation"
+    if any(term.lower() in text for term in _WPS_NAVIGATION_QUERY_TERMS):
+        return "navigation"
+    return "open"
+
+
 def _is_industry_funding_context(text: str) -> bool:
     """Treat financing/valuation as industry unless capital-market terms are explicit."""
     industry_terms = (
@@ -1383,13 +1432,24 @@ def build_query_strategy(
     if "wps_office" in intents or requested_scope == "wps_office":
         wps_analysis = analyze_wps_semantics(clean_query)
         wps_lanes = set(wps_analysis.get("lanes") or [])
-        for variant in wps_route_query_variants(clean_query)[:5]:
-            add("topic_radar", variant, "补 WPS/AI Office 语义 lane 的高信号选题词")
-        add("company_primary", f"{clean_query} 金山办公 WPS AI WPS 365 官方 发布 产品 文档", "WPS/AI Office 选题先锚定金山办公和 WPS 一手材料")
-        add("industry_report", f"{clean_query} 办公 AI PPT 文档协作 SaaS 信创 行业 趋势 案例 移动办公 平板办公 鸿蒙", "外扩办公 AI、PPT、文档协作、SaaS、信创、移动办公和行业趋势")
-        add("user_sample", f"{clean_query} 用户评价 体验 吐槽 知乎 小红书 B站 V2EX", "补公开用户与社区样本，避免只有品牌口径")
-        add("developer_discussion", f"{clean_query} Agent API 插件 自动化 文档协作 开发者", "补 Agent、API、插件和自动化开发者视角")
-        add("security_advisory", f"{clean_query} 安全 权限 数据合规 信创 等保 国产化", "补政企办公、安全合规和信创约束")
+        wps_mode = _wps_query_mode(clean_query)
+        if wps_mode == "navigation":
+            for variant in wps_route_query_variants(clean_query)[:3]:
+                add("topic_radar", variant, "补 WPS/AI Office 语义 lane 的高信号选题词")
+            add("company_primary", f"{clean_query} 金山办公 WPS 官方 产品 文档 价格 下载", "用户显式要官网/入口/下载/价格时，再锚定 WPS 一手材料")
+        elif wps_mode == "reputation":
+            add("user_sample", f"{clean_query} 用户评价 吐槽 投诉 知乎 微博 小红书 B站 V2EX", "WPS 争议/口碑问题优先补公开用户样本")
+            add("media_report", f"{clean_query} 媒体报道 评论 观察 争议 回应", "WPS 争议/口碑问题补媒体报道和评论语境")
+            add("industry_report", f"{clean_query} 办公软件 商业模式 会员 收费 用户体验", "补办公软件商业模式和用户体验背景")
+        else:
+            for variant in wps_route_query_variants(clean_query)[:3]:
+                add("topic_radar", variant, "补 WPS/AI Office 语义 lane 的高信号选题词")
+            add("open_web_context", f"{clean_query} 是什么 评价 讨论 竞品", "WPS 普通查询先保留原词并补开放网页解释，不把搜索窄化成官网导航")
+            add("industry_report", f"{clean_query} 办公软件 AI Office SaaS 行业 趋势", "补办公/AI Office 行业语境")
+            add("user_sample", f"{clean_query} 用户评价 体验 知乎 小红书 B站 V2EX", "补公开用户与社区样本，避免只有品牌口径")
+            add("developer_discussion", f"{clean_query} API 插件 自动化 文档协作 开发者", "补 Agent、API、插件和自动化开发者视角")
+        if wps_mode != "navigation":
+            add("source_boundary", f"{clean_query} 官方 回应 发布", "官方材料只作边界核验，不作为普通 WPS 查询的默认主搜索")
         if "wps_ai" in wps_lanes:
             add("scenario_signal", f"{clean_query} AI伴写2.0 AI写文档 AI润色 AI总结 AI阅读PDF AI处理表格 AIPPT HTML素材", "WPS AI 线补四助手、AIPPT、HTML素材、文档问答和个人办公场景")
             add("competitive_context", f"{clean_query} Gamma Canva Tome Beautiful.ai Adobe Express Microsoft Copilot AI PPT 对比", "补 AI PPT/演示生成竞品和替代工作流")

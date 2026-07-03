@@ -704,7 +704,8 @@ def test_query_strategy_distinguishes_vertical_scopes():
     assert "topic_radar" in wps_roles
     assert "competitive_context" in wps_roles
     assert "scenario_signal" in wps_roles
-    assert "company_primary" in wps_roles
+    assert "open_web_context" in wps_roles
+    assert "source_boundary" in wps_roles
     assert "industry_report" in wps_roles
     assert "user_sample" in wps_roles
     assert "developer_discussion" in wps_roles
@@ -736,12 +737,12 @@ def test_wps_subroute_query_strategy_separates_market_lanes():
     assert any("PDF文档问答" in item["query"] for item in wps_ai["variants"])
     assert any("职场效率" in item["query"] for item in wps_ai["variants"])
     assert any("Gamma Canva" in item["query"] for item in wps_ai["variants"])
-    assert any("国产 AI PPT 工具 横评" in item["query"] for item in wps_ai["variants"])
+    assert any("国产 AI PPT 工具" in item["query"] and "横评" in item["query"] for item in wps_ai["variants"])
     assert any("AI办公全能伙伴" in item["query"] for item in lingxi["variants"])
     assert any("语音文档对话" in item["query"] for item in lingxi["variants"])
     assert any("MCP skill" in item["query"] for item in lingxi["variants"])
     assert any("原生 Office 智能体" in item["query"] for item in lingxi["variants"])
-    assert any("Microsoft Copilot" in item["query"] for item in lingxi["variants"])
+    assert any("Microsoft 365 Copilot" in item["query"] for item in lingxi["variants"])
     assert any("企业大脑" in item["query"] for item in wps365["variants"])
     assert any("Microsoft 365 Copilot" in item["query"] for item in wps365["variants"])
     assert any("AI 笔记 AI 知识库 KaaS" in item["query"] for item in adjacent["variants"])
