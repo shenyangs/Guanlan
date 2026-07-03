@@ -93,6 +93,7 @@ def build_read_evidence(
     trace = dict(read_packet.get("trace") or {})
     quality = dict(read_packet.get("quality") or {})
     quality_report = dict(read_packet.get("quality_report") or {})
+    backend_capability, extract_contract = _read_contracts(read_packet, content=text)
     selected_backend = str(trace.get("selected_backend") or trace.get("backend") or "")
     source_value = (
         source
@@ -140,8 +141,10 @@ def build_read_evidence(
         "quality_report": quality_report,
         "read_quality": quality,
         "selected_backend": selected_backend,
+        "backend_capability": backend_capability,
+        "extract_contract": extract_contract,
         "structured": structured,
-        "boundary": _evidence_boundary(normalized_status, usable),
+        "boundary": _evidence_boundary(normalized_status, usable, extract_contract=extract_contract),
     }
     if error or read_packet.get("error"):
         record["error"] = str(error or read_packet.get("error") or "")
@@ -297,12 +300,26 @@ def summarize_read_evidence(readings: list[dict[str, Any]], *, requested: int | 
     usable_count = sum(1 for row in readings if row.get("usable"))
     error_count = status_counts.get("error", 0)
     weak_count = sum(1 for row in readings if not row.get("usable") and str(row.get("status")) != "error")
+    context_only_count = sum(
+        1
+        for row in readings
+        if isinstance(row.get("extract_contract"), dict)
+        and row.get("extract_contract", {}).get("status") == "context_only"
+    )
+    truncated_count = sum(
+        1
+        for row in readings
+        if isinstance(row.get("extract_contract"), dict)
+        and row.get("extract_contract", {}).get("truncation", {}).get("content_truncated")
+    )
     return {
         "requested": len(readings) if requested is None else requested,
         "attempted": len(readings),
         "usable_count": usable_count,
         "weak_count": weak_count,
         "error_count": error_count,
+        "context_only_count": context_only_count,
+        "truncated_count": truncated_count,
         "status_counts": status_counts,
     }
 
@@ -377,7 +394,22 @@ def _normalize_status(*, status: str, usable: bool, content: str, error: str) ->
     return "unusable"
 
 
-def _evidence_boundary(status: str, usable: bool) -> str:
+def _read_contracts(read_packet: dict[str, Any], *, content: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    from guanlan.web_backend_contract import build_backend_capability, build_extract_contract
+
+    packet = dict(read_packet or {})
+    if content is not None:
+        packet["content"] = content
+    backend_capability = dict(packet.get("backend_capability") or build_backend_capability(packet))
+    packet["backend_capability"] = backend_capability
+    extract_contract = dict(packet.get("extract_contract") or build_extract_contract(packet))
+    return backend_capability, extract_contract
+
+
+def _evidence_boundary(status: str, usable: bool, *, extract_contract: dict[str, Any] | None = None) -> str:
+    contract = dict(extract_contract or {})
+    if contract.get("status") == "context_only":
+        return "当前只是搜索上下文线索，不是目标页正文；引用事实前需补读原文或代表页。"
     if usable and status == "ok":
         return "该页正文质量可用，可作为代表页证据引用。"
     if status == "error":

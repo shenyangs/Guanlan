@@ -62,6 +62,41 @@ def test_build_read_evidence_normalizes_usable_and_weak_pages():
     assert weak["status"] == "weak"
 
 
+def test_build_read_evidence_attaches_backend_and_extract_contract():
+    packet = {
+        "url": "https://example.com/news",
+        "content": "# 标题\n这是一段足够干净的正文。" * 20,
+        "quality_report": {"usable": True, "score": 88, "label": "clean"},
+        "quality": {"score": 88, "chars": 500},
+        "trace": {"selected_backend": "jina", "backend": "auto", "extract": "article"},
+    }
+
+    evidence = build_read_evidence({"title": "新闻"}, read_packet=packet)
+
+    assert evidence["backend_capability"]["schema_version"] == "web_backend_capability_v1"
+    assert evidence["backend_capability"]["trust_model"] == "public_page_extraction"
+    assert evidence["extract_contract"]["schema_version"] == "read_extract_contract_v1"
+    assert evidence["extract_contract"]["status"] == "usable"
+    assert evidence["extract_contract"]["can_cite_as_page_body"] is True
+
+
+def test_build_read_evidence_marks_search_fallback_as_context_only():
+    packet = {
+        "url": "https://example.com/news",
+        "content": "# 观澜阅读兜底\n搜索候选摘要",
+        "quality_report": {"usable": False, "score": 40, "label": "fallback", "fallback": True},
+        "quality": {"score": 40, "chars": 80, "fallback": True},
+        "trace": {"selected_backend": "search_fallback", "backend": "auto"},
+    }
+
+    evidence = build_read_evidence({"title": "新闻"}, read_packet=packet)
+
+    assert evidence["backend_capability"]["trust_model"] == "search_context_only"
+    assert evidence["extract_contract"]["status"] == "context_only"
+    assert evidence["extract_contract"]["can_cite_as_page_body"] is False
+    assert "不是目标页正文" in evidence["boundary"]
+
+
 def test_representative_pack_prioritizes_strong_sources_and_summarizes(monkeypatch):
     items = [
         {"title": "下载站镜像", "url": "https://download.example.com/app", "source_type": "SEO 下载站"},
@@ -88,6 +123,7 @@ def test_representative_pack_prioritizes_strong_sources_and_summarizes(monkeypat
     assert pack["schema_version"] == READ_PACK_SCHEMA_VERSION
     assert pack["summary"]["attempted"] == 2
     assert pack["summary"]["usable_count"] == 2
+    assert pack["summary"]["context_only_count"] == 0
     assert pack["agent_followup"]["next_decision"] == "answer"
     assert all(row["usable"] for row in pack["readings"])
 

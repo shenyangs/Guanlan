@@ -66,6 +66,32 @@ def test_agent_review_read_unusable_routes_to_diagnosis():
     assert payload["next_commands"] == ["guanlan diagnose page https://example.com/a --json"]
 
 
+def test_agent_review_search_context_only_repairs_without_user_error():
+    payload = review_agent_observation(
+        "页面补证",
+        {
+            "url": "https://example.com/a",
+            "read_evidence": {
+                "schema_version": "read_evidence_v1",
+                "usable": False,
+                "extract_contract": {
+                    "schema_version": "read_extract_contract_v1",
+                    "status": "context_only",
+                    "selected_backend": "search_fallback",
+                    "can_cite_as_page_body": False,
+                    "requires_followup": True,
+                    "recommended_next_actions": ["read_original_url", "diagnose_page"],
+                },
+            },
+        },
+    )
+
+    assert payload["next_decision"] == "repair"
+    assert "search_context_only" in payload["signals"]
+    assert payload["next_commands"] == ["guanlan diagnose page https://example.com/a --json"]
+    assert "不要说 Guanlan 崩了" in payload["must_not"][0]
+
+
 def test_agent_review_research_timeout_downgrades_to_search_read():
     payload = review_agent_observation("四川 通信管理局 骚扰电话 综合整治 2024 2025", "guanlan research 失败: The operation was aborted.")
 

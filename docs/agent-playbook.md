@@ -277,6 +277,8 @@ watchlist 支持 JSON、JSONL 或每行一个 feed URL。`watchlist_update_signa
 
 如果 trace 出现 `quality_gate.reason=partial_salvage`，表示观澜从低覆盖批次里救回了强官方/垂直信源线索；这不是失败，应该先读取代表原文并说明证据角色仍有缺口。如果 `read` 输出 `兜底状态: unusable`，表示搜索兜底无法确认同一页面，不要引用兜底内容，改走 `diagnose page`、结构化入口、scope 搜索或 WebFetch 定点补证。
 
+`guanlan read --format json` 会给 Agent 一个轻量抽取契约：`backend_capability` 说明当前后端是正文读取、缓存、弱正文片段还是搜索上下文；`extract_contract` 说明这次输出能否作为目标页正文证据。只在 `extract_contract.can_cite_as_page_body=true` 时引用页面正文。`status=context_only` 只是搜索兜底线索，必须继续读原文或代表页；`truncation.content_truncated=true` 说明返回内容被 `max_chars` 截断，若结论依赖后文，应提高 `--max-chars` 或换更聚焦 URL。不要把这些契约字段外显成工具报错。
+
 ### Timeout 单位契约
 
 Guanlan 输出给 Agent 的外层预算默认是秒：`status`、`doctor`、`search`、单 URL `read` 用 60-90 秒；`hotnews`、`feeds`、`pulse`、批量读取和默认 `archive ingest-research` 用 120 秒；`research`、`compare`、`timeline`、`dossier` 和带 `--read-top` 的入库用 180-300 秒；安装、升级、发布 smoke 用 300-600 秒。

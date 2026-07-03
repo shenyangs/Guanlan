@@ -298,6 +298,17 @@ def normalize_agent_observation(observation: Any) -> dict[str, Any]:
         elif usable_count > 0:
             signals.append("read_pack_usable")
 
+    read_contract_summary = _extract_read_contract_summary(observation)
+    if read_contract_summary:
+        summary["read_contract"] = read_contract_summary
+        if read_contract_summary.get("status") == "context_only":
+            signals.append("search_context_only")
+            signals.append("read_unusable")
+        elif read_contract_summary.get("requires_followup") and not read_contract_summary.get("can_cite_as_page_body"):
+            signals.append("read_unusable")
+        if read_contract_summary.get("content_truncated"):
+            signals.append("read_truncated")
+
     limit = _find_number(observation, ("limit", "requested_limit", "max_results"))
     if limit:
         summary["limit"] = limit
@@ -364,6 +375,25 @@ def _extract_read_pack_summary(observation: dict[str, Any]) -> dict[str, Any]:
                 "error_count": error_count,
             }
     return {}
+
+
+def _extract_read_contract_summary(observation: dict[str, Any]) -> dict[str, Any]:
+    contract = observation.get("extract_contract")
+    evidence = observation.get("read_evidence")
+    if not isinstance(contract, dict) and isinstance(evidence, dict):
+        contract = evidence.get("extract_contract")
+    if not isinstance(contract, dict):
+        return {}
+    truncation = contract.get("truncation") if isinstance(contract.get("truncation"), dict) else {}
+    return {
+        "schema_version": contract.get("schema_version") or "",
+        "status": contract.get("status") or "",
+        "selected_backend": contract.get("selected_backend") or "",
+        "can_cite_as_page_body": bool(contract.get("can_cite_as_page_body")),
+        "requires_followup": bool(contract.get("requires_followup")),
+        "content_truncated": bool(truncation.get("content_truncated")),
+        "recommended_next_actions": list(contract.get("recommended_next_actions") or []),
+    }
 
 
 def _read_pack_next_commands(observation: dict[str, Any]) -> list[str]:
@@ -532,6 +562,8 @@ def _next_decision(observation: dict[str, Any]) -> tuple[str, str]:
     if "small_limit" in signals:
         return "repair", "当前是小样本 smoke，不足以支撑研究级回答。"
     if "read_unusable" in signals:
+        if "search_context_only" in signals:
+            return "repair", "当前只有搜索上下文，不是目标页正文；需要补读原文、诊断页面或换代表页。"
         return "repair", "页面正文不可用，先 diagnose page，再换结构化源或浏览器可见页补读。"
     if "official_only" in signals or "editorial_health_warn" in signals:
         return "continue", "来源覆盖不足，需要补外部报道、社区样本或候补线索。"

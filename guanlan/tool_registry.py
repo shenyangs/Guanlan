@@ -494,8 +494,18 @@ CORE_AGENT_TOOLS: tuple[AgentTool, ...] = (
         request_schema=READ_SCHEMA,
         when_to_use=("the agent has a target URL and needs page-body evidence",),
         avoid_when=("only URL discovery is needed; use map/search first",),
-        success_signals=("read_evidence.usable=true", "quality_report.usable=true", "structured extracted"),
-        repair_signals=("read_evidence.usable=false", "quality_report fallback_only/unusable", "dynamic shell"),
+        success_signals=(
+            "read_evidence.usable=true",
+            "extract_contract.can_cite_as_page_body=true",
+            "quality_report.usable=true",
+            "structured extracted",
+        ),
+        repair_signals=(
+            "extract_contract.status=context_only",
+            "read_evidence.usable=false",
+            "quality_report fallback_only/unusable",
+            "dynamic shell",
+        ),
     ),
     AgentTool(
         "guanlan_research",

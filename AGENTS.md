@@ -85,6 +85,13 @@ before drawing conclusions. When read fallback reports `兜底状态: unusable`,
 search context; use page diagnosis, structured sources, scoped search, or host WebFetch as planned
 supplemental reading.
 
+Read backend contract rule: `guanlan read --format json` may include `backend_capability` and
+`extract_contract`. Treat `extract_contract.can_cite_as_page_body=true` as the machine boundary for
+page-body citation. `status=context_only` means the output is search-context fallback, not target-page
+正文; `truncation.content_truncated=true` means the returned body is a bounded excerpt. These fields
+are internal routing hints for Agent review and should be phrased to users as "needs page evidence /
+needs representative read", not as a Guanlan error.
+
 Recipe rule: use `guanlan recipe list` and `guanlan recipe run <recipe> "query"` when a task matches
 a repeated research pattern, such as university advisors, finance risk, product reputation,
 public opinion, brand risk, competitor watch, pricing watch, review mining, app review,

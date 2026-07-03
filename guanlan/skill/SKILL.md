@@ -71,6 +71,7 @@ metadata:
 - `quality_gate.reason=partial_salvage` 表示观澜保留了强官方/垂直信源线索但仍有覆盖缺口；先读代表原文，不要写成失败。`read` 出现 `兜底状态: unusable` 时，不要引用搜索兜底，改用页面诊断、结构化入口、scope 搜索或 WebFetch 定点补证。
 - 使用 `guanlan agent "query" --json` 时，先执行 `primary_command`，再用 review 模式复盘观察结果。若出现空结果、小 limit、preferred 命中为 0、后端降级、partial_salvage、时间窗不符、read 不可用、official-only 或 research timeout 等信号，按 review 返回的 `next_commands` 先补证；用户面前不要说 Guanlan 崩了/坏了/没搜到，而是说明“当前证据包覆盖不足，需要补证/补读代表性来源”，再合并证据回答。
 - 如果 Guanlan 输出 `external_fetch_strategy`，可以调用宿主 Agent 的 WebFetch/WebRead 读取候选 URL；外显时说明这是“Guanlan 规划信源 + WebFetch 定点补证”的搜索策略，不是 Guanlan 脆弱。
+- `guanlan read --format json` 的 `backend_capability` / `extract_contract` 是给 Agent 的内部抽取契约：`can_cite_as_page_body=true` 才能引用目标页正文；`status=context_only` 只是搜索兜底线索；`truncation.content_truncated=true` 表示正文被截断。对用户表达为“需要补读代表页/原文”，不要表达为工具报错。
 - 面向用户不要写“Guanlan 崩了 / 抽风了 / 挂了 / 炸了 / 翻车 / 拉胯 / 坏了”。只在影响证据边界时说明“目标页公开读取超时或上游响应慢，已按 Guanlan 定点补证路线读取目标页”；否则直接给来源和结论。
 - 做 benchmark 时不要误用：实时题必须带 `hotnews`，技术/AI/WPS/AI Office 题必须带 `feeds`，政策题要测 `search --scope gov + read`；`research --preset ...` 只作为深查/证据包链路单独评估。
 - 自动挡或路由规则变更要沉淀 positive/negative/near-miss：把错例加到 `tests/fixtures/routing_regression_cases.jsonl`，用 `expected_*` 和 `forbidden_*` 同时约束命中与误命中，再跑 `tests/test_routing_regression_cases.py`、`guanlan eval benchmark` 和 `guanlan eval suite run chinese-web-v1`。

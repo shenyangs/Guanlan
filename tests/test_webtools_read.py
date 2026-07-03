@@ -49,6 +49,22 @@ def test_read_url_uses_jina_reader(monkeypatch):
     assert text == "# Title\n"
 
 
+def test_read_url_trace_marks_truncated_extract_contract(monkeypatch):
+    article = "这是一个很长的中文网页正文，包含足够多的段落和上下文。" * 80
+
+    def fake_urlopen(req, timeout=None):
+        return _FakeResponse(article)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    packet = webtools.read_url_with_trace("example.com/article", max_chars=120, backend="jina")
+
+    assert packet["trace"]["content_truncated"] is True
+    assert packet["trace"]["source_chars"] > packet["trace"]["returned_chars"]
+    assert packet["extract_contract"]["truncation"]["content_truncated"] is True
+    assert packet["read_evidence"]["extract_contract"]["truncation"]["content_truncated"] is True
+
+
 def test_read_url_falls_back_to_direct_when_jina_fails(monkeypatch):
     requested = []
 

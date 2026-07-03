@@ -116,6 +116,10 @@ def read_url_with_trace(
                     "cache_key": cache_key,
                     "attempts": list(cached.get("attempts") or []),
                     "fallback_search": False,
+                    "source_chars": int(cached.get("source_chars") or len(text)),
+                    "returned_chars": len(text),
+                    "max_chars": int(max_chars or 0),
+                    "content_truncated": bool(cached.get("content_truncated")),
                 },
             }
             packet["quality_report"] = build_read_quality_report(
@@ -228,7 +232,9 @@ def read_url_with_trace(
         selected_backend = selected_backend or "weak_fallback"
     if not text and errors:
         raise RuntimeError("; ".join(errors))
-    if max_chars and max_chars > 0:
+    source_chars = len(text)
+    content_truncated = bool(max_chars and max_chars > 0 and source_chars > max_chars)
+    if content_truncated:
         text = text[:max_chars]
     if watch:
         text = _format_read_watch(url, text)
@@ -244,6 +250,10 @@ def read_url_with_trace(
         "attempts": attempts,
         "errors": errors,
         "fallback_search": fallback_used,
+        "source_chars": source_chars,
+        "returned_chars": len(text),
+        "max_chars": int(max_chars or 0),
+        "content_truncated": content_truncated,
     }
     if request_url != original_url:
         trace_payload["request_url"] = request_url
@@ -251,7 +261,13 @@ def read_url_with_trace(
         base._cache_set(
             "read",
             cache_key,
-            {"text": text, "selected_backend": selected_backend or backend, "attempts": attempts},
+            {
+                "text": text,
+                "selected_backend": selected_backend or backend,
+                "attempts": attempts,
+                "source_chars": source_chars,
+                "content_truncated": content_truncated,
+            },
         )
     packet = {"url": original_url, "content": text, "quality": quality, "trace": trace_payload}
     packet["quality_report"] = build_read_quality_report(text, url=original_url, quality=quality, trace=trace_payload)
@@ -260,10 +276,12 @@ def read_url_with_trace(
 
 def _attach_read_evidence(packet: dict[str, Any]) -> dict[str, Any]:
     from guanlan.read_evidence import build_read_evidence, build_structured_page
+    from guanlan.web_backend_contract import attach_read_contract
 
     content = str(packet.get("content") or "")
     structured = build_structured_page(content, url=str(packet.get("url") or ""))
     packet["structured"] = structured
+    attach_read_contract(packet)
     packet["read_evidence"] = build_read_evidence(read_packet=packet, content=content)
     return packet
 
