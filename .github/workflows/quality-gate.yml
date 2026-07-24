@@ -44,6 +44,9 @@ jobs:
           uv run guanlan eval benchmark --format json
           uv run guanlan eval suite run chinese-web-v1 --format json
 
+      - name: Deterministic reliability baseline
+        run: uv run python scripts/reliability_guard.py
+
       - name: Generate public quality report
         run: |
           uv run python scripts/generate_quality_report.py \

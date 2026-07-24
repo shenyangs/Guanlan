@@ -87,6 +87,22 @@ def test_read_url_falls_back_to_direct_when_jina_fails(monkeypatch):
     assert "script" not in text
 
 
+def test_read_trace_keeps_network_failure_structured_and_redacted(monkeypatch):
+    def fake_urlopen(req, timeout=None):
+        if req.full_url.startswith("https://r.jina.ai/"):
+            raise TimeoutError("Bearer private-token timed out")
+        return _FakeResponse("<html><title>原网页</title><body>正文内容</body></html>")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    packet = webtools.read_url_with_trace("https://example.cn/article")
+    attempt = packet["trace"]["attempts"][0]
+
+    assert attempt["error"] == "network_timeout"
+    assert attempt["network_diagnostic"]["retryable"] is True
+    assert "private-token" not in str(packet["trace"])
+
+
 def test_direct_html_reader_filters_navigation_and_footer_noise(monkeypatch):
     html = """
     <html>

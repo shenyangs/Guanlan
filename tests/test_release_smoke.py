@@ -96,6 +96,7 @@ def test_quality_gate_workflow_runs_full_release_quality_ladder():
     assert "eval suite run chinese-web-v1" in workflow
     assert "uv build" in workflow
     assert "scripts/generate_quality_report.py" in workflow
+    assert "scripts/reliability_guard.py" in workflow
 
 
 def test_release_workflow_captures_distribution_status_artifact():
@@ -106,6 +107,24 @@ def test_release_workflow_captures_distribution_status_artifact():
     assert "distribution-status.json" in workflow
     assert "distribution-status.md" in workflow
     assert "actions/upload-artifact" in workflow
+
+
+def test_release_workflow_runs_the_same_quality_gate_before_building():
+    workflow = (ROOT / ".github" / "workflows" / "release-pypi.yml").read_text(encoding="utf-8")
+
+    assert "needs: quality" in workflow
+    assert "scripts/release_gate.sh" in workflow
+    assert "scripts/generate_quality_report.py" in workflow
+    assert "name: quality-report" in workflow
+
+
+def test_deploy_script_validates_before_switching_and_can_restore_previous_release():
+    script = (ROOT / "scripts" / "deploy_website_ecs.sh").read_text(encoding="utf-8")
+
+    assert "ConnectTimeout=12" in script
+    assert 'test -s "$release/index.html"' in script
+    assert "previous=" in script
+    assert "if ! systemctl reload nginx; then" in script
 
 
 def test_security_doc_supported_line_matches_current_minor():

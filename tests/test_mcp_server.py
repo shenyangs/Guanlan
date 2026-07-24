@@ -342,6 +342,26 @@ def test_mcp_research_is_guarded_and_clamps_heavy_knobs(monkeypatch):
     assert calls[0]["kwargs"]["max_search_jobs"] == 1
 
 
+def test_mcp_research_keeps_explicit_guarded_options(monkeypatch):
+    calls = []
+
+    def fake_build_research_packet(*args, **kwargs):
+        calls.append({"args": args, "kwargs": kwargs})
+        return {"query": args[0], "results": [], "readings": []}
+
+    monkeypatch.setattr("guanlan.web.research.build_research_packet", fake_build_research_packet)
+
+    mcp_server._run_tool(
+        "guanlan_research",
+        {"query": "政策差异", "advisor_style": "risk", "max_search_jobs": 3, "select_top": 7, "cache_ttl": 600},
+    )
+
+    assert calls[0]["kwargs"]["advisor_style"] == "risk"
+    assert calls[0]["kwargs"]["max_search_jobs"] == 3
+    assert calls[0]["kwargs"]["select_top"] == 7
+    assert calls[0]["kwargs"]["cache_ttl"] == 600
+
+
 def test_mcp_investigate_uses_investigation_module(monkeypatch):
     monkeypatch.setattr(
         "guanlan.investigation.build_investigation_packet",

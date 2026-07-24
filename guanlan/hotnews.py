@@ -21,6 +21,7 @@ from typing import Any
 from xml.etree import ElementTree
 
 from guanlan.limits import DEFAULT_HOTNEWS_LIMIT, MAX_HOTNEWS_PER_SOURCE_LIMIT
+from guanlan.network_execution import diagnose_network_error, read_url_bytes
 from guanlan.source_registry import (
     get_source_metadata,
     list_hotnews_sources,
@@ -134,12 +135,7 @@ def _read_json(url: str, timeout: int = _TIMEOUT, headers: dict[str, str] | None
             **(headers or {}),
         },
     )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-    except TypeError:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
+    raw = read_url_bytes(req, timeout=timeout, ssl_context=_ssl_context()).decode("utf-8", errors="replace")
     return json.loads(raw)
 
 
@@ -152,12 +148,7 @@ def _read_text(url: str, timeout: int = _TIMEOUT, headers: dict[str, str] | None
             **(headers or {}),
         },
     )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
-            return resp.read().decode("utf-8", errors="replace")
-    except TypeError:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.read().decode("utf-8", errors="replace")
+    return read_url_bytes(req, timeout=timeout, ssl_context=_ssl_context()).decode("utf-8", errors="replace")
 
 
 def _ssl_context() -> ssl.SSLContext:
@@ -238,6 +229,7 @@ def _fetch_external_with_cache(provider: str, source: str, fetcher, *, cache_ttl
         _save_hotnews_cache(cache)
         return _mark_provider_items(items, provider, "success")
     except Exception as exc:
+        diagnostic = diagnose_network_error(exc, source=provider, operation="fetch_hotnews")
         if isinstance(cached, dict) and isinstance(cached.get("items"), list):
             age = _cache_age_seconds(cached)
             if age is not None and age <= HOTNEWS_STALE_CACHE_SECONDS:
@@ -245,7 +237,11 @@ def _fetch_external_with_cache(provider: str, source: str, fetcher, *, cache_ttl
                     cached["items"],
                     provider,
                     "stale_cache",
-                    {"cache_age_seconds": int(age), "provider_error": str(exc)},
+                    {
+                        "cache_age_seconds": int(age),
+                        "provider_error": diagnostic["category"],
+                        "network_diagnostic": diagnostic,
+                    },
                 )
         raise
 
@@ -1304,7 +1300,9 @@ def fetch_hotboard(source: str = "catalog", limit: int = DEFAULT_HOTNEWS_LIMIT) 
                     )
                 return items
             except Exception as exc:
-                api_error = str(exc)
+                api_error = str(
+                    diagnose_network_error(exc, source="hotboard", operation="fetch_paid_node")["category"]
+                )
 
         fallback = fetch_tophub(node_id, limit=limit)
         for item in fallback:

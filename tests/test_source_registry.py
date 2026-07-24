@@ -49,6 +49,8 @@ def test_source_registry_exports_search_entrypoint_catalog():
     assert exported["counts"]["search_entrypoints"] == 17
     assert exported["search_entrypoints"]["toutiao-search"]["status"] == "experimental"
     assert exported["search_entrypoints"]["duckduckgo-html"]["integration"] == "guanlan_native_backend"
+    assert exported["ownership"]["source_taxonomy"]["owns"].startswith("域名/来源类型")
+    assert "重复维护" in exported["ownership"]["source_registry"]["does_not_own"]
 
 
 def test_source_show_and_explain_include_search_entrypoint_boundary():
@@ -87,6 +89,13 @@ def test_hotnews_registry_and_channel_catalog_keep_same_reality_boundary():
     assert hotnews["newsnow:thepaper"]["backend"] == "optional"
     assert "zhihu 为实验源" in channel["expectation"]
     assert channel["stability"] == "best-effort"
+
+
+def test_source_registry_audit_exposes_single_owner_rules():
+    audit = source_registry.audit_source_registry()
+
+    assert audit["ownership"]["channel_catalog"]["owns"].startswith("渠道健康")
+    assert any("source_taxonomy" in item for item in audit["suggested_next"])
 
 
 def test_http_sources_endpoint_uses_central_registry():

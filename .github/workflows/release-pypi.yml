@@ -6,7 +6,50 @@ on:
       - "v*"
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install project
+        run: uv sync --extra dev
+
+      - name: Pre-release version status
+        env:
+          RAW_TAG: ${{ github.ref_name }}
+        run: |
+          expected="${RAW_TAG#v}"
+          GUANLAN_RELEASE_ALLOW_DIRTY=1 scripts/pre_release_status.sh "$expected"
+
+      - name: Release quality gate
+        run: scripts/release_gate.sh
+
+      - name: Generate release quality report
+        run: |
+          uv run python scripts/generate_quality_report.py \
+            --format markdown \
+            --output docs/benchmark-report.md \
+            --json-output docs/reports/latest-quality.json
+
+      - name: Upload quality report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report
+          path: |
+            docs/benchmark-report.md
+            docs/reports/latest-quality.json
+
   build:
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

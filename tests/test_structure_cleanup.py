@@ -68,6 +68,16 @@ def test_search_quality_has_no_transitional_global_sync():
     assert "ruff: noqa: F821" not in text
 
 
+def test_direct_legacy_runtime_import_is_limited_to_type_identity_bridge():
+    direct_imports = []
+    for path in sorted((REPO_ROOT / "guanlan" / "web").glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        if "guanlan.web._legacy_web_impl" in text:
+            direct_imports.append(path.relative_to(REPO_ROOT).as_posix())
+
+    assert direct_imports == ["guanlan/web/_impl.py", "guanlan/web/search_types.py"]
+
+
 def test_tool_registry_projects_canonical_surface_fields():
     from guanlan.tool_registry import mcp_projection_defaults
 
@@ -77,6 +87,21 @@ def test_tool_registry_projects_canonical_surface_fields():
         assert projection["cli_handler"]
         assert projection["service_entrypoint"]
         assert isinstance(projection["request_schema"], dict)
+
+
+def test_mcp_and_http_surfaces_are_registry_projections():
+    from guanlan.integrations.mcp_server import _tool_definitions
+    from guanlan.serve import declared_http_tool_routes
+    from guanlan.tool_registry import core_agent_tool_names, http_routes
+
+    mcp_names = {tool["name"] for tool in _tool_definitions()}
+    assert mcp_names == core_agent_tool_names()
+    assert declared_http_tool_routes() == http_routes()
+    assert {"/research", "/prompt", "/context"} <= http_routes()
+    for tool in _tool_definitions():
+        schema = tool.get("inputSchema") or {}
+        assert schema.get("type") == "object", tool["name"]
+        assert isinstance(schema.get("properties"), dict), tool["name"]
 
 
 def _line_count(path: Path) -> int:

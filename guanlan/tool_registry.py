@@ -53,6 +53,7 @@ class AgentTool:
     success_signals: tuple[str, ...] = ()
     repair_signals: tuple[str, ...] = ()
     requires_user_authorization: bool = False
+    http_aliases: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         payload = asdict(self)
@@ -61,6 +62,7 @@ class AgentTool:
         payload["cli_handler"] = self.cli_handler or _DEFAULT_CLI_HANDLERS.get(self.name, "")
         payload["service_entrypoint"] = self.service_entrypoint or _DEFAULT_SERVICE_ENTRYPOINTS.get(self.name, "")
         payload["default_limit"] = self.default_limit or self.min_default_limit
+        payload["http_routes"] = [route for route in (self.http_route, *self.http_aliases) if route]
         payload["tool_policy"] = {
             "when_to_use": list(self.when_to_use),
             "avoid_when": list(self.avoid_when),
@@ -141,10 +143,14 @@ SEARCH_SCHEMA: dict[str, Any] = {
         "scope": {"type": "string"},
         "strict_scope": {"type": "boolean", "default": False},
         "backend": {"type": "string", "default": "auto"},
+        "network_mode": {"type": "string", "enum": ["auto", "current", "direct", "proxy"], "default": "auto"},
         "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
         "format": {"type": "string", "enum": ["markdown", "context", "prompt", "json"], "default": "context"},
         "trace": {"type": "boolean", "default": False},
         "cache_ttl": {"type": "integer", "default": 0, "minimum": 0},
+        "use_cache": {"type": "boolean", "default": True},
+        "cluster_threshold": {"type": "string", "enum": ["conservative", "balanced", "loose"], "default": "conservative"},
+        "evidence_mode": {"type": "string", "enum": ["off", "shadow", "assist"], "default": "shadow"},
     },
 }
 
@@ -180,6 +186,9 @@ READ_SCHEMA: dict[str, Any] = {
         },
         "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
         "cache_ttl": {"type": "integer", "default": 0, "minimum": 0},
+        "use_cache": {"type": "boolean", "default": True},
+        "strict": {"type": "boolean", "default": False},
+        "extract": {"type": "string", "enum": ["article", "text", "metadata", "links"], "default": "article"},
         "format": {"type": "string", "enum": ["raw", "json", "context"], "default": "raw"},
     },
 }
@@ -212,6 +221,8 @@ RESEARCH_SCHEMA: dict[str, Any] = {
         },
         "advisor_style": {"type": "string", "enum": ["brief", "decision", "risk", "strategy"], "default": "brief"},
         "max_search_jobs": {"type": "integer", "default": 1, "minimum": 1, "maximum": 4},
+        "select_top": {"type": "integer", "minimum": 0, "maximum": 30},
+        "cache_ttl": {"type": "integer", "default": 0, "minimum": 0},
     },
 }
 
@@ -515,6 +526,7 @@ CORE_AGENT_TOOLS: tuple[AgentTool, ...] = (
         "evidence_packet",
         "/research",
         80,
+        http_aliases=("/prompt", "/context"),
         request_schema=RESEARCH_SCHEMA,
         when_to_use=("explicit deep/reusable evidence packet", "search + read still lacks evidence-role coverage"),
         avoid_when=("simple lookup or first-pass search", "outer timeout is below 180 seconds"),
@@ -803,7 +815,7 @@ def list_agent_tools() -> list[dict[str, object]]:
 
 
 def http_routes() -> set[str]:
-    return {tool.http_route for tool in CORE_AGENT_TOOLS if tool.http_route}
+    return {route for tool in CORE_AGENT_TOOLS for route in (tool.http_route, *tool.http_aliases) if route}
 
 
 def tool_by_name(name: str) -> AgentTool | None:
@@ -820,6 +832,7 @@ def mcp_projection_defaults() -> dict[str, dict[str, object]]:
             "stability": payload["stability"],
             "default_limit": payload["min_default_limit"],
             "http_route": payload["http_route"],
+            "http_routes": payload["http_routes"],
             "command": payload["command"],
             "service_entrypoint": payload["service_entrypoint"],
             "cli_handler": payload["cli_handler"],

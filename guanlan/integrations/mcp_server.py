@@ -11,6 +11,7 @@ import asyncio
 import json
 import sys
 
+from guanlan.errors import format_user_error
 from guanlan.limits import (
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
     DEFAULT_FEEDS_LIMIT,
@@ -29,6 +30,16 @@ from guanlan.limits import (
     MAX_READ_FALLBACK_LIMIT,
     MAX_RESEARCH_LIMIT,
     MAX_SEARCH_LIMIT,
+)
+from guanlan.tool_invocation import (
+    normalize_agent_request,
+    normalize_daily_request,
+    normalize_map_request,
+    normalize_read_request,
+    normalize_research_request,
+    normalize_route_request,
+    normalize_search_request,
+    normalize_workflow_request,
 )
 
 try:
@@ -830,31 +841,17 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             review_agent_observation,
         )
 
-        agent_read_top = (
-            None
-            if args.get("read_top") is None
-            else _bounded_int(args.get("read_top"), 0, 0, MAX_AGENT_RESEARCH_READ_TOP)
-        )
-        common_kwargs = {
-            "mode": str(args.get("mode") or "auto"),
-            "preset": None if args.get("preset") in {None, "", "general"} else str(args.get("preset")),
-            "scope": args.get("scope") or None,
-            "site": args.get("site") or None,
-            "sites": args.get("sites") or None,
-            "profile": args.get("profile") or "china",
-            "limit": int(args.get("limit") or DEFAULT_SEARCH_LIMIT),
-            "read_top": agent_read_top,
-            "max_commands": int(args.get("max_commands") or 5),
-        }
-        if str(args.get("phase") or "plan") == "review":
+        request = normalize_agent_request(args)
+        common_kwargs = {key: value for key, value in request.items() if key not in {"query", "phase"}}
+        if request["phase"] == "review":
             plan = review_agent_observation(
-                str(args.get("query", "")).strip(),
+                request["query"],
                 args.get("observation") or {},
                 **common_kwargs,
             )
         else:
             plan = build_agent_plan_v2(
-                str(args.get("query", "")).strip(),
+                request["query"],
                 **common_kwargs,
             )
         if str(args.get("format") or "json") == "markdown":
@@ -873,26 +870,18 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             search_web,
         )
 
-        results = search_web(
-            str(args.get("query", "")).strip(),
-            limit=int(args.get("limit") or DEFAULT_SEARCH_LIMIT),
-            site=args.get("site") or None,
-            scope=args.get("scope") or None,
-            backend=str(args.get("backend") or "auto"),
-            profile=args.get("profile") or None,
-            trace=bool(args.get("trace")),
-            cache_ttl=int(args.get("cache_ttl") or 0),
-            strict_scope=bool(args.get("strict_scope")),
-        )
+        request = normalize_search_request(args)
+        query = request.pop("query")
+        results = search_web(query, **request)
         diagnostics = getattr(results, "diagnostics", {}) or {}
         followup = build_agent_followup(
             "guanlan_search",
             {
                 "results": results,
-                "limit": int(args.get("limit") or DEFAULT_SEARCH_LIMIT),
+                "limit": request["limit"],
                 "diagnostics": diagnostics,
             },
-            query=str(args.get("query", "")).strip(),
+            query=query,
         )
         output_format = str(args.get("format") or "context")
         if output_format == "json":
@@ -913,23 +902,9 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             format_site_map_markdown,
         )
 
-        packet = build_site_map(
-            str(args.get("url", "")).strip(),
-            query=str(args.get("query") or ""),
-            limit=int(args.get("limit") or DEFAULT_SEARCH_LIMIT),
-            include_subdomains=bool(args.get("include_subdomains", False)),
-            sitemap=str(args.get("sitemap") or "auto"),
-            include_patterns=[str(item) for item in args.get("include_patterns", [])]
-            if isinstance(args.get("include_patterns"), list)
-            else [],
-            exclude_patterns=[str(item) for item in args.get("exclude_patterns", [])]
-            if isinstance(args.get("exclude_patterns"), list)
-            else [],
-            timeout=max(int(args.get("timeout") or 8), 1),
-            read_top=max(min(int(args.get("read_top") or 0), 5), 0),
-            read_backend=str(args.get("read_backend") or "auto"),
-            max_read_chars=max(min(int(args.get("max_read_chars") or 4000), 20000), 1),
-        )
+        request = normalize_map_request(args)
+        url = request.pop("url")
+        packet = build_site_map(url, **request)
         output_format = str(args.get("format") or "context")
         if output_format == "json":
             return packet
@@ -946,26 +921,13 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         from guanlan.router import build_route_plan, format_route_plan_markdown
         from guanlan.workflow_decider import decide_workflow, format_workflow_decision_markdown
 
-        plan = build_route_plan(
-            str(args.get("query", "")).strip(),
-            preset=args.get("preset") or "general",
-            scope=args.get("scope") or None,
-            site=args.get("site") or None,
-            sites=args.get("sites") or None,
-            profile=args.get("profile") or "china",
-            limit=int(args.get("limit") or DEFAULT_RESEARCH_LIMIT),
-            read_top=int(args["read_top"]) if args.get("read_top") is not None else None,
-        )
+        request = normalize_route_request(args)
+        plan = build_route_plan(**request)
+        workflow_kwargs = {key: value for key, value in request.items() if key != "query"}
         decision = decide_workflow(
-            str(args.get("query", "")).strip(),
+            request["query"],
             command="route",
-            preset=args.get("preset") or "general",
-            scope=args.get("scope") or None,
-            site=args.get("site") or None,
-            sites=args.get("sites") or None,
-            profile=args.get("profile") or "china",
-            limit=int(args.get("limit") or DEFAULT_RESEARCH_LIMIT),
-            read_top=int(args["read_top"]) if args.get("read_top") is not None else None,
+            **workflow_kwargs,
             route_plan=plan,
         )
         if str(args.get("format") or "markdown") == "json":
@@ -977,17 +939,9 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
     if name == "guanlan_workflow":
         from guanlan.workflow_decider import decide_workflow, format_workflow_decision_markdown
 
-        decision = decide_workflow(
-            str(args.get("query", "")).strip(),
-            command=str(args.get("command") or "search"),
-            preset=args.get("preset") or "general",
-            scope=args.get("scope") or None,
-            site=args.get("site") or None,
-            sites=args.get("sites") or None,
-            profile=args.get("profile") or "china",
-            limit=int(args.get("limit") or DEFAULT_SEARCH_LIMIT),
-            read_top=int(args["read_top"]) if args.get("read_top") is not None else None,
-        )
+        request = normalize_workflow_request(args)
+        query = request.pop("query")
+        decision = decide_workflow(query, **request)
         if str(args.get("format") or "markdown") == "json":
             return decision.to_dict()
         return format_workflow_decision_markdown(decision)
@@ -1101,28 +1055,13 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         from guanlan.agent_planner import build_agent_followup, format_agent_followup_context
         from guanlan.web.read import read_url, read_url_with_trace
 
+        request = normalize_read_request(args)
         if str(args.get("format") or "raw") == "json":
-            packet = read_url_with_trace(
-                str(args.get("url", "")).strip(),
-                max_chars=int(args["max_chars"]) if args.get("max_chars") else None,
-                backend=str(args.get("backend") or "auto"),
-                fallback_search=bool(args.get("fallback_search", True)),
-                fallback_limit=int(args.get("fallback_limit") or DEFAULT_READ_FALLBACK_LIMIT),
-                profile=args.get("profile") or "china",
-                cache_ttl=int(args.get("cache_ttl") or 0),
-            )
+            packet = read_url_with_trace(**request)
             packet["agent_followup"] = build_agent_followup("guanlan_read", packet)
             return packet
-        content = read_url(
-            str(args.get("url", "")).strip(),
-            max_chars=int(args["max_chars"]) if args.get("max_chars") else None,
-            backend=str(args.get("backend") or "auto"),
-            fallback_search=bool(args.get("fallback_search", True)),
-            fallback_limit=int(args.get("fallback_limit") or DEFAULT_READ_FALLBACK_LIMIT),
-            profile=args.get("profile") or "china",
-            cache_ttl=int(args.get("cache_ttl") or 0),
-        )
-        followup = build_agent_followup("guanlan_read", {"url": str(args.get("url", "")).strip(), "content": content})
+        content = read_url(**request)
+        followup = build_agent_followup("guanlan_read", {"url": request["url"], "content": content})
         if str(args.get("format") or "raw") == "context":
             followup_text = format_agent_followup_context(followup)
             return content + (f"\n\n{followup_text}" if followup_text else "")
@@ -1140,28 +1079,10 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
         )
         from guanlan.web.research import build_research_packet
 
-        packet = build_research_packet(
-            str(args.get("query", "")).strip(),
-            preset=args.get("preset") or "general",
-            limit=int(args["limit"]) if args.get("limit") is not None else None,
-            site=args.get("site") or None,
-            sites=args.get("sites") or None,
-            scope=args.get("scope") or None,
-            search_backend=str(args.get("search_backend") or "auto"),
-            profile=args.get("profile") or None,
-            read_top=_bounded_int(
-                args.get("read_top"),
-                DEFAULT_MCP_RESEARCH_READ_TOP,
-                0,
-                MAX_MCP_RESEARCH_READ_TOP,
-            ),
-            read_backend=str(args.get("read_backend") or "auto"),
-            max_read_chars=int(args["max_read_chars"]) if args.get("max_read_chars") is not None else None,
-            advisor=bool(args.get("advisor", False)),
-            advisor_style=str(args.get("advisor_style") or "brief"),
-            max_search_jobs=1,
-        )
-        packet["agent_followup"] = build_agent_followup("guanlan_research", packet, query=str(args.get("query", "")).strip())
+        request = normalize_research_request(args)
+        query = request.pop("query")
+        packet = build_research_packet(query, **request)
+        packet["agent_followup"] = build_agent_followup("guanlan_research", packet, query=query)
         output_format = str(args.get("format") or "markdown")
         if output_format == "json":
             return packet
@@ -1414,37 +1335,9 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
             format_daily_markdown,
         )
 
-        report = build_daily_report(
-            str(args.get("query", "")).strip(),
-            watch_id=str(args.get("watch_id") or ""),
-            profile=str(args.get("profile") or "china"),
-            scope=str(args.get("scope") or ""),
-            site=str(args.get("site") or ""),
-            preset=str(args.get("preset") or ""),
-            lens=str(args.get("lens") or ""),
-            feed_source=str(args.get("feed_source") or "auto"),
-            watchlist_path=str(args.get("watchlist_path") or args.get("watchlist") or ""),
-            hotnews_source=str(args.get("hotnews_source") or "today"),
-            search_backend=str(args.get("backend") or "auto"),
-            limit=int(args.get("limit") or 12),
-            search_limit=int(args.get("search_limit") or DEFAULT_SEARCH_LIMIT),
-            feeds_limit=int(args.get("feeds_limit") or 20),
-            hotnews_limit=int(args.get("hotnews_limit") or 20),
-            include_search=not bool(args.get("no_search", False)),
-            include_feeds=not bool(args.get("no_feeds", False)),
-            include_hotnews=not bool(args.get("no_hotnews", False)),
-            cache_ttl=int(args.get("cache_ttl") or 0),
-            store_path=args.get("store") or None,
-            read_top=int(args.get("read_top") if args.get("read_top") is not None else 3),
-            read_backend=str(args.get("read_backend") or "auto"),
-            max_read_chars=int(args.get("max_read_chars") or 1800),
-            overflow_limit=int(args.get("overflow_limit") if args.get("overflow_limit") is not None else 20),
-            time_window=str(args.get("time_window") or "3d"),
-            edition=str(args.get("edition") or "brand"),
-            record_history=bool(args.get("record_history", False)),
-            history_path=str(args.get("history_path") or ""),
-            compare_days=int(args.get("compare_days") or 0),
-        )
+        request = normalize_daily_request(args)
+        query = request.pop("query")
+        report = build_daily_report(query, **request)
         report["agent_followup"] = build_agent_followup("guanlan_daily", report, query=str(args.get("query", "")).strip())
         output_format = str(args.get("format") or "markdown")
         if output_format == "json":
@@ -1524,8 +1417,8 @@ def create_server():
             # Keep this alias for local MCP clients that already call it.
             result = _doctor_report() if name == "get_status" else _run_tool(name, arguments)
             return [TextContent(type="text", text=_as_text(result))]
-        except Exception as e:
-            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        except Exception as exc:
+            return [TextContent(type="text", text=f"Error: {format_user_error(exc)}")]
 
     return server
 

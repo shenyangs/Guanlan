@@ -104,7 +104,7 @@
     },
     "warned_case_ids": []
   },
-  "generated_at": "2026-07-01T14:31:42Z",
+  "generated_at": "2026-07-24T06:34:29Z",
   "legacy_inventory": {
     "buckets": {
       "compat": [
@@ -139,6 +139,7 @@
         "_content_score",
         "_decode_response_body",
         "_default_ssl_context",
+        "_defer_wps_official_entrypoints_for_external_queries",
         "_diagnostic_result_samples",
         "_domain",
         "_drop_noise_blocks",
@@ -176,6 +177,7 @@
         "_is_ugc_result",
         "_is_university_admissions_query",
         "_is_wechat_article_url",
+        "_is_wps_official_result",
         "_looks_like_ad",
         "_looks_like_wps_ai_adjacent_market_signal",
         "_looks_like_wps_institution_rollout",
@@ -394,14 +396,34 @@
         "search_web"
       ]
     },
+    "compatibility_seams": {
+      "entrypoints": [
+        "_bing_cjk_drift_active",
+        "_format_read_watch",
+        "_record_bing_cjk_drift",
+        "backend_order",
+        "build_query_strategy",
+        "build_research_packet",
+        "detect_search_quality_profile",
+        "rank_results",
+        "read_batch",
+        "read_url",
+        "read_url_with_trace",
+        "search_quality_summary",
+        "search_web"
+      ],
+      "module": "guanlan/web/_impl.py",
+      "owner_rule": "兼容同步只允许存在于 guanlan.web._impl；新 owner 模块不得新增 direct legacy import。",
+      "sync_function": "_sync_legacy_overrides"
+    },
     "file": "guanlan/web/_legacy_web_impl.py",
     "guardrail": "legacy 层只保留兼容承载；新增业务逻辑应落到 split owner 模块。",
-    "loc": 10065,
-    "top_level_functions": 274
+    "loc": 10127,
+    "top_level_functions": 276
   },
   "live_smoke": {
     "boundary": "未发现本地 live-smoke 历史；公开报告不伪造公网实时分数。",
-    "history_path": "/Users/sam/.guanlan/quality/live-smoke-history.jsonl",
+    "history_path": "~/.guanlan/quality/live-smoke-history.jsonl",
     "runs_considered": 0,
     "status": "no_history"
   },
@@ -483,6 +505,41 @@
       },
       "warned_checks": []
     }
+  },
+  "reliability_baseline": {
+    "boundary": "Deterministic quality baseline. It guards known regression, robustness, benchmark, and eval behavior; public-network availability remains a separate live-smoke concern.",
+    "checks": {
+      "benchmark": {
+        "maximum_fail": 0,
+        "maximum_warn": 0,
+        "minimum_pass": 24,
+        "minimum_score": 100.0,
+        "minimum_total": 24
+      },
+      "eval_suite": {
+        "maximum_fail": 0,
+        "maximum_warn": 0,
+        "minimum_pass": 100,
+        "minimum_score": 100.0,
+        "minimum_total": 100
+      },
+      "quality_regression": {
+        "maximum_fail": 0,
+        "maximum_warn": 0,
+        "minimum_pass": 20,
+        "minimum_score": 100.0,
+        "minimum_total": 20
+      },
+      "quality_robustness": {
+        "maximum_fail": 0,
+        "maximum_warn": 0,
+        "minimum_pass": 31,
+        "minimum_score": 100.0,
+        "minimum_total": 31
+      }
+    },
+    "reference_version": "0.7.9",
+    "status": "configured"
   },
   "routing_regression": {
     "case_type_distribution": {
@@ -837,5 +894,5 @@
     "total_cases": 159
   },
   "schema_version": "guanlan_quality_report_v1",
-  "version": "0.7.7"
+  "version": "0.8.0"
 }

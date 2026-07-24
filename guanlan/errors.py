@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import socket
 import subprocess
 import urllib.error
@@ -25,6 +26,22 @@ _BLOCKED_MARKERS = (
     "blocked",
     "verify you are human",
     "访问受限",
+)
+
+_SAFE_MESSAGES = {
+    NETWORK_TIMEOUT: "公开来源响应较慢，当前证据包还需要补证。",
+    NETWORK_ERROR: "公开来源暂时不可稳定读取，当前证据包还需要补证。",
+    BLOCKED: "目标来源当前有公开访问限制，建议按诊断路线补读。",
+    PARSE_ERROR: "请求或上游返回未满足当前读取契约，需要调整输入或更换来源。",
+    CONTRACT_ERROR: "请求未满足当前工具契约，需要检查参数后再继续。",
+    UPSTREAM_ERROR: "上游服务暂时不可用，建议保留现有证据并稍后补证。",
+    UNKNOWN_ERROR: "当前证据链未能完整执行，需要按建议路线补证。",
+}
+
+_TOKEN_PATTERNS = (
+    re.compile(r"(?i)(bearer\s+)[^\s,;]+"),
+    re.compile(r"(?i)(\b(?:token|api[_-]?key|secret|password|passwd|cookie|session(?:id)?|authorization)\b\s*[=:]\s*)[^\s,;&]+"),
+    re.compile(r"(?i)([?&](?:token|api[_-]?key|key|secret|signature|sig|authorization)=)[^&#\s]+"),
 )
 
 
@@ -56,11 +73,31 @@ def classify_exception(exc: BaseException) -> str:
     return UNKNOWN_ERROR
 
 
-def error_diagnostics(exc: BaseException) -> dict[str, str]:
-    """Return a compact diagnostic payload suitable for JSON surfaces."""
+def redact_sensitive_text(text: str) -> str:
+    """Remove credential-like fragments from diagnostics before any presentation."""
+
+    redacted = str(text or "")
+    for pattern in _TOKEN_PATTERNS:
+        redacted = pattern.sub(r"\1[redacted]", redacted)
+    return redacted
+
+
+def error_diagnostics(exc: BaseException) -> dict[str, object]:
+    """Return stable, non-sensitive diagnostics for every public surface."""
 
     category = classify_exception(exc)
+    retryable = category in {NETWORK_TIMEOUT, NETWORK_ERROR, BLOCKED, UPSTREAM_ERROR}
     return {
         "error_type": category,
-        "message": str(exc),
+        "message": _SAFE_MESSAGES[category],
+        "retryable": retryable,
+        "next_decision": "repair" if retryable else "stop",
+        "evidence_boundary": "当前输出不能单独作为完整事实依据。",
     }
+
+
+def format_user_error(exc: BaseException) -> str:
+    """Render the same bounded diagnostic for CLI and MCP text surfaces."""
+
+    diagnostics = error_diagnostics(exc)
+    return f"{diagnostics['message']}（{diagnostics['error_type']}）"

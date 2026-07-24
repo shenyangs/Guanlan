@@ -11,6 +11,7 @@ from guanlan.read_evidence import (
     build_structured_page,
     select_representative_read_candidates,
 )
+from guanlan.read_outcome import READ_OUTCOME_SCHEMA_VERSION, build_read_outcome
 
 
 def test_build_structured_page_extracts_stable_fields():
@@ -78,6 +79,8 @@ def test_build_read_evidence_attaches_backend_and_extract_contract():
     assert evidence["extract_contract"]["schema_version"] == "read_extract_contract_v1"
     assert evidence["extract_contract"]["status"] == "usable"
     assert evidence["extract_contract"]["can_cite_as_page_body"] is True
+    assert evidence["read_outcome"]["state"] == "page_body"
+    assert evidence["read_outcome"]["citation_allowed"] is True
 
 
 def test_build_read_evidence_marks_search_fallback_as_context_only():
@@ -95,6 +98,29 @@ def test_build_read_evidence_marks_search_fallback_as_context_only():
     assert evidence["extract_contract"]["status"] == "context_only"
     assert evidence["extract_contract"]["can_cite_as_page_body"] is False
     assert "不是目标页正文" in evidence["boundary"]
+    assert evidence["read_outcome"]["state"] == "context_only"
+    assert evidence["read_outcome"]["citation_allowed"] is False
+
+
+def test_read_outcome_distinguishes_weak_and_unavailable_pages():
+    weak = build_read_outcome(
+        {
+            "content": "只有一小段可读文字",
+            "quality_report": {"usable": False, "label": "weak"},
+            "extract_contract": {"status": "weak", "selected_backend": "direct"},
+        }
+    )
+    unavailable = build_read_outcome(
+        {
+            "content": "",
+            "quality_report": {"usable": False, "label": "blocked"},
+            "extract_contract": {"status": "unavailable", "selected_backend": "direct"},
+        }
+    )
+
+    assert weak["schema_version"] == READ_OUTCOME_SCHEMA_VERSION
+    assert weak["state"] == "weak_body"
+    assert unavailable["state"] == "unavailable"
 
 
 def test_representative_pack_prioritizes_strong_sources_and_summarizes(monkeypatch):
@@ -143,6 +169,8 @@ def test_representative_pack_repairs_when_all_reads_fail(monkeypatch):
 
     assert pack["summary"]["error_count"] == 1
     assert pack["usable_count"] == 0
+    assert "network timeout" not in pack["readings"][0]["error"]
+    assert "network_timeout" in pack["readings"][0]["error"]
     assert pack["agent_followup"]["next_decision"] == "repair"
     assert pack["next_read_commands"][0] == "guanlan diagnose page https://example.com/a --json"
     assert "guanlan read https://example.com/a --quality-report --backend direct" in pack["next_read_commands"]

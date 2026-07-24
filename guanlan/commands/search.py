@@ -5,6 +5,14 @@ import json
 import sys
 
 from guanlan.commands._feedback import _auto_feedback_for_search
+from guanlan.errors import format_user_error
+from guanlan.tool_invocation import (
+    normalize_agent_request,
+    normalize_map_request,
+    normalize_route_request,
+    normalize_search_request,
+    normalize_workflow_request,
+)
 
 
 def _cmd_route(args):
@@ -16,27 +24,13 @@ def _cmd_route(args):
     if not args.query:
         print("Error: query is required", file=sys.stderr)
         sys.exit(2)
-    preset_context = None if args.preset in {"", "general"} else args.preset
-    plan = build_route_plan(
-        args.query,
-        preset=preset_context,
-        scope=args.scope or None,
-        site=args.site or None,
-        sites=[s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
-        profile=args.profile or None,
-        limit=max(args.limit, 1),
-        read_top=max(args.read_top, 0) if args.read_top is not None else None,
-    )
+    request = normalize_route_request(vars(args), max_read_top=None, default_profile=None)
+    plan = build_route_plan(**request)
+    workflow_kwargs = {key: value for key, value in request.items() if key != "query"}
     workflow_decision = decide_workflow(
-        args.query,
+        request["query"],
         command="route",
-        preset=preset_context,
-        scope=args.scope or None,
-        site=args.site or None,
-        sites=[s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
-        profile=args.profile or None,
-        limit=max(args.limit, 1),
-        read_top=max(args.read_top, 0) if args.read_top is not None else None,
+        **workflow_kwargs,
         route_plan=plan,
     )
     if args.json:
@@ -56,17 +50,9 @@ def _cmd_workflow(args):
     if not args.query:
         print("Error: query is required", file=sys.stderr)
         sys.exit(2)
-    decision = decide_workflow(
-        args.query,
-        command=args.workflow_command_context,
-        preset=args.preset,
-        scope=args.scope or None,
-        site=args.site or None,
-        sites=[s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
-        profile=args.profile or None,
-        limit=max(args.limit, 1),
-        read_top=max(args.read_top, 0) if args.read_top is not None else None,
-    )
+    request = normalize_workflow_request(vars(args), max_read_top=None, default_profile=None)
+    query = request.pop("query")
+    decision = decide_workflow(query, **request)
     if args.json:
         print(json.dumps(decision.to_dict(), ensure_ascii=False, indent=2))
     else:
@@ -85,27 +71,17 @@ def _cmd_agent(args):
     if not args.query:
         print("Error: query is required", file=sys.stderr)
         sys.exit(2)
-    preset_context = None if args.preset in {"", "general"} else args.preset
-    common_kwargs = {
-        "mode": args.mode,
-        "preset": preset_context,
-        "scope": args.scope or None,
-        "site": args.site or None,
-        "sites": [s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
-        "profile": args.profile or None,
-        "limit": max(args.limit, 1),
-        "read_top": max(args.read_top, 0) if args.read_top is not None else None,
-        "max_commands": max(args.max_commands, 1),
-    }
-    if getattr(args, "phase", "plan") == "review":
+    request = normalize_agent_request(vars(args), default_profile=None)
+    common_kwargs = {key: value for key, value in request.items() if key not in {"query", "phase"}}
+    if request["phase"] == "review":
         try:
             observation = load_observation_json(getattr(args, "observation_json", ""))
         except Exception as exc:
             print(f"Error: invalid observation JSON: {exc}", file=sys.stderr)
             sys.exit(2)
-        plan = review_agent_observation(args.query, observation, **common_kwargs)
+        plan = review_agent_observation(request["query"], observation, **common_kwargs)
     else:
-        plan = build_agent_plan_v2(args.query, **common_kwargs)
+        plan = build_agent_plan_v2(request["query"], **common_kwargs)
     if args.json:
         print(json.dumps(plan, ensure_ascii=False, indent=2))
     else:
@@ -135,29 +111,17 @@ def _cmd_search(args):
         sys.exit(2)
 
     try:
-        results = search_web(
-            args.query,
-            limit=max(args.limit, 1),
-            site=args.site or None,
-            scope=args.scope or None,
-            backend=args.backend,
-            profile=args.profile or None,
-            network_mode=args.network,
-            trace=args.trace,
-            cluster_threshold=args.cluster_threshold,
-            cache_ttl=max(args.cache_ttl, 0),
-            use_cache=not args.no_cache,
-            strict_scope=args.strict_scope,
-            evidence_mode=getattr(args, "evidence_mode", "shadow"),
-        )
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        request = normalize_search_request(vars(args), default_profile=None)
+        query = request.pop("query")
+        results = search_web(query, **request)
+    except Exception as exc:
+        print(f"Error: {format_user_error(exc)}", file=sys.stderr)
         sys.exit(1)
 
     _auto_feedback_for_search(args, results)
     followup = build_agent_followup(
         "guanlan_search",
-        {"results": results, "limit": max(args.limit, 1), "diagnostics": getattr(results, "diagnostics", {})},
+        {"results": results, "limit": request["limit"], "diagnostics": getattr(results, "diagnostics", {})},
         query=args.query,
     )
 
@@ -198,21 +162,11 @@ def _cmd_map(args):
         print("Error: url is required", file=sys.stderr)
         sys.exit(2)
     try:
-        packet = build_site_map(
-            args.url,
-            query=args.query or "",
-            limit=max(args.limit, 1),
-            include_subdomains=bool(args.include_subdomains),
-            sitemap=args.sitemap,
-            include_patterns=list(args.include_patterns or []),
-            exclude_patterns=list(args.exclude_patterns or []),
-            timeout=max(args.timeout, 1),
-            read_top=max(min(int(args.read_top or 0), 5), 0),
-            read_backend=args.read_backend,
-            max_read_chars=max(args.max_read_chars, 1),
-        )
+        request = normalize_map_request(vars(args))
+        url = request.pop("url")
+        packet = build_site_map(url, **request)
     except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        print(f"Error: {format_user_error(exc)}", file=sys.stderr)
         sys.exit(1)
 
     output_format = "json" if args.json else args.format

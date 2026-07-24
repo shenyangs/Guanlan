@@ -140,7 +140,7 @@ guanlan doctor --install-check
 guanlan status
 ```
 
-看到 `观澜 / Guanlan v0.7.9`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.8.0`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
 
 ## 给 Agent 复制的安装指令
 
@@ -185,6 +185,7 @@ guanlan status
 | 输出字段稳定契约 | [Contract](docs/contract.md) |
 | 中文互联网设计依据 | [China-Aware Web Rationale](docs/chinese-web-design.md) |
 | 发版和质量闸门 | [Release Automation](docs/release-automation.md) / [Quality Test Plan](docs/quality-test-plan.md) |
+| 可复跑质量证据 | [Public Quality Report](docs/benchmark-report.md) / [Latest JSON](docs/reports/latest-quality.json) |
 | 路线图 | [Roadmap](docs/roadmap.md) |
 
 ## 项目定位

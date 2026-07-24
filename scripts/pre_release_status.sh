@@ -33,6 +33,29 @@ for file in README.md docs/full-guide.md docs/telemetry.md website/index.html; d
   fi
 done
 
+if [ -f docs/reports/latest-quality.json ]; then
+  python3 - "$version_from_pyproject" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+expected = sys.argv[1]
+path = Path("docs/reports/latest-quality.json")
+try:
+    report = json.loads(path.read_text(encoding="utf-8"))
+except Exception as exc:
+    raise SystemExit(f"latest quality report is unreadable: {exc}")
+if str(report.get("version") or "") != expected:
+    raise SystemExit(
+        f"latest quality report version {report.get('version')!r} does not match {expected!r}; regenerate it"
+    )
+required = {"benchmark", "eval_suite", "routing_regression", "live_smoke", "quality_signals", "reliability_baseline", "distribution", "legacy_inventory"}
+missing = sorted(required - set(report))
+if missing:
+    raise SystemExit(f"latest quality report missing blocks: {', '.join(missing)}")
+PY
+fi
+
 if [ -f SECURITY.md ]; then
   supported_line="$(printf '%s' "$version_from_pyproject" | awk -F. '{print $1 "." $2 ".x"}')"
   if ! grep -q "Latest $supported_line" SECURITY.md; then

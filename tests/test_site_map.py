@@ -160,6 +160,20 @@ def test_site_map_renderers_keep_boundary(monkeypatch):
     assert "read_command" in context
 
 
+def test_site_map_network_events_keep_safe_diagnostics(monkeypatch):
+    def fail_fetch(*_args, **_kwargs):
+        raise TimeoutError("Bearer hidden-token timed out")
+
+    monkeypatch.setattr("guanlan.site_map._fetch_text", fail_fetch)
+
+    packet = build_site_map("https://example.com", sitemap="only")
+    event = packet["sources"][0]
+
+    assert event["error"] == "network_timeout"
+    assert event["network_diagnostic"]["retryable"] is True
+    assert "hidden-token" not in str(packet)
+
+
 def _sample_packet() -> dict:
     return {
         "schema_version": "site_map_v1",

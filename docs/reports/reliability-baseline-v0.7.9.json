@@ -1,0 +1,35 @@
+{
+  "schema_version": "guanlan_reliability_baseline_v1",
+  "reference_version": "0.7.9",
+  "boundary": "Deterministic quality baseline. It guards known regression, robustness, benchmark, and eval behavior; public-network availability remains a separate live-smoke concern.",
+  "checks": {
+    "quality_regression": {
+      "minimum_total": 20,
+      "minimum_pass": 20,
+      "maximum_warn": 0,
+      "maximum_fail": 0,
+      "minimum_score": 100.0
+    },
+    "quality_robustness": {
+      "minimum_total": 31,
+      "minimum_pass": 31,
+      "maximum_warn": 0,
+      "maximum_fail": 0,
+      "minimum_score": 100.0
+    },
+    "benchmark": {
+      "minimum_total": 24,
+      "minimum_pass": 24,
+      "maximum_warn": 0,
+      "maximum_fail": 0,
+      "minimum_score": 100.0
+    },
+    "eval_suite": {
+      "minimum_total": 100,
+      "minimum_pass": 100,
+      "maximum_warn": 0,
+      "maximum_fail": 0,
+      "minimum_score": 100.0
+    }
+  }
+}

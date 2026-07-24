@@ -12,8 +12,6 @@ from __future__ import annotations
 import fnmatch
 import html
 import re
-import socket
-import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -21,6 +19,7 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any
 
+from guanlan.network_execution import diagnose_network_error, read_url_payload
 from guanlan.read_evidence import build_representative_read_pack
 
 SCHEMA_VERSION = "site_map_v1"
@@ -289,7 +288,16 @@ def _discover_sitemaps(origin: str, *, timeout: int, source_events: list[dict[st
                 if sitemap_url:
                     sitemap_urls.append(sitemap_url)
     except Exception as exc:  # pragma: no cover - exact network exceptions vary
-        source_events.append({"url": robots_url, "source": "robots", "status": "error", "error": _short_error(exc)})
+        diagnostic = diagnose_network_error(exc, source="site_map", operation="read_robots")
+        source_events.append(
+            {
+                "url": robots_url,
+                "source": "robots",
+                "status": "error",
+                "error": diagnostic["category"],
+                "network_diagnostic": diagnostic,
+            }
+        )
     sitemap_urls.append(urllib.parse.urljoin(origin, "/sitemap.xml"))
     return _unique(sitemap_urls)
 
@@ -314,7 +322,16 @@ def _collect_sitemap_candidates(
             root = ET.fromstring(xml_text)
             source_events.append({"url": sitemap_url, "source": "sitemap", "status": "ok"})
         except Exception as exc:  # pragma: no cover - exact network exceptions vary
-            source_events.append({"url": sitemap_url, "source": "sitemap", "status": "error", "error": _short_error(exc)})
+            diagnostic = diagnose_network_error(exc, source="site_map", operation="read_sitemap")
+            source_events.append(
+                {
+                    "url": sitemap_url,
+                    "source": "sitemap",
+                    "status": "error",
+                    "error": diagnostic["category"],
+                    "network_diagnostic": diagnostic,
+                }
+            )
             continue
         for child in list(root):
             tag = _local_name(child.tag)
@@ -352,7 +369,16 @@ def _collect_page_link_candidates(
         html_text = _fetch_text(url, timeout=timeout)
         source_events.append({"url": url, "source": "page_links", "status": "ok"})
     except Exception as exc:  # pragma: no cover - exact network exceptions vary
-        source_events.append({"url": url, "source": "page_links", "status": "error", "error": _short_error(exc)})
+        diagnostic = diagnose_network_error(exc, source="site_map", operation="read_page_links")
+        source_events.append(
+            {
+                "url": url,
+                "source": "page_links",
+                "status": "error",
+                "error": diagnostic["category"],
+                "network_diagnostic": diagnostic,
+            }
+        )
         return []
     parser = _LinkParser()
     parser.feed(html_text)
@@ -436,9 +462,11 @@ def _score_candidate(candidate: _Candidate, canonical_url: str, terms: list[str]
 
 def _fetch_text(url: str, *, timeout: int = 8) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as response:  # nosec B310 - public user-provided URL fetch is the tool purpose.
-        raw = response.read(MAX_FETCH_BYTES)
-        encoding = response.headers.get_content_charset() or "utf-8"
+    # A byte cap stays adapter-owned. The common executor intentionally only
+    # owns a single network operation and does not change discovery behavior.
+    payload = read_url_payload(req, timeout=timeout, max_bytes=MAX_FETCH_BYTES)
+    raw = payload.body
+    encoding = payload.charset or "utf-8"
     return raw.decode(encoding, errors="replace")
 
 
@@ -566,16 +594,6 @@ def _unique(values: list[str]) -> list[str]:
             seen.add(value)
             out.append(value)
     return out
-
-
-def _short_error(exc: Exception) -> str:
-    if isinstance(exc, urllib.error.HTTPError):
-        return f"HTTP {exc.code}"
-    if isinstance(exc, urllib.error.URLError):
-        return str(exc.reason)
-    if isinstance(exc, socket.timeout):
-        return "timeout"
-    return str(exc).splitlines()[0][:160]
 
 
 def quote_query(value: str) -> str:

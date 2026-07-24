@@ -3,6 +3,8 @@
 
 import urllib.request
 
+from guanlan.network_execution import read_url_bytes
+
 from .base import Channel
 
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
@@ -29,5 +31,4 @@ class WebChannel(Channel):
             jina_url,
             headers={"User-Agent": _UA, "Accept": "text/plain"},
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return resp.read().decode("utf-8")
+        return read_url_bytes(req, timeout=30).decode("utf-8")

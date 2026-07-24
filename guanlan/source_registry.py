@@ -6,6 +6,27 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+# Keep source facts single-owned.  This registry projects the other owners for
+# CLI/MCP/HTTP explanation; it must not become a second routing knowledge base.
+SOURCE_OWNERSHIP: dict[str, dict[str, str]] = {
+    "channel_catalog": {
+        "owns": "渠道健康、运行时属性、认证与访问边界",
+        "does_not_own": "域名身份、精选推荐顺序或搜索事实结论",
+    },
+    "source_taxonomy": {
+        "owns": "域名/来源类型基础身份、权威度、样本价值、风险标签",
+        "does_not_own": "渠道实时健康或精选来源包",
+    },
+    "source_packs": {
+        "owns": "精选来源包、scope/intent 的推荐集合与排序意图",
+        "does_not_own": "渠道实时可用性或平台身份事实",
+    },
+    "source_registry": {
+        "owns": "hotnews/feed 的 surface inventory，以及上述 owner 的只读聚合和 explain 输出",
+        "does_not_own": "重复维护 taxonomy、channel health 或 pack 选择规则",
+    },
+}
+
 
 @dataclass(frozen=True)
 class SourceEntry:
@@ -590,7 +611,8 @@ def export_source_registry() -> dict[str, Any]:
     search_entrypoints = list_search_engine_entrypoints()
     return {
         "schema": "guanlan-source-registry-2.0",
-        "boundary": "只读导出：聚合 source matrix、search scopes、source taxonomy 和 channel catalog；不改写运行时。",
+        "boundary": "只读导出：聚合 source matrix、search scopes、source taxonomy、source packs 和 channel catalog；不改写运行时。",
+        "ownership": SOURCE_OWNERSHIP,
         "matrix_sources": list_sources(),
         "search_entrypoints": search_entrypoints,
         "source_cards": cards,
@@ -650,9 +672,11 @@ def audit_source_registry() -> dict[str, Any]:
     return {
         "summary": summary,
         "checks": checks,
+        "ownership": SOURCE_OWNERSHIP,
         "boundary": "sources audit 是口径体检，不联网、不改变平台可用性，也不自动修复。",
         "suggested_next": [
-            "若某平台 status 冲突，先统一 channel_catalog 与 source_registry 文案，再同步 README/Skill。",
+            "若某平台 status 冲突，先以 channel_catalog 的运行时边界为准，再同步 source_registry 投影和 README/Skill。",
+            "新增域名身份或风险标签时只改 source_taxonomy；新增精选推荐时只改 source_packs。",
             "高风控平台继续保持 best-effort/opt-in/experimental 表述，避免端到端稳定承诺。",
         ],
     }

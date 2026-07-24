@@ -14,7 +14,7 @@
 | [Agent Playbook](agent-playbook.md) | 给 Agent 的长期操作记忆：动态工作流、benchmark 纪律、fallback 规则。 |
 | [Agent 输出契约](contract.md) | 给 Agent/MCP/HTTP/RAG 集成方看的稳定字段与边界承诺。 |
 | [Benchmark 说明](benchmark.md) | 离线契约评测、真实任务池和 live/manual benchmark 方法。 |
-| [公开 Benchmark 报告](benchmark-report.md) | 80 个真实任务样本、三组对比方法和评分指标。 |
+| [公开质量报告](benchmark-report.md) | 可复跑的 benchmark、100 题 eval、路由回归、质量闸门、分发与 legacy 边界。 |
 | [v0.3.7 Benchmark 报告](benchmark-report-v0.3.7.md) | 对比、时间线、档案、搜索质量 v2 与本地模型工作流的测试口径。 |
 | [安装指南](install.md) | 让 Agent 按步骤安装、配置和自检。 |
 | [排障手册](troubleshooting.md) | 遇到钥匙串弹窗、网络异常、Cookie 或平台失败时排查。 |

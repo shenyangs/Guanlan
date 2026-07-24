@@ -3,8 +3,8 @@
 """Tiny Guanlan telemetry collector.
 
 This server uses only the Python standard library so it can run on small ECS
-instances without a package install step. It stores aggregate-safe lifecycle
-metadata in SQLite and exposes a Basic Auth dashboard.
+instances without a package install step. It stores minimal lifecycle metadata
+in SQLite and exposes a Basic Auth dashboard.
 """
 
 from __future__ import print_function
@@ -33,7 +33,7 @@ ADMIN_PASSWORD = os.environ.get("GUANLAN_ADMIN_PASSWORD", "")
 INGEST_TOKEN = os.environ.get("GUANLAN_INGEST_TOKEN", "")
 ACTIVE_TTL_SECONDS = int(os.environ.get("GUANLAN_ACTIVE_TTL_SECONDS", "180"))
 MAX_BODY_BYTES = 16 * 1024
-IP_GEO_LOOKUP_ENABLED = os.environ.get("GUANLAN_IP_GEO_LOOKUP", "1") != "0"
+IP_GEO_LOOKUP_ENABLED = os.environ.get("GUANLAN_IP_GEO_LOOKUP", "0") == "1"
 IP_GEO_CACHE_TTL_SECONDS = int(os.environ.get("GUANLAN_IP_GEO_CACHE_TTL_SECONDS", str(7 * 24 * 3600)))
 SITE_VISIT_ALLOWED_HOSTS = set(
     host.strip().lower()
@@ -94,6 +94,32 @@ def clamp_text(value, limit=160):
     if len(text) > limit:
         return text[:limit]
     return text
+
+
+def sanitize_site_path(value):
+    """Keep a page path for aggregate site metrics, never its query string."""
+    text = clamp_text(value, 240)
+    if not text:
+        return "/"
+    try:
+        path = urlparse(text).path or "/"
+    except Exception:
+        path = text.split("?", 1)[0].split("#", 1)[0] or "/"
+    return clamp_text(path, 240)
+
+
+def sanitize_referrer(value):
+    """Retain only a referrer's origin; paths can contain private context."""
+    text = clamp_text(value, 240)
+    if not text:
+        return ""
+    try:
+        parsed = urlparse(text)
+        if parsed.scheme and parsed.netloc:
+            return "%s://%s" % (parsed.scheme, parsed.netloc)
+    except Exception:
+        pass
+    return ""
 
 
 def normalize_query_text(value):
@@ -596,7 +622,8 @@ def record_event(payload, remote_addr):
         "python": clamp_text(payload.get("python"), 24),
         "status": clamp_text(payload.get("status"), 24),
         "duration_ms": payload.get("duration_ms"),
-        "remote_addr": clamp_text(remote_addr, 80),
+        # Invocation lifecycle analytics does not need a network address.
+        "remote_addr": "",
     }
     if not row["install_id"] or not row["invocation_id"]:
         return False
@@ -702,7 +729,9 @@ def record_feedback(payload, remote_addr):
         "version": clamp_text(payload.get("version"), 40),
         "platform": clamp_text(payload.get("platform"), 40),
         "python": clamp_text(payload.get("python"), 24),
-        "remote_addr": clamp_text(remote_addr, 80),
+        # Feedback is already user-provided content; avoid adding network
+        # identifiers to that record.
+        "remote_addr": "",
     }
     if not row["install_id"] or not row["query_text"] or not row["reason_text"]:
         return False
@@ -733,19 +762,20 @@ def record_site_visit(payload, remote_addr, headers):
     ip_hash = hash_site_ip(remote_addr)
     if not ip_hash:
         return False
-    path = clamp_text(payload.get("path") or "/", 240)
+    path = sanitize_site_path(payload.get("path") or "/")
     if path.startswith("/guanlan-telemetry") or path.startswith("/telemetry"):
         return False
-    user_agent = clamp_text(headers.get("User-Agent", ""), 240)
-    ua_info = parse_user_agent(user_agent)
+    ua_info = parse_user_agent(clamp_text(headers.get("User-Agent", ""), 240))
     row = {
         "received_ms": now_ms(),
         "ip_hash": ip_hash,
-        "remote_addr": clamp_text(remote_addr, 80),
+        # ip_hash supports anonymous visit counting. Do not retain raw IPs.
+        "remote_addr": "",
         "host": clamp_text(headers.get("Host", ""), 120),
         "path": path,
-        "referrer": clamp_text(payload.get("referrer"), 240),
-        "user_agent": user_agent,
+        "referrer": sanitize_referrer(payload.get("referrer")),
+        # Parsed categories below are enough for dashboard segmentation.
+        "user_agent": "",
         "browser": ua_info["browser"],
         "os": ua_info["os"],
         "device_type": ua_info["device_type"],

@@ -1,7 +1,7 @@
 # Guanlan Public Quality Report / 观澜公开质量报告
 
-- 版本: `v0.7.7`
-- 生成时间: `2026-07-01T14:31:42Z`
+- 版本: `v0.8.0`
+- 生成时间: `2026-07-24T06:34:29Z`
 - 口径: 确定性基准、评测套件、路由回归和质量门禁默认不触网；公网漂移只从 live-smoke 历史读取。
 
 ## 1. Deterministic Benchmark
@@ -53,24 +53,33 @@
 | `backend_fixtures` | 5 | 0 | 0 | 100.0 |
 | `performance` | 4 | 0 | 0 | 100.0 |
 
-## 5. Live Smoke Trend
+## 5. Deterministic Reliability Baseline
+
+- 状态: `configured`
+- 参考版本: `v0.7.9`
+- 保护项: benchmark, eval_suite, quality_regression, quality_robustness
+- 边界: Deterministic quality baseline. It guards known regression, robustness, benchmark, and eval behavior; public-network availability remains a separate live-smoke concern.
+
+## 6. Live Smoke Trend
 
 - 状态: `no_history`
-- 历史路径: `/Users/sam/.guanlan/quality/live-smoke-history.jsonl`
+- 历史路径: `~/.guanlan/quality/live-smoke-history.jsonl`
 - 边界: 未发现本地 live-smoke 历史；公开报告不伪造公网实时分数。
 
-## 6. Distribution Surface
+## 7. Distribution Surface
 
 - 状态: `not_probed`
 - 边界: 默认报告不触网；运行 scripts/distribution_status.py 可单独验证 GitHub/PyPI/Homebrew/官网。
 
-## 7. Legacy Inventory
+## 8. Legacy Inventory
 
 - 文件: `guanlan/web/_legacy_web_impl.py`
-- LOC: 10065
-- 顶层函数: 274
+- LOC: 10127
+- 顶层函数: 276
+- 显式兼容入口: _bing_cjk_drift_active, _format_read_watch, _record_bing_cjk_drift, backend_order, build_query_strategy, build_research_packet, detect_search_quality_profile, rank_results, read_batch, read_url, read_url_with_trace, search_quality_summary, search_web
+- 同步函数: `_sync_legacy_overrides`
 - 分桶:
-  - `compat`: 156
+  - `compat`: 158
   - `other`: 11
   - `read`: 17
   - `renderers`: 25

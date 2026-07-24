@@ -6,6 +6,8 @@ import os
 import shutil
 import urllib.request
 
+from guanlan.network_execution import read_url_bytes
+
 from .base import Channel
 
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
@@ -17,9 +19,8 @@ def _search_api_ok() -> bool:
     """Return True if Bilibili search API responds with code 0."""
     req = urllib.request.Request(_SEARCH_API, headers={"User-Agent": _UA})
     try:
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            data = json.loads(resp.read())
-            return data.get("code") == 0
+        data = json.loads(read_url_bytes(req, timeout=_TIMEOUT))
+        return data.get("code") == 0
     except Exception:
         return False
 

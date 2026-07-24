@@ -384,6 +384,10 @@ def _extract_read_contract_summary(observation: dict[str, Any]) -> dict[str, Any
         contract = evidence.get("extract_contract")
     if not isinstance(contract, dict):
         return {}
+    outcome = observation.get("read_outcome")
+    if not isinstance(outcome, dict) and isinstance(evidence, dict):
+        outcome = evidence.get("read_outcome")
+    outcome = dict(outcome or {})
     truncation = contract.get("truncation") if isinstance(contract.get("truncation"), dict) else {}
     return {
         "schema_version": contract.get("schema_version") or "",
@@ -393,6 +397,8 @@ def _extract_read_contract_summary(observation: dict[str, Any]) -> dict[str, Any
         "requires_followup": bool(contract.get("requires_followup")),
         "content_truncated": bool(truncation.get("content_truncated")),
         "recommended_next_actions": list(contract.get("recommended_next_actions") or []),
+        "outcome_state": outcome.get("state") or "",
+        "citation_allowed": bool(outcome.get("citation_allowed")),
     }
 
 

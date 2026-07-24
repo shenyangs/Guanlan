@@ -5,7 +5,9 @@ import json
 import sys
 
 from guanlan.commands._feedback import _auto_feedback_for_research
+from guanlan.errors import format_user_error
 from guanlan.limits import DEFAULT_RESEARCH_LIMIT
+from guanlan.tool_invocation import normalize_research_request
 
 
 def _cmd_research(args):
@@ -37,25 +39,17 @@ def _cmd_research(args):
         sys.exit(2)
 
     try:
-        packet = build_research_packet(
-            args.query,
-            preset=args.preset,
-            limit=max(args.limit, 1) if args.limit is not None else None,
-            site=args.site or None,
-            sites=[s.strip() for s in args.sites.split(",") if s.strip()] if args.sites else None,
-            scope=args.scope or None,
-            search_backend=args.search_backend,
-            profile=args.profile or None,
-            read_top=max(args.read_top, 0) if args.read_top is not None else None,
-            read_backend=args.read_backend,
-            max_read_chars=max(args.max_read_chars, 1) if args.max_read_chars is not None else None,
-            advisor=args.advisor,
-            advisor_style=args.advisor_style,
-            select_top=max(args.select_top, 0) if args.select_top is not None else None,
-            max_search_jobs=max(args.max_search_jobs, 0) if args.max_search_jobs is not None else None,
+        request = normalize_research_request(
+            vars(args),
+            default_read_top=None,
+            max_read_top=None,
+            default_max_search_jobs=None,
+            default_profile=None,
         )
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        query = request.pop("query")
+        packet = build_research_packet(query, **request)
+    except Exception as exc:
+        print(f"Error: {format_user_error(exc)}", file=sys.stderr)
         sys.exit(1)
 
     _auto_feedback_for_research(args, packet)

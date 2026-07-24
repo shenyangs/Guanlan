@@ -86,6 +86,41 @@ def test_telemetry_collector_nonlocal_bind_accepts_both_secrets(monkeypatch):
     collector.validate_bind_security()
 
 
+def test_collector_minimizes_new_network_identifiers(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
+    collector = _load_collector(monkeypatch)
+    collector.init_db()
+
+    assert collector.record_event(
+        {"event": "invocation_start", "install_id": "install", "invocation_id": "call"},
+        "203.0.113.9",
+    )
+    assert collector.record_feedback(
+        {"install_id": "install", "query_text": "test query", "reason_text": "test reason"},
+        "203.0.113.9",
+    )
+    assert collector.record_site_visit(
+        {"path": "/pricing?email=person@example.test", "referrer": "https://example.test/a?token=secret"},
+        "203.0.113.9",
+        {"Host": "guanlan.xin", "User-Agent": "Mozilla/5.0 Chrome/120.0"},
+    )
+
+    conn = collector.db_connect()
+    try:
+        assert conn.execute("SELECT remote_addr FROM events").fetchone()[0] == ""
+        assert conn.execute("SELECT remote_addr FROM feedback").fetchone()[0] == ""
+        visit = conn.execute("SELECT remote_addr, path, referrer, user_agent FROM site_visits").fetchone()
+        assert tuple(visit) == ("", "/pricing", "https://example.test", "")
+    finally:
+        conn.close()
+
+
+def test_collector_disables_external_geo_lookup_by_default(monkeypatch):
+    collector = _load_collector(monkeypatch)
+
+    assert collector.IP_GEO_LOOKUP_ENABLED is False
+
+
 def test_orphan_breakdown_distinguishes_heartbeat_seen(tmp_path, monkeypatch):
     monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
     collector = _load_collector(monkeypatch)

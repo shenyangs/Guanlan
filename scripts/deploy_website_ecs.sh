@@ -13,19 +13,29 @@ cd "$WORKDIR"
 python3 scripts/sync_website_version.py
 
 tar --no-xattrs -C website -czf /tmp/guanlan-site.tar.gz .
-scp -i "$SSH_KEY" -o BatchMode=yes /tmp/guanlan-site.tar.gz "$TARGET":/tmp/guanlan-site.tar.gz
+scp -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 \
+  /tmp/guanlan-site.tar.gz "$TARGET":/tmp/guanlan-site.tar.gz
 
-ssh -i "$SSH_KEY" -o BatchMode=yes "$TARGET" '
+ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 "$TARGET" '
 set -e
 release=/var/www/guanlan-site/releases/$(date +%Y%m%d%H%M%S)
+current=/var/www/guanlan-site/current
+previous="$(readlink "$current" || true)"
 mkdir -p "$release"
 tar -xzf /tmp/guanlan-site.tar.gz -C "$release"
 chown -R nginx:nginx "$release" || true
 find "$release" -type d -exec chmod 755 {} \;
 find "$release" -type f -exec chmod 644 {} \;
-ln -sfn "$release" /var/www/guanlan-site/current
+test -s "$release/index.html"
 nginx -t
-systemctl reload nginx
+ln -sfn "$release" "$current"
+if ! systemctl reload nginx; then
+  if [ -n "$previous" ]; then
+    ln -sfn "$previous" "$current"
+    systemctl reload nginx || true
+  fi
+  exit 1
+fi
 echo "release=$release"
 '
 

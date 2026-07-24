@@ -18,6 +18,7 @@ from guanlan.live_smoke_history import (
     build_live_smoke_trend,
     read_live_smoke_history,
 )
+from scripts.reliability_guard import load_baseline
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -38,6 +39,7 @@ def build_quality_report(*, include_distribution: bool = False, live_smoke_histo
     eval_suite = evaluation.run_eval_suite("chinese-web-v1", mode="quick", limit=80)
     routing = build_routing_regression_inventory()
     quality_signals = build_quality_signals()
+    reliability_baseline = build_reliability_baseline_section()
     live_smoke = build_live_smoke_section(live_smoke_history_path)
     distribution = build_distribution_section(include_distribution=include_distribution)
     legacy_inventory = build_legacy_inventory()
@@ -50,6 +52,7 @@ def build_quality_report(*, include_distribution: bool = False, live_smoke_histo
         "routing_regression": routing,
         "live_smoke": live_smoke,
         "quality_signals": quality_signals,
+        "reliability_baseline": reliability_baseline,
         "distribution": distribution,
         "legacy_inventory": legacy_inventory,
         "principles": {
@@ -122,20 +125,32 @@ def build_quality_signals() -> dict[str, Any]:
     }
 
 
+def build_reliability_baseline_section() -> dict[str, Any]:
+    """Expose the deterministic no-regression contract without re-running it."""
+
+    baseline = load_baseline()
+    return {
+        "status": "configured",
+        "reference_version": baseline.get("reference_version"),
+        "checks": baseline.get("checks") or {},
+        "boundary": baseline.get("boundary"),
+    }
+
+
 def build_live_smoke_section(history_path: str | Path | None = None, *, window: int = 10) -> dict[str, Any]:
     path = Path(history_path).expanduser() if history_path else DEFAULT_LIVE_SMOKE_HISTORY_PATH
     history = read_live_smoke_history(path)
     if not history:
         return {
             "status": "no_history",
-            "history_path": str(path),
+            "history_path": _display_path(path),
             "runs_considered": 0,
             "boundary": "未发现本地 live-smoke 历史；公开报告不伪造公网实时分数。",
         }
     trend = build_live_smoke_trend(history, window=window)
     return {
         "status": "history",
-        "history_path": str(path),
+        "history_path": _display_path(path),
         "runs_available": len(history),
         "trend_window": window,
         "trend": trend,
@@ -162,11 +177,13 @@ def build_legacy_inventory(path: Path | None = None) -> dict[str, Any]:
     buckets: dict[str, list[str]] = defaultdict(list)
     for name in functions:
         buckets[_legacy_bucket(name)].append(name)
+    compatibility = _legacy_compatibility_seams()
     return {
         "file": str(legacy_path.relative_to(ROOT)),
         "loc": source.count("\n") + 1,
         "top_level_functions": len(functions),
         "buckets": {key: sorted(value) for key, value in sorted(buckets.items())},
+        "compatibility_seams": compatibility,
         "guardrail": "legacy 层只保留兼容承载；新增业务逻辑应落到 split owner 模块。",
     }
 
@@ -176,6 +193,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     suite = report["eval_suite"]
     routing = report["routing_regression"]
     quality_signals = report["quality_signals"]
+    reliability_baseline = report["reliability_baseline"]
     live = report["live_smoke"]
     distribution = report["distribution"]
     legacy = report["legacy_inventory"]
@@ -235,22 +253,31 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## 5. Live Smoke Trend",
+            "## 5. Deterministic Reliability Baseline",
+            "",
+            f"- 状态: `{reliability_baseline.get('status')}`",
+            f"- 参考版本: `v{reliability_baseline.get('reference_version')}`",
+            f"- 保护项: {', '.join(sorted(reliability_baseline.get('checks') or {}))}",
+            f"- 边界: {reliability_baseline.get('boundary')}",
+            "",
+            "## 6. Live Smoke Trend",
             "",
             f"- 状态: `{live.get('status')}`",
             f"- 历史路径: `{live.get('history_path')}`",
             f"- 边界: {live.get('boundary')}",
             "",
-            "## 6. Distribution Surface",
+            "## 7. Distribution Surface",
             "",
             f"- 状态: `{distribution.get('status')}`",
             f"- 边界: {distribution.get('boundary', '见 distribution_status_v1 明细。')}",
             "",
-            "## 7. Legacy Inventory",
+            "## 8. Legacy Inventory",
             "",
             f"- 文件: `{legacy['file']}`",
             f"- LOC: {legacy['loc']}",
             f"- 顶层函数: {legacy['top_level_functions']}",
+            f"- 显式兼容入口: {', '.join(legacy['compatibility_seams']['entrypoints']) or '无'}",
+            f"- 同步函数: `{legacy['compatibility_seams']['sync_function']}`",
             "- 分桶:",
         ]
     )
@@ -348,6 +375,33 @@ def _legacy_bucket(name: str) -> str:
     return "other"
 
 
+def _legacy_compatibility_seams() -> dict[str, Any]:
+    """Expose the remaining legacy bridge instead of hiding global sync."""
+
+    impl_path = ROOT / "guanlan" / "web" / "_impl.py"
+    source = impl_path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    entrypoints: list[str] = []
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "_SYNC_ENTRYPOINTS" for target in node.targets):
+            continue
+        try:
+            value = ast.literal_eval(node.value)
+        except (TypeError, ValueError):
+            value = ()
+        if isinstance(value, (set, tuple, list)):
+            entrypoints = sorted(str(item) for item in value)
+        break
+    return {
+        "module": str(impl_path.relative_to(ROOT)),
+        "sync_function": "_sync_legacy_overrides",
+        "entrypoints": entrypoints,
+        "owner_rule": "兼容同步只允许存在于 guanlan.web._impl；新 owner 模块不得新增 direct legacy import。",
+    }
+
+
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     rows = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -371,6 +425,15 @@ def _check_ids(report: dict[str, Any], status: str) -> list[str]:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _display_path(path: Path) -> str:
+    """Render optional local history paths without exposing a user directory."""
+
+    try:
+        return "~/" + str(path.resolve().relative_to(Path.home().resolve()))
+    except ValueError:
+        return str(path)
 
 
 def main(argv: list[str] | None = None) -> int:

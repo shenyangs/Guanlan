@@ -4,6 +4,9 @@
 import json
 import sys
 
+from guanlan.errors import format_user_error
+from guanlan.tool_invocation import normalize_daily_request
+
 
 def _cmd_daily(args):
     """Build a Guanlan-native daily brief."""
@@ -19,39 +22,11 @@ def _cmd_daily(args):
 
     output_format = "json" if getattr(args, "json", False) else str(getattr(args, "format", "markdown") or "markdown")
     try:
-        report = build_daily_report(
-            str(getattr(args, "query", "") or ""),
-            watch_id=str(getattr(args, "watch_id", "") or ""),
-            profile=str(getattr(args, "profile", "china") or "china"),
-            scope=str(getattr(args, "scope", "") or ""),
-            site=str(getattr(args, "site", "") or ""),
-            preset=str(getattr(args, "preset", "") or ""),
-            lens=str(getattr(args, "lens", "") or ""),
-            feed_source=str(getattr(args, "feed_source", "auto") or "auto"),
-            watchlist_path=str(getattr(args, "watchlist", "") or ""),
-            hotnews_source=str(getattr(args, "hotnews_source", "today") or "today"),
-            search_backend=str(getattr(args, "backend", "auto") or "auto"),
-            limit=int(getattr(args, "limit", 12) or 12),
-            search_limit=int(getattr(args, "search_limit", 80) or 80),
-            feeds_limit=int(getattr(args, "feeds_limit", 20) or 20),
-            hotnews_limit=int(getattr(args, "hotnews_limit", 20) or 20),
-            include_search=not bool(getattr(args, "no_search", False)),
-            include_feeds=not bool(getattr(args, "no_feeds", False)),
-            include_hotnews=not bool(getattr(args, "no_hotnews", False)),
-            cache_ttl=int(getattr(args, "cache_ttl", 0) or 0),
-            store_path=str(getattr(args, "store", "") or "") or None,
-            read_top=int(getattr(args, "read_top", 3) or 0),
-            read_backend=str(getattr(args, "read_backend", "auto") or "auto"),
-            max_read_chars=int(getattr(args, "max_read_chars", 1800) or 1800),
-            overflow_limit=int(getattr(args, "overflow_limit", 20) or 0),
-            time_window=str(getattr(args, "time_window", "3d") or "3d"),
-            edition=str(getattr(args, "edition", "brand") or "brand"),
-            record_history=bool(getattr(args, "record_history", False)),
-            history_path=str(getattr(args, "history_path", "") or ""),
-            compare_days=int(getattr(args, "compare_days", 0) or 0),
-        )
+        request = normalize_daily_request(vars(args))
+        query = request.pop("query")
+        report = build_daily_report(query, **request)
     except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        print(f"Error: {format_user_error(exc)}", file=sys.stderr)
         sys.exit(1)
 
     report["agent_followup"] = build_agent_followup(

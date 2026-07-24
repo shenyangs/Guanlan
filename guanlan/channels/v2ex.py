@@ -6,6 +6,7 @@ import urllib.request
 from typing import Any
 
 from guanlan.limits import DEFAULT_HOTNEWS_LIMIT, DEFAULT_SEARCH_LIMIT
+from guanlan.network_execution import read_url_bytes
 
 from .base import Channel
 
@@ -16,8 +17,7 @@ _TIMEOUT = 10
 def _get_json(url: str) -> Any:
     """Fetch *url* and return parsed JSON. Raises on HTTP/network errors."""
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    return json.loads(read_url_bytes(req, timeout=_TIMEOUT).decode("utf-8"))
 
 
 class V2EXChannel(Channel):

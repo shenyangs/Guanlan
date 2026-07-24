@@ -36,6 +36,8 @@ def test_serve_dispatch_health_and_route():
     assert agent_tool["http_route"] == "/agent"
     assert "tool_policy" in agent_tool
     assert "只读工具面" in tools["boundary"]
+    research_tool = next(tool for tool in tools["tools"] if tool["name"] == "guanlan_research")
+    assert set(research_tool["http_routes"]) == {"/research", "/prompt", "/context"}
 
 
 def test_serve_dispatch_browser_assist_plan_is_read_only():
@@ -129,6 +131,28 @@ def test_serve_dispatch_search_uses_webtools(monkeypatch):
     assert body["diagnostics"]["backend_diagnostics"][0]["status"] == "blocked"
     assert body["agent_followup"]["summary"]["diagnostics"]["external_fetch_strategy"]["enabled"] is True
     assert body["agent_followup"]["next_decision"] == "repair"
+
+
+def test_serve_search_keeps_cache_and_scope_contract(monkeypatch):
+    seen = {}
+
+    def fake_search(*_args, **kwargs):
+        seen.update(kwargs)
+        return []
+
+    monkeypatch.setattr("guanlan.web.search.search_web", fake_search)
+
+    status, _body = serve.dispatch_request(
+        "POST",
+        "/search",
+        {"query": "AI", "strict_scope": True, "cache_ttl": 3600, "network_mode": "direct", "use_cache": False},
+    )
+
+    assert status == 200
+    assert seen["strict_scope"] is True
+    assert seen["cache_ttl"] == 3600
+    assert seen["network_mode"] == "direct"
+    assert seen["use_cache"] is False
 
 
 def test_serve_dispatch_agent_plan_and_review():
@@ -226,6 +250,28 @@ def test_serve_dispatch_read_returns_read_evidence(monkeypatch):
     assert status == 200
     assert body["read_evidence"]["schema_version"] == "read_evidence_v1"
     assert body["structured"]["title"] == "Article"
+
+
+def test_serve_read_keeps_fallback_and_extract_contract(monkeypatch):
+    seen = {}
+
+    def fake_read(*_args, **kwargs):
+        seen.update(kwargs)
+        return {"url": "https://example.com", "content": "正文", "read_evidence": {"usable": True}}
+
+    monkeypatch.setattr("guanlan.web.read.read_url_with_trace", fake_read)
+
+    status, _body = serve.dispatch_request(
+        "POST",
+        "/read",
+        {"url": "https://example.com", "fallback_limit": 9, "cache_ttl": 60, "strict": True, "extract": "links"},
+    )
+
+    assert status == 200
+    assert seen["fallback_limit"] == 9
+    assert seen["cache_ttl"] == 60
+    assert seen["strict"] is True
+    assert seen["extract"] == "links"
 
 
 def test_serve_dispatch_daily_uses_daily_builder(monkeypatch):

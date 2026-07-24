@@ -4,6 +4,9 @@
 import json
 import sys
 
+from guanlan.errors import format_user_error
+from guanlan.tool_invocation import normalize_read_request
+
 
 def _cmd_diagnose(args):
     """Diagnose page readability and evidence usability."""
@@ -350,18 +353,9 @@ def _cmd_read(args):
             sys.exit(2)
         read_packet = None
         if args.trace or args.quality_report or args.format == "json":
-            read_packet = read_url_with_trace(
-                args.url,
-                max_chars=args.max_chars or None,
-                backend=args.backend,
-                fallback_search=args.fallback_search,
-                fallback_limit=max(args.fallback_limit, 1),
-                profile=args.profile or None,
-                cache_ttl=max(args.cache_ttl, 0),
-                use_cache=not args.no_cache,
-                watch=args.watch,
-                **_read_quality_kwargs(args),
-            )
+            request = normalize_read_request({**vars(args), **_read_quality_kwargs(args)}, default_profile=None)
+            request["watch"] = bool(args.watch)
+            read_packet = read_url_with_trace(**request)
             content = str(read_packet.get("content", ""))
         else:
             content = read_url(
@@ -413,8 +407,8 @@ def _cmd_read(args):
             if args.trace and read_packet is not None:
                 print()
                 print(format_read_trace(read_packet))
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+    except Exception as exc:
+        print(f"Error: {format_user_error(exc)}", file=sys.stderr)
         sys.exit(1)
 
 def _read_quality_kwargs(args) -> dict[str, object]:

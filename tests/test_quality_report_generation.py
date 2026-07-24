@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from scripts import generate_quality_report as report_gen
 
@@ -18,6 +19,7 @@ def test_quality_report_contains_required_blocks():
         "routing_regression",
         "live_smoke",
         "quality_signals",
+        "reliability_baseline",
         "distribution",
         "legacy_inventory",
     ):
@@ -31,7 +33,17 @@ def test_quality_report_markdown_has_concrete_conclusions():
     assert "待测" not in markdown
     assert "Deterministic Benchmark" in markdown
     assert "Routing Regression Inventory" in markdown
+    assert "Deterministic Reliability Baseline" in markdown
     assert "Legacy Inventory" in markdown
+
+
+def test_quality_report_exposes_deterministic_no_regression_baseline():
+    report = report_gen.build_quality_report(include_distribution=False)
+
+    baseline = report["reliability_baseline"]
+    assert baseline["status"] == "configured"
+    assert baseline["reference_version"] == "0.7.9"
+    assert {"benchmark", "eval_suite", "quality_regression", "quality_robustness"} <= set(baseline["checks"])
 
 
 def test_routing_inventory_high_risk_groups_have_positive_and_near_miss():
@@ -63,3 +75,16 @@ def test_legacy_inventory_classifies_legacy_file():
     assert inventory["file"] == "guanlan/web/_legacy_web_impl.py"
     assert inventory["loc"] > 1000
     assert {"search", "read", "research", "renderers", "compat"} <= set(inventory["buckets"])
+    seams = inventory["compatibility_seams"]
+    assert seams["module"] == "guanlan/web/_impl.py"
+    assert seams["sync_function"] == "_sync_legacy_overrides"
+    assert "search_web" in seams["entrypoints"]
+
+
+def test_quality_report_redacts_home_directory_from_default_live_history_path(monkeypatch):
+    monkeypatch.setattr(report_gen, "DEFAULT_LIVE_SMOKE_HISTORY_PATH", Path.home() / ".guanlan" / "smoke.jsonl")
+
+    payload = report_gen.build_live_smoke_section()
+
+    assert payload["history_path"].startswith("~/.guanlan/")
+    assert str(Path.home()) not in payload["history_path"]

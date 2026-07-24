@@ -18,11 +18,29 @@ from guanlan.errors import error_diagnostics
 from guanlan.limits import (
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
     DEFAULT_HOTNEWS_LIMIT,
-    DEFAULT_MCP_RESEARCH_READ_TOP,
     DEFAULT_RESEARCH_LIMIT,
-    DEFAULT_SEARCH_LIMIT,
-    MAX_MCP_RESEARCH_READ_TOP,
 )
+from guanlan.tool_invocation import (
+    normalize_agent_request,
+    normalize_daily_request,
+    normalize_map_request,
+    normalize_read_request,
+    normalize_research_request,
+    normalize_route_request,
+    normalize_search_request,
+)
+
+
+def declared_http_tool_routes() -> set[str]:
+    """Return canonical HTTP tool routes for surface-parity checks.
+
+    `/health`, `/sources`, and `/tools` are service metadata endpoints, not
+    task tools.  Every task route is declared by ``tool_registry``.
+    """
+
+    from guanlan.tool_registry import http_routes
+
+    return http_routes()
 
 
 def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = None) -> tuple[int, dict[str, Any]]:
@@ -60,43 +78,32 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 review_agent_observation,
             )
 
-            common_kwargs = {
-                "mode": str(payload.get("mode") or "auto"),
-                "preset": None if payload.get("preset") in {None, "", "general"} else str(payload.get("preset")),
-                "scope": payload.get("scope") or None,
-                "site": payload.get("site") or None,
-                "sites": payload.get("sites") if isinstance(payload.get("sites"), list) else None,
-                "profile": payload.get("profile") or "china",
-                "limit": _int(payload.get("limit"), DEFAULT_SEARCH_LIMIT),
-                "read_top": _optional_int(payload.get("read_top")),
-                "max_commands": _int(payload.get("max_commands"), 5),
-            }
-            if str(payload.get("phase") or "plan") == "review":
+            request = normalize_agent_request(payload)
+            common_kwargs = {key: value for key, value in request.items() if key not in {"query", "phase"}}
+            if request["phase"] == "review":
                 plan = review_agent_observation(
-                    str(payload.get("query", "")).strip(),
+                    request["query"],
                     payload.get("observation") or {},
                     **common_kwargs,
                 )
             else:
-                plan = build_agent_plan_v2(str(payload.get("query", "")).strip(), **common_kwargs)
+                plan = build_agent_plan_v2(request["query"], **common_kwargs)
             if str(payload.get("format") or "json").lower() == "markdown":
                 plan["rendered"] = format_agent_plan_v2_markdown(plan)
                 plan["rendered_format"] = "markdown"
             return 200, plan
         if method == "POST" and route == "/route":
             from guanlan.router import build_route_plan
+            from guanlan.workflow_decider import decide_workflow
 
-            plan = build_route_plan(
-                str(payload.get("query", "")),
-                preset=payload.get("preset"),
-                scope=payload.get("scope"),
-                site=payload.get("site"),
-                sites=payload.get("sites") if isinstance(payload.get("sites"), list) else None,
-                profile=payload.get("profile") or "china",
-                limit=_int(payload.get("limit"), DEFAULT_RESEARCH_LIMIT),
-                read_top=_optional_int(payload.get("read_top")),
-            )
-            return 200, plan.to_dict()
+            request = normalize_route_request(payload)
+            plan = build_route_plan(**request)
+            workflow_kwargs = {key: value for key, value in request.items() if key != "query"}
+            response = plan.to_dict()
+            response["workflow_decision"] = decide_workflow(
+                request["query"], command="route", route_plan=plan, **workflow_kwargs
+            ).to_dict()
+            return 200, response
         if method == "POST" and route == "/browser-assist/plan":
             from guanlan.browser_assist import build_browser_assist_plan
 
@@ -149,15 +156,9 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
             from guanlan.agent_planner import build_agent_followup
             from guanlan.web.search import search_web
 
-            results = search_web(
-                str(payload.get("query", "")),
-                limit=_int(payload.get("limit"), DEFAULT_SEARCH_LIMIT),
-                site=payload.get("site") or None,
-                scope=payload.get("scope") or None,
-                backend=str(payload.get("backend") or "auto"),
-                profile=payload.get("profile") or "china",
-                trace=bool(payload.get("trace")),
-            )
+            request = normalize_search_request(payload)
+            query = request.pop("query")
+            results = search_web(query, **request)
             diagnostics = getattr(results, "diagnostics", {}) or {}
             return 200, {
                 "results": results,
@@ -166,10 +167,10 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                     "guanlan_search",
                     {
                         "results": results,
-                        "limit": _int(payload.get("limit"), DEFAULT_SEARCH_LIMIT),
+                        "limit": request["limit"],
                         "diagnostics": diagnostics,
                     },
-                    query=str(payload.get("query", "")),
+                    query=query,
                 ),
             }
         if method == "POST" and route == "/map":
@@ -179,23 +180,9 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 format_site_map_markdown,
             )
 
-            packet = build_site_map(
-                str(payload.get("url", "")).strip(),
-                query=str(payload.get("query") or ""),
-                limit=_int(payload.get("limit"), DEFAULT_SEARCH_LIMIT),
-                include_subdomains=bool(payload.get("include_subdomains", False)),
-                sitemap=str(payload.get("sitemap") or "auto"),
-                include_patterns=[str(item) for item in payload.get("include_patterns", [])]
-                if isinstance(payload.get("include_patterns"), list)
-                else [],
-                exclude_patterns=[str(item) for item in payload.get("exclude_patterns", [])]
-                if isinstance(payload.get("exclude_patterns"), list)
-                else [],
-                timeout=max(_int(payload.get("timeout"), 8), 1),
-                read_top=_bounded_int(payload.get("read_top"), 0, 0, 5),
-                read_backend=str(payload.get("read_backend") or "auto"),
-                max_read_chars=_bounded_int(payload.get("max_read_chars"), 4000, 1, 20000),
-            )
+            request = normalize_map_request(payload)
+            url = request.pop("url")
+            packet = build_site_map(url, **request)
             output_format = str(payload.get("format") or "json").lower()
             if output_format == "markdown":
                 packet["rendered"] = format_site_map_markdown(packet)
@@ -208,27 +195,10 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
             from guanlan.agent_planner import build_agent_followup
             from guanlan.web.research import build_research_packet
 
-            packet = build_research_packet(
-                str(payload.get("query", "")),
-                preset=payload.get("preset") or "general",
-                limit=_optional_int(payload.get("limit")),
-                site=payload.get("site") or None,
-                sites=payload.get("sites") if isinstance(payload.get("sites"), list) else None,
-                scope=payload.get("scope") or None,
-                search_backend=str(payload.get("search_backend") or "auto"),
-                profile=payload.get("profile") or "china",
-                read_top=_bounded_int(
-                    payload.get("read_top"),
-                    DEFAULT_MCP_RESEARCH_READ_TOP,
-                    0,
-                    MAX_MCP_RESEARCH_READ_TOP,
-                ),
-                read_backend=str(payload.get("read_backend") or "auto"),
-                max_read_chars=_optional_int(payload.get("max_read_chars")),
-                advisor=bool(payload.get("advisor", False)),
-                max_search_jobs=1,
-            )
-            packet["agent_followup"] = build_agent_followup("guanlan_research", packet, query=str(payload.get("query", "")))
+            request = normalize_research_request(payload)
+            query = request.pop("query")
+            packet = build_research_packet(query, **request)
+            packet["agent_followup"] = build_agent_followup("guanlan_research", packet, query=query)
             return 200, packet
         if method == "POST" and route == "/compare":
             from guanlan.research_workflows import build_compare_report
@@ -282,27 +252,10 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
             from guanlan.web.renderers import format_research_prompt
             from guanlan.web.research import build_research_packet
 
-            packet = build_research_packet(
-                str(payload.get("query", "")),
-                preset=payload.get("preset") or "general",
-                limit=_optional_int(payload.get("limit")) or 80,
-                site=payload.get("site") or None,
-                sites=payload.get("sites") if isinstance(payload.get("sites"), list) else None,
-                scope=payload.get("scope") or None,
-                search_backend=str(payload.get("search_backend") or "auto"),
-                profile=payload.get("profile") or "china",
-                read_top=_bounded_int(
-                    payload.get("read_top"),
-                    DEFAULT_MCP_RESEARCH_READ_TOP,
-                    0,
-                    MAX_MCP_RESEARCH_READ_TOP,
-                ),
-                read_backend=str(payload.get("read_backend") or "auto"),
-                max_read_chars=_optional_int(payload.get("max_read_chars")),
-                advisor=bool(payload.get("advisor", True)),
-                advisor_style=str(payload.get("advisor_style") or "brief"),
-                max_search_jobs=1,
-            )
+            prompt_payload = {**payload, "advisor": payload.get("advisor", True)}
+            request = normalize_research_request(prompt_payload)
+            query = request.pop("query")
+            packet = build_research_packet(query, **request)
             return 200, {
                 "query": packet.get("query", ""),
                 "format": "prompt",
@@ -312,13 +265,8 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
             from guanlan.agent_planner import build_agent_followup
             from guanlan.web.read import read_url_with_trace
 
-            packet = read_url_with_trace(
-                str(payload.get("url", "")),
-                max_chars=_optional_int(payload.get("max_chars")),
-                backend=str(payload.get("backend") or "auto"),
-                fallback_search=bool(payload.get("fallback_search", True)),
-                profile=payload.get("profile") or "china",
-            )
+            request = normalize_read_request(payload)
+            packet = read_url_with_trace(**request)
             packet["agent_followup"] = build_agent_followup("guanlan_read", packet)
             return 200, packet
         if method == "GET" and route == "/hotnews":
@@ -381,37 +329,9 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
                 format_daily_markdown,
             )
 
-            report = build_daily_report(
-                str(payload.get("query", "")).strip(),
-                watch_id=str(payload.get("watch_id") or ""),
-                profile=str(payload.get("profile") or "china"),
-                scope=str(payload.get("scope") or ""),
-                site=str(payload.get("site") or ""),
-                preset=str(payload.get("preset") or ""),
-                lens=str(payload.get("lens") or ""),
-                feed_source=str(payload.get("feed_source") or "auto"),
-                watchlist_path=str(payload.get("watchlist_path") or payload.get("watchlist") or ""),
-                hotnews_source=str(payload.get("hotnews_source") or "today"),
-                search_backend=str(payload.get("backend") or "auto"),
-                limit=_int(payload.get("limit"), 12),
-                search_limit=_int(payload.get("search_limit"), DEFAULT_SEARCH_LIMIT),
-                feeds_limit=_int(payload.get("feeds_limit"), 20),
-                hotnews_limit=_int(payload.get("hotnews_limit"), 20),
-                include_search=not bool(payload.get("no_search", False)),
-                include_feeds=not bool(payload.get("no_feeds", False)),
-                include_hotnews=not bool(payload.get("no_hotnews", False)),
-                cache_ttl=_int(payload.get("cache_ttl"), 0),
-                store_path=payload.get("store") or None,
-                read_top=_int(payload.get("read_top"), 3),
-                read_backend=str(payload.get("read_backend") or "auto"),
-                max_read_chars=_int(payload.get("max_read_chars"), 1800),
-                overflow_limit=_int(payload.get("overflow_limit"), 20),
-                time_window=str(payload.get("time_window") or "3d"),
-                edition=str(payload.get("edition") or "brand"),
-                record_history=_bool(payload.get("record_history")),
-                history_path=str(payload.get("history_path") or ""),
-                compare_days=_int(payload.get("compare_days"), 0),
-            )
+            request = normalize_daily_request(payload)
+            query = request.pop("query")
+            report = build_daily_report(query, **request)
             report["agent_followup"] = build_agent_followup("guanlan_daily", report, query=str(payload.get("query", "")))
             output_format = str(payload.get("format") or "json").lower()
             if output_format == "markdown":

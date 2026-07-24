@@ -112,6 +112,21 @@ def test_fetch_rss_feed_returns_diagnostic_item_without_cache(monkeypatch, tmp_p
     assert "稍后重试" in items[0]["summary"]
 
 
+def test_feed_failure_keeps_safe_network_diagnostic(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(
+        feeds,
+        "_read_bytes",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("Bearer hidden-token timed out")),
+    )
+
+    item = feeds.fetch_rss_feed("https://example.com/rss", source_id="demo")[0]
+
+    assert item["feed_status"]["error"] == "network_timeout"
+    assert item["feed_status"]["network_diagnostic"]["retryable"] is True
+    assert "hidden-token" not in str(item)
+
+
 def test_curated_feed_omits_index_url_without_original_link(monkeypatch):
     index_url = feeds.build_curated_rss_url().replace("/feeds/rss", "/article/abc123")
     raw = f"""<?xml version="1.0"?>

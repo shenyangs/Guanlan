@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from guanlan.limits import DEFAULT_READ_FALLBACK_LIMIT
+from guanlan.network_execution import diagnose_network_error
 
 
 def _base():
@@ -132,6 +133,7 @@ def read_url_with_trace(
 
     backend = (backend or "auto").lower()
     errors: list[str] = []
+    raw_errors: list[str] = []
     attempts: list[dict[str, Any]] = []
     text = ""
     weak_text = ""
@@ -164,8 +166,17 @@ def read_url_with_trace(
                     }
                 )
         except Exception as e:
-            errors.append(f"wechat_article: {e}")
-            attempts.append({"backend": "wechat_article", "status": "error", "error": str(e)})
+            diagnostic = diagnose_network_error(e, source="wechat_article", operation="read_page")
+            errors.append(f"wechat_article: {diagnostic['category']}")
+            raw_errors.append(f"wechat_article: {e}")
+            attempts.append(
+                {
+                    "backend": "wechat_article",
+                    "status": "error",
+                    "error": diagnostic["category"],
+                    "network_diagnostic": diagnostic,
+                }
+            )
             if backend == "direct":
                 raise
     if not text and backend in ("auto", "jina") and not prefer_direct:
@@ -185,8 +196,17 @@ def read_url_with_trace(
                     {"backend": "jina", "status": "ok", "chars": len(candidate), "quality": candidate_quality}
                 )
         except Exception as e:
-            errors.append(f"jina: {e}")
-            attempts.append({"backend": "jina", "status": "error", "error": str(e)})
+            diagnostic = diagnose_network_error(e, source="jina", operation="read_page")
+            errors.append(f"jina: {diagnostic['category']}")
+            raw_errors.append(f"jina: {e}")
+            attempts.append(
+                {
+                    "backend": "jina",
+                    "status": "error",
+                    "error": diagnostic["category"],
+                    "network_diagnostic": diagnostic,
+                }
+            )
             if backend == "jina":
                 raise
     if not text and backend in ("auto", "direct"):
@@ -206,8 +226,17 @@ def read_url_with_trace(
                     {"backend": "direct", "status": "ok", "chars": len(candidate), "quality": candidate_quality}
                 )
         except Exception as e:
-            errors.append(f"direct: {e}")
-            attempts.append({"backend": "direct", "status": "error", "error": str(e)})
+            diagnostic = diagnose_network_error(e, source="direct", operation="read_page")
+            errors.append(f"direct: {diagnostic['category']}")
+            raw_errors.append(f"direct: {e}")
+            attempts.append(
+                {
+                    "backend": "direct",
+                    "status": "error",
+                    "error": diagnostic["category"],
+                    "network_diagnostic": diagnostic,
+                }
+            )
             if backend == "direct":
                 raise
     fallback_used = False
@@ -225,13 +254,25 @@ def read_url_with_trace(
                 }
             )
         except Exception as e:
-            errors.append(f"search_context: {e}")
-            attempts.append({"backend": "search_fallback", "status": "error", "error": str(e)})
+            diagnostic = diagnose_network_error(e, source="search_context", operation="search_fallback")
+            errors.append(f"search_context: {diagnostic['category']}")
+            raw_errors.append(f"search_context: {e}")
+            attempts.append(
+                {
+                    "backend": "search_fallback",
+                    "status": "error",
+                    "error": diagnostic["category"],
+                    "network_diagnostic": diagnostic,
+                }
+            )
     if not text and weak_text:
         text = weak_text
         selected_backend = selected_backend or "weak_fallback"
     if not text and errors:
-        raise RuntimeError("; ".join(errors))
+        # Preserve the low-level exception text for direct Python callers that
+        # deliberately asked for a strict backend, while every packet/trace
+        # surface remains structured and redacted above.
+        raise RuntimeError("; ".join(raw_errors or errors))
     source_chars = len(text)
     content_truncated = bool(max_chars and max_chars > 0 and source_chars > max_chars)
     if content_truncated:
@@ -276,12 +317,14 @@ def read_url_with_trace(
 
 def _attach_read_evidence(packet: dict[str, Any]) -> dict[str, Any]:
     from guanlan.read_evidence import build_read_evidence, build_structured_page
+    from guanlan.read_outcome import attach_read_outcome
     from guanlan.web_backend_contract import attach_read_contract
 
     content = str(packet.get("content") or "")
     structured = build_structured_page(content, url=str(packet.get("url") or ""))
     packet["structured"] = structured
     attach_read_contract(packet)
+    attach_read_outcome(packet)
     packet["read_evidence"] = build_read_evidence(read_packet=packet, content=content)
     return packet
 

@@ -59,5 +59,5 @@ guanlan quality live-smoke --limit 5
 
 ## Public Reports
 
-- [v0.5.0 public benchmark report](benchmark-report.md): locks an 80-task real-world comparison matrix for ordinary search, Guanlan search, and Guanlan route + research.
+- [Current public quality report](benchmark-report.md): generated from deterministic benchmark, the 100-task eval suite, routing-regression inventory, quality gates, and explicit live/distribution boundaries. It is reproducible; it does not fabricate live-network scores.
 - [v0.3.7 benchmark and workflow report](benchmark-report-v0.3.7.md): records the first benchmark plan that includes compare/timeline/dossier, search-quality v2, read-quality summaries, and local-LLM workflow checks.

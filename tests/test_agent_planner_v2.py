@@ -92,6 +92,20 @@ def test_agent_review_search_context_only_repairs_without_user_error():
     assert "不要说 Guanlan 崩了" in payload["must_not"][0]
 
 
+def test_agent_review_uses_canonical_read_outcome_for_weak_pages():
+    payload = review_agent_observation(
+        "页面补证",
+        {
+            "url": "https://example.com/a",
+            "extract_contract": {"status": "weak", "requires_followup": True},
+            "read_outcome": {"state": "weak_body", "citation_allowed": False},
+        },
+    )
+
+    assert payload["next_decision"] == "repair"
+    assert payload["observation_summary"]["read_contract"]["outcome_state"] == "weak_body"
+
+
 def test_agent_review_research_timeout_downgrades_to_search_read():
     payload = review_agent_observation("四川 通信管理局 骚扰电话 综合整治 2024 2025", "guanlan research 失败: The operation was aborted.")
 

@@ -8,6 +8,8 @@ import shlex
 import urllib.parse
 from typing import Any
 
+from guanlan.errors import error_diagnostics
+
 READ_EVIDENCE_SCHEMA_VERSION = "read_evidence_v1"
 READ_PACK_SCHEMA_VERSION = "representative_read_pack_v1"
 DEFAULT_CONTENT_PREVIEW_CHARS = 280
@@ -94,6 +96,7 @@ def build_read_evidence(
     quality = dict(read_packet.get("quality") or {})
     quality_report = dict(read_packet.get("quality_report") or {})
     backend_capability, extract_contract = _read_contracts(read_packet, content=text)
+    from guanlan.read_outcome import build_read_outcome
     selected_backend = str(trace.get("selected_backend") or trace.get("backend") or "")
     source_value = (
         source
@@ -146,6 +149,7 @@ def build_read_evidence(
         "structured": structured,
         "boundary": _evidence_boundary(normalized_status, usable, extract_contract=extract_contract),
     }
+    record["read_outcome"] = dict(read_packet.get("read_outcome") or build_read_outcome(record))
     if error or read_packet.get("error"):
         record["error"] = str(error or read_packet.get("error") or "")
     if quality_report:
@@ -312,6 +316,11 @@ def summarize_read_evidence(readings: list[dict[str, Any]], *, requested: int | 
         if isinstance(row.get("extract_contract"), dict)
         and row.get("extract_contract", {}).get("truncation", {}).get("content_truncated")
     )
+    outcome_counts: dict[str, int] = {}
+    for row in readings:
+        outcome = row.get("read_outcome") if isinstance(row.get("read_outcome"), dict) else {}
+        state = str(outcome.get("state") or "unknown")
+        outcome_counts[state] = outcome_counts.get(state, 0) + 1
     return {
         "requested": len(readings) if requested is None else requested,
         "attempted": len(readings),
@@ -321,6 +330,7 @@ def summarize_read_evidence(readings: list[dict[str, Any]], *, requested: int | 
         "context_only_count": context_only_count,
         "truncated_count": truncated_count,
         "status_counts": status_counts,
+        "outcome_counts": outcome_counts,
     }
 
 
@@ -589,4 +599,7 @@ def _bounded_int(value: Any, low: int, high: int) -> int:
 
 
 def _short_error(exc: Exception) -> str:
-    return str(exc).replace("\n", " ")[:500]
+    """Return a safe, stable error summary for public evidence packets."""
+
+    diagnostics = error_diagnostics(exc)
+    return f"{diagnostics['message']}（{diagnostics['error_type']}）"

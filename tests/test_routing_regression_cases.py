@@ -13,6 +13,15 @@ from guanlan.workflow_decider import build_agent_plan
 
 FIXTURE = Path(__file__).parent / "fixtures" / "routing_regression_cases.jsonl"
 
+HIGH_RISK_CATEGORY_GROUPS = {
+    "finance": {"finance"},
+    "legal_policy": {"policy"},
+    "entertainment": {"entertainment"},
+    "education_university": {"education", "test_prep", "university"},
+    "sports_local_life": {"local_life", "sports", "transport"},
+    "tech_wps": {"tech", "wps_office"},
+}
+
 
 def _load_cases() -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
@@ -59,6 +68,17 @@ def test_routing_regression_fixture_has_broad_vertical_coverage():
         "science",
         "entertainment",
     } <= categories
+
+
+def test_high_risk_routing_groups_keep_positive_and_near_miss_coverage():
+    cases = _load_cases()
+    for group, categories in HIGH_RISK_CATEGORY_GROUPS.items():
+        covered = {
+            str(case.get("case_type"))
+            for case in cases
+            if str(case.get("category")) in categories
+        }
+        assert {"positive", "near_miss"} <= covered, f"{group} coverage={sorted(covered)}"
 
 
 @pytest.mark.parametrize("case", _load_cases(), ids=lambda item: item["id"])

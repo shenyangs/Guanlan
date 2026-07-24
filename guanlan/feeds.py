@@ -18,6 +18,7 @@ from xml.etree import ElementTree
 
 from guanlan import __version__
 from guanlan.limits import DEFAULT_FEEDS_LIMIT
+from guanlan.network_execution import diagnose_network_error, read_url_bytes
 from guanlan.source_registry import get_source_metadata
 from guanlan.source_registry import list_feed_sources as list_feed_source_metadata
 from guanlan.source_taxonomy import source_card_for_domain
@@ -310,8 +311,7 @@ def _read_bytes(url: str, timeout: int = _TIMEOUT) -> bytes:
             "Accept": "application/rss+xml,application/atom+xml,application/xml,text/xml,*/*",
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
+    return read_url_bytes(req, timeout=timeout)
 
 
 def _read_json(url: str, timeout: int = _TIMEOUT, headers: dict[str, str] | None = None) -> dict[str, Any]:
@@ -326,8 +326,7 @@ def _read_json(url: str, timeout: int = _TIMEOUT, headers: dict[str, str] | None
     if headers:
         req_headers.update(headers)
     req = urllib.request.Request(url, headers=req_headers)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read().decode("utf-8", errors="replace")
+    raw = read_url_bytes(req, timeout=timeout).decode("utf-8", errors="replace")
     data = json.loads(raw)
     return data if isinstance(data, dict) else {}
 
@@ -389,6 +388,7 @@ def _annotate_feed_status(
     *,
     source_id: str,
     error: str = "",
+    network_diagnostic: dict[str, Any] | None = None,
     stale: bool = False,
 ) -> list[dict[str, Any]]:
     annotated: list[dict[str, Any]] = []
@@ -401,6 +401,8 @@ def _annotate_feed_status(
             "stale": bool(stale),
             "error": error,
         }
+        if network_diagnostic:
+            row["feed_status"]["network_diagnostic"] = dict(network_diagnostic)
         if stale:
             risk_tags = [str(tag) for tag in row.get("risk_tags", []) if tag]
             if "stale_cache" not in risk_tags:
@@ -418,6 +420,7 @@ def _feed_failure_item(
     category: str,
     content_direction: str,
     error: str,
+    network_diagnostic: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a diagnostic row when a public feed is unavailable on cold start."""
     source_card = _source_card_for_feed(url, source_id)
@@ -436,9 +439,22 @@ def _feed_failure_item(
         freshness="unavailable",
         fetched_at=_now_iso(),
         risk_tags=_unique(_feed_risk_tags(source_id, source_card) + ["source_unavailable", "no_cache"]),
-        feed_status={"status": "error", "source_id": source_id, "stale": False, "error": error},
+        feed_status={
+            "status": "error",
+            "source_id": source_id,
+            "stale": False,
+            "error": error,
+            **({"network_diagnostic": dict(network_diagnostic)} if network_diagnostic else {}),
+        },
     )
     return item.to_dict()
+
+
+def _feed_error_details(exc: BaseException, *, source_id: str, operation: str) -> tuple[str, dict[str, Any]]:
+    """Return the public-safe status and structured diagnostic for one feed."""
+
+    diagnostic = diagnose_network_error(exc, source=source_id, operation=operation)
+    return str(diagnostic["category"]), diagnostic
 
 
 def _clean_text(value: Any, max_chars: int = 0) -> str:
@@ -693,13 +709,15 @@ def fetch_ai_vertical_signals(
         _feed_cache_set("ai-vertical", cache_key, {"items": items, "url": url, "source_id": "ai-vertical"})
         return items[: max(limit, 1)]
     except Exception as exc:
+        error, diagnostic = _feed_error_details(exc, source_id="ai-vertical", operation="fetch_feed")
         cached = _feed_cache_get_any("ai-vertical", cache_key)
         if cached and isinstance(cached.get("items"), list):
             return _annotate_feed_status(
                 [dict(item) for item in cached["items"][: max(limit, 1)]],
                 "stale_cache",
                 source_id="ai-vertical",
-                error=str(exc),
+                error=error,
+                network_diagnostic=diagnostic,
                 stale=True,
             )
         return [
@@ -708,7 +726,8 @@ def fetch_ai_vertical_signals(
                 source_id="ai-vertical",
                 category="ai",
                 content_direction=FEED_SOURCE_CATALOG["ai-vertical"]["content_direction"],
-                error=str(exc),
+                error=error,
+                network_diagnostic=diagnostic,
             )
         ]
 
@@ -875,28 +894,36 @@ def fetch_arxiv(
         _feed_cache_set("arxiv", cache_key, {"items": items, "url": url, "source_id": "arxiv"})
         return items[: max(limit, 1)]
     except Exception as exc:
+        error, diagnostic = _feed_error_details(exc, source_id="arxiv", operation="fetch_feed")
         cached = _feed_cache_get_any("arxiv", cache_key)
         if cached and isinstance(cached.get("items"), list):
             return _annotate_feed_status(
                 [dict(item) for item in cached["items"][: max(limit, 1)]],
                 "stale_cache",
                 source_id="arxiv",
-                error=str(exc),
+                error=error,
+                network_diagnostic=diagnostic,
                 stale=True,
             )
         return [
-            _arxiv_search_entrypoint(clean_query, error=str(exc)),
+            _arxiv_search_entrypoint(clean_query, error=error, network_diagnostic=diagnostic),
             _feed_failure_item(
                 url=url,
                 source_id="arxiv",
                 category="academic",
                 content_direction=FEED_SOURCE_CATALOG["arxiv"]["content_direction"],
-                error=str(exc),
+                error=error,
+                network_diagnostic=diagnostic,
             ),
         ]
 
 
-def _arxiv_search_entrypoint(query: str, *, error: str = "") -> dict[str, Any]:
+def _arxiv_search_entrypoint(
+    query: str,
+    *,
+    error: str = "",
+    network_diagnostic: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     url = "https://arxiv.org/search/?" + urllib.parse.urlencode(
         {"query": query, "searchtype": "all", "abstracts": "show", "order": "-announced_date_first", "size": "50"}
     )
@@ -916,7 +943,13 @@ def _arxiv_search_entrypoint(query: str, *, error: str = "") -> dict[str, Any]:
         freshness="entrypoint",
         fetched_at=_now_iso(),
         risk_tags=_unique(_feed_risk_tags("arxiv", source_card) + ["api_unavailable"]),
-        feed_status={"status": "fallback_entrypoint", "source_id": "arxiv", "stale": False, "error": error},
+        feed_status={
+            "status": "fallback_entrypoint",
+            "source_id": "arxiv",
+            "stale": False,
+            "error": error,
+            **({"network_diagnostic": dict(network_diagnostic)} if network_diagnostic else {}),
+        },
     )
     return item.to_dict()
 
@@ -959,13 +992,15 @@ def fetch_rss_feed(
         _feed_cache_set("rss", cache_key, {"items": rows, "url": url, "source_id": source_id})
         return rows[: max(limit, 1)]
     except Exception as exc:
+        error, diagnostic = _feed_error_details(exc, source_id=source_id, operation="fetch_feed")
         cached = _feed_cache_get_any("rss", cache_key)
         if cached and isinstance(cached.get("items"), list):
             return _annotate_feed_status(
                 [dict(item) for item in cached["items"][: max(limit, 1)]],
                 "stale_cache",
                 source_id=source_id,
-                error=str(exc),
+                error=error,
+                network_diagnostic=diagnostic,
                 stale=True,
             )
         return [
@@ -974,7 +1009,8 @@ def fetch_rss_feed(
                 source_id=source_id,
                 category=category,
                 content_direction=content_direction,
-                error=str(exc),
+                error=error,
+                network_diagnostic=diagnostic,
             )
         ]
 
@@ -1337,6 +1373,7 @@ def list_curated_sources(
         raw = _read_bytes(opml_url)
         root = ElementTree.fromstring(raw)
     except Exception as exc:
+        error, diagnostic = _feed_error_details(exc, source_id="curated:source", operation="fetch_opml")
         cached = _feed_cache_get_any("opml", cache_key)
         if cached and isinstance(cached.get("sources"), list):
             sources = [dict(item) for item in cached["sources"][: max(limit, 1)]]
@@ -1349,7 +1386,8 @@ def list_curated_sources(
                     "status": "stale_cache",
                     "source_id": "curated:source",
                     "stale": True,
-                    "error": str(exc),
+                    "error": error,
+                    "network_diagnostic": diagnostic,
                 }
             return sources
         return [
