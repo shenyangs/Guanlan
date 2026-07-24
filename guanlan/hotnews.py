@@ -813,16 +813,14 @@ def fetch_v2ex(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
     return [item for item in results if item.title]
 
 
-def fetch_today(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
-    """Fetch a diverse daily hotnews snapshot without letting one source dominate."""
+def _fetch_multi_source_snapshot(
+    source_fetchers: list[tuple[str, Any]],
+    *,
+    limit: int,
+    snapshot_name: str,
+) -> list[dict[str, Any]]:
+    """Merge a small public-source set without letting one endpoint dominate."""
     limit = max(int(limit), 1)
-    source_fetchers = [
-        ("baidu", fetch_baidu),
-        ("weibo", fetch_weibo),
-        ("bilibili-hot-search", fetch_bilibili_hot_search),
-        ("ithome", fetch_ithome),
-        ("v2ex", fetch_v2ex),
-    ]
     per_source = max(3, min(MAX_HOTNEWS_PER_SOURCE_LIMIT, (limit + len(source_fetchers) - 1) // len(source_fetchers) + 2))
     buckets: list[list[dict[str, Any]]] = []
     errors: list[str] = []
@@ -847,8 +845,38 @@ def fetch_today(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
             merged.append(item)
 
     if not merged and errors:
-        raise RuntimeError("All native hotnews sources failed: " + "; ".join(errors))
+        raise RuntimeError(f"All {snapshot_name} hotnews sources failed: " + "; ".join(errors))
     return _annotate_trends(merged[:limit])
+
+
+def fetch_today(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
+    """Fetch a diverse daily hotnews snapshot without letting one source dominate."""
+    return _fetch_multi_source_snapshot(
+        [
+            ("baidu", fetch_baidu),
+            ("weibo", fetch_weibo),
+            ("bilibili-hot-search", fetch_bilibili_hot_search),
+            ("ithome", fetch_ithome),
+            ("v2ex", fetch_v2ex),
+        ],
+        limit=limit,
+        snapshot_name="daily",
+    )
+
+
+def fetch_tech(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
+    """Fetch a native technology/developer snapshot for routing-level callers."""
+    return _fetch_multi_source_snapshot(
+        [
+            ("ithome", fetch_ithome),
+            ("xinzhiyuan", fetch_xinzhiyuan),
+            ("v2ex", fetch_v2ex),
+            ("zeli-hn", fetch_zeli_hn),
+            ("buzzing", fetch_buzzing),
+        ],
+        limit=limit,
+        snapshot_name="technology",
+    )
 
 
 def fetch_newsnow(
@@ -1517,6 +1545,7 @@ def fetch_hotnews(
     backend = (backend or "auto").lower().strip()
     fetchers = {
         "today": fetch_today,
+        "tech": fetch_tech,
         "baidu": fetch_baidu,
         "weibo": fetch_weibo,
         "bilibili-hot-search": fetch_bilibili_hot_search,

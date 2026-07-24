@@ -104,7 +104,7 @@
     },
     "warned_case_ids": []
   },
-  "generated_at": "2026-07-24T06:34:29Z",
+  "generated_at": "2026-07-24T15:34:22Z",
   "legacy_inventory": {
     "buckets": {
       "compat": [
@@ -418,7 +418,7 @@
     },
     "file": "guanlan/web/_legacy_web_impl.py",
     "guardrail": "legacy 层只保留兼容承载；新增业务逻辑应落到 split owner 模块。",
-    "loc": 10127,
+    "loc": 10136,
     "top_level_functions": 276
   },
   "live_smoke": {
@@ -894,5 +894,5 @@
     "total_cases": 159
   },
   "schema_version": "guanlan_quality_report_v1",
-  "version": "0.8.0"
+  "version": "0.8.1"
 }

@@ -21,7 +21,18 @@ def _load_collector(monkeypatch, *, host: str = "127.0.0.1"):
     return module
 
 
-def _insert_event(conn, *, received_ms: int, event: str, invocation_id: str, command: str = "search"):
+def _insert_event(
+    conn,
+    *,
+    received_ms: int,
+    event: str,
+    invocation_id: str,
+    command: str = "search",
+    install_id: str = "install-a",
+    agent_id: str = "agent-a",
+    session_id: str = "session-a",
+    duration_ms: int | None = None,
+):
     conn.execute(
         """
         INSERT INTO events (
@@ -34,18 +45,18 @@ def _insert_event(conn, *, received_ms: int, event: str, invocation_id: str, com
             received_ms,
             received_ms,
             event,
-            "install-a",
-            "session-a",
+            install_id,
+            session_id,
             invocation_id,
             "cli",
             command,
             "0.7.2",
             "codex",
-            "agent-a",
+            agent_id,
             "darwin",
             "3.12",
             "",
-            None,
+            duration_ms,
             "127.0.0.1",
         ),
     )
@@ -126,7 +137,7 @@ def test_orphan_breakdown_distinguishes_heartbeat_seen(tmp_path, monkeypatch):
     collector = _load_collector(monkeypatch)
     collector.init_db()
     current_ms = 1_000_000
-    cutoff_old = current_ms - collector.ACTIVE_TTL_SECONDS * 1000 - 1_000
+    cutoff_old = current_ms - collector.ORPHAN_SETTLEMENT_GRACE_SECONDS * 1000 - 1_000
     conn = collector.db_connect()
     try:
         _insert_event(conn, received_ms=cutoff_old, event="invocation_start", invocation_id="no-heartbeat")
@@ -169,3 +180,52 @@ def test_orphan_breakdown_distinguishes_heartbeat_seen(tmp_path, monkeypatch):
     assert rows[0]["orphans"] == 2
     assert rows[0]["with_heartbeat"] == 1
     assert rows[0]["without_heartbeat"] == 1
+
+
+def test_orphan_rate_waits_for_terminal_event_settlement_window(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
+    monkeypatch.setenv("GUANLAN_ORPHAN_SETTLEMENT_GRACE_SECONDS", "600")
+    collector = _load_collector(monkeypatch)
+    collector.init_db()
+    current_ms = 2_000_000
+    settled_start = current_ms - collector.ORPHAN_SETTLEMENT_GRACE_SECONDS * 1000 - 10
+    recent_start = current_ms - 60_000
+    conn = collector.db_connect()
+    try:
+        _insert_event(conn, received_ms=settled_start, event="invocation_start", invocation_id="old-unclosed")
+        _insert_event(conn, received_ms=recent_start, event="invocation_start", invocation_id="awaiting-end")
+        conn.commit()
+
+        assert collector.query_settled_starts(conn, 0, current_ms) == 1
+        assert collector.query_orphan_starts(conn, 0, current_ms) == 1
+    finally:
+        conn.close()
+
+
+def test_blank_session_ids_do_not_merge_unrelated_invocations(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
+    collector = _load_collector(monkeypatch)
+    collector.init_db()
+    conn = collector.db_connect()
+    try:
+        _insert_event(conn, received_ms=1_000, event="invocation_start", invocation_id="one", session_id="")
+        _insert_event(conn, received_ms=1_020, event="invocation_end", invocation_id="one", session_id="")
+        _insert_event(conn, received_ms=2_000, event="invocation_start", invocation_id="two", session_id="")
+        _insert_event(conn, received_ms=2_040, event="invocation_end", invocation_id="two", session_id="")
+        conn.commit()
+
+        stats = collector.query_session_stats(conn, 0)
+    finally:
+        conn.close()
+
+    assert stats == {"count": 2, "avg_duration_ms": 30, "p95_duration_ms": 40, "avg_calls": 1.0}
+
+
+def test_dashboard_slow_metrics_wait_for_a_complete_initial_snapshot(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
+    collector = _load_collector(monkeypatch)
+    collector.init_db()
+    metrics = collector.query_slow_dashboard_metrics_cached(2_000_000, 1_000_000, 0)
+
+    assert metrics["pending"] is False
+    assert metrics["session_24h"]["count"] == 0

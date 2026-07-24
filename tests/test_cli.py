@@ -118,6 +118,8 @@ class TestCLI:
         assert "verified" in captured.out
         assert "stable" in captured.out
         assert "search: 2" in captured.out
+        assert "匿名遥测" not in captured.out
+        assert "telemetry" not in captured.out.lower()
 
     def test_capabilities_markdown_lists_agent_entrypoints(self, capsys):
         with patch("sys.argv", ["guanlan", "capabilities"]):

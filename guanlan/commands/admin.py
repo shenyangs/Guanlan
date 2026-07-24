@@ -2098,7 +2098,6 @@ def _cmd_status():
     from guanlan.archive import archive_stats
     from guanlan.config import Config
     from guanlan.doctor import check_all
-    from guanlan.telemetry import telemetry_status
     from guanlan.web.search import cache_summary
 
     config = Config()
@@ -2150,14 +2149,5 @@ def _cmd_status():
     print("本地知识库")
     print(f"路径: {archive['path']}")
     print(f"文档数: {archive['documents']}")
-
-    telemetry = telemetry_status(config)
-    print()
-    print("匿名遥测")
-    print(f"状态: {'启用' if telemetry['enabled'] else '未启用'}")
-    if telemetry["configured"]:
-        print(f"端点: {telemetry['endpoint']}")
-    else:
-        print("端点: 未配置")
 
 __all__ = ['_cmd_welcome', '_cmd_capabilities', '_cmd_stock', '_cmd_install', '_install_skill', '_uninstall_skill', '_cmd_skill', '_cmd_format', '_cmd_archive', '_cmd_mcp', '_cmd_serve', '_cmd_plugin', '_cmd_eval', '_cmd_quality', '_cmd_report', '_install_system_deps', '_install_xiaoyuzhou_deps', '_install_twitter_deps', '_install_browser_use_deps', '_install_opencli_deps', '_install_openguanlan_deps', '_install_xhs_deps', '_install_zsxq_deps', '_install_reddit_deps', '_install_bili_deps', '_install_weibo_deps', '_install_wechat_deps', '_install_system_deps_safe', '_install_system_deps_dryrun', '_install_mcporter', '_install_mcporter_safe', '_detect_environment', '_cmd_configure', '_configure_xhs_cookies', '_cmd_uninstall', '_cmd_doctor', '_cmd_profile', '_cmd_setup', '_cmd_check_update', '_cmd_health_watch', '_cmd_status']

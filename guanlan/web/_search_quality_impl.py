@@ -955,6 +955,9 @@ def _expand_search_query(
 
 
 _AI_MODEL_QUERY_FAMILY_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("GPT", r"\bGPT(?:[-\s]?\d+(?:\.\d+)?)?\b|\bOpenAI\b"),
+    ("Claude", r"\bClaude(?:[-\s]?(?:Opus|Sonnet|Haiku)?\s*\d+(?:\.\d+)?)?\b|\bAnthropic\b"),
+    ("Gemini", r"\bGemini(?:[-\s]?\d+(?:\.\d+)?)?\b|Google\s+DeepMind|谷歌(?:\s*大模型)?"),
     ("GLM", r"\bGLM(?:[-\s]?\d+(?:\.\d+)?)?\b|智谱|zhipu|chatglm|bigmodel"),
     ("Kimi", r"\bKimi(?:[-\s]?K)?(?:[-\s]?\d+(?:\.\d+)?)?\b|moonshot|月之暗面"),
     ("DeepSeek", r"\bDeepSeek(?:[-\s]?[A-Za-z]?\d+(?:\.\d+)?)?\b|深度求索"),
@@ -981,6 +984,9 @@ _AI_MODEL_QUERY_TASK_TERMS = (
     "coding",
     "编程",
     "模型",
+    "最新",
+    "动态",
+    "新发布",
 )
 
 
@@ -1005,6 +1011,10 @@ def _canonical_ai_model_search_query(query: str, quality: dict[str, Any]) -> str
         label = mention["family"]
         version = mention.get("version") or ""
         terms.append(f"{label} {version}".strip())
+    month_matches = re.findall(r"(?<!\d)((?:19|20)\d{2}\s*年\s*(?:0?[1-9]|1[0-2])\s*月)(?!\d)", text)
+    terms.extend(re.sub(r"\s+", "", month) for month in month_matches)
+    if "大模型" in text:
+        terms.append("大模型")
     if any(term in lowered for term in ("code", "coding")) or "编程" in text:
         terms.append("Code")
     if len(mentions) >= 2 or any(term in text for term in ("对比", "比较", "比", "谁更强", "强在哪")):
@@ -1015,6 +1025,10 @@ def _canonical_ai_model_search_query(query: str, quality: dict[str, Any]) -> str
         terms.append("能力")
     if any(term in text for term in ("发布", "版本", "更新")):
         terms.append("发布")
+    if "最新" in text:
+        terms.append("最新")
+    if "动态" in text:
+        terms.append("动态")
     if intent == "tech" or "tech" in route_intents or any(term in lowered for term in ("code", "coding", "benchmark")):
         terms.append("benchmark")
     canonical = " ".join(_unique_keep_order(terms)).strip()
@@ -1325,6 +1339,41 @@ def detect_recency_intent(query: str) -> dict[str, Any]:
 
 
 def _explicit_year_recency(text: str, today: dt.date) -> dict[str, Any] | None:
+    month_matches = sorted(
+        {
+            (int(year), int(month))
+            for year, month in re.findall(
+                r"(?<!\d)((?:19|20)\d{2})\s*年\s*(0?[1-9]|1[0-2])\s*月(?!\d)",
+                text,
+            )
+        }
+    )
+    bounded_months = [
+        (year, month)
+        for year, month in month_matches
+        if 1990 <= year <= today.year + 1 and 1 <= month <= 12
+    ]
+    if bounded_months:
+        start_year, start_month = bounded_months[0]
+        end_year, end_month = bounded_months[-1]
+        start = dt.date(start_year, start_month, 1)
+        if end_month == 12:
+            next_month = dt.date(end_year + 1, 1, 1)
+        else:
+            next_month = dt.date(end_year, end_month + 1, 1)
+        end = next_month - dt.timedelta(days=1)
+        if end > today:
+            end = today
+        if end < start:
+            end = start
+        return {
+            "enabled": True,
+            "label": "month_range" if len(bounded_months) > 1 else "month",
+            "window_days": max((end - start).days + 1, 1),
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "matched_terms": [f"{year}年{month}月" for year, month in bounded_months],
+        }
     years = sorted({int(match) for match in re.findall(r"(?<!\d)((?:19|20)\d{2})(?!\d)", text)})
     bounded_years = [year for year in years if 1990 <= year <= today.year + 1]
     if not bounded_years:

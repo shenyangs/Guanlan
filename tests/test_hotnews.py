@@ -386,6 +386,22 @@ def test_fetch_today_can_fill_expanded_limit(monkeypatch):
     assert items[-1]["rank"] == 50
 
 
+def test_fetch_hotnews_uses_native_tech_snapshot_for_tech_dev_alias(monkeypatch):
+    called = []
+    monkeypatch.setattr(
+        hotnews,
+        "fetch_tech",
+        lambda limit=20: called.append(limit)
+        or [hotnews.HotNewsItem(platform="ithome", source_id="ithome", category="tech", title="科技动态", rank=1)],
+    )
+    monkeypatch.setattr(hotnews, "fetch_newsnow", lambda *args, **kwargs: pytest.fail("should not call NewsNow"))
+
+    items = hotnews.fetch_hotnews("tech_dev", limit=7)
+
+    assert called == [7]
+    assert items[0]["title"] == "科技动态"
+
+
 def test_hotnews_build_trend_report_merges_cross_source_topics():
     items = [
         {"rank": 1, "source_id": "baidu", "title": "AI 眼镜新品发布", "metrics": {"heat": 10000}},

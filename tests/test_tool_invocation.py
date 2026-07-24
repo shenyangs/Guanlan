@@ -31,6 +31,14 @@ def test_search_normalization_preserves_quality_and_cache_controls():
     assert request["use_cache"] is False
 
 
+def test_search_normalization_accepts_max_results_compatibility_alias():
+    alias_only = normalize_search_request({"query": "WPS AI", "max_results": 8})
+    canonical_wins = normalize_search_request({"query": "WPS AI", "limit": 12, "max_results": 8})
+
+    assert alias_only["limit"] == 8
+    assert canonical_wins["limit"] == 12
+
+
 def test_read_normalization_keeps_fallback_and_cache_contract():
     request = normalize_read_request(
         {"url": "https://example.com", "fallback_limit": "999", "cache_ttl": "60", "strict": True}

@@ -1285,6 +1285,21 @@ def test_rank_results_strongly_prefers_explicit_year_window():
     assert ranked[0].trace["recency"]["in_window"] is True
 
 
+def test_ai_model_query_rewrite_keeps_requested_families_and_month():
+    shape = webtools._analyze_search_query_shape(
+        "大模型 2026年7月 新发布 GPT Claude Gemini 通义 文心",
+        quality={"intent": "tech", "route_intents": ["tech"]},
+    )
+
+    backend_query = shape["backend_query"]
+    assert "GPT" in backend_query
+    assert "Claude" in backend_query
+    assert "Gemini" in backend_query
+    assert "Qwen" in backend_query
+    assert "Ernie" in backend_query
+    assert "2026年7月" in backend_query
+
+
 def test_rank_results_promotes_quality_fit_for_policy_query():
     results = webtools.rank_results(
         [

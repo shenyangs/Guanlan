@@ -448,6 +448,31 @@ def test_recency_detects_explicit_year_range():
     assert recency["matched_terms"] == ["2024", "2025"]
 
 
+def test_recency_detects_explicit_month_as_a_strong_window():
+    recency = webtools.detect_recency_intent("2026年7月 大模型 最新发布 动态")
+
+    assert recency["enabled"] is True
+    assert recency["label"] == "month"
+    assert recency["start_date"] == "2026-07-01"
+    assert recency["matched_terms"] == ["2026年7月"]
+
+
+def test_search_diagnostics_include_total_and_backend_duration(monkeypatch):
+    monkeypatch.setattr(
+        webtools,
+        "_search_duckduckgo",
+        lambda _query, limit=10: [
+            webtools.SearchResult(title="模型发布", url="https://example.com/model", source="duckduckgo", rank=1)
+        ],
+    )
+
+    results = webtools.search_web("大模型 发布", backend="duckduckgo", limit=1, use_cache=False)
+    diagnostics = results.diagnostics
+
+    assert diagnostics["execution"]["duration_ms"] >= 0
+    assert diagnostics["backend_diagnostics"][0]["duration_ms"] >= 0
+
+
 def test_search_block_detector_marks_captcha_pages():
     with pytest.raises(RuntimeError, match="captcha_or_verification"):
         webtools._raise_for_search_block("<html>百度安全验证 请输入验证码</html>", "baidu")

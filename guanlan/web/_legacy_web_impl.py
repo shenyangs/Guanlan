@@ -1318,6 +1318,7 @@ def search_web(
     evidence_mode: str = "shadow",
 ) -> list[dict[str, Any]]:
     """Search the web and return normalized result dictionaries."""
+    execution_started_at = time.monotonic()
     original_query = query.strip()
     query = original_query
     if not original_query:
@@ -1460,6 +1461,7 @@ def search_web(
             backend_recovery={},
             errors=[],
             network_profile=network_profile,
+            execution_duration_ms=int((time.monotonic() - execution_started_at) * 1000),
             evidence_mixer_shadow=(
                 build_disabled_evidence_pipeline(query=original_query, reason="mode_off")
                 if evidence_mode == "off"
@@ -1544,12 +1546,14 @@ def search_web(
     order = backend_order(backend, profile, site=site, query=original_query, scope=effective_scope)
     backend_diagnostics: list[dict[str, Any]] = []
     for name in order:
+        attempt_started_at = time.monotonic()
         attempt: dict[str, Any] = {
             "backend": name,
             "status": "unknown",
             "result_count": 0,
             "error": "",
             "note": "",
+            "duration_ms": 0,
         }
         if name == "duckduckgo" and _anysearch_auto_fallback_satisfied(
             results,
@@ -1802,6 +1806,7 @@ def search_web(
                 }
             )
         finally:
+            attempt["duration_ms"] = max(0, int((time.monotonic() - attempt_started_at) * 1000))
             backend_diagnostics.append(attempt)
 
     anysearch_fast_satisfied = _anysearch_auto_fallback_satisfied(
@@ -2135,6 +2140,7 @@ def search_web(
                 "anysearch_activation": anysearch_activation,
                 "network_profile": network_profile,
                 "network_health": network_health_snapshot(),
+                "execution": {"duration_ms": max(0, int((time.monotonic() - execution_started_at) * 1000))},
                 "errors": list(errors),
             }
         )
@@ -2171,6 +2177,7 @@ def search_web(
         anysearch_activation=anysearch_activation,
         errors=errors,
         network_profile=network_profile,
+        execution_duration_ms=int((time.monotonic() - execution_started_at) * 1000),
         scope_mode="strict" if strict_scope and effective_scope else ("soft" if effective_scope else "open"),
     )
     return SearchResults(output, diagnostics=shared_diagnostics)
@@ -2205,6 +2212,7 @@ def _search_shared_diagnostics(
     scope_distinction: dict[str, Any] | None = None,
     external_fetch_strategy: dict[str, Any] | None = None,
     evidence_mixer_shadow: dict[str, Any] | None = None,
+    execution_duration_ms: int | None = None,
 ) -> dict[str, Any]:
     return {
         "query": original_query,
@@ -2239,6 +2247,7 @@ def _search_shared_diagnostics(
         "anysearch_activation": anysearch_activation or {"enabled": False},
         "network_profile": network_profile or build_network_profile(),
         "network_health": network_health_snapshot(),
+        "execution": {"duration_ms": max(0, int(execution_duration_ms or 0))},
         "errors": list(errors),
     }
 
@@ -2306,7 +2315,7 @@ def _search_time_constraint(recency: dict[str, Any]) -> dict[str, Any]:
     if not recency.get("enabled"):
         return {"enabled": False}
     label = str(recency.get("label") or "recent")
-    strict = label in {"year", "year_range"}
+    strict = label in {"year", "year_range", "month", "month_range"}
     return {
         "enabled": True,
         "label": label,
@@ -2315,7 +2324,7 @@ def _search_time_constraint(recency: dict[str, Any]) -> dict[str, Any]:
         "end_date": str(recency.get("end_date") or ""),
         "matched_terms": list(recency.get("matched_terms") or []),
         "instruction": (
-            "显式年份/年份范围是强约束：主结论优先使用窗口内证据，窗口外材料只作背景。"
+            "显式年月/年份范围是强约束：主结论优先使用窗口内证据，窗口外材料只作背景。"
             if strict
             else "近期/热点查询需要优先使用窗口内证据，旧材料只作背景。"
         ),
@@ -3092,7 +3101,7 @@ def _run_recency_relaxed_recovery_pass(
     if results or not recency.get("enabled"):
         return
     label = str(recency.get("label") or "")
-    if label in {"year", "year_range", "year_to_date"}:
+    if label in {"year", "year_range", "month", "month_range", "year_to_date"}:
         return
     if _duckduckgo_recovery_blocked_by_health(diagnostics):
         _append_duckduckgo_recovery_skip(
@@ -8585,7 +8594,7 @@ def _score_result_parts(
         parts["semantic_noise_penalty"] = min(parts["semantic_noise_penalty"], -2.0)
     if recency and recency.get("enabled"):
         metrics = _result_recency_metrics(item, recency)
-        strict_time = str(recency.get("label") or "") in {"year", "year_range"}
+        strict_time = str(recency.get("label") or "") in {"year", "year_range", "month", "month_range"}
         if strict_time:
             if metrics["result_date"] and metrics.get("in_window"):
                 parts["time_constraint_fit"] = 1.25

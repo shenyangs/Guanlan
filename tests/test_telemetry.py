@@ -30,6 +30,15 @@ def test_telemetry_uses_default_endpoint(tmp_path, monkeypatch):
     assert status["configured"] is True
 
 
+def test_telemetry_is_enabled_by_default_outside_test_or_ci_environments(tmp_path, monkeypatch):
+    monkeypatch.delenv("GUANLAN_TELEMETRY", raising=False)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    config = Config(config_path=tmp_path / "config.yaml")
+
+    assert load_settings(config) is not None
+
+
 def test_telemetry_can_be_disabled_with_env(tmp_path, monkeypatch):
     monkeypatch.setenv("GUANLAN_TELEMETRY_ENDPOINT", "https://metrics.example/v1/events")
     monkeypatch.setenv("GUANLAN_TELEMETRY", "0")

@@ -32,6 +32,12 @@ ADMIN_USER = os.environ.get("GUANLAN_ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.environ.get("GUANLAN_ADMIN_PASSWORD", "")
 INGEST_TOKEN = os.environ.get("GUANLAN_INGEST_TOKEN", "")
 ACTIVE_TTL_SECONDS = int(os.environ.get("GUANLAN_ACTIVE_TTL_SECONDS", "180"))
+# Do not classify a just-started invocation as unclosed while its terminal
+# event can still be waiting in a local durable queue or crossing the network.
+ORPHAN_SETTLEMENT_GRACE_SECONDS = max(
+    ACTIVE_TTL_SECONDS,
+    int(os.environ.get("GUANLAN_ORPHAN_SETTLEMENT_GRACE_SECONDS", "600")),
+)
 MAX_BODY_BYTES = 16 * 1024
 IP_GEO_LOOKUP_ENABLED = os.environ.get("GUANLAN_IP_GEO_LOOKUP", "0") == "1"
 IP_GEO_CACHE_TTL_SECONDS = int(os.environ.get("GUANLAN_IP_GEO_CACHE_TTL_SECONDS", str(7 * 24 * 3600)))
@@ -254,12 +260,20 @@ def ensure_async_cache_refresh(name, builder, default_value=None):
     return True
 
 
-def get_async_cached_value(name, ttl_seconds, builder, default_value=None):
+def get_async_cached_value(name, ttl_seconds, builder, default_value=None, *, wait_for_initial=False):
     current = now_ms()
     snapshot = _async_cache_snapshot(name, default_value)
     built_ms = int(snapshot.get("built_ms") or 0)
     value = snapshot.get("value", default_value)
     if built_ms and current - built_ms < ttl_seconds * 1000:
+        return value
+    if wait_for_initial and not built_ms:
+        # A zero-valued placeholder is fine for a background API response, but
+        # it is misleading in a human-facing health panel. The first dashboard
+        # render waits for a coherent baseline; later refreshes keep the last
+        # complete value while a new one is built asynchronously.
+        value = builder()
+        _async_cache_store(name, value)
         return value
     ensure_async_cache_refresh(name, builder, default_value)
     return value
@@ -917,13 +931,19 @@ def query_duration_stats(conn, since_ms):
 def query_session_stats(conn, since_ms):
     rows = conn.execute(
         """
-        SELECT session_id,
+        SELECT install_id,
+               agent_id,
+               CASE
+                   WHEN TRIM(COALESCE(session_id, '')) <> '' THEN session_id
+                   ELSE 'invocation:' || invocation_id
+               END AS effective_session_id,
                MIN(received_ms) AS first_seen,
                MAX(received_ms) AS last_seen,
                COUNT(CASE WHEN event = 'invocation_start' THEN 1 END) AS calls
         FROM events
         WHERE received_ms >= ?
-        GROUP BY session_id
+          AND event IN ('invocation_start', 'invocation_end')
+        GROUP BY install_id, agent_id, effective_session_id
         """,
         (since_ms,),
     ).fetchall()
@@ -1038,7 +1058,8 @@ def query_retention_stats_cached(field, offsets=(1, 3, 7, 14, 30)):
 
 
 def query_orphan_starts(conn, since_ms, current_ms):
-    cutoff = current_ms - ACTIVE_TTL_SECONDS * 1000
+    active_cutoff = current_ms - ACTIVE_TTL_SECONDS * 1000
+    settled_cutoff = current_ms - ORPHAN_SETTLEMENT_GRACE_SECONDS * 1000
     return query_one(
         conn,
         """
@@ -1056,12 +1077,33 @@ def query_orphan_starts(conn, since_ms, current_ms):
           AND ends.id IS NULL
           AND active.invocation_id IS NULL
         """,
-        (cutoff, since_ms, cutoff),
+        (active_cutoff, since_ms, settled_cutoff),
+    )
+
+
+def query_settled_starts(conn, since_ms, current_ms):
+    """Count starts old enough that a terminal event should have arrived.
+
+    This is deliberately the denominator for the unclosed-invocation rate. A
+    newly started call is neither a successful completion nor an abnormal end.
+    """
+    settled_cutoff = current_ms - ORPHAN_SETTLEMENT_GRACE_SECONDS * 1000
+    return query_one(
+        conn,
+        """
+        SELECT COUNT(*)
+        FROM events
+        WHERE event = 'invocation_start'
+          AND received_ms >= ?
+          AND received_ms < ?
+        """,
+        (since_ms, settled_cutoff),
     )
 
 
 def query_orphan_breakdown(conn, since_ms, current_ms):
-    cutoff = current_ms - ACTIVE_TTL_SECONDS * 1000
+    active_cutoff = current_ms - ACTIVE_TTL_SECONDS * 1000
+    settled_cutoff = current_ms - ORPHAN_SETTLEMENT_GRACE_SECONDS * 1000
     row = conn.execute(
         """
         WITH starts AS (
@@ -1102,7 +1144,7 @@ def query_orphan_breakdown(conn, since_ms, current_ms):
         LEFT JOIN active ON active.invocation_id = starts.invocation_id
         LEFT JOIN heartbeats ON heartbeats.invocation_id = starts.invocation_id
         """,
-        (since_ms, cutoff, cutoff),
+        (since_ms, settled_cutoff, active_cutoff),
     ).fetchone()
     return {
         "with_heartbeat": int((row and row["with_heartbeat"]) or 0),
@@ -1111,7 +1153,8 @@ def query_orphan_breakdown(conn, since_ms, current_ms):
 
 
 def query_orphan_sources(conn, since_ms, current_ms, limit=12):
-    cutoff = current_ms - ACTIVE_TTL_SECONDS * 1000
+    active_cutoff = current_ms - ACTIVE_TTL_SECONDS * 1000
+    settled_cutoff = current_ms - ORPHAN_SETTLEMENT_GRACE_SECONDS * 1000
     rows = conn.execute(
         """
         WITH starts AS (
@@ -1161,7 +1204,7 @@ def query_orphan_sources(conn, since_ms, current_ms, limit=12):
         ORDER BY orphans DESC, starts DESC
         LIMIT ?
         """,
-        (since_ms, cutoff, cutoff, limit),
+        (since_ms, settled_cutoff, active_cutoff, limit),
     ).fetchall()
     items = []
     for row in rows:
@@ -1255,6 +1298,7 @@ def query_slow_dashboard_metrics_cached(current_ms, day_ms, week_ms):
         SLOW_METRICS_CACHE_TTL_SECONDS,
         lambda: query_slow_dashboard_metrics(current_ms, day_ms, week_ms),
         slow_dashboard_metrics_placeholder(),
+        wait_for_initial=True,
     )
 
 
@@ -1350,6 +1394,7 @@ def summary():
             (day,),
         )
         orphan_starts_24h = query_orphan_starts(conn, day, current)
+        settled_calls_24h = query_settled_starts(conn, day, current)
         orphan_breakdown_24h = query_orphan_breakdown(conn, day, current)
         feedback_24h_total = query_one(
             conn,
@@ -1403,7 +1448,8 @@ def summary():
             "error_24h": errors_24h,
             "error_rate_24h": fmt_rate(errors_24h, calls_24h),
             "orphan_starts_24h": orphan_starts_24h,
-            "orphan_rate_24h": fmt_rate(orphan_starts_24h, calls_24h),
+            "settled_calls_24h": settled_calls_24h,
+            "orphan_rate_24h": fmt_rate(orphan_starts_24h, settled_calls_24h),
             "orphan_with_heartbeat_24h": orphan_breakdown_24h["with_heartbeat"],
             "orphan_without_heartbeat_24h": orphan_breakdown_24h["without_heartbeat"],
             "feedback_24h": feedback_24h,
@@ -2694,7 +2740,7 @@ def render_dashboard():
             "tone": tone_by_threshold(error_rate_value, 1.0, 3.0),
         },
         {
-            "label": "24h 异常结束率 / 24h Orphan Rate",
+            "label": "24h 未闭环率 / 24h Settled Unclosed Rate",
             "value": data["orphan_rate_24h"],
             "tone": tone_by_threshold(orphan_rate_value, 5.0, 12.0),
         },
@@ -2762,10 +2808,11 @@ def render_dashboard():
         [
             ("24h 错误 / 24h Errors", data["error_24h"]),
             ("24h 错误率 / 24h Error Rate", data["error_rate_24h"]),
-            ("24h 异常结束 / 24h Orphan Starts", data["orphan_starts_24h"]),
-            ("24h 异常结束率 / 24h Orphan Rate", data["orphan_rate_24h"]),
-            ("24h 异常中见过心跳 / Orphans With Heartbeat", data["orphan_with_heartbeat_24h"]),
-            ("24h 异常中无心跳 / Orphans Without Heartbeat", data["orphan_without_heartbeat_24h"]),
+            ("24h 已结算调用 / 24h Settled Calls", data["settled_calls_24h"]),
+            ("24h 未闭环调用 / 24h Unclosed Starts", data["orphan_starts_24h"]),
+            ("24h 未闭环率 / 24h Settled Unclosed Rate", data["orphan_rate_24h"]),
+            ("24h 未闭环中见过心跳 / Unclosed With Heartbeat", data["orphan_with_heartbeat_24h"]),
+            ("24h 未闭环中无心跳 / Unclosed Without Heartbeat", data["orphan_without_heartbeat_24h"]),
             ("24h 新增设备 / 24h New Devices", data["new_installs_24h"]),
             ("7d 新增设备 / 7d New Devices", data["new_installs_7d"]),
             ("24h 回访设备 / 24h Returning Devices", data["returning_installs_24h"]),
@@ -2964,7 +3011,7 @@ def render_dashboard():
         <div>
           <p class="eyebrow">Performance</p>
           <h2>健康度与深度 / Health & Depth</h2>
-          <p>把效率、时长、错误和异常结束单独放一屏，颜色更聚焦，读起来不会和增长指标混在一起。</p>
+          <p>把效率、时长、错误和未闭环调用单独放一屏，颜色更聚焦，读起来不会和增长指标混在一起。</p>
         </div>
       </div>
       <section class="panel">

@@ -139,6 +139,12 @@ SEARCH_SCHEMA: dict[str, Any] = {
     "properties": {
         "query": {"type": "string"},
         "limit": {"type": "integer", "default": DEFAULT_SEARCH_LIMIT, "minimum": 1, "maximum": MAX_SEARCH_LIMIT},
+        "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": MAX_SEARCH_LIMIT,
+            "description": "兼容旧 MCP 客户端的 limit 别名；同时传入时以 limit 为准。",
+        },
         "site": {"type": "string"},
         "scope": {"type": "string"},
         "strict_scope": {"type": "boolean", "default": False},

@@ -83,9 +83,16 @@ def normalize_search_request(
 ) -> dict[str, Any]:
     """Normalize service kwargs for ``search_web`` without changing defaults."""
 
+    # A number of MCP hosts historically exposed this knob as ``max_results``.
+    # Treat it as a compatibility alias, while letting canonical ``limit`` win
+    # whenever both are present.
+    limit_value = payload.get("limit")
+    if limit_value is None:
+        limit_value = payload.get("max_results")
+
     return {
         "query": _text(payload.get("query")),
-        "limit": _bounded_int(payload.get("limit"), DEFAULT_SEARCH_LIMIT, 1, MAX_SEARCH_LIMIT),
+        "limit": _bounded_int(limit_value, DEFAULT_SEARCH_LIMIT, 1, MAX_SEARCH_LIMIT),
         "site": _optional_text(payload.get("site")),
         "scope": _optional_text(payload.get("scope")),
         "backend": _text(payload.get("backend"), "auto") or "auto",
