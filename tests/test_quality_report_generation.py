@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from scripts import generate_quality_report as report_gen
@@ -51,6 +53,8 @@ def test_routing_inventory_high_risk_groups_have_positive_and_near_miss():
 
     assert inventory["total_cases"] >= 100
     assert inventory["missing_high_risk_coverage"] == []
+    assert inventory["rule_inventory"]["scope_rules"]["tech_dev"] >= 1
+    assert inventory["rule_inventory"]["scope_rules"]["!sports"] >= 1
     for group in report_gen.HIGH_RISK_ROUTING_GROUPS:
         assert inventory["high_risk_coverage"][group]["coverage_floor"] == "pass"
 
@@ -66,7 +70,31 @@ def test_quality_report_write_outputs_json_and_markdown(tmp_path):
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     assert payload["version"] == report["version"]
     assert payload["routing_regression"]["total_cases"] >= 100
-    assert "待测" not in markdown_path.read_text(encoding="utf-8")
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert "待测" not in markdown
+    assert "规则索引: intents=" in markdown
+
+
+def test_quality_report_direct_script_entrypoint(tmp_path):
+    markdown_path = tmp_path / "benchmark-report.md"
+    json_path = tmp_path / "latest-quality.json"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/generate_quality_report.py",
+            "--output",
+            str(markdown_path),
+            "--json-output",
+            str(json_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(json_path.read_text(encoding="utf-8"))["version"] == report_gen.__version__
 
 
 def test_legacy_inventory_classifies_legacy_file():

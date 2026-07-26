@@ -122,6 +122,12 @@ def test_deploy_script_validates_before_switching_and_can_restore_previous_relea
     script = (ROOT / "scripts" / "deploy_website_ecs.sh").read_text(encoding="utf-8")
 
     assert "ConnectTimeout=12" in script
+    assert "Cloud Assistant fallback" in script
+    assert "deploy_website_cloud_assistant.py" in script
+    assert "GUANLAN_ALIYUN_ACCESS_KEY_SECRET" in script
+    assert '"$ARCHIVE" "$TARGET":/tmp/guanlan-site.tar.gz || return 1' in script
+    assert "server-side deployment succeeded, but this machine could not probe the public IP" in script
+    assert "scripts/post_release_sync.sh ${VERSION}" in script
     assert 'test -s "$release/index.html"' in script
     assert "previous=" in script
     assert "if ! systemctl reload nginx; then" in script

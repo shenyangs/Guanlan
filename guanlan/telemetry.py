@@ -491,7 +491,7 @@ def telemetry_span(
         flush_queue(settings)
 
     def handle_termination(signum, _frame):
-        finish("error")
+        finish("aborted")
         if int(signum) == int(signal.SIGINT):
             raise KeyboardInterrupt
         raise SystemExit(128 + int(signum))
@@ -500,11 +500,15 @@ def telemetry_span(
     try:
         yield
     except SystemExit as exc:
-        if exc.code not in (None, 0):
+        if exc.code not in (None, 0) and not ended:
             status = "error"
         raise
+    except KeyboardInterrupt:
+        status = "aborted"
+        raise
     except BaseException:
-        status = "error"
+        if not ended:
+            status = "error"
         raise
     finally:
         _restore_termination_handlers(previous_handlers)

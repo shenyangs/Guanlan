@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
 """观澜 / Guanlan — Give your AI Agent eyes to see the entire internet."""
 
-__version__ = "0.8.2"
+__version__ = "0.8.3"
 __author__ = "Guanlan Team"

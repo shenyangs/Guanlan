@@ -65,6 +65,10 @@ SLOW_METRICS_CACHE_TTL_SECONDS = max(
     60,
     int(os.environ.get("GUANLAN_SLOW_METRICS_CACHE_TTL_SECONDS", "300")),
 )
+HEALTH_METRICS_CACHE_TTL_SECONDS = max(
+    1,
+    int(os.environ.get("GUANLAN_HEALTH_METRICS_CACHE_TTL_SECONDS", "30")),
+)
 SYNTHETIC_QUERY_EXACT = set(
     [
         "query",
@@ -651,6 +655,23 @@ def record_event(payload, remote_addr):
     conn = db_connect()
     try:
         prune_active(conn, current)
+        # Retain one heartbeat event per invocation. The unique index keeps the
+        # table bounded while giving orphan diagnostics evidence that a client
+        # was alive even if its terminal event never reached the collector.
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO events (
+                ts_ms, received_ms, event, install_id, session_id, invocation_id,
+                surface, command, version, agent_kind, agent_id, platform, python, status,
+                duration_ms, remote_addr
+            ) VALUES (
+                :ts_ms, :received_ms, :event, :install_id, :session_id,
+                :invocation_id, :surface, :command, :version, :agent_kind,
+                :agent_id, :platform, :python, :status, :duration_ms, :remote_addr
+            )
+            """,
+            row,
+        )
         if event == "invocation_heartbeat":
             cursor = conn.execute(
                 "UPDATE active_invocations SET last_seen_ms = ? WHERE invocation_id = ?",
@@ -679,21 +700,6 @@ def record_event(payload, remote_addr):
                 )
             conn.commit()
             return True
-
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO events (
-                ts_ms, received_ms, event, install_id, session_id, invocation_id,
-                surface, command, version, agent_kind, agent_id, platform, python, status,
-                duration_ms, remote_addr
-            ) VALUES (
-                :ts_ms, :received_ms, :event, :install_id, :session_id,
-                :invocation_id, :surface, :command, :version, :agent_kind,
-                :agent_id, :platform, :python, :status, :duration_ms, :remote_addr
-            )
-            """,
-            row,
-        )
         if event == "invocation_start":
             conn.execute(
                 """
@@ -1248,6 +1254,31 @@ def slow_dashboard_metrics_placeholder():
     }
 
 
+def health_metrics_placeholder():
+    """Return a schema-complete value without ever presenting it as live data."""
+    return {
+        "pending": True,
+        "generated_ms": 0,
+        "active_now": 0,
+        "last_event_age_ms": 0,
+        "calls_24h": 0,
+        "calls_7d": 0,
+        "calls_30d": 0,
+        "active_installs_24h": 0,
+        "active_installs_7d": 0,
+        "unique_agents_24h": 0,
+        "unique_agents_7d": 0,
+        "errors_24h": 0,
+        "aborted_24h": 0,
+        "task_duration_24h": {"avg_ms": 0, "p50_ms": 0, "p95_ms": 0, "p99_ms": 0},
+        "session_24h": {"count": 0, "avg_duration_ms": 0, "p95_duration_ms": 0, "avg_calls": 0},
+        "orphan_starts_24h": 0,
+        "settled_calls_24h": 0,
+        "orphan_with_heartbeat_24h": 0,
+        "orphan_without_heartbeat_24h": 0,
+    }
+
+
 def query_slow_dashboard_metrics(current_ms, day_ms, week_ms):
     conn = db_connect()
     try:
@@ -1292,12 +1323,99 @@ def query_slow_dashboard_metrics(current_ms, day_ms, week_ms):
         conn.close()
 
 
+def query_health_dashboard_metrics(current_ms, day_ms, week_ms, month_ms):
+    """Build the health cards from one database snapshot.
+
+    Session, error, and settled-unclosed numbers are interpreted together by
+    humans.  Keeping them in one short-lived snapshot prevents a fresh orphan
+    rate from being rendered next to an older session aggregate.
+    """
+    conn = db_connect()
+    try:
+        prune_active(conn, current_ms)
+        conn.commit()
+        calls_24h = query_one(
+            conn,
+            "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_start'",
+            (day_ms,),
+        )
+        calls_7d = query_one(
+            conn,
+            "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_start'",
+            (week_ms,),
+        )
+        calls_30d = query_one(
+            conn,
+            "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_start'",
+            (month_ms,),
+        )
+        orphan_breakdown = query_orphan_breakdown(conn, day_ms, current_ms)
+        last_event_ms = query_one(conn, "SELECT MAX(received_ms) FROM events") or current_ms
+        return {
+            "pending": False,
+            "generated_ms": current_ms,
+            "active_now": query_one(conn, "SELECT COUNT(*) FROM active_invocations"),
+            "last_event_age_ms": max(0, current_ms - last_event_ms),
+            "calls_24h": calls_24h,
+            "calls_7d": calls_7d,
+            "calls_30d": calls_30d,
+            "active_installs_24h": query_one(
+                conn,
+                "SELECT COUNT(DISTINCT install_id) FROM events WHERE received_ms >= ?",
+                (day_ms,),
+            ),
+            "active_installs_7d": query_one(
+                conn,
+                "SELECT COUNT(DISTINCT install_id) FROM events WHERE received_ms >= ?",
+                (week_ms,),
+            ),
+            "unique_agents_24h": query_one(
+                conn,
+                "SELECT COUNT(DISTINCT agent_id) FROM events WHERE received_ms >= ?",
+                (day_ms,),
+            ),
+            "unique_agents_7d": query_one(
+                conn,
+                "SELECT COUNT(DISTINCT agent_id) FROM events WHERE received_ms >= ?",
+                (week_ms,),
+            ),
+            "errors_24h": query_one(
+                conn,
+                "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_end' AND status = 'error'",
+                (day_ms,),
+            ),
+            "aborted_24h": query_one(
+                conn,
+                "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_end' AND status = 'aborted'",
+                (day_ms,),
+            ),
+            "task_duration_24h": query_duration_stats(conn, day_ms),
+            "session_24h": query_session_stats(conn, day_ms),
+            "orphan_starts_24h": query_orphan_starts(conn, day_ms, current_ms),
+            "settled_calls_24h": query_settled_starts(conn, day_ms, current_ms),
+            "orphan_with_heartbeat_24h": orphan_breakdown["with_heartbeat"],
+            "orphan_without_heartbeat_24h": orphan_breakdown["without_heartbeat"],
+        }
+    finally:
+        conn.close()
+
+
 def query_slow_dashboard_metrics_cached(current_ms, day_ms, week_ms):
     return get_async_cached_value(
         "dashboard_slow_metrics",
         SLOW_METRICS_CACHE_TTL_SECONDS,
         lambda: query_slow_dashboard_metrics(current_ms, day_ms, week_ms),
         slow_dashboard_metrics_placeholder(),
+        wait_for_initial=True,
+    )
+
+
+def query_health_dashboard_metrics_cached(current_ms, day_ms, week_ms, month_ms):
+    return get_async_cached_value(
+        "dashboard_health_metrics",
+        HEALTH_METRICS_CACHE_TTL_SECONDS,
+        lambda: query_health_dashboard_metrics(current_ms, day_ms, week_ms, month_ms),
+        health_metrics_placeholder(),
         wait_for_initial=True,
     )
 
@@ -1359,43 +1477,18 @@ def summary():
     week = current - 7 * 24 * 3600 * 1000
     month = current - 30 * 24 * 3600 * 1000
     slow_metrics = query_slow_dashboard_metrics_cached(current, day, week)
+    health_metrics = query_health_dashboard_metrics_cached(current, day, week, month)
     conn = db_connect()
     try:
-        prune_active(conn, current)
-        conn.commit()
-        calls_24h = query_one(
-            conn,
-            "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_start'",
-            (day,),
-        )
-        calls_7d = query_one(
-            conn,
-            "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_start'",
-            (week,),
-        )
-        calls_30d = query_one(
-            conn,
-            "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_start'",
-            (month,),
-        )
-        unique_agents_24h = query_one(
-            conn,
-            "SELECT COUNT(DISTINCT agent_id) FROM events WHERE received_ms >= ?",
-            (day,),
-        )
-        active_installs_24h = query_one(
-            conn,
-            "SELECT COUNT(DISTINCT install_id) FROM events WHERE received_ms >= ?",
-            (day,),
-        )
-        errors_24h = query_one(
-            conn,
-            "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_end' AND status = 'error'",
-            (day,),
-        )
-        orphan_starts_24h = query_orphan_starts(conn, day, current)
-        settled_calls_24h = query_settled_starts(conn, day, current)
-        orphan_breakdown_24h = query_orphan_breakdown(conn, day, current)
+        calls_24h = health_metrics["calls_24h"]
+        calls_7d = health_metrics["calls_7d"]
+        calls_30d = health_metrics["calls_30d"]
+        unique_agents_24h = health_metrics["unique_agents_24h"]
+        active_installs_24h = health_metrics["active_installs_24h"]
+        errors_24h = health_metrics["errors_24h"]
+        aborted_24h = health_metrics["aborted_24h"]
+        orphan_starts_24h = health_metrics["orphan_starts_24h"]
+        settled_calls_24h = health_metrics["settled_calls_24h"]
         feedback_24h_total = query_one(
             conn,
             "SELECT COUNT(*) FROM feedback WHERE received_ms >= ?",
@@ -1419,39 +1512,31 @@ def summary():
         )
         data = {
             "generated_ms": current,
+            "health_generated_ms": health_metrics["generated_ms"],
+            "health_metrics_pending": bool(health_metrics.get("pending")),
             "slow_metrics_pending": bool(slow_metrics.get("pending")),
-            "last_event_age_ms": max(
-                0,
-                current - (query_one(conn, "SELECT MAX(received_ms) FROM events") or current),
-            ),
-            "active_now": query_one(conn, "SELECT COUNT(*) FROM active_invocations"),
+            "last_event_age_ms": health_metrics["last_event_age_ms"],
+            "active_now": health_metrics["active_now"],
             "all_time_unique_installs": slow_metrics["all_time_unique_installs"],
             "all_time_unique_agents": slow_metrics["all_time_unique_agents"],
             "calls_24h": calls_24h,
             "calls_7d": calls_7d,
             "calls_30d": calls_30d,
             "active_installs_24h": active_installs_24h,
-            "active_installs_7d": query_one(
-                conn,
-                "SELECT COUNT(DISTINCT install_id) FROM events WHERE received_ms >= ?",
-                (week,),
-            ),
+            "active_installs_7d": health_metrics["active_installs_7d"],
             "unique_agents_24h": unique_agents_24h,
-            "unique_agents_7d": query_one(
-                conn,
-                "SELECT COUNT(DISTINCT agent_id) FROM events WHERE received_ms >= ?",
-                (week,),
-            ),
+            "unique_agents_7d": health_metrics["unique_agents_7d"],
             "new_installs_24h": slow_metrics["new_installs_24h"],
             "new_installs_7d": slow_metrics["new_installs_7d"],
             "returning_installs_24h": slow_metrics["returning_installs_24h"],
             "error_24h": errors_24h,
+            "aborted_24h": aborted_24h,
             "error_rate_24h": fmt_rate(errors_24h, calls_24h),
             "orphan_starts_24h": orphan_starts_24h,
             "settled_calls_24h": settled_calls_24h,
             "orphan_rate_24h": fmt_rate(orphan_starts_24h, settled_calls_24h),
-            "orphan_with_heartbeat_24h": orphan_breakdown_24h["with_heartbeat"],
-            "orphan_without_heartbeat_24h": orphan_breakdown_24h["without_heartbeat"],
+            "orphan_with_heartbeat_24h": health_metrics["orphan_with_heartbeat_24h"],
+            "orphan_without_heartbeat_24h": health_metrics["orphan_without_heartbeat_24h"],
             "feedback_24h": feedback_24h,
             "feedback_7d": feedback_7d,
             "feedback_24h_total": feedback_24h_total,
@@ -1498,9 +1583,9 @@ def summary():
             "calls_per_device_24h": round(float(calls_24h) / active_installs_24h, 2)
             if active_installs_24h
             else 0,
-            "task_duration_24h": query_duration_stats(conn, day),
+            "task_duration_24h": health_metrics["task_duration_24h"],
             "task_duration_7d": slow_metrics["task_duration_7d"],
-            "session_24h": slow_metrics["session_24h"],
+            "session_24h": health_metrics["session_24h"],
             "session_7d": slow_metrics["session_7d"],
             "surface": query_groups(conn, "surface", week),
             "commands": query_groups(conn, "command", week, 12),
@@ -2679,10 +2764,16 @@ def render_dashboard():
     task_24h = data["task_duration_24h"]
     session_24h = data["session_24h"]
     generated_at = format_time(data["generated_ms"])
+    health_generated_at = format_time(data["health_generated_ms"] or data["generated_ms"])
     slow_metrics_note = (
         "<p class='panel-note'>部分历史/诊断指标正在后台刷新，反馈明细和实时调用已经是最新数据。</p>"
         if data.get("slow_metrics_pending")
         else ""
+    )
+    health_snapshot_note = (
+        "<p class='panel-note'>健康指标正在生成完整快照；暂不把占位值当作当前异常率。</p>"
+        if data.get("health_metrics_pending")
+        else "<p class='panel-note'>本组指标同一快照生成于：%s。</p>" % html.escape(health_generated_at)
     )
 
     core_cards = [
@@ -2807,6 +2898,7 @@ def render_dashboard():
         "质量与留存 / Quality & Retention",
         [
             ("24h 错误 / 24h Errors", data["error_24h"]),
+            ("24h 中止 / 24h Aborted", data["aborted_24h"]),
             ("24h 错误率 / 24h Error Rate", data["error_rate_24h"]),
             ("24h 已结算调用 / 24h Settled Calls", data["settled_calls_24h"]),
             ("24h 未闭环调用 / 24h Unclosed Starts", data["orphan_starts_24h"]),
@@ -3012,6 +3104,7 @@ def render_dashboard():
           <p class="eyebrow">Performance</p>
           <h2>健康度与深度 / Health & Depth</h2>
           <p>把效率、时长、错误和未闭环调用单独放一屏，颜色更聚焦，读起来不会和增长指标混在一起。</p>
+          {health_snapshot_note}
         </div>
       </div>
       <section class="panel">
@@ -3079,6 +3172,7 @@ def render_dashboard():
         countdown_seconds=countdown_seconds,
         generated_at=generated_at,
         slow_metrics_note=slow_metrics_note,
+        health_snapshot_note=health_snapshot_note,
         operational_cards=operational_card_html,
         growth_cards=growth_card_html,
         performance_cards=performance_card_html,

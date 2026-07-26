@@ -166,7 +166,7 @@ def test_telemetry_emit_retries_before_queueing(tmp_path, monkeypatch):
     assert not queue_path.exists()
 
 
-def test_telemetry_span_emits_end_on_termination_signal(tmp_path, monkeypatch):
+def test_telemetry_span_marks_termination_signal_as_aborted(tmp_path, monkeypatch):
     monkeypatch.setenv("GUANLAN_TELEMETRY_ENDPOINT", "https://metrics.example/v1/events")
     monkeypatch.setenv("GUANLAN_TELEMETRY", "1")
     config = Config(config_path=tmp_path / "config.yaml")
@@ -207,8 +207,36 @@ def test_telemetry_span_emits_end_on_termination_signal(tmp_path, monkeypatch):
     assert len(calls) == 2
     assert '"event":"invocation_start"' in calls[0]
     assert '"event":"invocation_end"' in calls[1]
-    assert '"status":"error"' in calls[1]
+    assert '"status":"aborted"' in calls[1]
     assert restored == [{int(signal.SIGTERM): "previous"}]
+
+
+def test_telemetry_span_marks_keyboard_interrupt_as_aborted(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_TELEMETRY_ENDPOINT", "https://metrics.example/v1/events")
+    monkeypatch.setenv("GUANLAN_TELEMETRY", "1")
+    config = Config(config_path=tmp_path / "config.yaml")
+    calls = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, *_args):
+            return b""
+
+    def fake_urlopen(req, timeout=0):
+        calls.append(req.data.decode("utf-8"))
+        return FakeResponse()
+
+    with patch("guanlan.telemetry.request.urlopen", fake_urlopen), pytest.raises(KeyboardInterrupt):
+        with telemetry_span("search", surface="cli", config=config):
+            raise KeyboardInterrupt
+
+    assert '"event":"invocation_end"' in calls[-1]
+    assert '"status":"aborted"' in calls[-1]
 
 
 def test_telemetry_config_off_wins_over_endpoint(tmp_path, monkeypatch):

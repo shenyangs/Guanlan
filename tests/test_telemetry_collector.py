@@ -32,6 +32,7 @@ def _insert_event(
     agent_id: str = "agent-a",
     session_id: str = "session-a",
     duration_ms: int | None = None,
+    status: str = "",
 ):
     conn.execute(
         """
@@ -55,7 +56,7 @@ def _insert_event(
             agent_id,
             "darwin",
             "3.12",
-            "",
+            status,
             duration_ms,
             "127.0.0.1",
         ),
@@ -182,6 +183,55 @@ def test_orphan_breakdown_distinguishes_heartbeat_seen(tmp_path, monkeypatch):
     assert rows[0]["without_heartbeat"] == 1
 
 
+def test_heartbeat_is_retained_once_for_orphan_diagnosis(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
+    collector = _load_collector(monkeypatch)
+    collector.init_db()
+
+    payload = {"install_id": "install", "invocation_id": "call", "event": "invocation_start"}
+    assert collector.record_event(payload, "203.0.113.9")
+    heartbeat = dict(payload, event="invocation_heartbeat")
+    assert collector.record_event(heartbeat, "203.0.113.9")
+    assert collector.record_event(heartbeat, "203.0.113.9")
+
+    conn = collector.db_connect()
+    try:
+        heartbeat_count = conn.execute(
+            "SELECT COUNT(*) FROM events WHERE invocation_id = ? AND event = 'invocation_heartbeat'", ("call",)
+        ).fetchone()[0]
+        active_count = conn.execute("SELECT COUNT(*) FROM active_invocations WHERE invocation_id = ?", ("call",)).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert heartbeat_count == 1
+    assert active_count == 1
+
+
+def test_health_error_rate_excludes_explicitly_aborted_calls(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
+    collector = _load_collector(monkeypatch)
+    collector.init_db()
+    current_ms = 4_000_000
+    conn = collector.db_connect()
+    try:
+        for invocation_id, status in (("error", "error"), ("aborted", "aborted"), ("ok", "ok")):
+            _insert_event(conn, received_ms=current_ms - 10_000, event="invocation_start", invocation_id=invocation_id)
+            _insert_event(
+                conn,
+                received_ms=current_ms - 9_000,
+                event="invocation_end",
+                invocation_id=invocation_id,
+                status=status,
+            )
+        conn.commit()
+        metrics = collector.query_health_dashboard_metrics(current_ms, 0, 0, 0)
+    finally:
+        conn.close()
+
+    assert metrics["errors_24h"] == 1
+    assert metrics["aborted_24h"] == 1
+
+
 def test_orphan_rate_waits_for_terminal_event_settlement_window(tmp_path, monkeypatch):
     monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
     monkeypatch.setenv("GUANLAN_ORPHAN_SETTLEMENT_GRACE_SECONDS", "600")
@@ -229,3 +279,42 @@ def test_dashboard_slow_metrics_wait_for_a_complete_initial_snapshot(tmp_path, m
 
     assert metrics["pending"] is False
     assert metrics["session_24h"]["count"] == 0
+
+
+def test_health_cards_use_one_cached_snapshot_instead_of_mixing_fresh_orphans(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
+    collector = _load_collector(monkeypatch)
+    collector.init_db()
+    current_ms = 10_000_000
+    monkeypatch.setattr(collector, "now_ms", lambda: current_ms)
+    first_start = current_ms - collector.ORPHAN_SETTLEMENT_GRACE_SECONDS * 1000 - 30_000
+
+    conn = collector.db_connect()
+    try:
+        _insert_event(conn, received_ms=first_start, event="invocation_start", invocation_id="complete")
+        _insert_event(conn, received_ms=first_start + 5_000, event="invocation_end", invocation_id="complete")
+        conn.commit()
+    finally:
+        conn.close()
+
+    first = collector.summary()
+    assert first["calls_24h"] == 1
+    assert first["session_24h"]["count"] == 1
+    assert first["orphan_starts_24h"] == 0
+
+    conn = collector.db_connect()
+    try:
+        _insert_event(conn, received_ms=first_start, event="invocation_start", invocation_id="new-unclosed")
+        conn.commit()
+    finally:
+        conn.close()
+
+    second = collector.summary()
+
+    # The second response keeps the first complete health snapshot. It must
+    # never pair a fresh orphan count with an older session aggregate.
+    assert second["health_generated_ms"] == first["health_generated_ms"]
+    assert second["calls_24h"] == first["calls_24h"]
+    assert second["session_24h"] == first["session_24h"]
+    assert second["orphan_starts_24h"] == first["orphan_starts_24h"]
+    assert "本组指标同一快照生成于" in collector.render_dashboard()

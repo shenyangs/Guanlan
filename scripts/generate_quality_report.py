@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,7 +19,11 @@ from guanlan.live_smoke_history import (
     build_live_smoke_trend,
     read_live_smoke_history,
 )
-from scripts.reliability_guard import load_baseline
+
+try:
+    from scripts.reliability_guard import load_baseline
+except ModuleNotFoundError:  # Direct `python scripts/generate_quality_report.py` entrypoint.
+    from reliability_guard import load_baseline
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -238,6 +243,13 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.extend(
         [
             f"- 覆盖缺口: {', '.join(routing['missing_high_risk_coverage']) or '无'}",
+            "- 规则索引: intents=%d, scopes=%d, sites=%d, demotions=%d"
+            % (
+                len(routing["rule_inventory"]["intent_rules"]),
+                len(routing["rule_inventory"]["scope_rules"]),
+                len(routing["rule_inventory"]["site_rules"]),
+                len(routing["rule_inventory"]["demotion_rules"]),
+            ),
             "",
             "## 4. Quality Gate Signals",
             "",
@@ -350,6 +362,16 @@ def _routing_rule_inventory(cases: list[dict[str, Any]]) -> dict[str, Any]:
         for key in ("expected_scopes", "expected_scopes_any"):
             scope_rules.update(_as_list(case.get(key)))
         scope_rules.update(f"!{item}" for item in _as_list(case.get("forbidden_scopes")))
+        # Existing regression fixtures encode most scope expectations inside
+        # executable command fragments. Treat those as the source of truth as
+        # well, rather than publishing an empty scope inventory just because
+        # the optional structured fixture fields are absent.
+        for key in ("expected_primary_contains", "expected_command_contains"):
+            scope_rules.update(_command_option_values(_as_list(case.get(key)), "--scope"))
+        scope_rules.update(
+            f"!{item}"
+            for item in _command_option_values(_as_list(case.get("forbidden_command_contains")), "--scope")
+        )
         site_rules.update(_as_list(case.get("expected_sites_contains")))
         demotion_rules.update(_as_list(case.get("forbidden_command_contains")))
     return {
@@ -358,6 +380,16 @@ def _routing_rule_inventory(cases: list[dict[str, Any]]) -> dict[str, Any]:
         "site_rules": dict(sorted(site_rules.items())),
         "demotion_rules": dict(sorted(demotion_rules.items())),
     }
+
+
+def _command_option_values(commands: list[str], option: str) -> list[str]:
+    """Extract a bounded option value from executable regression contracts."""
+
+    values = []
+    pattern = re.compile(rf"{re.escape(option)}\s+([A-Za-z0-9_-]+)")
+    for command in commands:
+        values.extend(match.group(1) for match in pattern.finditer(command))
+    return values
 
 
 def _legacy_bucket(name: str) -> str:

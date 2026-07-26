@@ -1,7 +1,7 @@
 # Guanlan Public Quality Report / 观澜公开质量报告
 
-- 版本: `v0.8.2`
-- 生成时间: `2026-07-26T03:22:55Z`
+- 版本: `v0.8.3`
+- 生成时间: `2026-07-26T05:31:07Z`
 - 口径: 确定性基准、评测套件、路由回归和质量门禁默认不触网；公网漂移只从 live-smoke 历史读取。
 
 ## 1. Deterministic Benchmark
@@ -41,6 +41,7 @@
   - `sports_local_life`: pass {"near_miss": 1, "negative": 1, "positive": 9}
   - `tech_wps`: pass {"near_miss": 6, "negative": 1, "positive": 27}
 - 覆盖缺口: 无
+- 规则索引: intents=53, scopes=36, sites=78, demotions=29
 
 ## 4. Quality Gate Signals
 

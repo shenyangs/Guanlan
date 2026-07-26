@@ -104,7 +104,7 @@
     },
     "warned_case_ids": []
   },
-  "generated_at": "2026-07-26T03:22:55Z",
+  "generated_at": "2026-07-26T05:31:07Z",
   "legacy_inventory": {
     "buckets": {
       "compat": [
@@ -809,7 +809,44 @@
         "weather_disaster": 1,
         "wps_office": 3
       },
-      "scope_rules": {},
+      "scope_rules": {
+        "!career": 1,
+        "!cybersecurity": 1,
+        "!ecommerce": 4,
+        "!entertainment": 1,
+        "!finance_research": 1,
+        "!gov": 3,
+        "!industry_analysis": 1,
+        "!local_official": 1,
+        "!sports": 2,
+        "!tech_dev": 4,
+        "!university": 1,
+        "!wps_office": 1,
+        "career": 2,
+        "company_primary": 27,
+        "cybersecurity": 3,
+        "ecommerce": 5,
+        "entertainment": 6,
+        "finance_disclosure": 1,
+        "finance_macro": 8,
+        "finance_quote": 5,
+        "finance_research": 2,
+        "global_entertainment": 1,
+        "global_official": 6,
+        "gov": 16,
+        "industry_analysis": 10,
+        "jp_kr_entertainment": 7,
+        "local_official": 3,
+        "podcast": 2,
+        "science": 1,
+        "social_web": 18,
+        "sports": 1,
+        "tech_dev": 13,
+        "test_prep": 2,
+        "university": 3,
+        "weather_disaster": 1,
+        "wps_office": 4
+      },
       "site_rules": {
         "12306.cn": 1,
         "aasm.org": 1,
@@ -894,5 +931,5 @@
     "total_cases": 159
   },
   "schema_version": "guanlan_quality_report_v1",
-  "version": "0.8.2"
+  "version": "0.8.3"
 }
