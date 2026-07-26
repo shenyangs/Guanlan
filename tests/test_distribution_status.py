@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 
 from scripts import distribution_status as ds
 
@@ -41,6 +42,31 @@ def test_pip_index_certificate_failure_is_local_tls_error():
 
     assert result["status"] == "local_tls_error"
     assert result["expected"] == "0.7.7"
+
+
+def test_fetch_url_uses_verified_system_curl_when_python_ca_is_stale(monkeypatch):
+    def raise_tls(*_args, **_kwargs):
+        raise urllib.error.URLError("[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed")
+
+    monkeypatch.setattr(ds.urllib.request, "urlopen", raise_tls)
+    monkeypatch.setattr(
+        ds,
+        "_fetch_url_with_curl",
+        lambda _url, *, timeout: _resp('{"info":{"version":"0.7.7"}}'),
+    )
+
+    result = ds.fetch_url("https://pypi.org/pypi/guanlan/json")
+
+    assert result.ok is True
+    assert '"version"' in result.body
+
+
+def test_json_simple_and_tap_classify_local_tls_without_calling_it_stale():
+    response = _resp("", ok=False, error="CERTIFICATE_VERIFY_FAILED")
+
+    assert ds.check_pypi_json("0.7.7", fetch=lambda _url: response)["status"] == "local_tls_error"
+    assert ds.check_pypi_simple("0.7.7", fetch=lambda _url: response)["status"] == "local_tls_error"
+    assert ds.check_homebrew_tap("0.7.7", fetch=lambda _url: response)["status"] == "local_tls_error"
 
 
 def test_homebrew_old_formula_is_stale():

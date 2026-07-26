@@ -67,7 +67,55 @@ def fetch_url(url: str, *, timeout: int = 20) -> HttpResponse:
         body = exc.read().decode("utf-8", errors="replace")
         return HttpResponse(False, int(exc.code), body, str(exc))
     except Exception as exc:
-        return HttpResponse(False, 0, "", str(exc))
+        error = str(exc)
+        if _is_local_tls_error(error):
+            # Python's bundled CA set can drift from the OS trust store. Keep
+            # verification on and ask the system curl for an independent view.
+            fallback = _fetch_url_with_curl(url, timeout=timeout)
+            if fallback.ok:
+                return fallback
+            error = f"{error}; system curl fallback: {fallback.error}"
+        return HttpResponse(False, 0, "", error)
+
+
+def _fetch_url_with_curl(url: str, *, timeout: int) -> HttpResponse:
+    """Fetch through system curl without weakening TLS verification."""
+    marker = "__GUANLAN_HTTP_STATUS__:"
+    result = run_command(
+        [
+            "curl",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--location",
+            "--max-time",
+            str(timeout),
+            "--header",
+            "Cache-Control: no-cache",
+            "--header",
+            "User-Agent: guanlan-distribution-status",
+            "--write-out",
+            f"\\n{marker}%{{http_code}}",
+            url,
+        ],
+        timeout=timeout + 5,
+    )
+    output = str(result.get("stdout") or "")
+    body, separator, tail = output.rpartition(marker)
+    status_code = int(tail.strip()) if separator and tail.strip().isdigit() else 0
+    if result.get("returncode") == 0 and 200 <= status_code < 400:
+        return HttpResponse(True, status_code, body)
+    return HttpResponse(
+        False,
+        status_code,
+        body,
+        _trim(str(result.get("stderr") or output or "curl request failed")),
+    )
+
+
+def _is_local_tls_error(error: str) -> bool:
+    lowered = (error or "").lower()
+    return "certificate_verify_failed" in lowered or "certificate verify failed" in lowered
 
 
 def _status(name: str, status: str, **extra: Any) -> dict[str, Any]:
@@ -102,7 +150,8 @@ def check_pypi_json(
     url = f"https://pypi.org/pypi/{package}/json"
     response = fetch(url)
     if not response.ok:
-        return _status("pypi_json", "unavailable", expected=version, http_status=response.status_code, error=response.error)
+        status = "local_tls_error" if _is_local_tls_error(response.error) else "unavailable"
+        return _status("pypi_json", status, expected=version, http_status=response.status_code, error=response.error)
     try:
         payload = json.loads(response.body)
     except json.JSONDecodeError:
@@ -118,7 +167,8 @@ def check_pypi_simple(
 ) -> dict[str, Any]:
     response = fetch(f"https://pypi.org/simple/{package}/")
     if not response.ok:
-        return _status("pypi_simple", "unavailable", expected=version, http_status=response.status_code, error=response.error)
+        status = "local_tls_error" if _is_local_tls_error(response.error) else "unavailable"
+        return _status("pypi_simple", status, expected=version, http_status=response.status_code, error=response.error)
     hit = f"{package}-{version}" in response.body
     return _status("pypi_simple", "ok" if hit else "stale", expected=version)
 
@@ -152,7 +202,8 @@ def check_homebrew_tap(
     url = f"https://raw.githubusercontent.com/{tap_repo}/main/{formula_path}"
     response = fetch(url)
     if not response.ok:
-        return _status("homebrew_tap", "unavailable", expected=version, http_status=response.status_code, error=response.error)
+        status = "local_tls_error" if _is_local_tls_error(response.error) else "unavailable"
+        return _status("homebrew_tap", status, expected=version, http_status=response.status_code, error=response.error)
     body = response.body
     hit = f"guanlan-{version}.tar.gz" in body or f'version "{version}"' in body
     actual = _version_from_text(body)
