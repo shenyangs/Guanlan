@@ -112,6 +112,7 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert map_tool["inputSchema"]["properties"]["read_top"]["maximum"] == 5
     assert "phase" in agent_tool["inputSchema"]["properties"]
     assert "observation" in agent_tool["inputSchema"]["properties"]
+    assert agent_tool["inputSchema"]["properties"]["read_top"]["maximum"] == 5
     assert "next_decision" in agent_tool["description"]
     assert "mode" in agent_tool["inputSchema"]["properties"]
     assert "format" in read_tool["inputSchema"]["properties"]
@@ -124,6 +125,9 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     timeline_tool = next(tool for tool in tools if tool["name"] == "guanlan_timeline")
     dossier_tool = next(tool for tool in tools if tool["name"] == "guanlan_dossier")
     assert compare_tool["inputSchema"]["properties"]["subjects"]["minItems"] == 2
+    assert compare_tool["inputSchema"]["properties"]["subjects"]["maxItems"] == 4
+    assert research_tool["inputSchema"]["properties"]["read_top"]["maximum"] == 5
+    assert "normal Agent runs" in research_tool["inputSchema"]["properties"]["read_top"]["description"]
     assert "max_events" in timeline_tool["inputSchema"]["properties"]
     assert "source mix" in dossier_tool["description"]
     archive_search_tool = next(tool for tool in tools if tool["name"] == "guanlan_archive_search")
@@ -360,6 +364,24 @@ def test_mcp_research_keeps_explicit_guarded_options(monkeypatch):
     assert calls[0]["kwargs"]["max_search_jobs"] == 3
     assert calls[0]["kwargs"]["select_top"] == 7
     assert calls[0]["kwargs"]["cache_ttl"] == 600
+
+
+def test_mcp_research_accepts_read_top_three_without_schema_workaround(monkeypatch):
+    calls = []
+
+    def fake_build_research_packet(*args, **kwargs):
+        calls.append({"args": args, "kwargs": kwargs})
+        return {"query": args[0], "results": [], "readings": []}
+
+    monkeypatch.setattr("guanlan.web.research.build_research_packet", fake_build_research_packet)
+
+    payload = mcp_server._run_tool(
+        "guanlan_research",
+        {"query": "蔚来 小鹏 理想 经营对比", "read_top": 3, "format": "json"},
+    )
+
+    assert payload["query"] == "蔚来 小鹏 理想 经营对比"
+    assert calls[0]["kwargs"]["read_top"] == 3
 
 
 def test_mcp_investigate_uses_investigation_module(monkeypatch):

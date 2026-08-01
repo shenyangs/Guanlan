@@ -158,6 +158,20 @@ def test_route_plan_detects_security_weather_sports_science_gaps():
     assert "science" in science.preferred_scopes
 
 
+def test_route_plan_keeps_auto_strategy_out_of_weather_and_entertainment():
+    plan = build_route_plan(
+        "蔚来 小鹏 理想 未来三年 销量 现金储备 产品规划 盈利路径 2025-2028",
+        profile="china",
+    )
+    intents = plan.primary_intents + plan.secondary_intents
+
+    assert "industry" in intents
+    assert "weather_disaster" not in intents
+    assert "entertainment" not in intents
+    assert "business" in plan.preferred_scopes
+    assert any("--preset industry" in command for command in plan.recommended_commands)
+
+
 def test_route_plan_handles_long_tail_agent_auto_regressions():
     legal = build_route_plan("劳动仲裁 加班费 证据 判例 最新", profile="china")
     fraud = build_route_plan("收到ETC短信 链接 骗局 怎么办", profile="china")

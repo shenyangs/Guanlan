@@ -430,7 +430,10 @@ def _tool_definitions() -> list[dict]:
                         "default": DEFAULT_MCP_RESEARCH_READ_TOP,
                         "minimum": 0,
                         "maximum": MAX_MCP_RESEARCH_READ_TOP,
-                        "description": "MCP guarded default is 0; use guanlan_read for selected URLs instead of making research read many pages.",
+                        "description": (
+                            "Accepts 0-5. Use 0-2 for normal Agent runs and guanlan_read for selected URLs; "
+                            "3-5 requires a 180-300 second outer timeout."
+                        ),
                     },
                     "max_read_chars": {"type": "integer", "minimum": 1},
                     "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"]},
@@ -481,14 +484,25 @@ def _tool_definitions() -> list[dict]:
             "name": "guanlan_compare",
             "description": (
                 "Compare two or more subjects through separate Guanlan evidence packets. Use this when the "
-                "user asks for 对比, compare, 竞品, alternatives, or pros/cons with source boundaries."
+                "user asks for 对比, compare, 竞品, alternatives, or pros/cons with source boundaries. "
+                "Pass entity names only in subjects and shared dimensions in focus. This tool performs its "
+                "own per-subject evidence searches, so do not pre-run the same broad searches unless repairing gaps."
             ),
             "inputSchema": {
                 "type": "object",
                 "required": ["subjects"],
                 "properties": {
-                    "subjects": {"type": "array", "items": {"type": "string"}, "minItems": 2},
-                    "focus": {"type": "string"},
+                    "subjects": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 2,
+                        "maxItems": 4,
+                        "description": "Entity names only, for example ['蔚来', '小鹏', '理想']; put dimensions in focus.",
+                    },
+                    "focus": {
+                        "type": "string",
+                        "description": "Shared comparison dimensions and time window; do not repeat them in subjects.",
+                    },
                     "preset": {"type": "string", "default": "general"},
                     "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
                     "limit": {

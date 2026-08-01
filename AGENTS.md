@@ -56,6 +56,9 @@ Agent operating rule: when using Guanlan for search, research, hotnews, pulse, o
 prefer the largest sensible result pool instead of a tiny sample. Use the default 80 results for
 normal work, raise to 80-100 for broad research when latency is acceptable, and only lower the
 limit when the user explicitly asks for a small sample or a quick smoke check.
+For host-Agent call counts, concurrency, retry limits, compare subject shape, and stop conditions,
+follow `docs/agent-execution-budget.md`; `guanlan agent --json` also exposes the key values under
+`execution_contract.numeric_budget`.
 If a user, benchmark, or downstream Agent asks for `--limit` below 30, accept the command but treat
 it as a smoke sample, not as a research-grade evidence pool. Search trace/quality output will include
 `agent_limit_advice.silent_repair_commands`; unless the user explicitly says they only want smoke,

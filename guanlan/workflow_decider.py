@@ -13,7 +13,11 @@ import shlex
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from guanlan.limits import DEFAULT_RESEARCH_LIMIT, DEFAULT_SEARCH_LIMIT, MAX_AGENT_RESEARCH_READ_TOP
+from guanlan.limits import (
+    DEFAULT_RESEARCH_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+    RECOMMENDED_AGENT_RESEARCH_READ_TOP,
+)
 from guanlan.query_semantics import semantic_query_variants
 from guanlan.router import RoutePlan, build_route_plan
 
@@ -345,7 +349,7 @@ def decide_workflow(
         if command == "research":
             path = ["route", "guarded research", "scoped search"]
             entrypoint = "research"
-            read_top_hint = min(max(requested_read_top, 0), MAX_AGENT_RESEARCH_READ_TOP)
+            read_top_hint = min(max(requested_read_top, 0), RECOMMENDED_AGENT_RESEARCH_READ_TOP)
         else:
             path = ["route"]
             if freshness:
@@ -1347,7 +1351,7 @@ def _generated_tech_research_command(query: str, decision: WorkflowDecision, *, 
 
 def _agent_research_read_top(decision: WorkflowDecision) -> int:
     if decision.tier == INVESTIGATE or decision.risk_level == "high":
-        return min(max(decision.recommended_read_top, 1), MAX_AGENT_RESEARCH_READ_TOP)
+        return min(max(decision.recommended_read_top, 1), RECOMMENDED_AGENT_RESEARCH_READ_TOP)
     return 0
 
 

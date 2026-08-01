@@ -70,6 +70,35 @@ def test_compare_report_keeps_public_payload_compact(monkeypatch):
     assert "产品A" in research_workflows.format_compare_markdown(report)
 
 
+def test_compare_report_extracts_repeated_subject_suffix_as_focus(monkeypatch):
+    calls = []
+
+    def fake_build(query, **kwargs):
+        calls.append((query, kwargs))
+        return _packet(query)
+
+    monkeypatch.setattr(research_workflows, "build_research_packet", fake_build)
+    repeated_focus = "未来三年 销量 现金储备 产品规划 盈利路径 2025-2028"
+    report = research_workflows.build_compare_report(
+        [
+            f"蔚来 {repeated_focus}",
+            f"小鹏 {repeated_focus}",
+            f"理想 {repeated_focus}",
+        ],
+        limit=80,
+    )
+
+    assert report["subjects"] == ["蔚来", "小鹏", "理想"]
+    assert report["focus"] == repeated_focus
+    assert report["input_normalization"]["focus_source"] == "shared_subject_suffix"
+    assert [call[0] for call in calls] == [
+        f"蔚来 {repeated_focus}",
+        f"小鹏 {repeated_focus}",
+        f"理想 {repeated_focus}",
+    ]
+    assert report["execution_contract"]["reuses_prior_search_output"] is False
+
+
 def test_timeline_report_extracts_dated_events(monkeypatch):
     monkeypatch.setattr(research_workflows, "build_research_packet", lambda query, **_kwargs: _packet(query))
 

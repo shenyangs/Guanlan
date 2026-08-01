@@ -65,7 +65,8 @@ metadata:
 - 研究模板：高频垂直任务先用 `guanlan recipe list` / `guanlan recipe run <recipe> "query"` 固化流程，例如 `finance-risk`、`university-advisor`、`product-reputation`、`public-opinion-pulse`、`brand-risk-watch`、`competitor-watch`、`pricing-watch`、`review-mining`、`app-review-pulse`、`entertainment-pulse`、`security-advisory`、`tech-radar`、`wps-office-radar`、`trajectory-map`。
 - 关键词引申/选题发散用 `guanlan yinshen "关键词" --limit 80 --angles 5-8`。它先建立关键词证据语境，再生成媒体友好的延展角度和每个角度的深搜路径；不要把它当成无来源脑暴。
 - 不要把 Guanlan 降格成“一次泛搜”。默认工作流是动态分档：结果已可用时走 `search -> read`；普通研究走 `route -> scoped search -> read`；热点题先补 `hotnews`；技术/AI/WPS/AI Office 题补 `feeds`；来源过窄时再补 `dossier/compare/timeline` 或受控 `research`。
-- `research` 是重型证据包工具，不是 Agent 自动挡的第一选择。只有用户明确要深度综合/可复用证据包，或 `search + read` 后仍缺信源角色覆盖时再用；MCP/Agent 场景把 `read_top` 控在 0-2，并优先用单独 `guanlan read` 补代表 URL。
+- `research` 是重型证据包工具，不是 Agent 自动挡的第一选择。只有用户明确要深度综合/可复用证据包，或 `search + read` 后仍缺信源角色覆盖时再用；MCP/Agent 默认把 `read_top` 控在 0-2，并优先用单独 `guanlan read` 补代表 URL。Schema 接受 0-5，3-5 只给用户明确要求多页深查且宿主外层 timeout 为 180-300 秒的任务。
+- 宿主 Agent 的数值边界：正常搜索 `limit=80`，同类搜索最多 2 轮，同一工具失败最多重试 1 次，单任务网络并发推荐 2/上限 3，重型工具并发和单任务数量都为 1，总工具调用推荐 4-7/上限 12。`compare` 只接受 2-4 个对象名，比较维度单独放 `focus`；不要先完整泛搜后再重复跑整套 compare/research。
 - 体育比分/赛程、财经行情/公告披露/宏观数据、天气灾害、CVE、安全公告、科学机构声明、文娱榜单/票房、考试官方信息等高确定性垂直题，优先执行 `route` 推荐的 direct `guanlan read` 命令，再用匹配的 `preset/scope` 扩大证据面；不要只看搜索引擎是否返回。
 - 在完成当前档位要求的 Guanlan 工具前，不要立刻切 `web_search/web_fetch`。`quality_summary=warn` 通常表示证据包还不完整，不等于 Guanlan 搜索失败。
 - `quality_gate.reason=partial_salvage` 表示观澜保留了强官方/垂直信源线索但仍有覆盖缺口；先读代表原文，不要写成失败。`read` 出现 `兜底状态: unusable` 时，不要引用搜索兜底，改用页面诊断、结构化入口、scope 搜索或 WebFetch 定点补证。

@@ -19,7 +19,7 @@ from guanlan.limits import (
     DEFAULT_PULSE_LIMIT,
     DEFAULT_RESEARCH_LIMIT,
     DEFAULT_SEARCH_LIMIT,
-    MAX_AGENT_RESEARCH_READ_TOP,
+    RECOMMENDED_AGENT_RESEARCH_READ_TOP,
 )
 from guanlan.query_semantics import analyze_query_semantics, semantic_query_variants
 from guanlan.source_seeds import direct_source_read_commands
@@ -601,7 +601,6 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "天气",
             "气象",
             "台风",
-            "路径",
             "预警",
             "暴雨",
             "洪水",
@@ -868,7 +867,6 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "dlc",
             "mod",
             "模组",
-            "销量",
             "黑神话",
             "巫师",
             "witcher",
@@ -2307,6 +2305,7 @@ def build_route_plan(
     """Build a soft route plan for a user query."""
     clean_query = " ".join((query or "").split())
     text = clean_query.lower()
+    domains = _detect_domains(text)
     profile = _resolve_query_profile(clean_query, profile)
     site_operator = _extract_site_operator(clean_query)
     if site_operator and not site:
@@ -2341,6 +2340,11 @@ def build_route_plan(
             reasons.append(
                 "query_semantic:" + ",".join(str(item) for item in list(semantic_analysis.get("matched_rules") or [])[:4])
             )
+    if _is_auto_business_query(text, domains) and not any(rule.get("intent") == "industry" for rule in matched_rules):
+        industry_rule = _preset_rule("industry")
+        if industry_rule:
+            matched_rules.insert(0, industry_rule)
+            reasons.append("domain:auto_business")
 
     if _should_demote_broad_legal(text, matched_rules):
         matched_rules = [rule for rule in matched_rules if rule.get("intent") != "legal_judicial"]
@@ -2514,7 +2518,6 @@ def build_route_plan(
 
     primary = _unique([str(rule["intent"]) for rule in matched_rules])[:2] or ["general"]
     secondary = _unique([str(rule["intent"]) for rule in matched_rules])[2:5]
-    domains = _detect_domains(text)
     freshness = _detect_freshness(text)
     high_risk = _contains_any(text, _HIGH_RISK_TERMS)
     finance_intents = {"finance", "finance_quote", "finance_company", "finance_disclosure", "finance_news", "finance_macro", "finance_sentiment", "finance_research"}
@@ -3390,7 +3393,7 @@ def _prioritize_agent_route_commands(commands: list[str]) -> list[str]:
 def _guard_research_command(command: str) -> str:
     if not command.startswith("guanlan research "):
         return command
-    max_top = MAX_AGENT_RESEARCH_READ_TOP
+    max_top = RECOMMENDED_AGENT_RESEARCH_READ_TOP
 
     def replace_read_top(match: re.Match[str]) -> str:
         try:
@@ -4555,12 +4558,51 @@ def _should_demote_marketplace_rules_tech(text: str, rules: list[dict[str, Any]]
 def _should_demote_auto_sales_entertainment(text: str, rules: list[dict[str, Any]]) -> bool:
     """Auto sales/share queries should not be captured by generic entertainment 销量."""
     intents = {str(rule.get("intent") or "") for rule in rules}
-    if not {"industry", "entertainment"} <= intents:
+    if "entertainment" not in intents:
         return False
-    auto_terms = ("问界", "赛力斯", "比亚迪", "新能源车", "新能源汽车", "电动车", "汽车", "智驾")
+    auto_terms = (
+        "问界",
+        "赛力斯",
+        "比亚迪",
+        "蔚来",
+        "小鹏",
+        "理想汽车",
+        "零跑",
+        "特斯拉",
+        "新能源车",
+        "新能源汽车",
+        "电动车",
+        "汽车",
+        "智驾",
+        "nio",
+        "xpeng",
+        "li auto",
+    )
     sales_terms = ("销量", "市场份额", "出海", "海外销量", "增长")
     media_terms = ("游戏", "steam", "电影", "剧集", "动漫", "番剧", "漫画", "票房", "播放量")
     return _contains_any(text, auto_terms) and _contains_any(text, sales_terms) and not _contains_any(text, media_terms)
+
+
+def _is_auto_business_query(text: str, domains: list[str]) -> bool:
+    """Automotive operating/strategy analysis should start from industry evidence."""
+    if "auto" not in domains:
+        return False
+    business_terms = (
+        "销量",
+        "销售",
+        "市场份额",
+        "现金储备",
+        "现金流",
+        "财报",
+        "营收",
+        "利润",
+        "盈利",
+        "产品规划",
+        "车型规划",
+        "未来三年",
+        "战略",
+    )
+    return _contains_any(text, business_terms)
 
 
 def _should_demote_broad_finance_sentiment(text: str, rules: list[dict[str, Any]]) -> bool:

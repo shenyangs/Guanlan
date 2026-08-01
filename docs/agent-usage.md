@@ -2,7 +2,7 @@
 
 本文档写给 AI Agent，不是写给人类用户。你的目标是把观澜当作搜索生产力工具：先找到可信来源，再读取原文，最后把结论和来源一起交付给用户。
 
-开始前先记住两份长期记忆文档：[docs/agent-playbook.md](agent-playbook.md) 和 [AGENTS.md](../AGENTS.md)。前者管工作流和 benchmark 纪律，后者管仓库级强规则。
+开始前先记住三份长期记忆文档：[docs/agent-playbook.md](agent-playbook.md)、[Agent 执行预算与数值规范](agent-execution-budget.md) 和 [AGENTS.md](../AGENTS.md)。它们分别管理工作流、调用数值边界和仓库级强规则。
 
 ## 核心定位
 

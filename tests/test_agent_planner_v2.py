@@ -12,6 +12,12 @@ def test_agent_plan_v2_keeps_basic_search_light():
     assert payload["task_model"]["task_type"] == "general_search"
     assert "research" in payload["capability_selection"]["downranked_capabilities"]
     assert not any(item["command"].startswith("guanlan research") for item in payload["agent_next_steps"])
+    budget = payload["execution_contract"]["numeric_budget"]
+    assert budget["total_tool_calls_recommended"] == [2, 4]
+    assert budget["total_tool_calls_hard_max"] == 12
+    assert budget["search_rounds_max"] == 2
+    assert budget["research_read_top_recommended"] == [0, 2]
+    assert budget["research_read_top_accepted"] == [0, 5]
 
 
 def test_agent_plan_v2_fresh_ai_task_adds_hotnews_and_feeds_without_research():

@@ -1,6 +1,6 @@
 [project]
 name = "guanlan"
-version = "0.8.3"
+version = "0.8.5"
 description = "Guanlan: a China-aware source and platform router for AI agents."
 readme = "README.md"
 license = {text = "MIT"}

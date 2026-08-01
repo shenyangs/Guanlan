@@ -88,6 +88,7 @@ def build_agent_plan_v2(
         payload,
         decision=decision,
         capability_selection=capability_selection,
+        task_model=task_model,
     )
     self_check_contract = _self_check_contract(payload, decision=decision, task_model=task_model)
     boundary = _user_facing_boundary(task_model, decision=decision)
@@ -483,6 +484,7 @@ def _execution_contract(
     *,
     decision: dict[str, Any],
     capability_selection: dict[str, Any],
+    task_model: dict[str, Any],
 ) -> dict[str, Any]:
     timeout_seconds = int(decision.get("timeout_budget_seconds") or 90)
     repairs = [
@@ -501,6 +503,13 @@ def _execution_contract(
     for command in commands:
         if command not in first_steps:
             first_steps.append(command)
+    task_type = str(task_model.get("task_type") or "general_search")
+    if task_type in {"general_search", "site_entry_discovery"}:
+        recommended_calls = [2, 4]
+    elif task_type in {"comparison", "timeline", "dossier", "deep_research"}:
+        recommended_calls = [4, 8]
+    else:
+        recommended_calls = [3, 7]
     return {
         "first_steps": first_steps[:3],
         "continue_when": [
@@ -516,6 +525,19 @@ def _execution_contract(
         "timeout_budget_seconds": timeout_seconds,
         "timeout_budget_ms": timeout_budget_ms(timeout_seconds),
         "minimum_candidate_pool": int(decision.get("recommended_limit") or DEFAULT_SEARCH_LIMIT),
+        "numeric_budget": {
+            "total_tool_calls_recommended": recommended_calls,
+            "total_tool_calls_hard_max": 12,
+            "same_tool_retry_max": 1,
+            "search_rounds_max": 2,
+            "network_concurrency_recommended": 2,
+            "network_concurrency_hard_max": 3,
+            "heavy_tool_concurrency": 1,
+            "heavy_tools_per_task": 1,
+            "research_read_top_recommended": [0, 2],
+            "research_read_top_accepted": [0, 5],
+            "compare_subjects_accepted": [2, 4],
+        },
         "silent_repair_commands": repairs,
         "do_not_run": _execution_do_not_run(capability_selection),
     }

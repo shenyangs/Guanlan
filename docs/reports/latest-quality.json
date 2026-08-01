@@ -104,7 +104,7 @@
     },
     "warned_case_ids": []
   },
-  "generated_at": "2026-07-26T05:31:07Z",
+  "generated_at": "2026-08-01T12:41:28Z",
   "legacy_inventory": {
     "buckets": {
       "compat": [
@@ -543,7 +543,7 @@
   },
   "routing_regression": {
     "case_type_distribution": {
-      "near_miss": 40,
+      "near_miss": 41,
       "negative": 2,
       "positive": 117
     },
@@ -578,7 +578,7 @@
         "positive": 9
       },
       "industry": {
-        "near_miss": 9,
+        "near_miss": 10,
         "positive": 8
       },
       "local_life": {
@@ -637,14 +637,14 @@
     },
     "expected_field_usage": {
       "expected_command_contains": 43,
-      "expected_intents_any": 158,
-      "expected_primary_contains": 145,
+      "expected_intents_any": 159,
+      "expected_primary_contains": 146,
       "expected_sites_contains": 81
     },
     "fixture": "tests/fixtures/routing_regression_cases.jsonl",
     "forbidden_field_usage": {
-      "forbidden_command_contains": 47,
-      "forbidden_intents": 112
+      "forbidden_command_contains": 48,
+      "forbidden_intents": 113
     },
     "high_risk_coverage": {
       "education_university": {
@@ -732,7 +732,7 @@
         "--scope career": 1,
         "--scope cybersecurity": 1,
         "--scope ecommerce": 4,
-        "--scope entertainment": 1,
+        "--scope entertainment": 2,
         "--scope finance_research": 1,
         "--scope gov": 3,
         "--scope industry_analysis": 1,
@@ -740,6 +740,7 @@
         "--scope sports": 2,
         "--scope tech_dev": 4,
         "--scope university": 1,
+        "--scope weather_disaster": 1,
         "--scope wps_office": 1,
         "--site github.com": 1,
         "--site openai.com": 1,
@@ -756,7 +757,7 @@
       },
       "intent_rules": {
         "!company_primary": 2,
-        "!entertainment": 2,
+        "!entertainment": 3,
         "!finance_quote": 1,
         "!general": 94,
         "!industry": 1,
@@ -767,6 +768,7 @@
         "!standards_compliance": 1,
         "!tech_only": 1,
         "!university_admissions": 1,
+        "!weather_disaster": 1,
         "!wps_office": 2,
         "career": 2,
         "company_primary": 33,
@@ -786,7 +788,7 @@
         "global_industry": 5,
         "global_policy": 7,
         "hot_trend": 1,
-        "industry": 18,
+        "industry": 19,
         "jp_kr_entertainment": 7,
         "legal_judicial": 5,
         "local": 9,
@@ -813,7 +815,7 @@
         "!career": 1,
         "!cybersecurity": 1,
         "!ecommerce": 4,
-        "!entertainment": 1,
+        "!entertainment": 2,
         "!finance_research": 1,
         "!gov": 3,
         "!industry_analysis": 1,
@@ -821,6 +823,7 @@
         "!sports": 2,
         "!tech_dev": 4,
         "!university": 1,
+        "!weather_disaster": 1,
         "!wps_office": 1,
         "career": 2,
         "company_primary": 27,
@@ -834,7 +837,7 @@
         "global_entertainment": 1,
         "global_official": 6,
         "gov": 16,
-        "industry_analysis": 10,
+        "industry_analysis": 11,
         "jp_kr_entertainment": 7,
         "local_official": 3,
         "podcast": 2,
@@ -928,8 +931,8 @@
         "zhipuai.cn": 1
       }
     },
-    "total_cases": 159
+    "total_cases": 160
   },
   "schema_version": "guanlan_quality_report_v1",
-  "version": "0.8.3"
+  "version": "0.8.5"
 }

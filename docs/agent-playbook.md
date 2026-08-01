@@ -13,6 +13,8 @@
 
 在开始做新自动化、评测、benchmark、MCP 编排前，至少重新读一次本文件和 `AGENTS.md`。
 
+需要给宿主 Agent 硬编码调用轮次、并发、结果数、超时和停止条件时，使用 [Agent 执行预算与数值规范](agent-execution-budget.md)。
+
 ## 发版纪律
 
 版本提交不是完整发版。只把 `main` 推上远端，不能算完成；必须继续完成同版本 tag、PyPI、Homebrew tap、官网部署和本地安装验证。推荐直接使用 `scripts/publish_release.sh`，不要把“稍后再打 tag / 稍后再同步官网”留成口头约定。
@@ -128,7 +130,7 @@ guanlan search "华为手机" --scope social_web --limit 80 --trace
 guanlan read "https://..." --quality-report
 ```
 
-`research` 现在按重型/受控工具使用：只有用户明确要可复用证据包、深度综合、或 `search + read` 后仍缺信源角色覆盖时再调用；MCP/Agent 自动挡默认应把 `read_top` 控在 0-2，并优先用单独的 `guanlan read` 补代表 URL。
+`research` 现在按重型/受控工具使用：只有用户明确要可复用证据包、深度综合、或 `search + read` 后仍缺信源角色覆盖时再调用；MCP/Agent 自动挡默认应把 `read_top` 控在 0-2，并优先用单独的 `guanlan read` 补代表 URL。Schema 接受 `read_top=0-5`，其中 3-5 只用于用户明确要求多页深查且宿主提供 180-300 秒外层预算的场景。
 
 ### 页面诊断
 

@@ -68,6 +68,12 @@ def test_research_normalization_guards_heavy_knobs_without_dropping_options():
     assert request["cache_ttl"] == 600
 
 
+def test_research_normalization_accepts_explicit_read_top_above_agent_default():
+    request = normalize_research_request({"query": "三家车企对比", "read_top": 3})
+
+    assert request["read_top"] == 3
+
+
 def test_route_and_agent_normalization_share_site_and_preset_rules():
     route = normalize_route_request({"query": "AI", "preset": "general", "sites": "gov.cn, cas.cn"})
     agent = normalize_agent_request({"query": "AI", "preset": "general", "sites": "gov.cn, cas.cn"})

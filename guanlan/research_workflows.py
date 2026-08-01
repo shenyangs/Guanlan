@@ -163,12 +163,12 @@ def build_compare_report(
     select_top: int = 6,
 ) -> dict[str, Any]:
     """Compare multiple subjects by building one evidence packet per subject."""
-    clean_subjects = [_collapse_ws(subject) for subject in subjects if _collapse_ws(subject)]
+    clean_subjects, clean_focus, input_normalization = _normalize_compare_input(subjects, focus)
     if len(clean_subjects) < 2:
         raise ValueError("compare requires at least two subjects")
     packets: list[dict[str, Any]] = []
     for subject in clean_subjects:
-        query = _subject_query(subject, focus)
+        query = _subject_query(subject, clean_focus)
         packets.append(
             build_research_packet(
                 query,
@@ -185,13 +185,20 @@ def build_compare_report(
         )
     internal_reports = [_subject_report(subject, packet, select_top=select_top) for subject, packet in zip(clean_subjects, packets)]
     subject_reports = [_strip_internal_packet(report) for report in internal_reports]
-    diversity_guard = _compare_source_diversity_guard(internal_reports, focus=focus, preset=preset, profile=profile or "china")
-    suggested_next = _compare_next_steps(clean_subjects, focus=focus, preset=preset, profile=profile or "china")
+    diversity_guard = _compare_source_diversity_guard(internal_reports, focus=clean_focus, preset=preset, profile=profile or "china")
+    suggested_next = _compare_next_steps(clean_subjects, focus=clean_focus, preset=preset, profile=profile or "china")
     suggested_next = _unique(suggested_next + list(diversity_guard.get("followup_commands") or []))
     return {
         "mode": "compare",
         "subjects": clean_subjects,
-        "focus": _collapse_ws(focus),
+        "focus": clean_focus,
+        "input_normalization": input_normalization,
+        "execution_contract": {
+            "mode": "independent_subject_packets",
+            "packet_count": len(clean_subjects),
+            "reuses_prior_search_output": False,
+            "agent_guidance": "compare 会为每个对象各建一份证据包；除非修补缺口，不要在调用前重复跑同一批泛搜索。",
+        },
         "preset": preset,
         "profile": profile or "",
         "limit": max(limit, 1),
@@ -399,6 +406,9 @@ def format_compare_markdown(report: dict[str, Any]) -> str:
     lines = ["# 观澜对比研究", "", f"- 对象: {', '.join(subjects)}"]
     if report.get("focus"):
         lines.append(f"- 关注点: {report['focus']}")
+    normalization = report.get("input_normalization") or {}
+    for warning in normalization.get("warnings") or []:
+        lines.append(f"- 输入整理: {warning}")
     lines.extend([f"- 边界: {report.get('boundary', '')}", "", "## 对比表", ""])
     header = "维度 | " + " | ".join(_pipe_safe(subject) for subject in subjects)
     lines.append(header)
@@ -686,6 +696,49 @@ def _yinshen_suggested_next(keyword: str, angles: list[dict[str, Any]], *, prese
 
 def _subject_query(subject: str, focus: str) -> str:
     return _collapse_ws(f"{subject} {focus}" if focus else subject)
+
+
+def _normalize_compare_input(subjects: list[str], focus: str) -> tuple[list[str], str, dict[str, Any]]:
+    requested = _unique([_collapse_ws(subject) for subject in subjects if _collapse_ws(subject)])
+    clean_focus = _collapse_ws(focus)
+    focus_source = "explicit" if clean_focus else "none"
+    warnings: list[str] = []
+
+    if not clean_focus and len(requested) >= 2:
+        token_rows = [subject.split() for subject in requested]
+        common_suffix: list[str] = []
+        for tokens in zip(*(reversed(row) for row in token_rows)):
+            if len(set(tokens)) != 1:
+                break
+            common_suffix.append(tokens[0])
+        common_suffix.reverse()
+        if len(common_suffix) >= 2 and all(len(row) > len(common_suffix) for row in token_rows):
+            clean_focus = " ".join(common_suffix)
+            focus_source = "shared_subject_suffix"
+            warnings.append("已把 subjects 中重复的共同维度移到 focus。")
+
+    normalized: list[str] = []
+    for subject in requested:
+        clean_subject = subject
+        if clean_focus:
+            suffix = f" {clean_focus}"
+            if clean_subject.endswith(suffix):
+                candidate = _collapse_ws(clean_subject[: -len(suffix)])
+                if candidate:
+                    clean_subject = candidate
+                    warnings.append("已从 subject 中移除重复 focus。")
+        if clean_subject and clean_subject not in normalized:
+            normalized.append(clean_subject)
+
+    if len(normalized) > 4:
+        warnings.append("对象超过 4 个；建议拆成多组比较，避免单次证据包过重。")
+    return normalized, clean_focus, {
+        "requested_subjects": requested,
+        "normalized_subjects": normalized,
+        "focus": clean_focus,
+        "focus_source": focus_source,
+        "warnings": _unique(warnings),
+    }
 
 
 def _subject_report(subject: str, packet: dict[str, Any], *, select_top: int) -> dict[str, Any]:
