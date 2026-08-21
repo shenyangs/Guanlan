@@ -12,6 +12,8 @@ import asyncio
 import json
 import os
 import sys
+import urllib.parse
+from datetime import datetime
 
 from guanlan.errors import format_user_error
 from guanlan.limits import (
@@ -47,7 +49,21 @@ from guanlan.tool_invocation import (
 try:
     from mcp.server import Server
     from mcp.server.stdio import stdio_server
-    from mcp.types import TextContent, Tool
+    from mcp.types import (
+        CallToolResult,
+        CancelTaskRequest,
+        CancelTaskResult,
+        CreateTaskResult,
+        GetTaskPayloadRequest,
+        GetTaskRequest,
+        GetTaskResult,
+        Resource,
+        ResourceTemplate,
+        ServerResult,
+        Task,
+        TextContent,
+        Tool,
+    )
     HAS_MCP = True
 except ImportError:
     HAS_MCP = False
@@ -63,9 +79,13 @@ def _doctor_report() -> str:
 
 MCP_FULL_PROFILE = "full"
 MCP_COMPACT_PROFILE = "compact"
+MCP_TASKS_PROFILE = "tasks"
 MCP_COMPACT_TOOLS = frozenset({
     "guanlan_status", "guanlan_capabilities", "guanlan_agent",
     "guanlan_search", "guanlan_read", "guanlan_research",
+})
+MCP_TASK_TOOLS = frozenset({
+    "guanlan_status", "guanlan_search", "guanlan_read", "guanlan_research_start", "guanlan_case_status",
 })
 
 
@@ -794,7 +814,93 @@ def _tool_definitions(profile: str = MCP_FULL_PROFILE) -> list[dict]:
         return tools
     if normalized == MCP_COMPACT_PROFILE:
         return [tool for tool in tools if tool.get("name") in MCP_COMPACT_TOOLS]
-    raise ValueError("MCP profile must be one of: full, compact")
+    if normalized == MCP_TASKS_PROFILE:
+        base = [tool for tool in tools if tool.get("name") in {"guanlan_status", "guanlan_search", "guanlan_read"}]
+        base.extend(_task_tool_definitions())
+        return base
+    raise ValueError("MCP profile must be one of: full, compact, tasks")
+
+
+def _task_tool_definitions() -> list[dict]:
+    return [
+        {
+            "name": "guanlan_research_start",
+            "description": "Create a durable Research Case and execute it as an MCP Task.",
+            "inputSchema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string"},
+                    "request": {"type": "object"},
+                    "expires_in": {"type": "integer", "minimum": 60, "default": 604800},
+                },
+            },
+            "annotations": {"title": "Research start", "readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True},
+        },
+        {
+            "name": "guanlan_case_status",
+            "description": "Read a durable Research Case status by task/case id.",
+            "inputSchema": {
+                "type": "object", "required": ["case_id"],
+                "properties": {"case_id": {"type": "string"}},
+            },
+            "annotations": {"title": "Research status", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+        },
+    ]
+
+
+def _resource_templates() -> list[dict]:
+    return [
+        {"name": "research-case", "title": "Research Case", "uriTemplate": "guanlan://cases/{case_id}", "description": "Durable case state and audit trail", "mimeType": "application/json"},
+        {"name": "research-case-result", "title": "Research Case Result", "uriTemplate": "guanlan://cases/{case_id}/result", "description": "Completed case evidence packet", "mimeType": "application/json"},
+        {"name": "archive-snapshot", "title": "Archive Snapshot", "uriTemplate": "guanlan://snapshots/{snapshot_id}", "description": "Immutable snapshot with addressable passages", "mimeType": "application/json"},
+        {"name": "snapshot-diff", "title": "Snapshot Diff", "uriTemplate": "guanlan://diff/{before_snapshot_id}/{after_snapshot_id}", "description": "Deterministic text and conservative claim delta", "mimeType": "application/json"},
+    ]
+
+
+def _read_resource_uri(uri: str) -> dict:
+    parsed = urllib.parse.urlparse(str(uri))
+    if parsed.scheme != "guanlan":
+        raise ValueError("unsupported resource URI scheme")
+    kind = parsed.netloc
+    parts = [urllib.parse.unquote(item) for item in parsed.path.split("/") if item]
+    if kind == "cases" and len(parts) == 1:
+        from guanlan.research_cases import case_resource
+
+        return case_resource(parts[0])
+    if kind == "cases" and len(parts) == 2 and parts[1] == "result":
+        from guanlan.research_cases import get_case
+
+        case = get_case(parts[0])
+        if case["state"] != "completed":
+            raise ValueError(f"research case result is not ready: {case['state']}")
+        return {"schema_version": "research_case_result_v1", "case_id": parts[0], "result": case["result"]}
+    if kind == "snapshots" and len(parts) == 1:
+        from guanlan.archive import inspect_snapshot, list_snapshot_passages
+
+        snapshot = inspect_snapshot(parts[0])
+        snapshot["passages"] = list_snapshot_passages(parts[0])
+        return snapshot
+    if kind == "diff" and len(parts) == 2:
+        from guanlan.archive import compare_snapshots
+
+        return compare_snapshots(parts[0], parts[1])
+    raise ValueError("unknown Guanlan resource URI")
+
+
+def _listed_resources(limit: int = 20) -> list[dict]:
+    from guanlan.research_cases import list_cases
+
+    return [
+        {
+            "name": f"case-{case['case_id']}",
+            "title": case["query"],
+            "uri": f"guanlan://cases/{case['case_id']}",
+            "description": f"Research Case: {case['state']}",
+            "mimeType": "application/json",
+        }
+        for case in list_cases(limit=limit)
+    ]
 
 
 def _apply_registry_tool_definitions(tools: list[dict]) -> list[dict]:
@@ -864,6 +970,21 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
     args = arguments or {}
     if name == "guanlan_status":
         return _doctor_report()
+
+    if name == "guanlan_research_start":
+        from guanlan.research_cases import create_case, task_view
+
+        case = create_case(
+            str(args.get("query") or ""),
+            request=dict(args.get("request") or {}),
+            expires_in=int(args.get("expires_in") or 604800),
+        )
+        return task_view(case["case_id"])
+
+    if name == "guanlan_case_status":
+        from guanlan.research_cases import task_view
+
+        return task_view(str(args.get("case_id") or ""))
 
     if name == "guanlan_capabilities":
         from guanlan.capabilities import format_capabilities_markdown, list_capabilities
@@ -1446,6 +1567,21 @@ def create_server(profile: str | None = None):
     selected_profile = str(profile or os.getenv("GUANLAN_MCP_PROFILE") or MCP_FULL_PROFILE).strip().lower()
     definitions = _tool_definitions(selected_profile)
     server = Server("guanlan")
+    background_tasks: set[asyncio.Task] = set()
+
+    from mcp.server.lowlevel.helper_types import ReadResourceContents
+
+    @server.list_resources()
+    async def list_resources():
+        return [Resource(**item) for item in _listed_resources()]
+
+    @server.list_resource_templates()
+    async def list_resource_templates():
+        return [ResourceTemplate(**item) for item in _resource_templates()]
+
+    @server.read_resource()
+    async def read_resource(uri):
+        return [ReadResourceContents(content=json.dumps(_read_resource_uri(str(uri)), ensure_ascii=False, indent=2), mime_type="application/json")]
 
     @server.list_tools()
     async def list_tools():
@@ -1454,13 +1590,65 @@ def create_server(profile: str | None = None):
     @server.call_tool()
     async def call_tool(name: str, arguments: dict):
         try:
+            if name == "guanlan_research_start":
+                from guanlan.research_cases import create_case, run_case
+
+                case = create_case(
+                    str(arguments.get("query") or ""),
+                    request=dict(arguments.get("request") or {}),
+                    expires_in=int(arguments.get("expires_in") or 604800),
+                )
+                task = asyncio.create_task(asyncio.to_thread(run_case, case["case_id"]))
+                background_tasks.add(task)
+                task.add_done_callback(background_tasks.discard)
+                return CreateTaskResult(task=_mcp_task(case["case_id"]))
             # Keep this alias for local MCP clients that already call it.
             result = _doctor_report() if name == "get_status" else _run_tool(name, arguments)
             return [TextContent(type="text", text=_as_text(result))]
         except Exception as exc:
             return [TextContent(type="text", text=f"Error: {format_user_error(exc)}")]
 
+    @server.experimental.get_task()
+    async def get_task(req: GetTaskRequest):
+        return GetTaskResult(**_mcp_task_kwargs(req.params.taskId))
+
+    @server.experimental.cancel_task()
+    async def cancel_task(req: CancelTaskRequest):
+        from guanlan.research_cases import cancel_case
+
+        cancel_case(req.params.taskId, reason="mcp_cancelled")
+        return CancelTaskResult(**_mcp_task_kwargs(req.params.taskId))
+
+    async def get_task_payload_handler(req):
+        from guanlan.research_cases import get_case
+
+        case = get_case(req.params.taskId)
+        if case["state"] != "completed":
+            raise ValueError(f"research task result is not ready: {case['state']}")
+        return ServerResult(CallToolResult(content=[TextContent(type="text", text=json.dumps(case["result"], ensure_ascii=False, indent=2))], structuredContent=case["result"]))
+
+    server.request_handlers[GetTaskPayloadRequest] = get_task_payload_handler
+
     return server
+
+
+def _mcp_task_kwargs(case_id: str) -> dict:
+    from guanlan.research_cases import task_view
+
+    task = task_view(case_id)
+    return {
+        "taskId": task["taskId"],
+        "status": task["status"],
+        "statusMessage": task["statusMessage"] or None,
+        "createdAt": datetime.fromisoformat(task["createdAt"].replace("Z", "+00:00")),
+        "lastUpdatedAt": datetime.fromisoformat(task["lastUpdatedAt"].replace("Z", "+00:00")),
+        "ttl": task["ttl"],
+        "pollInterval": 1000,
+    }
+
+
+def _mcp_task(case_id: str):
+    return Task(**_mcp_task_kwargs(case_id))
 
 
 def _runtime_tool_kwargs(tool: dict) -> dict:
@@ -1478,9 +1666,9 @@ async def main(profile: str | None = None):
 def cli_main(argv: list[str] | None = None):
     """Console entry point for `guanlan-mcp`."""
     parser = argparse.ArgumentParser(prog="guanlan-mcp")
-    parser.add_argument("--profile", choices=[MCP_FULL_PROFILE, MCP_COMPACT_PROFILE],
+    parser.add_argument("--profile", choices=[MCP_FULL_PROFILE, MCP_COMPACT_PROFILE, MCP_TASKS_PROFILE],
                         default=os.getenv("GUANLAN_MCP_PROFILE") or MCP_FULL_PROFILE,
-                        help="MCP tool surface; full is the compatible default, compact exposes six core tools.")
+                        help="MCP tool surface; full is compatible default, compact has six tools, tasks adds durable Research Cases.")
     args = parser.parse_args(argv)
     asyncio.run(main(profile=args.profile))
 

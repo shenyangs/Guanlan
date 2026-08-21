@@ -45,7 +45,7 @@ def test_archive_v1_migration_is_additive_and_idempotent(tmp_path):
     assert snapshots[0]["observed_at"] == 1.0
     assert archive.list_snapshot_passages(snapshots[0]["snapshot_id"], db_path=db)
     with sqlite3.connect(db) as conn:
-        assert conn.execute("SELECT value FROM archive_meta WHERE key = 'schema_version'").fetchone()[0] == "2"
+        assert conn.execute("SELECT value FROM archive_meta WHERE key = 'schema_version'").fetchone()[0] == "3"
 
 
 def test_archive_updates_preserve_history_and_unchanged_content_deduplicates(tmp_path):

@@ -163,6 +163,8 @@ def test_mcp_config_outputs_copyable_server_config():
     assert config["mcpServers"]["guanlan"]["args"] == []
     compact = mcp_config.build_mcp_config(client="codex", command="guanlan-mcp", profile="compact")
     assert compact["mcpServers"]["guanlan"]["args"] == ["--profile", "compact"]
+    tasks = mcp_config.build_mcp_config(client="codex", command="guanlan-mcp", profile="tasks")
+    assert tasks["mcpServers"]["guanlan"]["args"] == ["--profile", "tasks"]
     md = mcp_config.format_mcp_config_markdown(client="codex")
     assert "Guanlan MCP 配置" in md
     assert "guanlan-mcp" in md

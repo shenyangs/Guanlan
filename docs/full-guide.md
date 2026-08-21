@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.9.0`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.10.0`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -901,6 +901,36 @@ CLI 是默认主路径；如果当前 Agent 或平台支持 MCP，可以把 `gua
 `guanlan-mcp --profile compact`；compact 仅保留 status、capabilities、agent、search、read、
 research 六个核心只读工具。`research --format json` 的 `evidence_bundle_v1` 只从可引用的已读
 正文生成快照和段落；其中 `relation=mentions` 不是事实支持判断。
+
+需要长任务恢复与取消时，显式使用 `guanlan-mcp --profile tasks`。该 profile 保留 status、search、
+read，并把 research 暴露为持久化 Research Case；支持 MCP Tasks 的客户端可以通过
+`tasks/get`、`tasks/result`、`tasks/cancel` 跟踪生命周期。Resources 使用
+`guanlan://cases/{case_id}`、`guanlan://cases/{case_id}/result`、
+`guanlan://snapshots/{snapshot_id}` 和 `guanlan://diff/{before}/{after}` 读取状态与证据资产。
+默认 full/compact 工具清单不因此改变。
+
+CLI 也可以显式推进同一类本地任务：
+
+```bash
+guanlan case create "复杂研究问题" --request '{"limit":80,"read_top":2}'
+guanlan case run CASE_ID
+guanlan case pause CASE_ID
+guanlan case resume CASE_ID
+guanlan case cancel CASE_ID
+```
+
+Archive v3 会在同一 URL 产生新快照时保存确定性行级 diff 和保守 Claim Delta。它只报告
+`claim_added`、`claim_removed`、`value_changed`，不自动把字符串变化判为事实支持或反驳：
+
+```bash
+guanlan archive changes https://example.com/report --json
+guanlan archive diff OLD_SNAPSHOT NEW_SNAPSHOT --json
+guanlan archive add-pdf ./report.pdf --source-url https://example.com/report.pdf --json
+```
+
+PDF 仅处理用户显式指定的本地文件，限制大小和页数，不执行脚本、不跟随外链，并拒绝需要密码的
+加密 PDF。页正文使用 `pdf_page` 定位，表格单元格使用 `table_cell + page_number + table_id +
+row_index + column_index` 定位；PDF 二进制变化会生成新快照，即使可见文字没有变化。
 
 **Agent 外层 timeout 建议**
 

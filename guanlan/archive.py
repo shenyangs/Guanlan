@@ -25,7 +25,7 @@ from guanlan.limits import (
     DEFAULT_READ_FALLBACK_LIMIT,
 )
 
-ARCHIVE_SCHEMA_VERSION = 2
+ARCHIVE_SCHEMA_VERSION = 3
 ARCHIVE_MIN_USEFUL_CHARS = 40
 ARCHIVE_CONTENT_MODE_RANK = {
     "full_body": 3,
@@ -217,6 +217,14 @@ def add_document(
             observed_at=now,
             previous_snapshot_id=str(existing["current_snapshot_id"] or "") if existing else "",
         )
+        if status == "updated" and existing and str(existing["current_snapshot_id"] or "") != snapshot_id:
+            _ensure_change_event(
+                conn,
+                document_id=doc_id,
+                before_snapshot_id=str(existing["current_snapshot_id"] or ""),
+                after_snapshot_id=snapshot_id,
+                created_at=now,
+            )
         conn.execute("UPDATE documents SET current_snapshot_id = ? WHERE id = ?", (snapshot_id, doc_id))
         _upsert_fts(conn, doc_id, title=title, content=content, url=normalized_url, domain=domain)
         conn.commit()
@@ -1133,6 +1141,108 @@ def list_snapshot_passages(snapshot_id: str, db_path: str | Path | None = None) 
     return [_passage_row_to_record(row) for row in rows]
 
 
+def compare_snapshots(
+    before_snapshot_id: str,
+    after_snapshot_id: str,
+    db_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Return deterministic text and conservative claim changes for two snapshots."""
+    from guanlan.temporal import build_claim_delta, build_snapshot_diff
+
+    before = inspect_snapshot(before_snapshot_id, db_path=db_path)
+    after = inspect_snapshot(after_snapshot_id, db_path=db_path)
+    return {
+        "schema_version": "snapshot_comparison_v1",
+        "snapshot_diff": build_snapshot_diff(before, after),
+        "claim_delta": build_claim_delta(before, after),
+    }
+
+
+def list_change_events(
+    *,
+    identifier: str | None = None,
+    limit: int = 50,
+    db_path: str | Path | None = None,
+) -> list[dict[str, Any]]:
+    """List append-only snapshot change events, newest first."""
+    document_id: int | None = None
+    if identifier:
+        document_id = int(inspect_document(identifier, db_path=db_path)["id"])
+    with _connect(db_path) as conn:
+        if document_id is None:
+            rows = conn.execute(
+                "SELECT * FROM change_events ORDER BY created_at DESC, event_id DESC LIMIT ?",
+                (max(int(limit), 1),),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM change_events WHERE document_id=? ORDER BY created_at DESC, event_id DESC LIMIT ?",
+                (document_id, max(int(limit), 1)),
+            ).fetchall()
+    return [_change_event_record(row) for row in rows]
+
+
+def replace_snapshot_passages(
+    snapshot_id: str,
+    passages: list[dict[str, Any]],
+    *,
+    db_path: str | Path | None = None,
+) -> int:
+    """Replace passages for a newly-created attachment snapshot.
+
+    This is intentionally strict: an immutable snapshot that already has
+    non-generic locators cannot be rewritten.
+    """
+    value = str(snapshot_id or "").strip()
+    if not value:
+        raise ValueError("snapshot_id is required")
+    with _connect(db_path) as conn:
+        exists = conn.execute(
+            "SELECT snapshot_id FROM document_snapshots WHERE snapshot_id=?", (value,)
+        ).fetchone()
+        if not exists:
+            raise ValueError(f"archive snapshot not found: {snapshot_id}")
+        specialized = conn.execute(
+            "SELECT COUNT(*) AS count FROM passages WHERE snapshot_id=? AND locator_type!='text'", (value,)
+        ).fetchone()
+        if specialized and int(specialized["count"]) > 0:
+            return int(conn.execute(
+                "SELECT COUNT(*) AS count FROM passages WHERE snapshot_id=?", (value,)
+            ).fetchone()["count"])
+        conn.execute("DELETE FROM passages WHERE snapshot_id=?", (value,))
+        for ordinal, passage in enumerate(passages):
+            text = str(passage.get("text") or "").strip()
+            if not text:
+                continue
+            text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            passage_id = str(passage.get("passage_id") or "")
+            if not passage_id:
+                from guanlan.evidence_kernel import stable_id
+
+                passage_id = stable_id(
+                    "psg", value, passage.get("locator_type"), passage.get("page_number"),
+                    passage.get("table_id"), passage.get("row_index"), passage.get("column_index"), text_hash,
+                )
+            conn.execute(
+                """
+                INSERT INTO passages (
+                    passage_id,snapshot_id,ordinal,heading_path_json,char_start,char_end,text,text_hash,
+                    locator_type,page_number,table_id,row_index,column_index,attachment_parent_id
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    passage_id, value, ordinal, json.dumps(passage.get("heading_path") or [], ensure_ascii=False),
+                    int(passage.get("char_start") or 0), int(passage.get("char_end") or len(text)), text,
+                    text_hash, str(passage.get("locator_type") or "text"), passage.get("page_number"),
+                    str(passage.get("table_id") or ""), passage.get("row_index"), passage.get("column_index"),
+                    str(passage.get("attachment_parent_id") or ""),
+                ),
+            )
+        conn.commit()
+        row = conn.execute("SELECT COUNT(*) AS count FROM passages WHERE snapshot_id=?", (value,)).fetchone()
+    return int(row["count"])
+
+
 def remove_document(identifier: str, db_path: str | Path | None = None) -> dict[str, Any]:
     """Remove one archived document by id or URL."""
     record = inspect_document(identifier, db_path=db_path)
@@ -1642,13 +1752,49 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             char_end INTEGER NOT NULL,
             text TEXT NOT NULL,
             text_hash TEXT NOT NULL,
+            locator_type TEXT NOT NULL DEFAULT 'text',
+            page_number INTEGER,
+            table_id TEXT NOT NULL DEFAULT '',
+            row_index INTEGER,
+            column_index INTEGER,
+            attachment_parent_id TEXT NOT NULL DEFAULT '',
             UNIQUE(snapshot_id, ordinal),
             FOREIGN KEY(snapshot_id) REFERENCES document_snapshots(snapshot_id) ON DELETE CASCADE
         )
         """
     )
+    passage_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(passages)").fetchall()}
+    for name, definition in (
+        ("locator_type", "TEXT NOT NULL DEFAULT 'text'"),
+        ("page_number", "INTEGER"),
+        ("table_id", "TEXT NOT NULL DEFAULT ''"),
+        ("row_index", "INTEGER"),
+        ("column_index", "INTEGER"),
+        ("attachment_parent_id", "TEXT NOT NULL DEFAULT ''"),
+    ):
+        if name not in passage_columns:
+            conn.execute(f"ALTER TABLE passages ADD COLUMN {name} {definition}")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_document_snapshots_document ON document_snapshots(document_id, observed_at DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_passages_snapshot ON passages(snapshot_id, ordinal)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_passages_locator ON passages(snapshot_id, locator_type, page_number)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS change_events (
+            event_id TEXT PRIMARY KEY,
+            document_id INTEGER NOT NULL,
+            before_snapshot_id TEXT NOT NULL,
+            after_snapshot_id TEXT NOT NULL,
+            summary_json TEXT NOT NULL DEFAULT '{}',
+            claim_delta_json TEXT NOT NULL DEFAULT '{}',
+            created_at REAL NOT NULL,
+            UNIQUE(before_snapshot_id, after_snapshot_id),
+            FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE,
+            FOREIGN KEY(before_snapshot_id) REFERENCES document_snapshots(snapshot_id) ON DELETE CASCADE,
+            FOREIGN KEY(after_snapshot_id) REFERENCES document_snapshots(snapshot_id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_change_events_document ON change_events(document_id, created_at DESC)")
     _migrate_legacy_snapshots(conn)
     conn.execute(
         """
@@ -1767,6 +1913,41 @@ def _ensure_document_snapshot(
             "SELECT COUNT(*) AS count FROM passages WHERE snapshot_id = ?", (snapshot_id,)
         ).fetchone()["count"])
     return snapshot_id, status, passage_count
+
+
+def _ensure_change_event(
+    conn: sqlite3.Connection,
+    *,
+    document_id: int,
+    before_snapshot_id: str,
+    after_snapshot_id: str,
+    created_at: float,
+) -> None:
+    if not before_snapshot_id or not after_snapshot_id or before_snapshot_id == after_snapshot_id:
+        return
+    from guanlan.evidence_kernel import stable_id
+    from guanlan.temporal import build_claim_delta, build_snapshot_diff
+
+    before = conn.execute("SELECT * FROM document_snapshots WHERE snapshot_id=?", (before_snapshot_id,)).fetchone()
+    after = conn.execute("SELECT * FROM document_snapshots WHERE snapshot_id=?", (after_snapshot_id,)).fetchone()
+    if not before or not after:
+        return
+    before_record = _snapshot_row_to_record(before, include_content=True)
+    after_record = _snapshot_row_to_record(after, include_content=True)
+    diff = build_snapshot_diff(before_record, after_record)
+    claim_delta = build_claim_delta(before_record, after_record)
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO change_events (
+            event_id,document_id,before_snapshot_id,after_snapshot_id,summary_json,claim_delta_json,created_at
+        ) VALUES (?,?,?,?,?,?,?)
+        """,
+        (
+            stable_id("evt", document_id, before_snapshot_id, after_snapshot_id), document_id,
+            before_snapshot_id, after_snapshot_id, json.dumps(diff, ensure_ascii=False, sort_keys=True),
+            json.dumps(claim_delta, ensure_ascii=False, sort_keys=True), created_at,
+        ),
+    )
 
 
 def _has_fts(conn: sqlite3.Connection) -> bool:
@@ -2075,12 +2256,45 @@ def _passage_row_to_record(row: sqlite3.Row) -> dict[str, Any]:
         heading_path = json.loads(str(data.get("heading_path_json") or "[]"))
     except json.JSONDecodeError:
         heading_path = []
-    return {
+    record = {
         "schema_version": "passage_v1", "passage_id": data.get("passage_id", ""),
         "snapshot_id": data.get("snapshot_id", ""), "ordinal": int(data.get("ordinal") or 0),
         "heading_path": heading_path if isinstance(heading_path, list) else [],
         "char_start": int(data.get("char_start") or 0), "char_end": int(data.get("char_end") or 0),
         "text": str(data.get("text") or ""), "text_hash": data.get("text_hash", ""),
+    }
+    record.update(
+        {
+            "locator_type": str(data.get("locator_type") or "text"),
+            "page_number": data.get("page_number"),
+            "table_id": str(data.get("table_id") or ""),
+            "row_index": data.get("row_index"),
+            "column_index": data.get("column_index"),
+            "attachment_parent_id": str(data.get("attachment_parent_id") or ""),
+        }
+    )
+    return record
+
+
+def _change_event_record(row: sqlite3.Row) -> dict[str, Any]:
+    data = dict(row)
+    try:
+        summary = json.loads(str(data.get("summary_json") or "{}"))
+    except json.JSONDecodeError:
+        summary = {}
+    try:
+        claim_delta = json.loads(str(data.get("claim_delta_json") or "{}"))
+    except json.JSONDecodeError:
+        claim_delta = {}
+    return {
+        "schema_version": "change_event_v1",
+        "event_id": data.get("event_id", ""),
+        "document_id": data.get("document_id"),
+        "before_snapshot_id": data.get("before_snapshot_id", ""),
+        "after_snapshot_id": data.get("after_snapshot_id", ""),
+        "snapshot_diff": summary,
+        "claim_delta": claim_delta,
+        "created_at": data.get("created_at", 0),
     }
 
 

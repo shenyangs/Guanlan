@@ -6,7 +6,7 @@
 
 | Version | Supported |
 | --- | --- |
-| Latest 0.9.x | Yes |
+| Latest 0.10.x | Yes |
 | 0.8.x | Security fixes only |
 | Older alpha releases | Best-effort |
 

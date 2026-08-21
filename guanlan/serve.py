@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Read-only local HTTP service for Guanlan.
+"""Read-first local HTTP service for Guanlan.
 
 The service is intentionally local-first and conservative: by default it binds
-to 127.0.0.1 and exposes only search/map/read/research/workflow/hotnews/feeds/daily/archive lookup.
+to 127.0.0.1. Research Case routes only mutate the dedicated local state DB;
+they do not add external posting, account or credential actions.
 """
 
 from __future__ import annotations
@@ -54,7 +55,53 @@ def dispatch_request(method: str, path: str, payload: dict[str, Any] | None = No
         if method == "GET" and route == "/health":
             from guanlan import __version__
 
-            return 200, {"ok": True, "name": "guanlan", "version": __version__, "mode": "read-only"}
+            return 200, {
+                "ok": True,
+                "name": "guanlan",
+                "version": __version__,
+                "mode": "read-only",
+                "local_state_writes": ["research_cases"],
+            }
+        if method == "POST" and route == "/cases":
+            from guanlan.research_cases import create_case
+
+            return 201, create_case(
+                str(payload.get("query") or ""),
+                request=dict(payload.get("request") or {}),
+                requirements=dict(payload.get("requirements") or {}),
+                budget=dict(payload.get("budget") or {}),
+                expires_in=_optional_int(payload.get("expires_in")) or 7 * 24 * 3600,
+            )
+        if method == "GET" and route == "/cases":
+            from guanlan.research_cases import list_cases
+
+            return 200, {"cases": list_cases(state=query_args.get("state") or None, limit=_int(query_args.get("limit"), 50))}
+        if route.startswith("/cases/"):
+            from guanlan.research_cases import (
+                cancel_case,
+                get_case,
+                pause_case,
+                resume_case,
+                run_case,
+                task_view,
+            )
+
+            parts = [item for item in route.split("/") if item]
+            if len(parts) not in {2, 3}:
+                raise ValueError("invalid Research Case route")
+            case_id = parts[1]
+            action = parts[2] if len(parts) == 3 else ""
+            if method == "GET" and not action:
+                return 200, task_view(case_id) if _bool(query_args.get("task")) else get_case(case_id)
+            if method == "POST" and action == "run":
+                return 200, run_case(case_id)
+            if method == "POST" and action == "pause":
+                return 200, pause_case(case_id, reason=str(payload.get("reason") or "http_paused"))
+            if method == "POST" and action == "resume":
+                return 200, resume_case(case_id)
+            if method == "POST" and action == "cancel":
+                return 200, cancel_case(case_id, reason=str(payload.get("reason") or "http_cancelled"))
+            raise ValueError("unsupported Research Case operation")
         if method == "GET" and route == "/sources":
             from guanlan.source_registry import list_sources
 

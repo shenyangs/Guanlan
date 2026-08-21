@@ -69,6 +69,7 @@ scripts/publish_release.sh
 
 - `GUANLAN_RELEASE_SKIP_SYNC=1`：跳过 `publish_release` 里的发布后同步步骤（仅用于紧急场景）。
 - `GUANLAN_RELEASE_DEPLOY_WEBSITE=0`：跳过官网部署，但仍会做站点版本校验。
+- `GUANLAN_RELEASE_SKIP_WEBSITE=1`：同时跳过官网部署和站点版本校验；只在用户明确把官网排除出本轮发布范围时使用，PyPI/Homebrew/本机安装仍必须完成。
 - `GUANLAN_SYNC_LOCAL_INSTALLS=0`：跳过本机 `uv/brew/pipx` 刷新，仅做分发就绪校验。
 - `GUANLAN_SYNC_SKIP_DISTRIBUTION_WAIT=1`：跳过 GitHub/PyPI/Homebrew 轮询等待。
 - `GUANLAN_RELEASE_SITE_URL=...`：自定义官网版本校验地址（默认 `http://101.37.70.222`）。

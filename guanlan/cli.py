@@ -41,6 +41,7 @@ from guanlan.commands.admin import (
 from guanlan.commands.admin import (
     _cmd_check_update as _admin_cmd_check_update,
 )
+from guanlan.commands.cases import _cmd_case
 from guanlan.commands.daily import _cmd_daily
 from guanlan.commands.feeds import _cmd_feeds, _cmd_pulse
 from guanlan.commands.hotnews import _cmd_hotnews
@@ -927,6 +928,16 @@ def main():
                                help="Explicit batch archive read concurrency; default 1 keeps serial behavior")
     p_archive_add.add_argument("--db", default="", help="Optional archive database path")
 
+    p_archive_pdf = archive_sub.add_parser("add-pdf", help="Ingest a local PDF with page/table evidence locators")
+    p_archive_pdf.add_argument("path", help="Explicit local PDF path")
+    p_archive_pdf.add_argument("--source-url", default="", help="Stable source/attachment URL; defaults to local file URI")
+    p_archive_pdf.add_argument("--title", default="", help="Override PDF title")
+    p_archive_pdf.add_argument("--parent-attachment-id", default="", help="Optional parent attachment identity")
+    p_archive_pdf.add_argument("--max-bytes", type=int, default=50 * 1024 * 1024, help="Maximum PDF byte size")
+    p_archive_pdf.add_argument("--max-pages", type=int, default=200, help="Maximum PDF pages")
+    p_archive_pdf.add_argument("--json", action="store_true", help="Print normalized JSON")
+    p_archive_pdf.add_argument("--db", default="", help="Optional archive database path")
+
     p_archive_browser_note = archive_sub.add_parser(
         "add-browser-note",
         help="Archive user-authorized visible browser evidence with explicit boundaries",
@@ -989,6 +1000,18 @@ def main():
     p_archive_snapshot.add_argument("--passages", action="store_true", help="Include offset-addressable passages")
     p_archive_snapshot.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
     p_archive_snapshot.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_diff = archive_sub.add_parser("diff", help="Compare two immutable archive snapshots")
+    p_archive_diff.add_argument("before_snapshot_id")
+    p_archive_diff.add_argument("after_snapshot_id")
+    p_archive_diff.add_argument("--json", action="store_true", help="Print normalized JSON")
+    p_archive_diff.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_changes = archive_sub.add_parser("changes", help="List stored snapshot change events")
+    p_archive_changes.add_argument("identifier", nargs="?", default="", help="Optional archive id or URL")
+    p_archive_changes.add_argument("--limit", type=int, default=50)
+    p_archive_changes.add_argument("--json", action="store_true", help="Print normalized JSON")
+    p_archive_changes.add_argument("--db", default="", help="Optional archive database path")
 
     p_archive_remove = archive_sub.add_parser("remove", help="Remove one archived document by id or URL")
     p_archive_remove.add_argument("identifier", help="Archive id or URL")
@@ -1208,6 +1231,32 @@ def main():
                               help="Output format")
     p_mcp_config.add_argument("--command", dest="server_command", default="guanlan-mcp",
                               help="Command used to start the Guanlan MCP server")
+    p_mcp_config.add_argument("--profile", choices=["full", "compact", "tasks"], default="full",
+                              help="MCP surface profile; tasks enables durable Research Case tools")
+
+    # ── research case ──
+    p_case = sub.add_parser("case", help="Manage durable local Research Cases")
+    case_sub = p_case.add_subparsers(dest="case_command", help="Research Case commands")
+    p_case_create = case_sub.add_parser("create", help="Create a queued Research Case")
+    p_case_create.add_argument("query")
+    p_case_create.add_argument("--request", default="{}", help="Research request JSON object")
+    p_case_create.add_argument("--requirements", default="{}", help="Requirements JSON object")
+    p_case_create.add_argument("--budget", default="{}", help="Budget JSON object")
+    p_case_create.add_argument("--expires-in", type=int, default=7 * 24 * 3600)
+    p_case_create.add_argument("--no-expiry", action="store_true")
+    p_case_create.add_argument("--db", default="", help="Optional Research Case database path")
+    for case_action in ("run", "status", "pause", "resume", "cancel"):
+        parser_case_action = case_sub.add_parser(case_action, help=f"{case_action.title()} a Research Case")
+        parser_case_action.add_argument("case_id")
+        parser_case_action.add_argument("--db", default="", help="Optional Research Case database path")
+        if case_action in {"pause", "cancel"}:
+            parser_case_action.add_argument("--reason", default=f"user_{case_action}d")
+        if case_action == "status":
+            parser_case_action.add_argument("--task", action="store_true", help="Render MCP Task-compatible view")
+    p_case_list = case_sub.add_parser("list", help="List Research Cases")
+    p_case_list.add_argument("--state", choices=["queued", "running", "paused", "completed", "failed", "cancelled", "expired"], default="")
+    p_case_list.add_argument("--limit", type=int, default=50)
+    p_case_list.add_argument("--db", default="", help="Optional Research Case database path")
 
     # ── check-update ──
     sub.add_parser("check-update", help="Check for new versions and changes")
@@ -1248,6 +1297,7 @@ def _telemetry_command_name(args) -> str:
     # shape. Do not include configure keys, queries, URLs, plugin paths, or values.
     subcommand_attrs = {
         "archive": "archive_command",
+        "case": "case_command",
         "mcp": "mcp_command",
         "eval": "eval_command",
         "quality": "quality_command",
@@ -1348,6 +1398,8 @@ def _dispatch_command(args):
         _cmd_report(args)
     elif args.command == "archive":
         _cmd_archive(args)
+    elif args.command == "case":
+        _cmd_case(args)
     elif args.command == "mcp":
         _cmd_mcp(args)
     elif args.command == "serve":

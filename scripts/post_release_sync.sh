@@ -21,6 +21,7 @@ SYNC_TIMEOUT_SECONDS="${GUANLAN_SYNC_TIMEOUT_SECONDS:-1500}"
 SYNC_INTERVAL_SECONDS="${GUANLAN_SYNC_INTERVAL_SECONDS:-15}"
 SKIP_DIST_WAIT="${GUANLAN_SYNC_SKIP_DISTRIBUTION_WAIT:-0}"
 DEPLOY_WEBSITE="${GUANLAN_RELEASE_DEPLOY_WEBSITE:-1}"
+SKIP_WEBSITE="${GUANLAN_RELEASE_SKIP_WEBSITE:-0}"
 SYNC_LOCAL_INSTALLS="${GUANLAN_SYNC_LOCAL_INSTALLS:-1}"
 
 fail() {
@@ -320,8 +321,12 @@ else
   echo "[sync] distribution waits skipped (GUANLAN_SYNC_SKIP_DISTRIBUTION_WAIT=1)"
 fi
 
-deploy_website_if_needed
-wait_for_condition "website public surfaces version ${VERSION}" "check_website_release"
+if [ "$SKIP_WEBSITE" = "1" ]; then
+  echo "[sync] website deploy and version checks skipped (GUANLAN_RELEASE_SKIP_WEBSITE=1)"
+else
+  deploy_website_if_needed
+  wait_for_condition "website public surfaces version ${VERSION}" "check_website_release"
+fi
 sync_local_installs
 verify_local_entrypoints
 
@@ -333,3 +338,4 @@ fi
 echo "version=$VERSION"
 echo "tag=$TAG"
 echo "site_urls=$SITE_URLS"
+echo "website_skipped=$SKIP_WEBSITE"

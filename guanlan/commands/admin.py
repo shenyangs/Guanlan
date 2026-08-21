@@ -392,13 +392,13 @@ def _cmd_mcp(args):
         if args.format == "json":
             print(
                 json.dumps(
-                    build_mcp_config(client=args.client, command=args.server_command),
+                    build_mcp_config(client=args.client, command=args.server_command, profile=args.profile),
                     ensure_ascii=False,
                     indent=2,
                 )
             )
         else:
-            print(format_mcp_config_markdown(client=args.client, command=args.server_command))
+            print(format_mcp_config_markdown(client=args.client, command=args.server_command, profile=args.profile))
             print()
             print(
                 "接好 MCP 后，可以问 Agent："

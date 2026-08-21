@@ -6,6 +6,27 @@
 
 ## Unreleased
 
+## v0.10.0 - 2026-08-21
+
+### Added
+
+- 新增本地持久化 `Research Case`：支持 queued/running/paused/completed/failed/cancelled/expired 状态、乐观 revision、审计事件、进程中断恢复和终态保护；取消后的迟到结果不会覆盖终态。
+- Archive 升级为 schema v3，新增 Snapshot Diff、保守 Claim Delta 和追加式 `change_events`；CLI 提供 `archive diff` 与 `archive changes`。
+- 新增 PDF/表格/附件证据入库：页正文和表格单元格带稳定 locator、页码、表格坐标与父附件关系；PDF 二进制更新强制生成新快照。
+- MCP 增加 Resources 和显式 `tasks` profile，接入当前 SDK 的 `tasks/get`、`tasks/result`、`tasks/cancel` 与 `tasks.requests.tools` 能力协商；同时提供 Research Case HTTP/CLI 服务面。
+
+### Changed
+
+- PDF 阅读依赖纳入标准安装，设置 50 MiB / 200 页默认上限，拒绝非 PDF 签名和需密码的加密文件，不执行脚本或外链读取。
+- MCP 可选依赖约束为 `mcp[cli]>=1.26,<2`，使用已验证的 Tasks 扩展 API，避免未经适配的 2.x 破坏现有服务入口。
+- 默认 MCP `full` 仍为 25 个工具，`compact` 仍为 6 个工具；搜索、阅读、研究默认值、排序和成功判定保持 v0.9.0 基线。
+- 发布同步增加显式 `GUANLAN_RELEASE_SKIP_WEBSITE=1` 边界；只跳过用户排除的官网部署/校验，不跳过 GitHub、PyPI、Homebrew 或本机安装验证。
+
+### Verification
+
+- 新增 Research Case 状态/并发取消、Archive v1→v3 迁移、时序变化、PDF 页表定位、MCP Resources/Tasks 和 HTTP 生命周期回归。
+- 发布原则保持“失败数不得高于 v0.9.0”；严格门禁不通过则不发布。本轮按用户要求不执行官网部署。
+
 ## v0.9.0 - 2026-08-21
 
 ### Added

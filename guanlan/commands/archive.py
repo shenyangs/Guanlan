@@ -23,6 +23,7 @@ def handle_archive_command(args):
         archive_quality_summary,
         archive_search_diagnostics,
         archive_stats,
+        compare_snapshots,
         embed_archive,
         export_documents,
         format_archive_context,
@@ -33,6 +34,7 @@ def handle_archive_command(args):
         ingest_search,
         inspect_document,
         inspect_snapshot,
+        list_change_events,
         list_document_snapshots,
         list_documents,
         list_snapshot_passages,
@@ -50,7 +52,7 @@ def handle_archive_command(args):
 
     command = getattr(args, "archive_command", None)
     if not command:
-        print("Error: archive command is required: add, add-browser-note, search, context, pack, wiki, embed, ingest-search, ingest-research, list, inspect, history, snapshot, remove, reindex, verify, stats, export", file=sys.stderr)
+        print("Error: archive command is required: add, add-pdf, add-browser-note, search, context, pack, wiki, embed, ingest-search, ingest-research, list, inspect, history, snapshot, diff, changes, remove, reindex, verify, stats, export", file=sys.stderr)
         sys.exit(2)
     db_path = args.db or None
 
@@ -88,6 +90,24 @@ def handle_archive_command(args):
                 print(json.dumps(records, ensure_ascii=False, indent=2))
             else:
                 print(_format_archive_add_summary(records))
+            return
+
+        if command == "add-pdf":
+            from guanlan.pdf_evidence import ingest_pdf
+
+            record = ingest_pdf(
+                args.path,
+                source_url=args.source_url,
+                title=args.title,
+                parent_attachment_id=args.parent_attachment_id,
+                max_bytes=max(args.max_bytes, 1),
+                max_pages=max(args.max_pages, 1),
+                db_path=db_path,
+            )
+            if args.json:
+                print(json.dumps(record, ensure_ascii=False, indent=2))
+            else:
+                print(f"# PDF 证据入库\n\n- Snapshot: {record['current_snapshot_id']}\n- Pages: {record['page_count']}\n- Tables: {record['table_count']}\n- Passages: {record['passage_count']}")
             return
 
         if command == "add-browser-note":
@@ -267,6 +287,32 @@ def handle_archive_command(args):
                 print(f"- Previous: {snapshot.get('previous_snapshot_id') or '-'}")
                 print(f"- Passages: {snapshot.get('passage_count', 0)}\n")
                 print(snapshot.get("content", ""))
+            return
+
+        if command == "diff":
+            result = compare_snapshots(args.before_snapshot_id, args.after_snapshot_id, db_path=db_path)
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                summary = result["snapshot_diff"]["summary"]
+                claim_summary = result["claim_delta"]["summary"]
+                print("# 观澜快照差异\n")
+                print(f"- 变化块: {summary.get('change_blocks', 0)}")
+                print(f"- 新增行: {summary.get('added_lines', 0)}")
+                print(f"- 删除行: {summary.get('removed_lines', 0)}")
+                print(f"- Claim Delta: {json.dumps(claim_summary, ensure_ascii=False, sort_keys=True)}")
+            return
+
+        if command == "changes":
+            result = list_change_events(
+                identifier=args.identifier or None, limit=max(args.limit, 1), db_path=db_path
+            )
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print("# 观澜变更事件\n")
+                for item in result:
+                    print(f"- {item['event_id']} | {item['before_snapshot_id']} -> {item['after_snapshot_id']}")
             return
 
         if command == "remove":

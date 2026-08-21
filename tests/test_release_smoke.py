@@ -70,6 +70,8 @@ def test_post_release_sync_script_handles_github_rate_limit_and_uv_version_verif
     assert "http://101.37.70.222/" in script
     assert "source_deployed_but_public_site_blocked" in script
     assert "release incomplete: source-only website validation used" in script
+    assert "GUANLAN_RELEASE_SKIP_WEBSITE" in script
+    assert "website deploy and version checks skipped" in script
     assert "returned unknown version" in script
     assert "guanlan doctor --install-check || true" not in script
 

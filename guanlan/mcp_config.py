@@ -15,8 +15,8 @@ def build_mcp_config(client: str = "generic", command: str = "guanlan-mcp", prof
     if client not in SUPPORTED_CLIENTS:
         raise ValueError(f"Unknown MCP client: {client}")
     normalized_profile = str(profile or "full").strip().lower()
-    if normalized_profile not in {"full", "compact"}:
-        raise ValueError("MCP profile must be one of: full, compact")
+    if normalized_profile not in {"full", "compact", "tasks"}:
+        raise ValueError("MCP profile must be one of: full, compact, tasks")
     server = {"command": command or "guanlan-mcp", "args": [] if normalized_profile == "full" else ["--profile", normalized_profile]}
     if client == "openwebui":
         return {"servers": {"guanlan": server}}
@@ -33,7 +33,7 @@ def format_mcp_config_markdown(client: str = "generic", command: str = "guanlan-
             "",
             f"- Client: {client}",
             f"- Command: `{command}`",
-            f"- Profile: `{profile}`（默认 full；compact 仅保留 6 个核心只读工具）",
+            f"- Profile: `{profile}`（默认 full；compact 保留 6 个核心只读工具；tasks 启用持久化 Research Case）",
             "- 用途: 让支持 MCP 的 Agent 调用观澜搜索、阅读、研究、热榜、回响和本地归档检索。",
             "- 边界: 默认只读；不会发布、评论、点赞、私信；不会主动读取浏览器 Cookie。",
             "",
