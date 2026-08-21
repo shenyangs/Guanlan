@@ -194,8 +194,15 @@ READ_SCHEMA: dict[str, Any] = {
         "profile": {"type": "string", "enum": ["global", "china", "english", "hybrid"], "default": "china"},
         "cache_ttl": {"type": "integer", "default": 0, "minimum": 0},
         "use_cache": {"type": "boolean", "default": True},
+        "no_cache": {"type": "boolean", "default": False},
         "strict": {"type": "boolean", "default": False},
         "extract": {"type": "string", "enum": ["article", "text", "metadata", "links"], "default": "article"},
+        "jina_engine": {"type": "string", "enum": ["auto", "browser", "curl"], "default": "auto"},
+        "jina_format": {"type": "string", "enum": ["content", "frontmatter"], "default": "content"},
+        "jina_wait_for": {"type": "string"},
+        "jina_target": {"type": "string"},
+        "jina_remove": {"type": "string"},
+        "jina_repair": {"type": "boolean", "default": True},
         "format": {"type": "string", "enum": ["raw", "json", "context"], "default": "raw"},
     },
 }
@@ -869,7 +876,7 @@ def mcp_output_contracts() -> dict[str, dict[str, object]]:
     for tool in CORE_AGENT_TOOLS:
         schema_versions: list[str] = []
         if tool.name == "guanlan_read":
-            schema_versions = ["read_evidence_v1", "read_outcome_v1"]
+            schema_versions = ["read_evidence_v1", "read_outcome_v1", "jina_read_contract_v1"]
         elif tool.name == "guanlan_research":
             schema_versions = ["evidence_bundle_v1", "claim_ledger_v1"]
         elif tool.name == "guanlan_agent":

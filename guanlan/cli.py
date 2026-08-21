@@ -868,7 +868,19 @@ def main():
     p_read.add_argument("--cache-ttl", type=int, default=0,
                         help="Reuse identical read results for this many seconds")
     p_read.add_argument("--no-cache", action="store_true",
-                        help="Bypass local cache even when --cache-ttl is set")
+                        help="Bypass Guanlan local cache and Jina upstream cache for this read")
+    p_read.add_argument("--jina-engine", choices=["auto", "browser", "curl"], default="auto",
+                        help="Advanced Jina engine control; default keeps the compatibility path")
+    p_read.add_argument("--jina-format", choices=["content", "frontmatter"], default="content",
+                        help="Advanced Jina output control; default preserves legacy content output")
+    p_read.add_argument("--jina-wait-for", default="",
+                        help="Advanced CSS selector to wait for on Jina reads")
+    p_read.add_argument("--jina-target", default="",
+                        help="Advanced CSS selector limiting the Jina result to one page region")
+    p_read.add_argument("--jina-remove", default="",
+                        help="Advanced CSS selector list removed from the Jina result")
+    p_read.add_argument("--jina-repair", action=argparse.BooleanOptionalAction, default=True,
+                        help="Allow one bounded browser repair only after confirmed dynamic-shell reads")
     p_read.add_argument("--watch", action="store_true",
                         help="Compare this read with the saved local snapshot and output a diff")
     p_read.add_argument("--trace", action="store_true",

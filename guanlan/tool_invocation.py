@@ -112,6 +112,7 @@ def normalize_read_request(
 ) -> dict[str, Any]:
     """Normalize service kwargs for ``read_url_with_trace``."""
 
+    no_cache = _bool(payload.get("no_cache"))
     return {
         "url": _text(payload.get("url")),
         "max_chars": _optional_bounded_int(payload.get("max_chars"), 1, 100_000),
@@ -122,9 +123,16 @@ def normalize_read_request(
         ),
         "profile": _profile(payload.get("profile"), default_profile),
         "cache_ttl": _bounded_int(payload.get("cache_ttl"), 0, 0, 86_400),
-        "use_cache": not _bool(payload.get("no_cache")) if "use_cache" not in payload else _bool(payload.get("use_cache"), True),
+        "use_cache": False if no_cache else _bool(payload.get("use_cache"), True),
         "strict": _bool(payload.get("strict")),
         "extract": _text(payload.get("extract"), "article") or "article",
+        "upstream_no_cache": no_cache or _bool(payload.get("upstream_no_cache")),
+        "jina_engine": _text(payload.get("jina_engine"), "auto") or "auto",
+        "jina_format": _text(payload.get("jina_format"), "content") or "content",
+        "jina_wait_for": _text(payload.get("jina_wait_for")),
+        "jina_target": _text(payload.get("jina_target")),
+        "jina_remove": _text(payload.get("jina_remove")),
+        "jina_repair": _bool(payload.get("jina_repair"), True),
     }
 
 

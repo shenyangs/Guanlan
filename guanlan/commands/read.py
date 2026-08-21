@@ -337,6 +337,9 @@ def _cmd_read(args):
                 profile=args.profile or None,
                 cache_ttl=max(args.cache_ttl, 0),
                 concurrency=max(args.concurrency, 1),
+                use_cache=not args.no_cache,
+                upstream_no_cache=bool(args.no_cache),
+                **_jina_cli_kwargs(args),
                 **_read_quality_kwargs(args),
             )
             if args.format == "json":
@@ -368,6 +371,8 @@ def _cmd_read(args):
                 cache_ttl=max(args.cache_ttl, 0),
                 use_cache=not args.no_cache,
                 watch=args.watch,
+                upstream_no_cache=bool(args.no_cache),
+                **_jina_cli_kwargs(args),
                 **_read_quality_kwargs(args),
             )
         if args.format == "json":
@@ -419,4 +424,15 @@ def _read_quality_kwargs(args) -> dict[str, object]:
         kwargs["extract"] = args.extract
     return kwargs
 
-__all__ = ['_cmd_diagnose', '_cmd_browser_assist', '_cmd_wechat_exporter', '_format_wechat_exporter_status_markdown', '_format_wechat_exporter_records_markdown', '_format_browser_assist_session_markdown', '_cmd_read', '_read_quality_kwargs']
+
+def _jina_cli_kwargs(args) -> dict[str, object]:
+    return {
+        "jina_engine": getattr(args, "jina_engine", "auto") or "auto",
+        "jina_format": getattr(args, "jina_format", "content") or "content",
+        "jina_wait_for": getattr(args, "jina_wait_for", "") or "",
+        "jina_target": getattr(args, "jina_target", "") or "",
+        "jina_remove": getattr(args, "jina_remove", "") or "",
+        "jina_repair": bool(getattr(args, "jina_repair", True)),
+    }
+
+__all__ = ['_cmd_diagnose', '_cmd_browser_assist', '_cmd_wechat_exporter', '_format_wechat_exporter_status_markdown', '_format_wechat_exporter_records_markdown', '_format_browser_assist_session_markdown', '_cmd_read', '_read_quality_kwargs', '_jina_cli_kwargs']

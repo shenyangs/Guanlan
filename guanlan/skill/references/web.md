@@ -80,6 +80,9 @@ guanlan read "https://mp.weixin.qq.com/s/ARTICLE_ID" --trace
 # Jina 不稳或正文不完整时，直接读原网页
 guanlan read "https://example.com/article" --backend direct
 
+# 明确需要强刷新时，同时绕过观澜与 Jina 缓存
+guanlan read "https://example.com/article" --no-cache
+
 # 严格只读原 URL，不要返回搜索兜底
 guanlan read "https://example.com/article" --no-fallback-search
 
@@ -90,7 +93,9 @@ guanlan read batch urls.txt --format context
 guanlan read "https://example.com/article" --watch
 ```
 
-**适用场景**: 已经有 URL，需要给 Agent 上下文。中国大陆站点常见 JS 渲染、登录墙、验证码、地域访问差异和反爬策略；Jina Reader 只能作为第一读取入口，不要当成唯一依赖。默认 `auto` 对 `mp.weixin.qq.com` 文章会先尝试公众号专项正文提取，`--trace` 中 `selected_backend=wechat_article` 表示标题、作者、发布时间和正文来自公开文章 HTML；其他网页按 `Jina Reader -> Direct HTML -> Search-as-context` 降级。最后一段只提供公开搜索线索，不等同于原文全文。
+**适用场景**: 已经有 URL，需要给 Agent 上下文。中国大陆站点常见 JS 渲染、登录墙、验证码、地域访问差异和反爬策略；Jina Reader 只能作为第一读取入口，不要当成唯一依赖。默认 `auto` 对 `mp.weixin.qq.com` 文章会先尝试公众号专项正文提取，`--trace` 中 `selected_backend=wechat_article` 表示标题、作者、发布时间和正文来自公开文章 HTML；其他网页保持 `Jina compatibility -> Direct HTML -> Search-as-context` 的原有顺序，只有两条普通路径都确认拿到动态页壳时才在搜索兜底前追加一次有界 browser 修复。登录墙、验证码/WAF、网络错误和动态财经页不会触发该重试。最后一段只提供公开搜索线索，不等同于原文全文。
+
+普通用户无需设置 Jina 高级参数。已知页面结构或调试读取契约时，可以显式使用 `--jina-engine browser`、`--jina-wait-for`、`--jina-target`、`--jina-remove` 或 `--jina-format frontmatter`；默认仍保持历史 `text/plain`/content 输出，也不提供 Cookie 转发、代理凭据或脚本注入。
 
 批量读取只适合普通网页、公开文章、文档和 RSS 链接。对小红书、微博、Twitter/X、LinkedIn、抖音等高风险或登录态平台，批量模式会拒绝读取；需要时应让用户明确授权，再使用对应平台工具或单条读取路径。
 

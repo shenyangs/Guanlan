@@ -1,7 +1,7 @@
 # Guanlan Public Quality Report / 观澜公开质量报告
 
-- 版本: `v0.10.1`
-- 生成时间: `2026-08-21T14:41:55Z`
+- 版本: `v0.10.2`
+- 生成时间: `2026-08-21T16:15:29Z`
 - 口径: 确定性基准、评测套件、路由回归和质量门禁默认不触网；公网漂移只从 live-smoke 历史读取。
 
 ## 1. Deterministic Benchmark
@@ -75,7 +75,7 @@
 ## 8. Legacy Inventory
 
 - 文件: `guanlan/web/_legacy_web_impl.py`
-- LOC: 10145
+- LOC: 10162
 - 顶层函数: 276
 - 显式兼容入口: _bing_cjk_drift_active, _format_read_watch, _record_bing_cjk_drift, backend_order, build_query_strategy, build_research_packet, detect_search_quality_profile, rank_results, read_batch, read_url, read_url_with_trace, search_quality_summary, search_web
 - 同步函数: `_sync_legacy_overrides`

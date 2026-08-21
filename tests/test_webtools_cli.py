@@ -326,6 +326,13 @@ def test_read_cli_passes_backend():
         cache_ttl=0,
         use_cache=True,
         watch=False,
+        upstream_no_cache=False,
+        jina_engine="auto",
+        jina_format="content",
+        jina_wait_for="",
+        jina_target="",
+        jina_remove="",
+        jina_repair=True,
     )
 
 

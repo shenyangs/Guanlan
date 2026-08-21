@@ -116,6 +116,10 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "next_decision" in agent_tool["description"]
     assert "mode" in agent_tool["inputSchema"]["properties"]
     assert "format" in read_tool["inputSchema"]["properties"]
+    assert read_tool["inputSchema"]["properties"]["jina_engine"]["default"] == "auto"
+    assert read_tool["inputSchema"]["properties"]["jina_format"]["default"] == "content"
+    assert read_tool["inputSchema"]["properties"]["jina_repair"]["default"] is True
+    assert "no_cache" in read_tool["inputSchema"]["properties"]
     assert "dynamic finance pages" in stock_tool["description"]
     assert "stocks" in stock_tool["description"]
     assert "plan" in stock_tool["inputSchema"]["properties"]["command"]["enum"]
@@ -151,7 +155,11 @@ def test_mcp_full_profile_is_unchanged_and_compact_is_explicit_subset():
 
 def test_mcp_output_contracts_are_additive_and_versioned_for_evidence_tools():
     contracts = mcp_output_contracts()
-    assert contracts["guanlan_read"]["schema_versions"] == ["read_evidence_v1", "read_outcome_v1"]
+    assert contracts["guanlan_read"]["schema_versions"] == [
+        "read_evidence_v1",
+        "read_outcome_v1",
+        "jina_read_contract_v1",
+    ]
     assert "evidence_bundle_v1" in contracts["guanlan_research"]["schema_versions"]
     assert all(contract["additive_fields_only"] is True for contract in contracts.values())
 

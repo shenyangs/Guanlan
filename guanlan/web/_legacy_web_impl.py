@@ -5233,12 +5233,26 @@ def format_read_trace(trace_packet: dict[str, Any]) -> str:
             f"noise={','.join(quality.get('noise_hits') or []) or 'none'}"
         ),
     ]
+    jina_contract = trace.get("jina_request_contract") or {}
+    if jina_contract:
+        safe_repair = jina_contract.get("safe_repair") or {}
+        repair_state = "used" if safe_repair.get("used") else ("ready" if safe_repair.get("enabled") else "off")
+        lines.append(
+            "- jina_contract: "
+            f"mode={jina_contract.get('mode', 'compatibility')} "
+            f"engine={jina_contract.get('engine', 'auto')} "
+            f"format={jina_contract.get('response_format', 'content')} "
+            f"upstream_cache={jina_contract.get('upstream_cache', 'default')} "
+            f"safe_repair={repair_state}"
+        )
     attempts = trace.get("attempts") or []
     if attempts:
         lines.append("- attempts:")
         for item in attempts:
             item_quality = item.get("quality") or {}
-            detail = f"  - {item.get('backend')}: {item.get('status')}"
+            mode = str(item.get("mode") or "")
+            suffix = f"[{mode}]" if mode else ""
+            detail = f"  - {item.get('backend')}{suffix}: {item.get('status')}"
             if item.get("chars") is not None:
                 detail += f" chars={item.get('chars')}"
             if item_quality:
@@ -9486,15 +9500,18 @@ def _url_path_is_weak_identity(url: str) -> bool:
     return bool(tokens) and all(token.isdigit() for token in tokens)
 
 
-def _read_with_jina(url: str) -> str:
+def _read_with_jina(url: str, *, options=None, network_timeout: int = 30) -> str:
+    from guanlan.jina_reader import normalize_jina_options
     from guanlan.url_policy import validate_public_response, validate_public_url
+
     validate_public_url(url)
+    options = options or normalize_jina_options()
     jina_url = f"https://r.jina.ai/{url}"
     req = urllib.request.Request(
         jina_url,
-        headers={"User-Agent": _UA, "Accept": "text/plain"},
+        headers={"User-Agent": _UA, **options.request_headers()},
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=max(int(network_timeout or 30), 1)) as resp:
         validate_public_response(jina_url, resp)
         return resp.read().decode("utf-8", errors="replace")
 

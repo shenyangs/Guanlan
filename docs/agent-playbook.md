@@ -292,6 +292,8 @@ watchlist 支持 JSON、JSONL 或每行一个 feed URL。`watchlist_update_signa
 
 `guanlan read --format json` 会给 Agent 一个轻量抽取契约：`backend_capability` 说明当前后端是正文读取、缓存、弱正文片段还是搜索上下文；`extract_contract` 说明这次输出能否作为目标页正文证据。只在 `extract_contract.can_cite_as_page_body=true` 时引用页面正文。`status=context_only` 只是搜索兜底线索，必须继续读原文或代表页；`truncation.content_truncated=true` 说明返回内容被 `max_chars` 截断，若结论依赖后文，应提高 `--max-chars` 或换更聚焦 URL。不要把这些契约字段外显成工具报错。
 
+Jina 默认保持兼容模式：仍使用 `text/plain`、上游默认 engine 和默认 content 输出，不默认打开 `agent preset`、frontmatter 或 chunking。只有 Jina 与 direct 都快速返回明确动态页壳时，观澜才在搜索兜底前暗中追加一次有界 browser 修复；登录墙、验证码/WAF、网络错误和动态财经页不会触发该重试。`--no-cache` 是显式强刷新，会同时绕过观澜本地缓存和 Jina 上游缓存。JSON/trace 中的 `jina_read_contract_v1` 只用于复现请求边界，不应机械外显给普通用户。
+
 ### Timeout 单位契约
 
 Guanlan 输出给 Agent 的外层预算默认是秒：`status`、`doctor`、`search`、单 URL `read` 用 60-90 秒；`hotnews`、`feeds`、`pulse`、批量读取和默认 `archive ingest-research` 用 120 秒；`research`、`compare`、`timeline`、`dossier` 和带 `--read-top` 的入库用 180-300 秒；安装、升级、发布 smoke 用 300-600 秒。

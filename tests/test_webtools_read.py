@@ -49,6 +49,147 @@ def test_read_url_uses_jina_reader(monkeypatch):
     assert text == "# Title\n"
 
 
+def test_read_url_keeps_legacy_jina_wire_contract_by_default(monkeypatch):
+    requests = []
+
+    def fake_urlopen(req, timeout=None):
+        requests.append((req, timeout))
+        return _FakeResponse("# Title\n" + "Default Jina body. " * 30)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    packet = webtools.read_url_with_trace("https://example.com/article", backend="jina")
+
+    req, timeout = requests[0]
+    assert req.get_header("Accept") == "text/plain"
+    assert req.get_header("X-engine") is None
+    assert req.get_header("X-respond-with") is None
+    assert req.get_header("X-no-cache") is None
+    assert timeout == 30
+    assert packet["trace"]["jina_request_contract"]["mode"] == "compatibility"
+    assert packet["trace"]["jina_request_contract"]["wire_defaults_preserved"] is True
+
+
+def test_read_url_maps_explicit_no_cache_to_jina_without_changing_output(monkeypatch):
+    requests = []
+
+    def fake_urlopen(req, timeout=None):
+        requests.append(req)
+        return _FakeResponse("# Title\n" + "Fresh Jina body. " * 30)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    packet = webtools.read_url_with_trace(
+        "https://example.com/article",
+        backend="jina",
+        upstream_no_cache=True,
+    )
+
+    assert requests[0].get_header("X-no-cache") == "true"
+    assert packet["trace"]["jina_request_contract"]["upstream_cache"] == "bypass"
+    assert packet["content"].startswith("# Title")
+
+
+def test_read_url_supports_safe_opt_in_jina_controls(monkeypatch):
+    requests = []
+
+    def fake_urlopen(req, timeout=None):
+        requests.append(req)
+        return _FakeResponse(
+            "---\ntitle: Controlled page\nurl: https://example.com/article\n---\n\n"
+            + "Controlled body. " * 30
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    packet = webtools.read_url_with_trace(
+        "https://example.com/article",
+        backend="jina",
+        jina_engine="browser",
+        jina_format="frontmatter",
+        jina_wait_for="article",
+        jina_target="article",
+        jina_remove="nav, footer",
+    )
+
+    request = requests[0]
+    assert request.get_header("X-engine") == "browser"
+    assert request.get_header("X-respond-with") == "frontmatter"
+    assert request.get_header("X-wait-for-selector") == "article"
+    assert request.get_header("X-target-selector") == "article"
+    assert request.get_header("X-remove-selector") == "nav, footer"
+    contract = packet["trace"]["jina_request_contract"]
+    assert contract["explicit_controls"] is True
+    assert contract["credential_material_access_allowed"] is False
+
+
+def test_read_url_rejects_jina_header_injection_before_network(monkeypatch):
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *_args, **_kwargs: pytest.fail("network must not run for invalid selectors"),
+    )
+
+    with pytest.raises(ValueError, match="jina_target"):
+        webtools.read_url_with_trace(
+            "https://example.com/article",
+            backend="jina",
+            jina_target="article\r\nAuthorization: Bearer secret",
+        )
+
+
+def test_read_url_safely_repairs_confirmed_dynamic_shell_after_existing_paths(monkeypatch):
+    requests = []
+
+    def fake_urlopen(req, timeout=None):
+        requests.append(req)
+        if req.full_url.startswith("https://r.jina.ai/"):
+            if req.get_header("X-engine") == "browser":
+                return _FakeResponse("# Rendered article\n" + "Complete rendered body. " * 30)
+            return _FakeResponse("Enable JavaScript to load this article")
+        return _FakeResponse("<html><body><main>Enable JavaScript to load this article</main></body></html>")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    packet = webtools.read_url_with_trace(
+        "https://example.com/dynamic",
+        backend="auto",
+        fallback_search=False,
+    )
+
+    assert [req.full_url for req in requests] == [
+        "https://r.jina.ai/https://example.com/dynamic",
+        "https://example.com/dynamic",
+        "https://r.jina.ai/https://example.com/dynamic",
+    ]
+    assert requests[-1].get_header("X-engine") == "browser"
+    assert requests[-1].get_header("X-no-cache") == "true"
+    assert requests[-1].get_header("X-respond-timing") == "mutation-idle"
+    assert packet["trace"]["selected_backend"] == "jina"
+    assert packet["trace"]["jina_request_contract"]["safe_repair"]["used"] is True
+    assert "Complete rendered body" in packet["content"]
+
+
+def test_read_url_does_not_browser_retry_access_gates(monkeypatch):
+    requests = []
+
+    def fake_urlopen(req, timeout=None):
+        requests.append(req)
+        if req.full_url.startswith("https://r.jina.ai/"):
+            return _FakeResponse("CAPTCHA: verify you are human")
+        return _FakeResponse("<html><body>CAPTCHA: verify you are human</body></html>")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    packet = webtools.read_url_with_trace(
+        "https://example.com/gated",
+        backend="auto",
+        fallback_search=False,
+    )
+
+    assert len(requests) == 2
+    assert packet["trace"]["jina_request_contract"]["safe_repair"]["used"] is False
+
+
 def test_read_url_trace_marks_truncated_extract_contract(monkeypatch):
     article = "这是一个很长的中文网页正文，包含足够多的段落和上下文。" * 80
 

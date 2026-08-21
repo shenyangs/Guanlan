@@ -40,6 +40,31 @@ def test_build_structured_page_extracts_stable_fields():
     assert structured["tables"]["row_count"] >= 1
 
 
+def test_build_structured_page_accepts_jina_frontmatter_without_breaking_legacy_shape():
+    structured = build_structured_page(
+        """---
+title: "Jina Frontmatter 标题"
+description: "结构化摘要"
+url: "https://example.com/final"
+author: "示例作者"
+published_time: "2026-08-21"
+siteName: "Example News"
+---
+
+# 正文标题
+这是足够干净的正文内容。
+""",
+        url="https://example.com/original",
+    )
+
+    assert structured["title"] == "Jina Frontmatter 标题"
+    assert structured["author"] == "示例作者"
+    assert structured["published_at"] == "2026-08-21"
+    assert structured["site_name"] == "Example News"
+    assert structured["description"] == "结构化摘要"
+    assert structured["canonical_url"] == "https://example.com/final"
+
+
 def test_build_read_evidence_normalizes_usable_and_weak_pages():
     packet = {
         "url": "https://example.com/news",

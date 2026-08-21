@@ -95,6 +95,15 @@ page-body citation. `status=context_only` means the output is search-context fal
 are internal routing hints for Agent review and should be phrased to users as "needs page evidence /
 needs representative read", not as a Guanlan error.
 
+Jina compatibility rule: keep the default hosted Jina request in compatibility mode (`text/plain`,
+upstream default engine, default content response). Do not silently enable Jina `agent` preset,
+frontmatter, markdown chunking, browser engine, token truncation, Cookie forwarding, proxy credentials,
+or script injection on normal reads. `--no-cache` may explicitly bypass both Guanlan and Jina caches.
+An internal Jina browser retry is allowed only after the normal Jina and direct paths both return a
+clear dynamic application shell; skip it for login walls, CAPTCHA/WAF/access gates, network errors,
+and structured finance pages. Keep the retry bounded, preserve the existing fallback order, and expose
+its use only through additive `jina_read_contract_v1` trace/JSON fields.
+
 Recipe rule: use `guanlan recipe list` and `guanlan recipe run <recipe> "query"` when a task matches
 a repeated research pattern, such as university advisors, finance risk, product reputation,
 public opinion, brand risk, competitor watch, pricing watch, review mining, app review,

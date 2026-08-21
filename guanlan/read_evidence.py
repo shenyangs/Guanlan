@@ -26,22 +26,28 @@ def build_structured_page(
 
     text = str(content or "")
     clean = _collapse_ws(text)
+    frontmatter, _body = _parse_frontmatter(text)
     headings = _extract_headings(text)
-    derived_title = title.strip() or _extract_title(text, clean=clean)
-    author = _first_regex(
+    derived_title = title.strip() or frontmatter.get("title", "") or _extract_title(text, clean=clean)
+    author = frontmatter.get("author", "") or _first_regex(
         text,
         [
             r"(?:作者|撰文|编辑|Author|By)\s*[:：]\s*([^\n\r]{2,80})",
             r"\bBy\s+([A-Z][^\n\r]{2,80})",
         ],
     )
-    published_at = _first_regex(
-        text,
-        [
-            r"(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?:\s+\d{1,2}:\d{2})?)",
-            r"(\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日(?:\s*\d{1,2}:\d{2})?)",
-            r"((?:20|19)\d{2}\s*/\s*\d{1,2}\s*/\s*\d{1,2})",
-        ],
+    published_at = (
+        frontmatter.get("published_time", "")
+        or frontmatter.get("published_at", "")
+        or frontmatter.get("date", "")
+        or _first_regex(
+            text,
+            [
+                r"(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?:\s+\d{1,2}:\d{2})?)",
+                r"(\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日(?:\s*\d{1,2}:\d{2})?)",
+                r"((?:20|19)\d{2}\s*/\s*\d{1,2}\s*/\s*\d{1,2})",
+            ],
+        )
     )
     links = _extract_links(text)
     list_samples = _extract_list_samples(text)
@@ -58,7 +64,9 @@ def build_structured_page(
         "title": derived_title,
         "author": _clean_metadata(author),
         "published_at": _clean_metadata(published_at),
-        "site_name": source.strip() or _domain(url),
+        "site_name": source.strip() or frontmatter.get("site_name", "") or _domain(url),
+        "description": _clean_metadata(frontmatter.get("description", "")),
+        "canonical_url": _frontmatter_url(frontmatter.get("url", "")),
         "language": language,
         "headings": headings[:12],
         "important_links": links[:12],
@@ -458,7 +466,8 @@ def _attempted_repair_commands(readings: list[dict[str, Any]], *, limit: int) ->
 
 
 def _extract_title(text: str, *, clean: str) -> str:
-    for line in text.splitlines()[:30]:
+    _frontmatter, body = _parse_frontmatter(text)
+    for line in body.splitlines()[:30]:
         value = line.strip()
         if not value:
             continue
@@ -466,7 +475,46 @@ def _extract_title(text: str, *, clean: str) -> str:
             return _clean_metadata(value.split(":", 1)[-1] if ":" in value else value.lstrip("# "))
         if len(value) <= 120 and not value.startswith(("-", "*", "|")):
             return _clean_metadata(value)
-    return clean[:80].strip()
+    body_clean = _collapse_ws(body)
+    return (body_clean or clean)[:80].strip()
+
+
+def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
+    """Parse the small scalar subset emitted by Jina frontmatter mode."""
+
+    value = str(text or "")
+    if not value.startswith("---"):
+        return {}, value
+    lines = value.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}, value
+    end = next((idx for idx, line in enumerate(lines[1:80], start=1) if line.strip() == "---"), None)
+    if end is None:
+        return {}, value
+    metadata: dict[str, str] = {}
+    for line in lines[1:end]:
+        match = re.match(r"^([A-Za-z][A-Za-z0-9_-]{0,63})\s*:\s*(.*?)\s*$", line)
+        if not match:
+            continue
+        raw_key = match.group(1).replace("-", "_")
+        key = re.sub(r"(?<!^)(?=[A-Z])", "_", raw_key).lower()
+        scalar = _frontmatter_scalar(match.group(2))
+        if scalar:
+            metadata[key] = scalar
+    return metadata, "\n".join(lines[end + 1 :]).lstrip()
+
+
+def _frontmatter_scalar(value: str) -> str:
+    scalar = str(value or "").strip()
+    if len(scalar) >= 2 and scalar[0] == scalar[-1] and scalar[0] in {'"', "'"}:
+        scalar = scalar[1:-1]
+    return scalar.replace(r"\"", '"').replace(r"\'", "'").strip()
+
+
+def _frontmatter_url(value: str) -> str:
+    url = str(value or "").strip()
+    parsed = urllib.parse.urlsplit(url)
+    return url if parsed.scheme in {"http", "https"} and parsed.netloc else ""
 
 
 def _extract_headings(text: str) -> list[dict[str, Any]]:

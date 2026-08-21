@@ -6,6 +6,24 @@
 
 ## Unreleased
 
+## v0.10.2 - 2026-08-22
+
+### Added
+
+- 为 `guanlan read` 增加 Jina Reader 现行 API 的安全可选控制：支持上游强制刷新、`browser/curl` 引擎、等待/目标/移除选择器及 frontmatter 输出，CLI、MCP 与 HTTP 共用同一请求契约。
+- 新增 `jina_read_contract_v1` 诊断字段与 Jina 限流/额度错误分类；frontmatter 可兼容提取标题、作者、时间、站点、摘要和 canonical URL。
+
+### Changed
+
+- 默认 Jina 请求继续使用历史 `text/plain`、上游默认 engine 和 content 输出，不默认启用 preset、browser、frontmatter、Cookie、代理凭据或脚本注入。
+- 仅当 Jina 与 direct 两条普通读取都返回明确动态页壳时，在搜索兜底前追加一次无缓存 browser 修复；登录墙、验证码/WAF、网络错误和结构化财经页不会触发。
+- `--no-cache` 现在同时绕过观澜本地缓存与 Jina 上游缓存；冲突参数下仍以强制刷新为准。
+
+### Verification
+
+- 新增默认 wire 契约、选择器校验、缓存语义、动态页壳正反例、frontmatter、CLI/MCP/HTTP 和错误分类回归；全量测试 1102 项通过。
+- 本轮按用户要求跳过官网部署与线上版本校验，GitHub、PyPI、Homebrew 和本机安装仍按完整发布链路同步。
+
 ## v0.10.1 - 2026-08-21
 
 ### Changed

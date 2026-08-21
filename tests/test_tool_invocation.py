@@ -49,6 +49,47 @@ def test_read_normalization_keeps_fallback_and_cache_contract():
     assert request["strict"] is True
 
 
+def test_read_normalization_keeps_jina_controls_opt_in_and_bounded():
+    default_request = normalize_read_request({"url": "https://example.com"})
+    controlled = normalize_read_request(
+        {
+            "url": "https://example.com",
+            "no_cache": True,
+            "jina_engine": "browser",
+            "jina_format": "frontmatter",
+            "jina_wait_for": "article",
+            "jina_target": "article",
+            "jina_remove": "nav, footer",
+            "jina_repair": False,
+        }
+    )
+
+    assert default_request["upstream_no_cache"] is False
+    assert default_request["jina_engine"] == "auto"
+    assert default_request["jina_format"] == "content"
+    assert default_request["jina_repair"] is True
+    assert controlled["use_cache"] is False
+    assert controlled["upstream_no_cache"] is True
+    assert controlled["jina_engine"] == "browser"
+    assert controlled["jina_format"] == "frontmatter"
+    assert controlled["jina_wait_for"] == "article"
+    assert controlled["jina_repair"] is False
+
+
+def test_read_no_cache_overrides_conflicting_cache_flags():
+    request = normalize_read_request(
+        {
+            "url": "https://example.com",
+            "no_cache": True,
+            "use_cache": True,
+            "upstream_no_cache": False,
+        }
+    )
+
+    assert request["use_cache"] is False
+    assert request["upstream_no_cache"] is True
+
+
 def test_research_normalization_guards_heavy_knobs_without_dropping_options():
     request = normalize_research_request(
         {

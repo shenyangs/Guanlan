@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.10.1`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.10.2`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -766,6 +766,18 @@ guanlan read "https://example.com/article" --format json --trace
 ```
 
 `--trace` 会显示 Jina、direct、search fallback 的尝试顺序、最终选中的后端、正文质量标签（`clean/noisy/weak/fallback`）、噪声命中和乱码判断。
+
+Jina 默认运行在兼容模式，保持历史 `text/plain` 和 content 输出。只有普通 Jina 与 direct 都返回明确动态页壳时，观澜才会在后台追加一次有界 browser 修复；验证码、登录墙、WAF、网络错误和动态财经页不会盲目重试。这个增强不会改变正常静态文章的输出和延迟路径。
+
+显式 `--no-cache` 会同时绕过观澜本地缓存和 Jina 上游缓存。已知页面结构时，还可以使用以下高级参数；普通使用无需设置：
+
+```bash
+guanlan read "https://example.com/app" --jina-engine browser --jina-wait-for "article"
+guanlan read "https://example.com/app" --jina-target "article" --jina-remove "nav, footer"
+guanlan read "https://example.com/app" --jina-format frontmatter --format json
+```
+
+Frontmatter 只作为兼容结构化输入解析，默认输出仍保持 content 形态。Jina 高级参数不提供 Cookie 转发、代理凭据或脚本注入。
 
 如果你宁可少给，也不想让 Agent 吃进导航、登录按钮、页脚和广告，可以打开严格模式：
 

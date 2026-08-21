@@ -142,6 +142,14 @@ def read_batch(
     strict=False,
     extract="article",
     concurrency=1,
+    use_cache=True,
+    upstream_no_cache=False,
+    jina_engine="auto",
+    jina_format="content",
+    jina_wait_for="",
+    jina_target="",
+    jina_remove="",
+    jina_repair=True,
 ):
     _sync_impl_overrides()
     return _impl.read_batch(
@@ -155,6 +163,14 @@ def read_batch(
         strict=strict,
         extract=extract,
         concurrency=concurrency,
+        use_cache=use_cache,
+        upstream_no_cache=upstream_no_cache,
+        jina_engine=jina_engine,
+        jina_format=jina_format,
+        jina_wait_for=jina_wait_for,
+        jina_target=jina_target,
+        jina_remove=jina_remove,
+        jina_repair=jina_repair,
     )
 
 

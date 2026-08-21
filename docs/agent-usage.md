@@ -521,11 +521,27 @@ guanlan read "https://example.com/article" --max-chars 12000
 guanlan read "https://example.com/article" --backend direct --max-chars 12000
 ```
 
-默认 `guanlan read` 在 `auto` 模式下会做三段降级：
+默认 `guanlan read` 在 `auto` 模式下保持兼容读取和原有降级顺序；只有两个普通读取都确认拿到动态页壳时，才插入一次有界修复：
 
 ```text
-WeChat article extractor（仅 mp.weixin.qq.com）-> Jina Reader -> Direct HTML -> Search-as-context
+WeChat article extractor（仅 mp.weixin.qq.com）
+-> Jina Reader compatibility
+-> Direct HTML
+-> Jina browser repair（仅确认的动态页壳）
+-> Search-as-context
 ```
+
+默认 Jina 请求仍是 `text/plain`、上游默认 engine 和默认 content 输出，因此普通用户的正文形态、缓存收益和调用方式不变。登录墙、验证码/WAF、网络错误和结构化财经页不会触发 browser repair。需要强制读取最新页面时，显式使用 `--no-cache`；它会同时绕过观澜本地缓存和 Jina 上游缓存。
+
+已知页面结构时可以显式使用高级控制，但不要把它们作为普通搜索/阅读的默认参数：
+
+```bash
+guanlan read "URL" --jina-engine browser --jina-wait-for "article"
+guanlan read "URL" --jina-target "article" --jina-remove "nav, footer"
+guanlan read "URL" --jina-format frontmatter --format json
+```
+
+`frontmatter` 会被观澜兼容解析为标题、作者、时间、站点和 canonical URL；默认仍返回历史 content 形态。观澜不会通过这些参数转发 Cookie、代理凭据或注入脚本。
 
 最后一段会返回“观澜阅读兜底”上下文包，包括原始 URL、失败原因和同域公开搜索线索。它只用于继续核验，不能当作原文全文。用户如果明确要求只读原文，用：
 

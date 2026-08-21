@@ -40,6 +40,13 @@ def read_url(
     watch: bool = False,
     strict: bool = False,
     extract: str = "article",
+    upstream_no_cache: bool = False,
+    jina_engine: str = "auto",
+    jina_format: str = "content",
+    jina_wait_for: str = "",
+    jina_target: str = "",
+    jina_remove: str = "",
+    jina_repair: bool = True,
 ) -> str:
     """Read a URL with Jina/direct fallbacks and optional search context."""
     return str(
@@ -55,6 +62,13 @@ def read_url(
             watch=watch,
             strict=strict,
             extract=extract,
+            upstream_no_cache=upstream_no_cache,
+            jina_engine=jina_engine,
+            jina_format=jina_format,
+            jina_wait_for=jina_wait_for,
+            jina_target=jina_target,
+            jina_remove=jina_remove,
+            jina_repair=jina_repair,
         )["content"]
     )
 
@@ -71,6 +85,13 @@ def read_url_with_trace(
     watch: bool = False,
     strict: bool = False,
     extract: str = "article",
+    upstream_no_cache: bool = False,
+    jina_engine: str = "auto",
+    jina_format: str = "content",
+    jina_wait_for: str = "",
+    jina_target: str = "",
+    jina_remove: str = "",
+    jina_repair: bool = True,
 ) -> dict[str, Any]:
     """Read a URL and return content plus backend/quality trace."""
     base = _base()
@@ -82,6 +103,16 @@ def read_url_with_trace(
     original_url = url
     request_url = _request_safe_url(url)
     public_url_policy = validate_public_url(request_url)
+    from guanlan.jina_reader import normalize_jina_options
+
+    jina_options = normalize_jina_options(
+        engine=jina_engine,
+        response_format=jina_format,
+        wait_for=jina_wait_for,
+        target=jina_target,
+        remove=jina_remove,
+        no_cache=upstream_no_cache,
+    )
 
     cache_key = ""
     extract = (extract or "article").lower()
@@ -100,6 +131,13 @@ def read_url_with_trace(
                 "profile": profile or "",
                 "strict": strict,
                 "extract": extract,
+                "upstream_no_cache": upstream_no_cache,
+                "jina_engine": jina_options.engine,
+                "jina_format": jina_options.response_format,
+                "jina_wait_for": jina_options.wait_for,
+                "jina_target": jina_options.target,
+                "jina_remove": jina_options.remove,
+                "jina_repair": bool(jina_repair),
             },
         )
         cached = base._cache_get("read", cache_key, ttl=cache_ttl)
@@ -124,6 +162,14 @@ def read_url_with_trace(
                     "max_chars": int(max_chars or 0),
                     "content_truncated": bool(cached.get("content_truncated")),
                     "public_url_policy": public_url_policy,
+                    "jina_request_contract": jina_options.contract(
+                        repair_enabled=jina_repair,
+                        repair_used=any(
+                            str(item.get("mode") or "") == "safe_browser_repair"
+                            for item in list(cached.get("attempts") or [])
+                            if isinstance(item, dict)
+                        ),
+                    ),
                 },
             }
             packet["quality_report"] = build_read_quality_report(
@@ -140,7 +186,10 @@ def read_url_with_trace(
     attempts: list[dict[str, Any]] = []
     text = ""
     weak_text = ""
+    jina_weak_text = ""
+    direct_weak_text = ""
     selected_backend = ""
+    jina_repair_used = False
     prefer_direct = extract in {"metadata", "links"}
     if backend in ("auto", "direct") and extract in {"article", "text"} and base._is_wechat_article_url(request_url):
         try:
@@ -184,27 +233,43 @@ def read_url_with_trace(
                 raise
     if not text and backend in ("auto", "jina") and not prefer_direct:
         try:
-            candidate = base._read_with_jina(request_url)
+            candidate = _call_read_jina(base, request_url, options=jina_options, network_timeout=30)
             candidate_quality = assess_read_quality(candidate)
             if backend == "auto" and base._read_should_fallback(candidate_quality, strict=strict):
                 errors.append("jina: weak or blocked content")
                 weak_text = weak_text or candidate
+                jina_weak_text = candidate
                 attempts.append(
-                    {"backend": "jina", "status": "weak", "chars": len(candidate), "quality": candidate_quality}
+                    {
+                        "backend": "jina",
+                        "mode": "compatibility",
+                        "status": "weak",
+                        "chars": len(candidate),
+                        "quality": candidate_quality,
+                    }
                 )
             else:
                 text = candidate
                 selected_backend = "jina"
                 attempts.append(
-                    {"backend": "jina", "status": "ok", "chars": len(candidate), "quality": candidate_quality}
+                    {
+                        "backend": "jina",
+                        "mode": "compatibility",
+                        "status": "ok",
+                        "chars": len(candidate),
+                        "quality": candidate_quality,
+                    }
                 )
         except Exception as e:
-            diagnostic = diagnose_network_error(e, source="jina", operation="read_page")
+            from guanlan.jina_reader import diagnose_jina_error
+
+            diagnostic = diagnose_jina_error(e)
             errors.append(f"jina: {diagnostic['category']}")
             raw_errors.append(f"jina: {e}")
             attempts.append(
                 {
                     "backend": "jina",
+                    "mode": "compatibility",
                     "status": "error",
                     "error": diagnostic["category"],
                     "network_diagnostic": diagnostic,
@@ -219,6 +284,7 @@ def read_url_with_trace(
             if backend == "auto" and base._read_should_fallback(candidate_quality, strict=strict):
                 errors.append("direct: weak or blocked content")
                 weak_text = weak_text or candidate
+                direct_weak_text = candidate
                 attempts.append(
                     {"backend": "direct", "status": "weak", "chars": len(candidate), "quality": candidate_quality}
                 )
@@ -242,6 +308,58 @@ def read_url_with_trace(
             )
             if backend == "direct":
                 raise
+    if not text and backend == "auto" and jina_weak_text and direct_weak_text:
+        from guanlan.jina_reader import diagnose_jina_error, should_attempt_safe_repair
+
+        if should_attempt_safe_repair(
+            request_url,
+            jina_text=jina_weak_text,
+            direct_text=direct_weak_text,
+            options=jina_options,
+            enabled=jina_repair,
+        ):
+            repair_options = jina_options.for_safe_browser_repair()
+            try:
+                candidate = _call_read_jina(base, request_url, options=repair_options, network_timeout=20)
+                candidate_quality = assess_read_quality(candidate)
+                if base._read_should_fallback(candidate_quality, strict=strict):
+                    errors.append("jina_browser_repair: weak or blocked content")
+                    weak_text = weak_text or candidate
+                    attempts.append(
+                        {
+                            "backend": "jina",
+                            "mode": "safe_browser_repair",
+                            "status": "weak",
+                            "chars": len(candidate),
+                            "quality": candidate_quality,
+                        }
+                    )
+                else:
+                    text = candidate
+                    selected_backend = "jina"
+                    jina_repair_used = True
+                    attempts.append(
+                        {
+                            "backend": "jina",
+                            "mode": "safe_browser_repair",
+                            "status": "ok",
+                            "chars": len(candidate),
+                            "quality": candidate_quality,
+                        }
+                    )
+            except Exception as e:
+                diagnostic = diagnose_jina_error(e)
+                errors.append(f"jina_browser_repair: {diagnostic['category']}")
+                raw_errors.append(f"jina_browser_repair: {e}")
+                attempts.append(
+                    {
+                        "backend": "jina",
+                        "mode": "safe_browser_repair",
+                        "status": "error",
+                        "error": diagnostic["category"],
+                        "network_diagnostic": diagnostic,
+                    }
+                )
     fallback_used = False
     if not text and fallback_search and backend == "auto" and not strict:
         try:
@@ -299,6 +417,10 @@ def read_url_with_trace(
         "max_chars": int(max_chars or 0),
         "content_truncated": content_truncated,
         "public_url_policy": public_url_policy,
+        "jina_request_contract": jina_options.contract(
+            repair_enabled=jina_repair,
+            repair_used=jina_repair_used,
+        ),
     }
     if request_url != original_url:
         trace_payload["request_url"] = request_url
@@ -569,6 +691,17 @@ def _contains_cjk(text: str) -> bool:
     return any("\u4e00" <= char <= "\u9fff" for char in text or "")
 
 
+def _call_read_jina(base: Any, url: str, *, options: Any, network_timeout: int) -> str:
+    """Call the enhanced reader while preserving old monkeypatched test doubles."""
+
+    try:
+        return base._read_with_jina(url, options=options, network_timeout=network_timeout)
+    except TypeError as exc:
+        if "unexpected keyword" in str(exc) and exc.__traceback__ is not None and exc.__traceback__.tb_next is None:
+            return base._read_with_jina(url)
+        raise
+
+
 def _request_safe_url(url: str) -> str:
     """Percent-encode non-ASCII URL parts before urllib sees the request."""
 
@@ -604,6 +737,14 @@ def read_batch(
     strict: bool = False,
     extract: str = "article",
     concurrency: int = 1,
+    use_cache: bool = True,
+    upstream_no_cache: bool = False,
+    jina_engine: str = "auto",
+    jina_format: str = "content",
+    jina_wait_for: str = "",
+    jina_target: str = "",
+    jina_remove: str = "",
+    jina_repair: bool = True,
 ) -> list[dict[str, Any]]:
     """Read multiple URLs with per-item errors kept in the result list."""
     records: list[dict[str, Any]] = []
@@ -629,8 +770,16 @@ def read_batch(
                 fallback_limit=fallback_limit,
                 profile=profile,
                 cache_ttl=cache_ttl,
+                use_cache=use_cache,
                 strict=strict,
                 extract=extract,
+                upstream_no_cache=upstream_no_cache,
+                jina_engine=jina_engine,
+                jina_format=jina_format,
+                jina_wait_for=jina_wait_for,
+                jina_target=jina_target,
+                jina_remove=jina_remove,
+                jina_repair=jina_repair,
             )
             return {"rank": idx, "url": clean_url, "status": "ok", "content": content}
         except Exception as e:
