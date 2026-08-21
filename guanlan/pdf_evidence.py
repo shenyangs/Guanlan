@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Safe local PDF ingestion with page and table-cell evidence locators."""
+"""Safe local PDF ingestion with page-level evidence locators."""
 
 from __future__ import annotations
 
@@ -40,11 +40,6 @@ def ingest_pdf(
         from pypdf import PdfReader
     except ImportError as exc:  # pragma: no cover - dependency contract
         raise RuntimeError("PDF support requires pypdf; reinstall Guanlan with PDF dependencies") from exc
-    try:
-        import pdfplumber
-    except ImportError as exc:  # pragma: no cover - dependency contract
-        raise RuntimeError("PDF table support requires pdfplumber; reinstall Guanlan with PDF dependencies") from exc
-
     reader = PdfReader(file_path, strict=False)
     if reader.is_encrypted and reader.decrypt("") == 0:
         raise ValueError("encrypted PDF requires a password and is not ingested")
@@ -55,25 +50,6 @@ def ingest_pdf(
     binary_hash = hashlib.sha256(payload).hexdigest()
     attachment_id = str(parent_attachment_id or stable_id("att", source_url or file_path.as_uri()))
     page_texts = [str(page.extract_text() or "").strip() for page in reader.pages]
-    tables: list[dict[str, Any]] = []
-    with pdfplumber.open(file_path) as document:
-        for page_number, page in enumerate(document.pages, start=1):
-            for table_index, rows in enumerate(page.extract_tables() or [], start=1):
-                table_id = stable_id("tbl", binary_hash, page_number, table_index)
-                normalized_rows = [
-                    [str(cell or "").strip() for cell in row]
-                    for row in rows
-                    if isinstance(row, list)
-                ]
-                if normalized_rows:
-                    tables.append(
-                        {
-                            "table_id": table_id,
-                            "page_number": page_number,
-                            "table_index": table_index,
-                            "rows": normalized_rows,
-                        }
-                    )
 
     display_title = str(title or reader.metadata.title or file_path.stem).strip()
     markdown_parts = [f"# {display_title}", "", f"PDF-SHA256: `{binary_hash}`"]
@@ -94,27 +70,6 @@ def ingest_pdf(
             }
         )
         cursor += len(page_body) + len(f"\n\n## 第 {page_number} 页\n\n")
-    for table in tables:
-        markdown_parts.extend(["", f"### 表格 {table['table_index']}（第 {table['page_number']} 页）"])
-        for row_index, row in enumerate(table["rows"]):
-            markdown_parts.append(" | ".join(row))
-            for column_index, value in enumerate(row):
-                if not value:
-                    continue
-                passages.append(
-                    {
-                        "locator_type": "table_cell",
-                        "page_number": table["page_number"],
-                        "table_id": table["table_id"],
-                        "row_index": row_index,
-                        "column_index": column_index,
-                        "heading_path": [display_title, f"第 {table['page_number']} 页", f"表格 {table['table_index']}"],
-                        "char_start": 0,
-                        "char_end": len(value),
-                        "text": value,
-                        "attachment_parent_id": attachment_id,
-                    }
-                )
     content = "\n".join(markdown_parts).strip()
     page_cursor = 0
     for passage in passages:
@@ -126,12 +81,6 @@ def ingest_pdf(
                 passage["char_end"] = offset + len(text)
                 page_cursor = passage["char_end"]
             continue
-        table_marker = f"### 表格 {next(table['table_index'] for table in tables if table['table_id'] == passage['table_id'])}"
-        table_start = max(content.find(table_marker), 0)
-        offset = content.find(text, table_start)
-        if offset >= 0:
-            passage["char_start"] = offset
-            passage["char_end"] = offset + len(text)
     archive_url = str(source_url or file_path.as_uri())
     metadata = {
         "source_type": "pdf_attachment",
@@ -139,10 +88,10 @@ def ingest_pdf(
         "binary_sha256": binary_hash,
         "file_size": size,
         "page_count": page_count,
-        "table_count": len(tables),
         "attachment_parent_id": attachment_id,
         "local_file_name": file_path.name,
         "security_boundary": "explicit_local_file; no scripts; no external links fetched; encrypted PDFs rejected",
+        "layout_boundary": "page_text_only; tables, charts, and complex layout require host-agent PDF or vision reading",
     }
     from guanlan.archive import add_document, replace_snapshot_passages
 
@@ -154,10 +103,10 @@ def ingest_pdf(
         "binary_sha256": binary_hash,
         "file_size": size,
         "page_count": page_count,
-        "table_count": len(tables),
-        "cell_count": sum(len(row) for table in tables for row in table["rows"]),
         "attachment_parent_id": attachment_id,
         "passage_count": passage_count,
         "snapshot_resource_uri": f"guanlan://snapshots/{record['current_snapshot_id']}",
         "boundary": metadata["security_boundary"],
+        "layout_boundary": metadata["layout_boundary"],
+        "agent_read_advice": "表格、图表和复杂版面请由宿主 Agent 直接读取原 PDF；Guanlan 只保存页级文本与证据定位。",
     }

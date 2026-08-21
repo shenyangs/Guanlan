@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from guanlan import archive
+from guanlan.commands.archive import handle_archive_command
 from guanlan.pdf_evidence import ingest_pdf
 from guanlan.temporal import build_claim_delta, build_snapshot_diff
 
@@ -42,17 +44,15 @@ def test_archive_update_persists_one_change_event_and_diff(tmp_path):
     assert comparison["snapshot_diff"]["changed"] is True
 
 
-def test_pdf_ingest_addresses_pages_tables_and_parent_attachment(tmp_path):
+def test_pdf_ingest_addresses_pages_and_parent_attachment(tmp_path):
     db = tmp_path / "archive.db"
     record = ingest_pdf(FIXTURE, source_url="https://example.com/report.pdf", db_path=db)
     passages = archive.list_snapshot_passages(record["current_snapshot_id"], db_path=db)
 
     assert record["page_count"] == 2
-    assert record["table_count"] >= 1
+    assert record["layout_boundary"].startswith("page_text_only")
+    assert "宿主 Agent" in record["agent_read_advice"]
     assert {item["page_number"] for item in passages if item["locator_type"] == "pdf_page"} == {1, 2}
-    cells = [item for item in passages if item["locator_type"] == "table_cell"]
-    assert any(item["text"] == "99.5%" for item in cells)
-    assert all(item["table_id"] for item in cells)
     assert all(item["attachment_parent_id"] == record["attachment_parent_id"] for item in passages)
     snapshot = archive.inspect_snapshot(record["current_snapshot_id"], db_path=db)
     assert all(
@@ -79,3 +79,24 @@ def test_pdf_rejects_non_pdf_signature(tmp_path):
     path.write_text("not a pdf", encoding="utf-8")
     with pytest.raises(ValueError, match="PDF signature"):
         ingest_pdf(path, db_path=tmp_path / "archive.db")
+
+
+def test_archive_add_pdf_human_output_explains_agent_layout_boundary(tmp_path, capsys):
+    handle_archive_command(
+        SimpleNamespace(
+            archive_command="add-pdf",
+            path=str(FIXTURE),
+            source_url="https://example.com/report.pdf",
+            title="",
+            parent_attachment_id="",
+            max_bytes=50 * 1024 * 1024,
+            max_pages=200,
+            json=False,
+            db=str(tmp_path / "archive.db"),
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Pages: 2" in output
+    assert "Tables:" not in output
+    assert "宿主 Agent" in output

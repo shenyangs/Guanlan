@@ -59,7 +59,7 @@ guanlan search "人工智能 政策 最新" --profile china --limit 80
 6. **证据包输出**：`research`、`yinshen`、`compare`、`timeline`、`dossier`、`recipe`、`archive`、`--format context` 面向 Agent 继续推理。
 7. **证据来源链**：`research --format json` 增量返回 `evidence_bundle_v1`；Archive 保留同一 URL 的不可变历史快照和可回查段落偏移。
 8. **可恢复研究任务**：`case` 把长研究固化为本地 Research Case，支持持久化状态、暂停、恢复、取消、过期和审计；MCP `tasks` profile 同步提供 Resources/Tasks。
-9. **时序与附件证据**：Archive 可比较 Snapshot/Claim Delta；PDF 入库可定位到页码、表格单元格和父附件。
+9. **时序与附件证据**：Archive 可比较 Snapshot/Claim Delta；PDF 入库保存页码和父附件，表格/图表由宿主 Agent 直接读取。
 10. **长期意图雷达**：`watch` 把一次性 query 固化为本地 standing intent，按需 fire，复用搜索、RSS、归档和去重状态发现新线索。
 
 ## 典型命令
@@ -99,6 +99,8 @@ guanlan archive history 1
 guanlan archive snapshot SNAPSHOT_ID --passages --json
 guanlan archive diff OLD_SNAPSHOT NEW_SNAPSHOT --json
 guanlan archive add-pdf ./report.pdf --source-url https://example.com/report.pdf --json
+
+# `add-pdf` 只保存页级文本与定位；表格、图表、复杂版面由宿主 Agent 直接读取原 PDF
 
 # 创建可恢复的长研究；run 只在显式调用时执行
 guanlan case create "复杂研究问题" --request '{"limit":80,"read_top":2}'
@@ -154,7 +156,7 @@ guanlan doctor --install-check
 guanlan status
 ```
 
-看到 `观澜 / Guanlan v0.10.0`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.10.1`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
 
 ## 给 Agent 复制的安装指令
 

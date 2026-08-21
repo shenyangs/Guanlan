@@ -107,7 +107,14 @@ def handle_archive_command(args):
             if args.json:
                 print(json.dumps(record, ensure_ascii=False, indent=2))
             else:
-                print(f"# PDF 证据入库\n\n- Snapshot: {record['current_snapshot_id']}\n- Pages: {record['page_count']}\n- Tables: {record['table_count']}\n- Passages: {record['passage_count']}")
+                print(
+                    f"# PDF 证据入库\n\n"
+                    f"- Snapshot: {record['current_snapshot_id']}\n"
+                    f"- Pages: {record['page_count']}\n"
+                    f"- Passages: {record['passage_count']}\n"
+                    f"- Layout boundary: {record['layout_boundary']}\n\n"
+                    f"> {record['agent_read_advice']}"
+                )
             return
 
         if command == "add-browser-note":

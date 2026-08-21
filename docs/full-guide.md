@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.10.0`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.10.1`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -929,8 +929,10 @@ guanlan archive add-pdf ./report.pdf --source-url https://example.com/report.pdf
 ```
 
 PDF 仅处理用户显式指定的本地文件，限制大小和页数，不执行脚本、不跟随外链，并拒绝需要密码的
-加密 PDF。页正文使用 `pdf_page` 定位，表格单元格使用 `table_cell + page_number + table_id +
-row_index + column_index` 定位；PDF 二进制变化会生成新快照，即使可见文字没有变化。
+加密 PDF。页正文使用 `pdf_page` 定位；PDF 二进制变化会生成新快照，即使可见文字没有变化。
+Guanlan 不解析 PDF 表格、图表或复杂版面：这些内容应由宿主 Agent 的原生 PDF/视觉能力直接读取，
+再把需要保留的结论或可见证据交给 Archive。这样避免把 Pillow、pypdfium2、cryptography 和
+Rust/LLVM 构建链带入默认安装。
 
 **Agent 外层 timeout 建议**
 

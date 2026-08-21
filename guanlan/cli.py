@@ -928,7 +928,7 @@ def main():
                                help="Explicit batch archive read concurrency; default 1 keeps serial behavior")
     p_archive_add.add_argument("--db", default="", help="Optional archive database path")
 
-    p_archive_pdf = archive_sub.add_parser("add-pdf", help="Ingest a local PDF with page/table evidence locators")
+    p_archive_pdf = archive_sub.add_parser("add-pdf", help="Ingest a local PDF with page-level evidence locators")
     p_archive_pdf.add_argument("path", help="Explicit local PDF path")
     p_archive_pdf.add_argument("--source-url", default="", help="Stable source/attachment URL; defaults to local file URI")
     p_archive_pdf.add_argument("--title", default="", help="Override PDF title")

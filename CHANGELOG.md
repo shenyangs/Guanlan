@@ -6,6 +6,17 @@
 
 ## Unreleased
 
+## v0.10.1 - 2026-08-21
+
+### Changed
+
+- 收窄 PDF 证据边界：Guanlan 只保存页级文本、页码、父附件关系与不可变快照；表格、图表和复杂版面交给宿主 Agent 的原生 PDF/视觉能力直接读取。
+- 从默认安装移除 `pdfplumber` 及其 Pillow、pypdfium2、cryptography、Rust/LLVM 构建链，只保留轻量 `pypdf`，避免为边缘能力显著放大安装体积与 Homebrew 构建风险。
+
+### Verification
+
+- 增加 PDF 职责边界与轻量依赖回归；0.10.1 必须重新通过完整门禁、默认 wheel 安装和 Homebrew 真实重装后才成为推荐版本。
+
 ## v0.10.0 - 2026-08-21
 
 ### Added
