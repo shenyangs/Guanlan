@@ -7,8 +7,10 @@ The MCP surface is intentionally read-first: it exposes search, read, research,
 hotnews, and status tools for AI agents without adding write/social actions.
 """
 
+import argparse
 import asyncio
 import json
+import os
 import sys
 
 from guanlan.errors import format_user_error
@@ -59,9 +61,17 @@ def _doctor_report() -> str:
     return format_report(check_all(config))
 
 
-def _tool_definitions() -> list[dict]:
+MCP_FULL_PROFILE = "full"
+MCP_COMPACT_PROFILE = "compact"
+MCP_COMPACT_TOOLS = frozenset({
+    "guanlan_status", "guanlan_capabilities", "guanlan_agent",
+    "guanlan_search", "guanlan_read", "guanlan_research",
+})
+
+
+def _tool_definitions(profile: str = MCP_FULL_PROFILE) -> list[dict]:
     """Return MCP tool definitions as plain dictionaries for easy testing."""
-    return _apply_registry_tool_definitions([
+    tools = _apply_registry_tool_definitions([
         {
             "name": "guanlan_status",
             "description": (
@@ -779,6 +789,12 @@ def _tool_definitions() -> list[dict]:
             },
         },
     ])
+    normalized = str(profile or MCP_FULL_PROFILE).strip().lower()
+    if normalized == MCP_FULL_PROFILE:
+        return tools
+    if normalized == MCP_COMPACT_PROFILE:
+        return [tool for tool in tools if tool.get("name") in MCP_COMPACT_TOOLS]
+    raise ValueError("MCP profile must be one of: full, compact")
 
 
 def _apply_registry_tool_definitions(tools: list[dict]) -> list[dict]:
@@ -799,6 +815,14 @@ def _apply_registry_tool_definitions(tools: list[dict]) -> list[dict]:
         next_tool = dict(tool)
         next_tool["description"] = str(spec.mcp_description or tool.get("description") or payload.get("mcp_description") or "")
         next_tool["inputSchema"] = spec.request_schema or tool.get("inputSchema") or {"type": "object", "properties": {}}
+        next_tool["annotations"] = {
+            "title": str(spec.command or spec.name), "readOnlyHint": True, "destructiveHint": False,
+            "idempotentHint": spec.name != "guanlan_daily",
+            "openWorldHint": spec.name not in {
+                "guanlan_status", "guanlan_capabilities", "guanlan_archive_search",
+                "guanlan_archive_context", "guanlan_archive_verify",
+            },
+        }
         projected.append(next_tool)
     return projected
 
@@ -1414,16 +1438,18 @@ def _run_tool_inner(name: str, arguments: dict | None = None):
     raise ValueError(f"Unknown tool: {name}")
 
 
-def create_server():
+def create_server(profile: str | None = None):
     if not HAS_MCP:
         print("MCP not installed. Install: pip install guanlan[mcp]", file=sys.stderr)
         sys.exit(1)
 
+    selected_profile = str(profile or os.getenv("GUANLAN_MCP_PROFILE") or MCP_FULL_PROFILE).strip().lower()
+    definitions = _tool_definitions(selected_profile)
     server = Server("guanlan")
 
     @server.list_tools()
     async def list_tools():
-        return [Tool(**tool) for tool in _tool_definitions()]
+        return [Tool(**_runtime_tool_kwargs(tool)) for tool in definitions]
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict):
@@ -1437,15 +1463,26 @@ def create_server():
     return server
 
 
-async def main():
-    server = create_server()
+def _runtime_tool_kwargs(tool: dict) -> dict:
+    """Keep annotations additive even with older optional MCP runtimes."""
+    fields = getattr(Tool, "model_fields", None) or getattr(Tool, "__fields__", None)
+    return tool if not isinstance(fields, dict) else {key: value for key, value in tool.items() if key in fields}
+
+
+async def main(profile: str | None = None):
+    server = create_server(profile=profile)
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
-def cli_main():
+def cli_main(argv: list[str] | None = None):
     """Console entry point for `guanlan-mcp`."""
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(prog="guanlan-mcp")
+    parser.add_argument("--profile", choices=[MCP_FULL_PROFILE, MCP_COMPACT_PROFILE],
+                        default=os.getenv("GUANLAN_MCP_PROFILE") or MCP_FULL_PROFILE,
+                        help="MCP tool surface; full is the compatible default, compact exposes six core tools.")
+    args = parser.parse_args(argv)
+    asyncio.run(main(profile=args.profile))
 
 
 if __name__ == "__main__":

@@ -128,7 +128,8 @@ def read_batch(*args: Any, **kwargs: Any):
 
 def build_research_packet(*args: Any, **kwargs: Any):
     _sync_legacy_overrides()
-    return _legacy.build_research_packet(*args, **kwargs)
+    from guanlan.web.evidence_service import attach_evidence_bundle
+    return attach_evidence_bundle(_legacy.build_research_packet(*args, **kwargs))
 
 
 _WRAPPER_OVERRIDES.update({name: globals()[name] for name in _SYNC_ENTRYPOINTS if name in globals()})

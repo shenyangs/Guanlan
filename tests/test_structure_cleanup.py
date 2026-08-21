@@ -78,6 +78,14 @@ def test_direct_legacy_runtime_import_is_limited_to_type_identity_bridge():
     assert direct_imports == ["guanlan/web/_impl.py", "guanlan/web/search_types.py"]
 
 
+def test_new_evidence_kernel_stays_behind_service_boundary():
+    kernel = (REPO_ROOT / "guanlan/evidence_kernel.py").read_text(encoding="utf-8")
+    service = (REPO_ROOT / "guanlan/web/evidence_service.py").read_text(encoding="utf-8")
+    assert "_legacy_web_impl" not in kernel
+    assert "_legacy_web_impl" not in service
+    assert "build_evidence_bundle" in service
+
+
 def test_tool_registry_projects_canonical_surface_fields():
     from guanlan.tool_registry import mcp_projection_defaults
 
@@ -102,6 +110,9 @@ def test_mcp_and_http_surfaces_are_registry_projections():
         schema = tool.get("inputSchema") or {}
         assert schema.get("type") == "object", tool["name"]
         assert isinstance(schema.get("properties"), dict), tool["name"]
+    compact_names = {tool["name"] for tool in _tool_definitions("compact")}
+    assert compact_names < mcp_names
+    assert {"guanlan_agent", "guanlan_search", "guanlan_read", "guanlan_research"} <= compact_names
 
 
 def _line_count(path: Path) -> int:

@@ -6,7 +6,8 @@
 
 | Version | Supported |
 | --- | --- |
-| Latest 0.8.x | Yes |
+| Latest 0.9.x | Yes |
+| 0.8.x | Security fixes only |
 | Older alpha releases | Best-effort |
 
 ## 默认安全边界

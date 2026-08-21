@@ -24,7 +24,7 @@ from guanlan.limits import (
     MAX_RESEARCH_LIMIT,
     MAX_SEARCH_LIMIT,
 )
-from guanlan.tool_registry import core_agent_tool_names
+from guanlan.tool_registry import core_agent_tool_names, mcp_output_contracts
 
 
 def test_mcp_tool_definitions_include_agent_search_tools():
@@ -139,11 +139,30 @@ def test_mcp_tool_definitions_include_agent_search_tools():
     assert "sample recall" in archive_verify_tool["description"]
 
 
+def test_mcp_full_profile_is_unchanged_and_compact_is_explicit_subset():
+    full = mcp_server._tool_definitions()
+    compact = mcp_server._tool_definitions("compact")
+    assert {tool["name"] for tool in full} == core_agent_tool_names()
+    assert {tool["name"] for tool in compact} == mcp_server.MCP_COMPACT_TOOLS
+    assert len(compact) == 6
+    assert all(tool["annotations"]["readOnlyHint"] is True for tool in full)
+    assert all(tool["annotations"]["destructiveHint"] is False for tool in full)
+
+
+def test_mcp_output_contracts_are_additive_and_versioned_for_evidence_tools():
+    contracts = mcp_output_contracts()
+    assert contracts["guanlan_read"]["schema_versions"] == ["read_evidence_v1", "read_outcome_v1"]
+    assert "evidence_bundle_v1" in contracts["guanlan_research"]["schema_versions"]
+    assert all(contract["additive_fields_only"] is True for contract in contracts.values())
+
+
 def test_mcp_config_outputs_copyable_server_config():
     config = mcp_config.build_mcp_config(client="claude", command="guanlan-mcp")
 
     assert config["mcpServers"]["guanlan"]["command"] == "guanlan-mcp"
     assert config["mcpServers"]["guanlan"]["args"] == []
+    compact = mcp_config.build_mcp_config(client="codex", command="guanlan-mcp", profile="compact")
+    assert compact["mcpServers"]["guanlan"]["args"] == ["--profile", "compact"]
     md = mcp_config.format_mcp_config_markdown(client="codex")
     assert "Guanlan MCP 配置" in md
     assert "guanlan-mcp" in md

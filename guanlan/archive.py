@@ -18,13 +18,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from guanlan.evidence_kernel import build_document_snapshot, build_passages
 from guanlan.limits import (
     DEFAULT_ARCHIVE_LIST_LIMIT,
     DEFAULT_ARCHIVE_SEARCH_LIMIT,
     DEFAULT_READ_FALLBACK_LIMIT,
 )
 
-ARCHIVE_SCHEMA_VERSION = 1
+ARCHIVE_SCHEMA_VERSION = 2
 ARCHIVE_MIN_USEFUL_CHARS = 40
 ARCHIVE_CONTENT_MODE_RANK = {
     "full_body": 3,
@@ -157,7 +158,7 @@ def add_document(
 
     with _connect(db_path) as conn:
         existing = conn.execute(
-            "SELECT id, content_hash FROM documents WHERE url = ?",
+            "SELECT id, content_hash, current_snapshot_id FROM documents WHERE url = ?",
             (normalized_url,),
         ).fetchone()
         status = "created"
@@ -205,6 +206,18 @@ def add_document(
                 ),
             )
             doc_id = int(cursor.lastrowid)
+        snapshot_id, snapshot_status, passage_count = _ensure_document_snapshot(
+            conn,
+            document_id=doc_id,
+            url=normalized_url,
+            title=title,
+            content=content,
+            content_hash=content_hash,
+            metadata=metadata,
+            observed_at=now,
+            previous_snapshot_id=str(existing["current_snapshot_id"] or "") if existing else "",
+        )
+        conn.execute("UPDATE documents SET current_snapshot_id = ? WHERE id = ?", (snapshot_id, doc_id))
         _upsert_fts(conn, doc_id, title=title, content=content, url=normalized_url, domain=domain)
         conn.commit()
 
@@ -216,6 +229,9 @@ def add_document(
         "domain": domain,
         "chars": len(content),
         "content_hash": content_hash,
+        "current_snapshot_id": snapshot_id,
+        "snapshot_status": snapshot_status,
+        "passage_count": passage_count,
     }
 
 
@@ -1041,6 +1057,17 @@ def inspect_document(identifier: str, db_path: str | Path | None = None) -> dict
                 "SELECT * FROM documents WHERE url = ? OR url_hash = ?",
                 (normalized, hashlib.sha256(normalized.encode("utf-8")).hexdigest()),
             ).fetchone()
+        snapshot_count = 0
+        passage_count = 0
+        if row:
+            snapshot_count = int(conn.execute(
+                "SELECT COUNT(*) AS count FROM document_snapshots WHERE document_id = ?", (int(row["id"]),)
+            ).fetchone()["count"])
+            current_snapshot_id = str(row["current_snapshot_id"] or "")
+            if current_snapshot_id:
+                passage_count = int(conn.execute(
+                    "SELECT COUNT(*) AS count FROM passages WHERE snapshot_id = ?", (current_snapshot_id,)
+                ).fetchone()["count"])
     if not row:
         raise ValueError(f"archive document not found: {identifier}")
     record = _row_to_record(row, include_content=True, rag=True)
@@ -1050,8 +1077,60 @@ def inspect_document(identifier: str, db_path: str | Path | None = None) -> dict
         "content_hash": record.get("content_hash", ""),
         "has_content": bool(content.strip()),
         "metadata_keys": sorted((record.get("metadata") or {}).keys()),
+        "snapshot_count": snapshot_count,
+        "passage_count": passage_count,
     }
+    record["snapshot_count"] = snapshot_count
+    record["passage_count"] = passage_count
     return record
+
+
+def list_document_snapshots(identifier: str, db_path: str | Path | None = None) -> list[dict[str, Any]]:
+    """List append-only snapshots for one archive document, newest first."""
+    document = inspect_document(identifier, db_path=db_path)
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT s.*, COUNT(p.passage_id) AS passage_count
+            FROM document_snapshots s
+            LEFT JOIN passages p ON p.snapshot_id = s.snapshot_id
+            WHERE s.document_id = ?
+            GROUP BY s.snapshot_id
+            ORDER BY s.observed_at DESC, s.created_at DESC
+            """, (int(document["id"]),),
+        ).fetchall()
+    return [_snapshot_row_to_record(row) for row in rows]
+
+
+def inspect_snapshot(snapshot_id: str, db_path: str | Path | None = None) -> dict[str, Any]:
+    """Return one immutable archive snapshot including its stored body."""
+    value = str(snapshot_id or "").strip()
+    if not value:
+        raise ValueError("snapshot_id is required")
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT s.*, d.url, COUNT(p.passage_id) AS passage_count
+            FROM document_snapshots s
+            JOIN documents d ON d.id = s.document_id
+            LEFT JOIN passages p ON p.snapshot_id = s.snapshot_id
+            WHERE s.snapshot_id = ?
+            GROUP BY s.snapshot_id
+            """, (value,),
+        ).fetchone()
+    if not row:
+        raise ValueError(f"archive snapshot not found: {snapshot_id}")
+    return _snapshot_row_to_record(row, include_content=True)
+
+
+def list_snapshot_passages(snapshot_id: str, db_path: str | Path | None = None) -> list[dict[str, Any]]:
+    """Return stable, offset-addressable passages for one snapshot."""
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM passages WHERE snapshot_id = ? ORDER BY ordinal ASC",
+            (str(snapshot_id or "").strip(),),
+        ).fetchall()
+    return [_passage_row_to_record(row) for row in rows]
 
 
 def remove_document(identifier: str, db_path: str | Path | None = None) -> dict[str, Any]:
@@ -1495,6 +1574,7 @@ def _connect(db_path: str | Path | None = None) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     _ensure_schema(conn)
     return conn
 
@@ -1525,10 +1605,51 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             content_hash TEXT NOT NULL,
             metadata_json TEXT NOT NULL DEFAULT '{}',
             added_at REAL NOT NULL,
-            updated_at REAL NOT NULL
+            updated_at REAL NOT NULL,
+            current_snapshot_id TEXT
         )
         """
     )
+    columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(documents)").fetchall()}
+    if "current_snapshot_id" not in columns:
+        conn.execute("ALTER TABLE documents ADD COLUMN current_snapshot_id TEXT")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS document_snapshots (
+            snapshot_id TEXT PRIMARY KEY,
+            document_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            observed_at REAL NOT NULL,
+            last_observed_at REAL NOT NULL,
+            created_at REAL NOT NULL,
+            previous_snapshot_id TEXT NOT NULL DEFAULT '',
+            UNIQUE(document_id, content_hash),
+            FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS passages (
+            passage_id TEXT PRIMARY KEY,
+            snapshot_id TEXT NOT NULL,
+            ordinal INTEGER NOT NULL,
+            heading_path_json TEXT NOT NULL DEFAULT '[]',
+            char_start INTEGER NOT NULL,
+            char_end INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            text_hash TEXT NOT NULL,
+            UNIQUE(snapshot_id, ordinal),
+            FOREIGN KEY(snapshot_id) REFERENCES document_snapshots(snapshot_id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_document_snapshots_document ON document_snapshots(document_id, observed_at DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_passages_snapshot ON passages(snapshot_id, ordinal)")
+    _migrate_legacy_snapshots(conn)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS archive_embeddings (
@@ -1574,6 +1695,78 @@ def _upsert_fts(conn: sqlite3.Connection, doc_id: int, title: str, content: str,
         )
     except sqlite3.OperationalError:
         conn.execute("INSERT OR REPLACE INTO archive_meta (key, value) VALUES ('fts', '0')")
+
+
+def _migrate_legacy_snapshots(conn: sqlite3.Connection) -> None:
+    rows = conn.execute(
+        "SELECT * FROM documents WHERE current_snapshot_id IS NULL OR current_snapshot_id = '' ORDER BY id ASC"
+    ).fetchall()
+    for row in rows:
+        try:
+            metadata = json.loads(str(row["metadata_json"] or "{}"))
+        except json.JSONDecodeError:
+            metadata = {}
+        snapshot_id, _, _ = _ensure_document_snapshot(
+            conn,
+            document_id=int(row["id"]), url=str(row["url"]), title=str(row["title"]),
+            content=str(row["content"]), content_hash=str(row["content_hash"]), metadata=metadata,
+            observed_at=float(row["added_at"]), last_observed_at=float(row["updated_at"]),
+        )
+        conn.execute("UPDATE documents SET current_snapshot_id = ? WHERE id = ?", (snapshot_id, int(row["id"])))
+
+
+def _ensure_document_snapshot(
+    conn: sqlite3.Connection, *, document_id: int, url: str, title: str, content: str,
+    content_hash: str, metadata: dict[str, Any], observed_at: float,
+    last_observed_at: float | None = None, previous_snapshot_id: str = "",
+) -> tuple[str, str, int]:
+    snapshot = build_document_snapshot(
+        url=url, content=content, title=title, metadata=metadata,
+        observed_at=observed_at, previous_snapshot_id=previous_snapshot_id,
+    )
+    snapshot_id = str(snapshot["snapshot_id"])
+    existing = conn.execute(
+        "SELECT snapshot_id FROM document_snapshots WHERE document_id = ? AND content_hash = ?",
+        (document_id, content_hash),
+    ).fetchone()
+    if existing:
+        snapshot_id = str(existing["snapshot_id"])
+        conn.execute("UPDATE document_snapshots SET last_observed_at = ? WHERE snapshot_id = ?",
+                     (float(last_observed_at or observed_at), snapshot_id))
+        status = "unchanged"
+    else:
+        conn.execute(
+            """
+            INSERT INTO document_snapshots (
+                snapshot_id, document_id, title, content, content_hash, metadata_json,
+                observed_at, last_observed_at, created_at, previous_snapshot_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (snapshot_id, document_id, title, content, content_hash,
+             json.dumps(metadata, ensure_ascii=False, sort_keys=True), float(observed_at),
+             float(last_observed_at or observed_at), time.time(), previous_snapshot_id),
+        )
+        status = "created"
+    passage_count = int(conn.execute(
+        "SELECT COUNT(*) AS count FROM passages WHERE snapshot_id = ?", (snapshot_id,)
+    ).fetchone()["count"])
+    if passage_count == 0:
+        for passage in build_passages({"snapshot_id": snapshot_id}, content):
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO passages (
+                    passage_id, snapshot_id, ordinal, heading_path_json,
+                    char_start, char_end, text, text_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (passage["passage_id"], snapshot_id, passage["ordinal"],
+                 json.dumps(passage["heading_path"], ensure_ascii=False), passage["char_start"],
+                 passage["char_end"], passage["text"], passage["text_hash"]),
+            )
+        passage_count = int(conn.execute(
+            "SELECT COUNT(*) AS count FROM passages WHERE snapshot_id = ?", (snapshot_id,)
+        ).fetchone()["count"])
+    return snapshot_id, status, passage_count
 
 
 def _has_fts(conn: sqlite3.Connection) -> bool:
@@ -1813,6 +2006,7 @@ def _row_to_record(
         "domain": data.get("domain", ""),
         "excerpt": _snippet(content, query) if query else data.get("excerpt", ""),
         "content_hash": data.get("content_hash", ""),
+        "current_snapshot_id": data.get("current_snapshot_id", ""),
         "added_at": data.get("added_at", 0),
         "updated_at": data.get("updated_at", 0),
         "metadata": metadata,
@@ -1852,6 +2046,42 @@ def _row_to_record(
             match_score=float(record.get("match_score", 0) or 0),
         )
     return record
+
+
+def _snapshot_row_to_record(row: sqlite3.Row, *, include_content: bool = False) -> dict[str, Any]:
+    data = dict(row)
+    try:
+        metadata = json.loads(str(data.get("metadata_json") or "{}"))
+    except json.JSONDecodeError:
+        metadata = {}
+    record = {
+        "schema_version": "document_snapshot_v1",
+        "snapshot_id": data.get("snapshot_id", ""), "document_id": data.get("document_id"),
+        "url": data.get("url", ""), "title": data.get("title", ""),
+        "content_hash": data.get("content_hash", ""), "observed_at": data.get("observed_at", 0),
+        "last_observed_at": data.get("last_observed_at", 0), "created_at": data.get("created_at", 0),
+        "previous_snapshot_id": data.get("previous_snapshot_id", ""),
+        "passage_count": int(data.get("passage_count") or 0), "metadata": metadata,
+    }
+    if include_content:
+        record["content"] = str(data.get("content") or "")
+        record["content_chars"] = len(record["content"])
+    return record
+
+
+def _passage_row_to_record(row: sqlite3.Row) -> dict[str, Any]:
+    data = dict(row)
+    try:
+        heading_path = json.loads(str(data.get("heading_path_json") or "[]"))
+    except json.JSONDecodeError:
+        heading_path = []
+    return {
+        "schema_version": "passage_v1", "passage_id": data.get("passage_id", ""),
+        "snapshot_id": data.get("snapshot_id", ""), "ordinal": int(data.get("ordinal") or 0),
+        "heading_path": heading_path if isinstance(heading_path, list) else [],
+        "char_start": int(data.get("char_start") or 0), "char_end": int(data.get("char_end") or 0),
+        "text": str(data.get("text") or ""), "text_hash": data.get("text_hash", ""),
+    }
 
 
 def _export_filter(

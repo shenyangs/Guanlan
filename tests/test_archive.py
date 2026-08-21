@@ -1,10 +1,90 @@
 # -*- coding: utf-8 -*-
 """Tests for Guanlan local archive."""
 
+import hashlib
 import json
+import sqlite3
 from unittest.mock import patch
 
 from guanlan import archive
+
+
+def _create_v1_archive(path):
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE archive_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    conn.execute("""
+        CREATE TABLE documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL UNIQUE, url_hash TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL, domain TEXT NOT NULL, content TEXT NOT NULL, excerpt TEXT NOT NULL,
+            content_hash TEXT NOT NULL, metadata_json TEXT NOT NULL DEFAULT '{}',
+            added_at REAL NOT NULL, updated_at REAL NOT NULL
+        )
+    """)
+    url = "https://example.com/legacy"
+    content = "# 旧记录\n\n这是迁移前已存在的正文，长度足以验证快照与段落。"
+    conn.execute("""
+        INSERT INTO documents (url, url_hash, title, domain, content, excerpt, content_hash,
+                               metadata_json, added_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, '{}', 1.0, 2.0)
+    """, (url, hashlib.sha256(url.encode()).hexdigest(), "旧记录", "example.com", content, content,
+          hashlib.sha256(content.encode()).hexdigest()))
+    conn.execute("INSERT INTO archive_meta (key, value) VALUES ('schema_version', '1')")
+    conn.commit()
+    conn.close()
+
+
+def test_archive_v1_migration_is_additive_and_idempotent(tmp_path):
+    db = tmp_path / "archive-v1.db"
+    _create_v1_archive(db)
+    first = archive.inspect_document("1", db_path=db)
+    second = archive.inspect_document("1", db_path=db)
+    snapshots = archive.list_document_snapshots("1", db_path=db)
+    assert first["content"].startswith("# 旧记录")
+    assert first["current_snapshot_id"] == second["current_snapshot_id"]
+    assert first["snapshot_count"] == len(snapshots) == 1
+    assert snapshots[0]["observed_at"] == 1.0
+    assert archive.list_snapshot_passages(snapshots[0]["snapshot_id"], db_path=db)
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT value FROM archive_meta WHERE key = 'schema_version'").fetchone()[0] == "2"
+
+
+def test_archive_updates_preserve_history_and_unchanged_content_deduplicates(tmp_path):
+    db = tmp_path / "archive.db"
+    url = "https://example.com/versioned"
+    original = archive.add_document(url, "# 第一版\n\n价格 ¥10。", db_path=db)
+    unchanged = archive.add_document(url, "# 第一版\n\n价格 ¥10。", db_path=db)
+    updated = archive.add_document(url, "# 第二版\n\n价格 ¥20。", db_path=db)
+    assert original["current_snapshot_id"] == unchanged["current_snapshot_id"]
+    assert updated["current_snapshot_id"] != original["current_snapshot_id"]
+    snapshots = archive.list_document_snapshots(url, db_path=db)
+    assert len(snapshots) == 2
+    assert snapshots[0]["previous_snapshot_id"] == original["current_snapshot_id"]
+    assert "第一版" in archive.inspect_snapshot(original["current_snapshot_id"], db_path=db)["content"]
+    assert archive.inspect_document(url, db_path=db)["snapshot_count"] == 2
+
+
+def test_archive_remove_cascades_snapshots_and_passages(tmp_path):
+    db = tmp_path / "archive.db"
+    created = archive.add_document("https://example.com/delete", "# 删除\n\n将被完整移除。", db_path=db)
+    archive.remove_document(str(created["id"]), db_path=db)
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM document_snapshots").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM passages").fetchone()[0] == 0
+
+
+def test_archive_history_and_snapshot_cli_are_user_visible(tmp_path, capsys):
+    from guanlan.cli import main
+    db = tmp_path / "archive.db"
+    created = archive.add_document("https://example.com/cli-history", "# 版本\n\n发布日期 2026-08-21。", db_path=db)
+    with patch("sys.argv", ["guanlan", "archive", "history", str(created["id"]), "--db", str(db), "--json"]):
+        main()
+    assert json.loads(capsys.readouterr().out)[0]["snapshot_id"] == created["current_snapshot_id"]
+    with patch("sys.argv", ["guanlan", "archive", "snapshot", created["current_snapshot_id"],
+                            "--passages", "--db", str(db), "--json"]):
+        main()
+    snapshot = json.loads(capsys.readouterr().out)
+    assert snapshot["schema_version"] == "document_snapshot_v1"
+    assert snapshot["passages"][0]["schema_version"] == "passage_v1"
 
 
 def test_archive_add_document_and_search(tmp_path):

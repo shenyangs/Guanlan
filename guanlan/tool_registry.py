@@ -861,3 +861,22 @@ def mcp_projection_defaults() -> dict[str, dict[str, object]]:
             "request_schema": payload["request_schema"],
         }
     return projections
+
+
+def mcp_output_contracts() -> dict[str, dict[str, object]]:
+    """Describe stable MCP result boundaries without narrowing legacy output."""
+    contracts: dict[str, dict[str, object]] = {}
+    for tool in CORE_AGENT_TOOLS:
+        schema_versions: list[str] = []
+        if tool.name == "guanlan_read":
+            schema_versions = ["read_evidence_v1", "read_outcome_v1"]
+        elif tool.name == "guanlan_research":
+            schema_versions = ["evidence_bundle_v1", "claim_ledger_v1"]
+        elif tool.name == "guanlan_agent":
+            schema_versions = ["agent_plan_v2"]
+        contracts[tool.name] = {
+            "transport": "text_content", "json_when_requested": True,
+            "schema_versions": schema_versions, "additive_fields_only": True,
+            "error_transport": "text_content",
+        }
+    return contracts

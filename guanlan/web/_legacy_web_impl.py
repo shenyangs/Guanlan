@@ -9487,12 +9487,15 @@ def _url_path_is_weak_identity(url: str) -> bool:
 
 
 def _read_with_jina(url: str) -> str:
+    from guanlan.url_policy import validate_public_response, validate_public_url
+    validate_public_url(url)
     jina_url = f"https://r.jina.ai/{url}"
     req = urllib.request.Request(
         jina_url,
         headers={"User-Agent": _UA, "Accept": "text/plain"},
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
+        validate_public_response(jina_url, resp)
         return resp.read().decode("utf-8", errors="replace")
 
 
@@ -9504,6 +9507,8 @@ def _is_wechat_article_url(url: str) -> bool:
 
 
 def _read_wechat_article(url: str) -> str:
+    from guanlan.url_policy import validate_public_response, validate_public_url
+    validate_public_url(url)
     req = urllib.request.Request(
         url,
         headers={
@@ -9513,6 +9518,7 @@ def _read_wechat_article(url: str) -> str:
         },
     )
     with urllib.request.urlopen(req, timeout=20) as resp:
+        validate_public_response(url, resp)
         raw_bytes = resp.read()
         content_type = resp.headers.get("content-type", "")
     raw = _decode_response_body(raw_bytes, content_type)
@@ -9665,6 +9671,8 @@ def _wechat_timestamp(raw: str) -> str:
 
 
 def _read_direct(url: str, extract: str = "article") -> str:
+    from guanlan.url_policy import validate_public_response, validate_public_url
+    validate_public_url(url)
     req = urllib.request.Request(
         url,
         headers={
@@ -9673,6 +9681,7 @@ def _read_direct(url: str, extract: str = "article") -> str:
         },
     )
     with urllib.request.urlopen(req, timeout=20) as resp:
+        validate_public_response(url, resp)
         raw_bytes = resp.read()
         content_type = resp.headers.get("content-type", "")
     raw = _decode_response_body(raw_bytes, content_type)

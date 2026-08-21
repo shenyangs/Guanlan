@@ -19,6 +19,7 @@ from typing import Any
 
 from guanlan.limits import DEFAULT_READ_FALLBACK_LIMIT
 from guanlan.network_execution import diagnose_network_error
+from guanlan.url_policy import validate_public_url
 
 
 def _base():
@@ -80,6 +81,7 @@ def read_url_with_trace(
         url = "https://" + url
     original_url = url
     request_url = _request_safe_url(url)
+    public_url_policy = validate_public_url(request_url)
 
     cache_key = ""
     extract = (extract or "article").lower()
@@ -121,6 +123,7 @@ def read_url_with_trace(
                     "returned_chars": len(text),
                     "max_chars": int(max_chars or 0),
                     "content_truncated": bool(cached.get("content_truncated")),
+                    "public_url_policy": public_url_policy,
                 },
             }
             packet["quality_report"] = build_read_quality_report(
@@ -295,6 +298,7 @@ def read_url_with_trace(
         "returned_chars": len(text),
         "max_chars": int(max_chars or 0),
         "content_truncated": content_truncated,
+        "public_url_policy": public_url_policy,
     }
     if request_url != original_url:
         trace_payload["request_url"] = request_url

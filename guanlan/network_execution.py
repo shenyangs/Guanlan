@@ -100,6 +100,7 @@ def read_url_payload(
     timeout: int | float,
     ssl_context: ssl.SSLContext | None = None,
     max_bytes: int | None = None,
+    public_url_policy: bool = False,
 ) -> PublicUrlPayload:
     """Read one public URL while retaining compatibility with simple test fakes.
 
@@ -109,6 +110,9 @@ def read_url_payload(
     """
 
     def _payload(response: Any) -> PublicUrlPayload:
+        if public_url_policy:
+            from guanlan.url_policy import validate_public_response
+            validate_public_response(str(request.full_url), response)
         headers = getattr(response, "headers", None)
         get_charset = getattr(headers, "get_content_charset", None)
         charset = str(get_charset() or "") if callable(get_charset) else ""

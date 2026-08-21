@@ -6,6 +6,21 @@
 
 ## Unreleased
 
+## v0.9.0 - 2026-08-21
+
+### Added
+
+- 新增 `evidence_bundle_v1` 证据来源链：只把可引用的代表页正文转成稳定的 SourceIdentity、DocumentSnapshot 与可回查字符偏移的 Passage。
+- Archive 升级为追加式 schema v2；同一 URL 的内容变化会生成不可变快照并保留历史，可用 `archive history` 和 `archive snapshot --passages` 检查。
+- 新增分层 URL 安全策略，公网读取拒绝凭据、私网/回环/元数据地址和不安全 DNS 答案，并在使用跳转正文前复核最终目标；显式配置端点保留独立边界。
+- MCP 增加显式 `--profile compact` 六工具只读表面和工具注解，默认 `full` 工具集合保持不变。
+
+### Changed
+
+- Research JSON 以纯增量字段携带证据来源链；现有候选结果、顺序、默认 limit/read_top 和 Evidence Mixer 模式不变。
+- ClaimCandidate/EvidenceLink 在本版保持实验性与保守语义：仅记录精确字符串 `mentions`，不自动判定支持、反驳或事实真伪。
+- 建立 v0.9.0 专项施工与发布台账，并用迁移、安全、结构、MCP、全量质量与安装门禁约束上线。
+
 ## v0.8.5 - 2026-08-01
 
 ### Fixed

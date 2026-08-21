@@ -979,6 +979,17 @@ def main():
                                    help="Output format")
     p_archive_inspect.add_argument("--db", default="", help="Optional archive database path")
 
+    p_archive_history = archive_sub.add_parser("history", help="List immutable snapshots for one archived document")
+    p_archive_history.add_argument("identifier", help="Archive document id or URL")
+    p_archive_history.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_archive_history.add_argument("--db", default="", help="Optional archive database path")
+
+    p_archive_snapshot = archive_sub.add_parser("snapshot", help="Inspect one immutable archive snapshot")
+    p_archive_snapshot.add_argument("snapshot_id", help="Snapshot id returned by archive add/history")
+    p_archive_snapshot.add_argument("--passages", action="store_true", help="Include offset-addressable passages")
+    p_archive_snapshot.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")
+    p_archive_snapshot.add_argument("--db", default="", help="Optional archive database path")
+
     p_archive_remove = archive_sub.add_parser("remove", help="Remove one archived document by id or URL")
     p_archive_remove.add_argument("identifier", help="Archive id or URL")
     p_archive_remove.add_argument("--json", action="store_true", help="Print normalized JSON instead of Markdown")

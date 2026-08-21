@@ -32,7 +32,10 @@ def handle_archive_command(args):
         format_archive_verify,
         ingest_search,
         inspect_document,
+        inspect_snapshot,
+        list_document_snapshots,
         list_documents,
+        list_snapshot_passages,
         reindex_archive,
         remove_document,
         search_documents,
@@ -47,7 +50,7 @@ def handle_archive_command(args):
 
     command = getattr(args, "archive_command", None)
     if not command:
-        print("Error: archive command is required: add, add-browser-note, search, context, pack, wiki, embed, ingest-search, ingest-research, list, inspect, remove, reindex, verify, stats, export", file=sys.stderr)
+        print("Error: archive command is required: add, add-browser-note, search, context, pack, wiki, embed, ingest-search, ingest-research, list, inspect, history, snapshot, remove, reindex, verify, stats, export", file=sys.stderr)
         sys.exit(2)
     db_path = args.db or None
 
@@ -239,6 +242,31 @@ def handle_archive_command(args):
                 print(json.dumps(record, ensure_ascii=False, indent=2))
             else:
                 print(_format_archive_inspect(record))
+            return
+
+        if command == "history":
+            snapshots = list_document_snapshots(args.identifier, db_path=db_path)
+            if args.json:
+                print(json.dumps(snapshots, ensure_ascii=False, indent=2))
+            else:
+                print("# 观澜 Archive 快照历史\n")
+                for item in snapshots:
+                    print(f"- {item.get('snapshot_id')} | observed={item.get('observed_at')} | passages={item.get('passage_count', 0)} | hash={str(item.get('content_hash') or '')[:12]}")
+            return
+
+        if command == "snapshot":
+            snapshot = inspect_snapshot(args.snapshot_id, db_path=db_path)
+            if args.passages:
+                snapshot["passages"] = list_snapshot_passages(args.snapshot_id, db_path=db_path)
+            if args.json:
+                print(json.dumps(snapshot, ensure_ascii=False, indent=2))
+            else:
+                print(f"# {snapshot.get('title') or snapshot.get('snapshot_id')}\n")
+                print(f"- Snapshot: {snapshot.get('snapshot_id')}")
+                print(f"- Content hash: {snapshot.get('content_hash')}")
+                print(f"- Previous: {snapshot.get('previous_snapshot_id') or '-'}")
+                print(f"- Passages: {snapshot.get('passage_count', 0)}\n")
+                print(snapshot.get("content", ""))
             return
 
         if command == "remove":

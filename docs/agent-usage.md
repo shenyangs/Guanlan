@@ -256,6 +256,15 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 
 CLI 是默认主路径；命令轻重不确定时先跑 `guanlan workflow "用户需求"`，信源不确定时再跑 `guanlan route "用户需求"`，按 `recommended_commands` 起手。若当前 Agent 或平台明确支持 MCP，再使用观澜 MCP 工具面：`guanlan_capabilities`、`guanlan_search`、`guanlan_workflow`、`guanlan_route`、`guanlan_read`、`guanlan_research`、`guanlan_compare`、`guanlan_timeline`、`guanlan_dossier`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_feeds`、`guanlan_archive_search`、`guanlan_status`。这些 MCP 工具保持只读，不提供发布、评论、点赞、私信等写操作。
 
+默认 `guanlan-mcp` 继续暴露完整工具面。宿主对工具数量敏感时可显式运行
+`guanlan-mcp --profile compact`，只保留 status、capabilities、agent、search、read、research；
+这不是默认迁移，也不会重命名或删除 full profile 的任何工具。
+
+`research` JSON 中的 `evidence_bundle_v1` 只把已确认可引用的代表页正文转成快照和段落。
+其中 claim/link 仍是实验性字符串候选，`mentions` 不能写成“该来源支持此结论”。如需追踪本地
+Archive 同一 URL 的内容变化，使用 `guanlan archive history ID|URL`，再用
+`guanlan archive snapshot SNAPSHOT_ID --passages` 回查正文与字符偏移。
+
 本地 HTTP 服务默认只建议监听 `127.0.0.1`。如果用户明确要求监听局域网或服务器公网地址，必须提醒其设置 `--token` 或 `GUANLAN_SERVE_TOKEN`，因为只读接口也可能暴露本地 archive 内容和搜索行为。
 
 MCP 客户端安装入口：

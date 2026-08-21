@@ -46,6 +46,12 @@ When a backend is explicitly requested, it must still obey the same evidence-qua
 | `readings` | Optional full/partial reads of representative URLs. |
 | `read_quality_summary` | Aggregate body quality and noise signal for readings. |
 | `advisor` | Evidence-bound guidance when requested, not a claim about hidden user intent. |
+| `evidence_bundle_v1` | Additive provenance bundle containing source identities and citable-page snapshots/passages. Claim/link records remain experimental and non-judgmental. |
+
+`evidence_bundle_v1.document_snapshots` and `passages` are generated only from readings whose
+`extract_contract.can_cite_as_page_body=true`. `claim_candidates` are exact token mentions;
+`evidence_links.relation=mentions` does not mean support, refutation, or truth. Existing `results`,
+`selected_evidence`, `readings`, ranking, and Evidence Mixer behavior remain unchanged.
 
 ## Archive Contract
 
@@ -59,6 +65,7 @@ When a backend is explicitly requested, it must still obey the same evidence-qua
 | `domain` | Source domain. |
 | `excerpt` | Compact excerpt for prompt context. |
 | `content_hash` | Local content hash for change detection. |
+| `current_snapshot_id` | Content-addressed pointer to the current immutable snapshot. |
 | `metadata.source_card` | Source identity and source-role metadata. |
 | `metadata.read_quality` | Body quality signal. |
 | `metadata.quality_report` | Noise/body-ratio/recommendation diagnostics. |
@@ -69,6 +76,12 @@ When a backend is explicitly requested, it must still obey the same evidence-qua
 | `rag` | RAG-friendly export fields: `id`, `text`, `source`, `title`, `domain`, `source_type`, `topic`, `updated_at`. |
 
 `guanlan archive stats --quality` should expose aggregate read-quality and RAG-readiness signals. `archive export --min-quality N` may filter noisy records for RAG import, but filtering is explicit and should not silently delete local archive rows.
+
+Archive schema v2 keeps `documents` as the compatible current projection and adds append-only
+`document_snapshots` plus offset-addressable `passages`. Re-observing identical content reuses its
+snapshot; changed content creates a new snapshot and preserves the prior body. Use
+`guanlan archive history ID|URL` and `guanlan archive snapshot SNAPSHOT_ID --passages` to inspect it.
+Migration from schema v1 is additive and idempotent; code rollback does not require deleting v2 tables.
 
 ## Workflow Contract
 
@@ -101,6 +114,16 @@ Workflow JSON should stay compact enough for agents: public payloads should not 
 ## MCP And HTTP Contract
 
 MCP and HTTP surfaces should stay read-only. They may expose fewer formatting options than CLI, but should not remove the same evidence and boundary metadata from JSON payloads.
+
+`guanlan-mcp` defaults to the complete, compatible `full` profile. `guanlan-mcp --profile compact`
+is an explicit opt-in surface containing only status, capabilities, Agent planner, search, read, and
+research. Tool annotations declare read-only/non-destructive intent. JSON-capable results remain
+additive and preserve their existing text transport for older MCP runtimes.
+
+Arbitrary read/map URLs use the `public_web` URL policy: only HTTP(S), no embedded credentials,
+no loopback/private/link-local/metadata targets, all DNS answers must be public, and the final redirect
+target is revalidated before its body is used. Explicitly configured local/self-hosted service endpoints
+use a separate exact-host `configured_endpoint` policy and must not be fed arbitrary user URLs.
 
 The local HTTP service exposes `GET /tools` as a read-only registry view so agents can verify the supported tool surface before calling `/search`, `/research`, `/hotnews`, `/feeds`, or `/archive/search`.
 

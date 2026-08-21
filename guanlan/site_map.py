@@ -461,10 +461,12 @@ def _score_candidate(candidate: _Candidate, canonical_url: str, terms: list[str]
 
 
 def _fetch_text(url: str, *, timeout: int = 8) -> str:
+    from guanlan.url_policy import validate_public_url
+    validate_public_url(url)
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     # A byte cap stays adapter-owned. The common executor intentionally only
     # owns a single network operation and does not change discovery behavior.
-    payload = read_url_payload(req, timeout=timeout, max_bytes=MAX_FETCH_BYTES)
+    payload = read_url_payload(req, timeout=timeout, max_bytes=MAX_FETCH_BYTES, public_url_policy=True)
     raw = payload.body
     encoding = payload.charset or "utf-8"
     return raw.decode(encoding, errors="replace")

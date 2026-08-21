@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.8.5`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.9.0`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -896,6 +896,11 @@ guanlan hotnews today --trends
 ```
 
 CLI 是默认主路径；如果当前 Agent 或平台支持 MCP，可以把 `guanlan-mcp` 作为可选集成接进去，让 Agent 直接调用 `guanlan_search`、`guanlan_read`、`guanlan_research`、`guanlan_pulse`、`guanlan_hotnews`、`guanlan_archive_search` 和 `guanlan_status`。
+
+默认 MCP profile 是 `full`，现有工具一个不少。只有宿主对工具数量敏感时才显式使用
+`guanlan-mcp --profile compact`；compact 仅保留 status、capabilities、agent、search、read、
+research 六个核心只读工具。`research --format json` 的 `evidence_bundle_v1` 只从可引用的已读
+正文生成快照和段落；其中 `relation=mentions` 不是事实支持判断。
 
 **Agent 外层 timeout 建议**
 

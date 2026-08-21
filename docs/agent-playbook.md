@@ -1,5 +1,16 @@
 # Guanlan Agent Playbook
 
+## v0.9 evidence provenance boundary
+
+- Treat `evidence_bundle_v1` as an additive provenance view, not as a new ranking or truth engine.
+- Cite snapshot/passages only when they came from `can_cite_as_page_body=true`; unread URLs remain clues.
+- `relation=mentions` means only that an exact token occurs in the passage. Never rewrite it as
+  `supports` or `refutes` without a separate, explicit verification step.
+- Archive current-document search remains compatible; use `archive history` / `archive snapshot`
+  only when change history or exact passage offsets matter.
+- MCP stays `full` by default. Choose `--profile compact` only when the host benefits from a smaller
+  tool list and can operate with the six core research tools.
+
 这份文档写给会调用观澜的 Agent。目标不是介绍命令大全，而是降低误用率，让 Agent 在中文互联网研究任务里更稳定地用对 Guanlan。
 
 ## 持久记忆面
