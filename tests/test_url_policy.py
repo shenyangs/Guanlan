@@ -3,6 +3,7 @@
 
 import pytest
 
+import guanlan.url_policy as url_policy
 from guanlan.url_policy import (
     ConfiguredEndpointPolicy,
     PublicURLPolicy,
@@ -45,6 +46,77 @@ def test_public_policy_accepts_only_when_every_dns_answer_is_global():
         PublicURLPolicy(resolver=lambda *_args: ["93.184.216.34", "192.168.1.9"]).validate(
             "https://rebind.example/a"
         )
+
+
+def test_public_policy_accepts_proxy_fake_ip_for_hostname_only():
+    decision = PublicURLPolicy(
+        resolver=lambda *_args: ["198.18.0.96", "::ffff:198.18.0.96"],
+        proxy_detector=lambda host: host == "example.com",
+    ).validate("https://example.com/a")
+
+    assert decision["status"] == "allowed"
+    assert decision["resolution_mode"] == "loopback_proxy_fake_ip"
+    assert decision["proxy_fake_ip_compatibility"] is True
+
+
+def test_public_policy_accepts_mixed_public_and_fake_ip_behind_loopback_proxy():
+    decision = PublicURLPolicy(
+        resolver=lambda *_args: ["93.184.216.34", "198.18.0.96"],
+        proxy_detector=lambda _host: True,
+    ).validate("https://example.com/a")
+
+    assert decision["resolution_mode"] == "loopback_proxy_mixed_dns"
+    assert decision["loopback_proxy_compatibility"] is True
+
+
+def test_public_policy_delegates_dns_failure_to_matching_loopback_proxy():
+    def failing_resolver(*_args):
+        raise OSError("local DNS unavailable")
+
+    decision = PublicURLPolicy(
+        resolver=failing_resolver,
+        proxy_detector=lambda _host: True,
+    ).validate("https://example.com/a")
+
+    assert decision["resolved_addresses"] == []
+    assert decision["resolution_mode"] == "loopback_proxy_remote_dns"
+    assert decision["loopback_proxy_compatibility"] is True
+
+
+def test_public_policy_rejects_fake_ip_without_matching_loopback_proxy():
+    with pytest.raises(URLPolicyError, match="non_public_address"):
+        PublicURLPolicy(
+            resolver=lambda *_args: ["198.18.0.96"],
+            proxy_detector=lambda _host: False,
+        ).validate("https://example.com/a")
+
+
+def test_public_policy_never_accepts_fake_ip_literal_or_mixed_private_dns():
+    def proxy_enabled(_host: str) -> bool:
+        return True
+
+    with pytest.raises(URLPolicyError, match="non_public_address"):
+        PublicURLPolicy(proxy_detector=proxy_enabled).validate("http://198.18.0.96/admin")
+
+    with pytest.raises(URLPolicyError, match="non_public_address"):
+        PublicURLPolicy(
+            resolver=lambda *_args: ["198.18.0.96", "192.168.1.9"],
+            proxy_detector=proxy_enabled,
+        ).validate("https://rebind.example/a")
+
+
+def test_proxy_detector_requires_non_bypassed_loopback_http_proxy(monkeypatch):
+    monkeypatch.setattr("urllib.request.proxy_bypass", lambda _host: False)
+    monkeypatch.setattr("urllib.request.getproxies", lambda: {"https": "http://127.0.0.1:1082"})
+    assert url_policy._loopback_proxy_handles_host("example.com") is True
+    assert url_policy._loopback_proxy_handles_host("example.com", scheme="http") is False
+
+    monkeypatch.setattr("urllib.request.getproxies", lambda: {"https": "http://192.168.1.8:1082"})
+    assert url_policy._loopback_proxy_handles_host("example.com") is False
+
+    monkeypatch.setattr("urllib.request.getproxies", lambda: {"https": "http://127.0.0.1:1082"})
+    monkeypatch.setattr("urllib.request.proxy_bypass", lambda _host: True)
+    assert url_policy._loopback_proxy_handles_host("example.com") is False
 
 
 def test_redirect_target_is_revalidated_before_response_body_is_used():

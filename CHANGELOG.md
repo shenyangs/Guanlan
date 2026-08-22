@@ -6,6 +6,23 @@
 
 ## Unreleased
 
+## v0.10.3 - 2026-08-23
+
+### Fixed
+
+- 修复本机 loopback HTTP(S) 代理使用 `198.18.0.0/15` fake-IP DNS 时，公网域名在读取前被 URL 安全策略误判为非公网地址、导致 `guanlan read` 与 MCP `guanlan_read` 统一返回契约错误的问题。
+- 自动兼容正常公网 DNS、本机 loopback 代理 fake-IP、公网与 fake-IP 混合答案，以及由 loopback 代理承担远程解析的本地 DNS 失败；fake-IP 字面量、回环/私网/元数据地址、混入真实私网的 DNS 答案、代理绕过目标和局域网代理继续 fail-closed。
+- URL 安全策略拒绝现在归类为 `contract_error`，不再误报为正文 `parse_error`，让 Agent 能区分安全边界与解析质量问题。
+
+### Changed
+
+- 发布安装 smoke 新增代理 fake-IP 环境下的完整 MCP 微信专项读取，发布后同步新增安装版真实公网 `read`；更新指南和 Agent 维护规则把 `read` 纳入强制 smoke，避免搜索/热榜正常掩盖读取通道回归。
+
+### Verification
+
+- 使用故障报告中的真实微信公众号文章复测：微信专项后端返回标题、作者、时间与 7,690 字正文，质量 100，正文引用契约可用且无截断；IT之家、腾讯云开发者社区和 WPS 官网的 MCP 读取同时恢复。
+- 新增正常公网、fake-IP、混合公网/fake-IP、代理远程 DNS 四态网络矩阵，无代理/字面量/混合私网反例，安装包 MCP 微信读取与发布后公网读取门禁；0.10.3 必须通过完整质量门禁、全量重装和公开分发同步后才作为推荐版本。
+
 ## v0.10.2 - 2026-08-22
 
 ### Added

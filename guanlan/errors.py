@@ -48,8 +48,12 @@ _TOKEN_PATTERNS = (
 def classify_exception(exc: BaseException) -> str:
     """Classify an exception without leaking sensitive values."""
 
+    from guanlan.url_policy import URLPolicyError
+
     if isinstance(exc, (TimeoutError, socket.timeout, subprocess.TimeoutExpired)):
         return NETWORK_TIMEOUT
+    if isinstance(exc, URLPolicyError):
+        return CONTRACT_ERROR
     if isinstance(exc, urllib.error.HTTPError):
         if exc.code in {401, 403, 429, 451}:
             return BLOCKED

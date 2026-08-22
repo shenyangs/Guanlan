@@ -27,6 +27,7 @@ else
 fi
 "$TMP/venv/bin/guanlan" --version
 "$TMP/venv/bin/guanlan" version
+"$TMP/venv/bin/python" "$ROOT/scripts/installed_read_smoke.py"
 HOME="$TMP/home" "$TMP/venv/bin/guanlan" install --env=auto --safe --dry-run
 HOME="$TMP/home" "$TMP/venv/bin/guanlan" status
 

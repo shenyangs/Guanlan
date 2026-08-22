@@ -153,10 +153,11 @@ pipx install --force guanlan
 ```bash
 guanlan version
 guanlan doctor --install-check
+guanlan read "https://example.com/" --backend direct --no-fallback-search --format json
 guanlan status
 ```
 
-看到 `观澜 / Guanlan v0.10.2`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.10.3`，并且安装检查没有版本/路径漂移，就说明基础部署成功。
 
 ## 给 Agent 复制的安装指令
 
@@ -169,6 +170,7 @@ uv tool install --force --upgrade --refresh --default-index https://pypi.org/sim
 安装完成后运行：
 guanlan version
 guanlan doctor --install-check
+guanlan read "https://example.com/" --backend direct --no-fallback-search --format json
 guanlan status
 
 如果 guanlan version 不是 README 标注的当前版本，请不要继续配置 MCP 或可选渠道，先排查 PATH 和安装来源。

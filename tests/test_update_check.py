@@ -25,6 +25,7 @@ def test_format_update_notice_mentions_safe_upgrade_paths():
     assert "brew update" in notice
     assert "pipx install --force guanlan" in notice
     assert "which -a guanlan" in notice
+    assert 'guanlan read "https://example.com/" --backend direct --no-fallback-search --format json' in notice
     assert 'guanlan hotnews today --limit 5 --trends' in notice
 
 

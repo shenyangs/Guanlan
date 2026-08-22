@@ -49,6 +49,7 @@ and `python3 -m pip index versions guanlan --index-url https://pypi.org/simple`.
 
 Post-update smoke rule: after a full reinstall, run `guanlan capabilities`, `guanlan doctor --install-check`, `guanlan doctor --trace`,
 `guanlan search "人工智能 政策" --profile china --limit 5 --trace`, and
+`guanlan read "https://example.com/" --backend direct --no-fallback-search --format json`, and
 `guanlan hotnews today --limit 5 --trends`. Report the exact version, executable path, and smoke
 results to the user. Do not treat an old global executable as a successful update.
 

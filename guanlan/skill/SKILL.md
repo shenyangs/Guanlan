@@ -101,7 +101,7 @@ metadata:
 - 知识星球属于授权私域社区；只有用户明确要查自己已加入/创建的星球内容时，才引导安装/登录 `zsxq-cli`。默认只做浏览、搜索和资料整理，发帖、评论、回答、编辑、删除、打标签和笔记写入必须逐次确认。
 - `report html` 是旁支展示层，只把已有 JSON/stdin/demo 数据渲染成静态 HTML；不要用它替代 search/read/research/hotnews 主链路。
 - `archive wiki/context/pack` 是本地 archive 的旁支组织层：只使用已归档资料，不代表全网知识，不自动上传。
-- 更新观澜时必须全量更新，不要只跑增量 upgrade：优先 `uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan`，注意 uv 只有 `--force` 可能重装旧锁定版本；Homebrew 用 `brew update && brew reinstall shenyangs/tap/guanlan`；pipx 用 `pipx install --force guanlan`。更新后运行 `hash -r`、`command -v guanlan`、`which -a guanlan`、`guanlan version`，再跑 `guanlan capabilities`、`guanlan doctor --install-check`、`guanlan doctor --trace`、`guanlan search "人工智能 政策" --profile china --limit 5 --trace`、`guanlan hotnews today --limit 5 --trends`。若 Agent 报 PyPI 低于 GitHub，必须用 PyPI JSON 与 pip index 安装源复核，不要用搜索结果或缓存文本判断最新版。版本或路径不一致时停止配置 MCP。
+- 更新观澜时必须全量更新，不要只跑增量 upgrade：优先 `uv tool install --force --upgrade --refresh --default-index https://pypi.org/simple guanlan`，注意 uv 只有 `--force` 可能重装旧锁定版本；Homebrew 用 `brew update && brew reinstall shenyangs/tap/guanlan`；pipx 用 `pipx install --force guanlan`。更新后运行 `hash -r`、`command -v guanlan`、`which -a guanlan`、`guanlan version`，再跑 `guanlan capabilities`、`guanlan doctor --install-check`、`guanlan doctor --trace`、`guanlan search "人工智能 政策" --profile china --limit 5 --trace`、`guanlan read "https://example.com/" --backend direct --no-fallback-search --format json`、`guanlan hotnews today --limit 5 --trends`。若 Agent 报 PyPI 低于 GitHub，必须用 PyPI JSON 与 pip index 安装源复核，不要用搜索结果或缓存文本判断最新版。版本、路径或 read smoke 不一致时停止配置 MCP。
 
 ## 路由表
 

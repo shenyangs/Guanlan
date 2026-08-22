@@ -9,6 +9,7 @@ import urllib.error
 
 from guanlan.errors import (
     BLOCKED,
+    CONTRACT_ERROR,
     NETWORK_ERROR,
     NETWORK_TIMEOUT,
     PARSE_ERROR,
@@ -25,9 +26,12 @@ def test_classify_timeout_and_url_errors():
 
 
 def test_classify_blocked_and_parse_errors():
+    from guanlan.url_policy import URLPolicyError
+
     assert classify_exception(urllib.error.HTTPError("https://x", 403, "Forbidden", {}, None)) == BLOCKED
     assert classify_exception(json.JSONDecodeError("bad", "{", 0)) == PARSE_ERROR
     assert classify_exception(RuntimeError("captcha required")) == BLOCKED
+    assert classify_exception(URLPolicyError("non_public_address")) == CONTRACT_ERROR
 
 
 def test_public_error_diagnostics_do_not_expose_secret_like_text():

@@ -146,6 +146,7 @@ def format_update_notice(info: UpdateInfo) -> str:
             "  guanlan capabilities",
             "  guanlan doctor --trace",
             "  guanlan search \"人工智能 政策\" --profile china --limit 5 --trace",
+            "  guanlan read \"https://example.com/\" --backend direct --no-fallback-search --format json",
             "  guanlan hotnews today --limit 5 --trends",
             "如果版本号或路径不对，请停止配置 MCP；Homebrew 仍然装到旧版时，临时使用 uv 路径。",
         ]

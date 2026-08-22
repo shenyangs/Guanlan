@@ -32,11 +32,12 @@ command -v guanlan
 which -a guanlan
 guanlan version
 
-# 4) 最小 smoke：确认能力说明、健康检查、搜索降级、热榜都可用。
+# 4) 最小 smoke：确认能力说明、健康检查、搜索降级、网页读取、热榜都可用。
 guanlan capabilities
 guanlan doctor --install-check
 guanlan doctor --trace
 guanlan search "人工智能 政策" --profile china --limit 5 --trace
+guanlan read "https://example.com/" --backend direct --no-fallback-search --format json
 guanlan hotnews today --limit 5 --trends
 ```
 
@@ -54,6 +55,7 @@ python3 -m pip index versions guanlan --index-url https://pypi.org/simple
 - `command -v guanlan` 指向的路径必须是刚刚更新的安装路径。
 - `which -a guanlan` 如果列出多个路径，Agent 必须报告它们；不要假设第一个就是新版。
 - smoke 中 `search --trace` 如果显示 `baidu=blocked`，这是百度安全验证，不是更新失败；继续看 Bing/DuckDuckGo 和 `backend_recovery`。
+- smoke 中 `read` 必须返回 JSON 且 `extract_contract.can_cite_as_page_body=true`；任何统一 `parse_error` 都阻断发布和后续配置。
 - smoke 中 `hotnews today --trends` 应该返回至少一个来源；如果失败，报告错误文本和版本路径。
 - 任何一步版本或路径不一致，都停止配置 MCP、可选渠道和登录态，先修安装入口。
 
@@ -147,6 +149,7 @@ which -a guanlan
 guanlan doctor --install-check
 guanlan doctor --trace
 guanlan search "人工智能 政策" --profile china --limit 5 --trace
+guanlan read "https://example.com/" --backend direct --no-fallback-search --format json
 guanlan hotnews today --limit 5 --trends
 ```
 

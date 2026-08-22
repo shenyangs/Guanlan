@@ -30,6 +30,7 @@ def test_release_smoke_script_covers_install_paths():
     assert "pip install" in script
     assert "pipx install" in script
     assert "guanlan\" --version" in script
+    assert "installed_read_smoke.py" in script
     assert "install --env=auto" in script
     assert "guanlan\" status" in script
 
@@ -65,6 +66,8 @@ def test_post_release_sync_script_handles_github_rate_limit_and_uv_version_verif
     assert "--no-sources --default-index https://pypi.org/simple guanlan" in script
     assert "uv tool path resolved v" in script
     assert "verify_single_bin_version \"uv tool\"" in script
+    assert "verify_installed_read" in script
+    assert 'guanlan read "https://example.com/"' in script
     assert "https://guanlan.xin/" in script
     assert "https://www.guanlan.xin/" in script
     assert "http://101.37.70.222/" in script
@@ -157,4 +160,5 @@ def test_agent_update_docs_require_full_reinstall_and_smoke():
     assert "pipx install --force guanlan" in combined
     assert "which -a guanlan" in combined
     assert 'guanlan search "人工智能 政策" --profile china --limit 5 --trace' in combined
+    assert 'guanlan read "https://example.com/" --backend direct --no-fallback-search --format json' in combined
     assert "guanlan hotnews today --limit 5 --trends" in combined

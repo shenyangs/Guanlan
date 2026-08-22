@@ -27,6 +27,7 @@ mkdir -p "$HOME"
 "$TMP/venv/bin/guanlan" research --list-presets >/dev/null
 "$TMP/venv/bin/guanlan" doctor --trace
 "$TMP/venv/bin/guanlan" status
+"$TMP/venv/bin/guanlan" read "https://example.com/" --backend direct --no-fallback-search --format json --max-chars 2000 >/dev/null
 
 echo
 echo "Manual integration smoke passed."

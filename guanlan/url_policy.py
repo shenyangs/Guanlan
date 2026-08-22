@@ -7,11 +7,15 @@ import functools
 import ipaddress
 import socket
 import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
 URL_POLICY_SCHEMA_VERSION = "url_policy_v1"
 Resolver = Callable[[str, int], Iterable[str]]
+ProxyDetector = Callable[[str], bool]
+
+_PROXY_FAKE_IP_NETWORKS = (ipaddress.ip_network("198.18.0.0/15"),)
 
 
 class URLPolicyError(ValueError):
@@ -29,32 +33,60 @@ class PublicURLPolicy:
 
     resolver: Resolver | None = None
     resolve_dns: bool = True
+    proxy_detector: ProxyDetector | None = None
 
     def validate(self, url: str) -> dict[str, Any]:
         parsed, host, port = _parse_http_url(url)
         addresses: tuple[str, ...] = ()
         literal = _ip_literal(host)
+        resolution_mode = "literal" if literal is not None else "dns"
+        loopback_proxy_compatibility = False
+        proxy_fake_ip_compatibility = False
         if literal is not None:
             _require_global_address(literal, url=url)
             addresses = (str(literal),)
         elif _blocked_hostname(host):
             raise URLPolicyError("local_or_metadata_hostname", url=url)
         elif self.resolve_dns:
+            proxy_handles_host = (
+                self.proxy_detector(host)
+                if self.proxy_detector is not None
+                else _loopback_proxy_handles_host(host, scheme=parsed.scheme.lower())
+            )
             resolver = self.resolver or _resolve_host
             try:
                 addresses = tuple(sorted(set(str(item) for item in resolver(host, port))))
             except URLPolicyError:
                 raise
             except Exception as exc:
-                raise URLPolicyError("dns_resolution_failed", url=url) from exc
+                if not proxy_handles_host:
+                    raise URLPolicyError("dns_resolution_failed", url=url) from exc
+                resolution_mode = "loopback_proxy_remote_dns"
+                loopback_proxy_compatibility = True
             if not addresses:
-                raise URLPolicyError("dns_resolution_empty", url=url)
+                if not proxy_handles_host:
+                    raise URLPolicyError("dns_resolution_empty", url=url)
+                resolution_mode = "loopback_proxy_remote_dns"
+                loopback_proxy_compatibility = True
+            resolved_addresses: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
             for address in addresses:
                 try:
                     resolved = ipaddress.ip_address(address)
                 except ValueError as exc:
                     raise URLPolicyError("dns_returned_invalid_address", url=url) from exc
-                _require_global_address(resolved, url=url)
+                resolved_addresses.append(resolved)
+            if resolved_addresses and all(item.is_global or _is_proxy_fake_ip(item) for item in resolved_addresses):
+                has_fake_ip = any(_is_proxy_fake_ip(item) for item in resolved_addresses)
+                has_public_ip = any(item.is_global for item in resolved_addresses)
+                if has_fake_ip and not proxy_handles_host:
+                    raise URLPolicyError("non_public_address", url=url)
+                if has_fake_ip:
+                    resolution_mode = "loopback_proxy_mixed_dns" if has_public_ip else "loopback_proxy_fake_ip"
+                    loopback_proxy_compatibility = True
+                    proxy_fake_ip_compatibility = True
+            else:
+                for resolved in resolved_addresses:
+                    _require_global_address(resolved, url=url)
         return {
             "schema_version": URL_POLICY_SCHEMA_VERSION,
             "policy": "public_web",
@@ -63,6 +95,9 @@ class PublicURLPolicy:
             "host": host,
             "port": port,
             "resolved_addresses": list(addresses),
+            "resolution_mode": resolution_mode,
+            "loopback_proxy_compatibility": loopback_proxy_compatibility,
+            "proxy_fake_ip_compatibility": proxy_fake_ip_compatibility,
             "redirect_revalidation": True,
             "credential_material_access_allowed": False,
         }
@@ -164,6 +199,43 @@ def _require_global_address(
 ) -> None:
     if not address.is_global:
         raise URLPolicyError("non_public_address", url=url)
+
+
+def _is_proxy_fake_ip(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    normalized = address.ipv4_mapped if isinstance(address, ipaddress.IPv6Address) else address
+    return bool(
+        isinstance(normalized, ipaddress.IPv4Address)
+        and any(normalized in network for network in _PROXY_FAKE_IP_NETWORKS)
+    )
+
+
+def _loopback_proxy_handles_host(host: str, *, scheme: str = "https") -> bool:
+    """Recognize local proxy/TUN fake-IP DNS without widening private-network access.
+
+    Compatibility is allowed only when the request hostname is actually handled by
+    an HTTP(S) proxy whose endpoint is loopback. Literal fake IPs, bypassed hosts,
+    mixed DNS answers, LAN proxies, and every other non-global address remain
+    fail-closed.
+    """
+
+    try:
+        if urllib.request.proxy_bypass(host):
+            return False
+        proxies = urllib.request.getproxies()
+    except Exception:
+        return False
+    value = str(proxies.get(scheme) or "").strip()
+    if not value:
+        return False
+    parsed = urllib.parse.urlsplit(value if "://" in value else f"http://{value}")
+    proxy_host = parsed.hostname or ""
+    try:
+        if ipaddress.ip_address(proxy_host).is_loopback:
+            return True
+    except ValueError:
+        if proxy_host.lower().rstrip(".") == "localhost":
+            return True
+    return False
 
 
 def _blocked_hostname(host: str) -> bool:

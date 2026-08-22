@@ -310,6 +310,17 @@ verify_local_entrypoints() {
   fi
 }
 
+verify_installed_read() {
+  echo "[sync] running installed public read smoke..."
+  guanlan read "https://example.com/" \
+    --backend direct \
+    --no-fallback-search \
+    --format json \
+    --max-chars 2000 \
+    | python3 -c 'import json,sys; packet=json.load(sys.stdin); assert packet["extract_contract"]["can_cite_as_page_body"] is True; assert packet["trace"]["selected_backend"] == "direct"'
+  echo "[sync] installed public read smoke: ready"
+}
+
 require_tools
 
 if [ "$SKIP_DIST_WAIT" != "1" ]; then
@@ -329,6 +340,7 @@ else
 fi
 sync_local_installs
 verify_local_entrypoints
+verify_installed_read
 
 if [ "${GUANLAN_RELEASE_SOURCE_ONLY:-0}" = "1" ]; then
   echo "release incomplete: source-only website validation used (GUANLAN_RELEASE_SOURCE_ONLY=1)"
