@@ -68,6 +68,7 @@ def test_post_release_sync_script_handles_github_rate_limit_and_uv_version_verif
     assert "verify_single_bin_version \"uv tool\"" in script
     assert "verify_installed_read" in script
     assert 'guanlan read "https://example.com/"' in script
+    assert "--max-chars 2000" not in script
     assert "https://guanlan.xin/" in script
     assert "https://www.guanlan.xin/" in script
     assert "http://101.37.70.222/" in script

@@ -316,7 +316,6 @@ verify_installed_read() {
     --backend direct \
     --no-fallback-search \
     --format json \
-    --max-chars 2000 \
     | python3 -c 'import json,sys; packet=json.load(sys.stdin); assert packet["extract_contract"]["can_cite_as_page_body"] is True; assert packet["trace"]["selected_backend"] == "direct"'
   echo "[sync] installed public read smoke: ready"
 }

@@ -6,6 +6,16 @@
 
 ## Unreleased
 
+## v0.10.4 - 2026-08-23
+
+### Fixed
+
+- 修复 `guanlan read URL --format json` 在未显式传入 `--max-chars` 时，把 CLI 的“不截断”哨兵值错误收缩成 1 字符的问题；默认读取现在与普通 Markdown 输出、MCP 和 HTTP 契约保持一致，返回完整的可用正文。
+
+### Verification
+
+- 增加默认读取长度回归测试，并继续沿用 0.10.3 的代理 fake-IP 安全兼容矩阵、私网拒绝边界、安装包 MCP 微信读取及发布后公网读取门禁。
+
 ## v0.10.3 - 2026-08-23
 
 ### Fixed

@@ -49,6 +49,12 @@ def test_read_normalization_keeps_fallback_and_cache_contract():
     assert request["strict"] is True
 
 
+def test_read_normalization_treats_cli_zero_max_chars_as_unbounded():
+    request = normalize_read_request({"url": "https://example.com", "max_chars": 0})
+
+    assert request["max_chars"] is None
+
+
 def test_read_normalization_keeps_jina_controls_opt_in_and_bounded():
     default_request = normalize_read_request({"url": "https://example.com"})
     controlled = normalize_read_request(

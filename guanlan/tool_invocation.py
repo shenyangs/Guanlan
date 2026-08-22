@@ -113,9 +113,15 @@ def normalize_read_request(
     """Normalize service kwargs for ``read_url_with_trace``."""
 
     no_cache = _bool(payload.get("no_cache"))
+    max_chars_value = payload.get("max_chars")
+    # The CLI uses 0 to mean "do not truncate". Preserve that public
+    # contract when requests pass through the shared CLI/MCP/HTTP normalizer
+    # instead of clamping the sentinel to a one-character response.
+    if _text(max_chars_value) == "0":
+        max_chars_value = None
     return {
         "url": _text(payload.get("url")),
-        "max_chars": _optional_bounded_int(payload.get("max_chars"), 1, 100_000),
+        "max_chars": _optional_bounded_int(max_chars_value, 1, 100_000),
         "backend": _text(payload.get("backend"), "auto") or "auto",
         "fallback_search": _bool(payload.get("fallback_search"), True),
         "fallback_limit": _bounded_int(
