@@ -72,6 +72,21 @@ RETENTION_CACHE_TTL_SECONDS = max(
     300,
     int(os.environ.get("GUANLAN_RETENTION_CACHE_TTL_SECONDS", str(6 * 3600))),
 )
+# Retention must never be computed by repeatedly grouping the raw event log.
+# The original dashboard did precisely that: ten CTEs, each applying date()
+# to every historical event.  On a 700k-row SQLite database it could run for
+# many minutes and leave the UI permanently on an ambiguous "..." placeholder.
+# Keep a small, durable read model instead and build legacy history in bounded
+# batches after startup.
+RETENTION_MODEL_VERSION = "v1"
+RETENTION_BACKFILL_BATCH_SIZE = max(
+    100,
+    int(os.environ.get("GUANLAN_RETENTION_BACKFILL_BATCH_SIZE", "2000")),
+)
+RETENTION_BACKFILL_PAUSE_SECONDS = max(
+    0.0,
+    float(os.environ.get("GUANLAN_RETENTION_BACKFILL_PAUSE_SECONDS", "0.01")),
+)
 SLOW_METRICS_CACHE_TTL_SECONDS = max(
     60,
     int(os.environ.get("GUANLAN_SLOW_METRICS_CACHE_TTL_SECONDS", "300")),
@@ -99,6 +114,8 @@ _DASHBOARD_CACHE = {"built_ms": 0, "html": "", "refreshing": False, "refresh_sta
 _ASYNC_STATS_CACHE_LOCK = threading.Lock()
 _ASYNC_STATS_CACHE = {}
 _HEAVY_STATS_LOCK = threading.Lock()
+_RETENTION_BACKFILL_LOCK = threading.Lock()
+_RETENTION_BACKFILL_RUNNING = False
 
 
 def now_ms():
@@ -508,6 +525,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
             CREATE INDEX IF NOT EXISTS idx_events_event_received ON events(event, received_ms);
             CREATE INDEX IF NOT EXISTS idx_events_event_ts ON events(event, ts_ms);
+            CREATE INDEX IF NOT EXISTS idx_events_event_id ON events(event, id);
 
             CREATE TABLE IF NOT EXISTS active_invocations (
                 invocation_id TEXT PRIMARY KEY,
@@ -545,6 +563,31 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_feedback_command ON feedback(command);
             CREATE INDEX IF NOT EXISTS idx_feedback_agent ON feedback(agent_id);
             CREATE INDEX IF NOT EXISTS idx_feedback_install ON feedback(install_id);
+
+            -- Durable, compact read model for retention.  It deliberately
+            -- contains only stable anonymous ids and China-local calendar
+            -- dates; no query text, network id, or raw payload is copied.
+            CREATE TABLE IF NOT EXISTS retention_entities (
+                entity_field TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                first_date TEXT NOT NULL,
+                PRIMARY KEY (entity_field, entity_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_retention_entities_first
+                ON retention_entities(entity_field, first_date);
+            CREATE TABLE IF NOT EXISTS retention_activity (
+                entity_field TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                activity_date TEXT NOT NULL,
+                PRIMARY KEY (entity_field, entity_id, activity_date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_retention_activity_date
+                ON retention_activity(entity_field, activity_date, entity_id);
+            CREATE TABLE IF NOT EXISTS collector_state (
+                state_key TEXT PRIMARY KEY,
+                state_value TEXT NOT NULL,
+                updated_ms INTEGER NOT NULL
+            );
 
             CREATE TABLE IF NOT EXISTS site_visits (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -663,6 +706,149 @@ def dedupe_events(conn):
     )
 
 
+def china_date(ms):
+    """Return the collector's documented China-local event calendar date."""
+    return (
+        _dt.datetime.utcfromtimestamp(int(ms) / 1000.0) + _dt.timedelta(hours=8)
+    ).date().isoformat()
+
+
+def state_get(conn, key, default=""):
+    row = conn.execute(
+        "SELECT state_value FROM collector_state WHERE state_key = ?", (key,)
+    ).fetchone()
+    return str(row["state_value"]) if row else default
+
+
+def state_set(conn, key, value):
+    conn.execute(
+        "INSERT OR REPLACE INTO collector_state (state_key, state_value, updated_ms) VALUES (?, ?, ?)",
+        (key, str(value), now_ms()),
+    )
+
+
+def retention_state_key(name):
+    return "retention_%s_%s" % (RETENTION_MODEL_VERSION, name)
+
+
+def update_retention_read_model(conn, install_id, agent_id, event_ms):
+    """Apply one invocation start to the retention model in the same commit.
+
+    Replayed starts may arrive late.  Updating first_date to the earliest
+    observed occurrence time keeps the cohort definition correct without ever
+    re-scanning the raw events table on a dashboard request.
+    """
+    activity_date = china_date(event_ms)
+    for field, entity_id in (("install_id", install_id), ("agent_id", agent_id)):
+        if not entity_id:
+            continue
+        conn.execute(
+            "INSERT OR IGNORE INTO retention_entities (entity_field, entity_id, first_date) VALUES (?, ?, ?)",
+            (field, entity_id, activity_date),
+        )
+        conn.execute(
+            "UPDATE retention_entities SET first_date = ? WHERE entity_field = ? AND entity_id = ? AND first_date > ?",
+            (activity_date, field, entity_id, activity_date),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO retention_activity (entity_field, entity_id, activity_date) VALUES (?, ?, ?)",
+            (field, entity_id, activity_date),
+        )
+
+
+def retention_model_status(conn):
+    total_row = conn.execute(
+        "SELECT COALESCE(MAX(id), 0) AS max_id FROM events"
+    ).fetchone()
+    total = int(total_row["max_id"] or 0) if total_row else 0
+    cursor = int(state_get(conn, retention_state_key("cursor"), "0") or 0)
+    complete = state_get(conn, retention_state_key("complete"), "0") == "1"
+    # A newly created database has no historical work to replay.
+    if total == 0:
+        complete = True
+    processed = min(cursor, total)
+    return {
+        "state": "ready" if complete else "building",
+        "complete": complete,
+        "processed": processed,
+        "total": total,
+        "percent": int((100.0 * processed / total)) if total else 100,
+    }
+
+
+def retention_backfill_batch(conn):
+    """Replay a bounded slice of legacy starts into the compact read model."""
+    cursor_key = retention_state_key("cursor")
+    complete_key = retention_state_key("complete")
+    cursor = int(state_get(conn, cursor_key, "0") or 0)
+    rows = conn.execute(
+        """
+        SELECT id, ts_ms, install_id, agent_id
+        FROM events
+        WHERE event = 'invocation_start' AND id > ?
+        ORDER BY id ASC
+        LIMIT ?
+        """,
+        (cursor, RETENTION_BACKFILL_BATCH_SIZE),
+    ).fetchall()
+    if not rows:
+        state_set(conn, complete_key, "1")
+        conn.commit()
+        return True
+    for row in rows:
+        update_retention_read_model(
+            conn, row["install_id"], row["agent_id"], row["ts_ms"]
+        )
+    state_set(conn, cursor_key, rows[-1]["id"])
+    conn.commit()
+    return False
+
+
+def _retention_backfill_worker():
+    global _RETENTION_BACKFILL_RUNNING
+    started = time.time()
+    try:
+        while True:
+            conn = db_connect()
+            try:
+                complete = retention_backfill_batch(conn)
+            finally:
+                conn.close()
+            if complete:
+                elapsed = time.time() - started
+                log_info("retention read model is ready in %.2fs" % elapsed)
+                return
+            if RETENTION_BACKFILL_PAUSE_SECONDS:
+                time.sleep(RETENTION_BACKFILL_PAUSE_SECONDS)
+    except Exception as exc:
+        log_info("retention read-model backfill failed: %s" % exc)
+    finally:
+        with _RETENTION_BACKFILL_LOCK:
+            _RETENTION_BACKFILL_RUNNING = False
+
+
+def ensure_retention_backfill():
+    """Start at most one restart-safe historical backfill worker."""
+    global _RETENTION_BACKFILL_RUNNING
+    conn = db_connect()
+    try:
+        if retention_model_status(conn)["complete"]:
+            return False
+    finally:
+        conn.close()
+    with _RETENTION_BACKFILL_LOCK:
+        if _RETENTION_BACKFILL_RUNNING:
+            return False
+        _RETENTION_BACKFILL_RUNNING = True
+    thread = threading.Thread(
+        target=_retention_backfill_worker,
+        name="guanlan-retention-backfill",
+        daemon=True,
+    )
+    thread.start()
+    return True
+
+
 def prune_active(conn, current_ms):
     cutoff = current_ms - ACTIVE_TTL_SECONDS * 1000
     conn.execute("DELETE FROM active_invocations WHERE last_seen_ms < ?", (cutoff,))
@@ -774,6 +960,12 @@ def record_event(payload, remote_addr):
                     current,
                     current,
                 ),
+            )
+            # Keep the retention view current at write time.  Historical rows
+            # are replayed separately in bounded batches, so this tiny update
+            # never turns a dashboard read into a raw-log scan.
+            update_retention_read_model(
+                conn, row["install_id"], row["agent_id"], row["ts_ms"]
             )
         else:
             conn.execute(
@@ -1072,35 +1264,28 @@ def query_retention_stats(conn, field, offsets=(1, 3, 7, 14, 30)):
     allowed = set(["install_id", "agent_id"])
     if field not in allowed:
         return []
-    current_date = (_dt.datetime.utcfromtimestamp(now_ms() / 1000.0) + _dt.timedelta(hours=8)).date()
+    model = retention_model_status(conn)
+    if not model["complete"]:
+        return retention_placeholder(offsets)
+    current_date = (
+        _dt.datetime.utcfromtimestamp(now_ms() / 1000.0) + _dt.timedelta(hours=8)
+    ).date()
     stats = []
     for offset in offsets:
         cutoff_date = (current_date - _dt.timedelta(days=offset)).isoformat()
         row = conn.execute(
             """
-            WITH firsts AS (
-                SELECT {field} AS entity,
-                       MIN(date(received_ms / 1000, 'unixepoch', '+8 hours')) AS first_date
-                FROM events
-                WHERE event = 'invocation_start'
-                  AND {field} <> ''
-                GROUP BY {field}
-            ),
-            eligible AS (
-                SELECT entity, first_date
-                FROM firsts
-                WHERE first_date <= ?
-            )
-            SELECT COUNT(DISTINCT eligible.entity) AS cohort,
-                   COUNT(DISTINCT events.{field}) AS retained
-            FROM eligible
-            LEFT JOIN events
-              ON events.{field} = eligible.entity
-             AND events.event = 'invocation_start'
-             AND date(events.received_ms / 1000, 'unixepoch', '+8 hours') =
-                 date(eligible.first_date, '+' || ? || ' days')
-            """.format(field=field),
-            (cutoff_date, offset),
+            SELECT COUNT(*) AS cohort,
+                   COUNT(activity.entity_id) AS retained
+            FROM retention_entities entity
+            LEFT JOIN retention_activity activity
+              ON activity.entity_field = entity.entity_field
+             AND activity.entity_id = entity.entity_id
+             AND activity.activity_date = date(entity.first_date, '+' || ? || ' days')
+            WHERE entity.entity_field = ?
+              AND entity.first_date <= ?
+            """,
+            (offset, field, cutoff_date),
         ).fetchone()
         cohort = int(row["cohort"] or 0) if row else 0
         retained = int(row["retained"] or 0) if row else 0
@@ -1116,22 +1301,11 @@ def query_retention_stats(conn, field, offsets=(1, 3, 7, 14, 30)):
 
 
 def query_retention_stats_cached(field, offsets=(1, 3, 7, 14, 30)):
-    default_rows = retention_placeholder(offsets)
-
-    def builder():
-        conn = db_connect()
-        try:
-            return query_retention_stats(conn, field, offsets)
-        finally:
-            conn.close()
-
-    return get_async_cached_value(
-        "retention:%s" % field,
-        RETENTION_CACHE_TTL_SECONDS,
-        builder,
-        default_rows,
-        heavy=True,
-    )
+    conn = db_connect()
+    try:
+        return query_retention_stats(conn, field, offsets)
+    finally:
+        conn.close()
 
 
 def query_orphan_starts(conn, since_ms, current_ms):
@@ -1572,6 +1746,9 @@ def summary():
     day = current - 24 * 3600 * 1000
     week = current - 7 * 24 * 3600 * 1000
     month = current - 30 * 24 * 3600 * 1000
+    # This is asynchronous and restart-safe.  A first dashboard view starts
+    # the legacy replay but never waits for it.
+    ensure_retention_backfill()
     slow_metrics = query_slow_dashboard_metrics_cached(current, day, week)
     health_metrics = query_health_dashboard_metrics_cached(current, day, week, month)
     conn = db_connect()
@@ -1596,6 +1773,10 @@ def summary():
             (week,),
         )
         real_feedback_where = feedback_real_sql("query_text")
+        latest_feedback_received_ms = query_one(
+            conn, "SELECT MAX(received_ms) FROM feedback"
+        ) or 0
+        retention_status = retention_model_status(conn)
         feedback_24h = query_one(
             conn,
             "SELECT COUNT(*) FROM feedback WHERE received_ms >= ? AND " + real_feedback_where,
@@ -1639,6 +1820,11 @@ def summary():
             "feedback_7d_total": feedback_7d_total,
             "feedback_24h_synthetic": max(0, int(feedback_24h_total) - int(feedback_24h)),
             "feedback_7d_synthetic": max(0, int(feedback_7d_total) - int(feedback_7d)),
+            "latest_feedback_received_ms": latest_feedback_received_ms,
+            "feedback_last_received_age_ms": max(0, current - latest_feedback_received_ms)
+            if latest_feedback_received_ms
+            else None,
+            "feedback_collection_mode": "explicit_or_opt_in_auto",
             "feedback_unique_agents_7d": query_one(
                 conn,
                 "SELECT COUNT(DISTINCT agent_id) FROM feedback WHERE received_ms >= ? AND " + real_feedback_where,
@@ -1694,6 +1880,7 @@ def summary():
             "platform_unique_agents_all": slow_metrics["platform_unique_agents_all"],
             "retention_devices": query_retention_stats_cached("install_id"),
             "retention_agents": query_retention_stats_cached("agent_id"),
+            "retention_status": retention_status,
             "orphan_sources_24h": slow_metrics["orphan_sources_24h"],
             "feedback_commands": slow_metrics["feedback_commands"],
             "feedback_queries": slow_metrics["feedback_queries"],
@@ -1780,15 +1967,15 @@ def render_key_values(title, rows):
     )
 
 
-def render_retention_panel(device_rows, agent_rows):
+def render_retention_panel(device_rows, agent_rows, status=None):
     def cards(rows, prefix):
         items = []
         for row in rows:
             offset = int(row.get("offset") or 0)
             label = "D{} {}".format(offset, prefix)
             pending = bool(row.get("pending"))
-            rate_text = "..." if pending else "{}%".format(html.escape(str(row.get("rate") or 0)))
-            retained_text = "... / ..." if pending else "{}/{} retained".format(
+            rate_text = "建立中" if pending else "{}%".format(html.escape(str(row.get("rate") or 0)))
+            retained_text = "等待历史回放完成" if pending else "{}/{} retained".format(
                 html.escape(str(row.get("retained") or 0)),
                 html.escape(str(row.get("cohort") or 0)),
             )
@@ -1808,6 +1995,17 @@ def render_retention_panel(device_rows, agent_rows):
         return "\n".join(items)
 
     pending = any(bool(row.get("pending")) for row in list(device_rows) + list(agent_rows))
+    status = status or {}
+    if pending:
+        processed = int(status.get("processed") or 0)
+        total = int(status.get("total") or 0)
+        percent = int(status.get("percent") or 0)
+        pending_note = (
+            "<p class='panel-note'>留存历史正在分批回放（{}/{}，约 {}%）；"
+            "主看板、反馈和采集不会被阻塞。完成前不展示不完整留存率。</p>"
+        ).format(processed, total, percent)
+    else:
+        pending_note = ""
 
     return """
 <section class="panel retention-panel">
@@ -1824,7 +2022,7 @@ def render_retention_panel(device_rows, agent_rows):
   <div class="retention-grid">{agent_cards}</div>
 </section>
     """.strip().format(
-        pending_note="<p class='panel-note'>留存卡片正在后台刷新，主看板和反馈列表不会再被它拖住。</p>" if pending else "",
+        pending_note=pending_note,
         device_cards=cards(device_rows, "设备 / Devices"),
         agent_cards=cards(agent_rows, "Agent"),
     )
@@ -1862,7 +2060,7 @@ def render_orphan_sources_panel(rows):
     """.strip().format(rows="\n".join(items))
 
 
-def render_feedback_inbox(rows):
+def render_feedback_inbox(rows, latest_received_ms=0, last_received_age_ms=None):
     items = []
     for index, row in enumerate(rows, 1):
         received = format_time(row.get("received_ms"))
@@ -1916,8 +2114,18 @@ def render_feedback_inbox(rows):
         )
     if not items:
         items.append("<p class='feedback-empty'>暂无反馈 / No feedback yet</p>")
-    return "<section id='feedback-inbox' class='panel recent feedback-inbox'><h2>反馈明细面板 / Feedback Inbox <a class='section-link' href='./feedback-archive'>全量归档 / Archive</a></h2>{}</section>".format(
-        "\n".join(items)
+    if latest_received_ms:
+        freshness = "最近收到反馈：{}（{} 前）".format(
+            format_time(latest_received_ms), fmt_ms(last_received_age_ms or 0)
+        )
+    else:
+        freshness = "尚未收到反馈"
+    note = (
+        "<p class='panel-note'>{}。反馈只会在用户主动提交，或明确开启自动反馈时发送；"
+        "没有近期记录不等于事件遥测停止。</p>"
+    ).format(html.escape(freshness))
+    return "<section id='feedback-inbox' class='panel recent feedback-inbox'><h2>反馈明细面板 / Feedback Inbox <a class='section-link' href='./feedback-archive'>全量归档 / Archive</a></h2>{}{}</section>".format(
+        note, "\n".join(items)
     )
 
 
@@ -3007,7 +3215,11 @@ def render_dashboard():
             ("24h 回访设备 / 24h Returning Devices", data["returning_installs_24h"]),
         ],
     )
-    retention_panel = render_retention_panel(data["retention_devices"], data["retention_agents"])
+    retention_panel = render_retention_panel(
+        data["retention_devices"],
+        data["retention_agents"],
+        data.get("retention_status"),
+    )
     orphan_sources_panel = render_orphan_sources_panel(data["orphan_sources_24h"])
 
     countdown_seconds = 30
@@ -3290,7 +3502,11 @@ def render_dashboard():
         orphan_sources=orphan_sources_panel,
         retention=retention_panel,
         recent="\n".join(recent_rows),
-        feedback_inbox=render_feedback_inbox(data["recent_feedback"]),
+        feedback_inbox=render_feedback_inbox(
+            data["recent_feedback"],
+            data.get("latest_feedback_received_ms"),
+            data.get("feedback_last_received_age_ms"),
+        ),
     )
 
 

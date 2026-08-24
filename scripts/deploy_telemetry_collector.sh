@@ -28,6 +28,12 @@ cp \$source \$backup
 install -m 0644 \$stage \$source
 rm -f \$stage
 systemctl restart guanlan-telemetry
-curl -fsS --max-time 8 http://127.0.0.1:8080/healthz | grep -qx 'ok'
+# The collector commonly sits behind Nginx on a non-default loopback port.
+# Read its service EnvironmentFile locally instead of hard-coding 8080, so a
+# healthy deployment is never reported as failed solely by the probe script.
+set -a
+. /etc/guanlan-telemetry.env
+set +a
+curl -fsS --max-time 12 http://127.0.0.1:\${GUANLAN_PORT:-8080}/healthz | grep -qx 'ok'
 printf 'backup=%s\n' \$backup
 "

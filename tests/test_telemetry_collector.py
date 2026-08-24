@@ -417,6 +417,92 @@ def test_dashboard_slow_metrics_never_block_initial_dashboard_render(tmp_path, m
     assert metrics["pending"] is True
 
 
+def test_retention_read_model_replays_history_once_and_matches_cohorts(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
+    monkeypatch.setenv("GUANLAN_RETENTION_BACKFILL_BATCH_SIZE", "1")
+    collector = _load_collector(monkeypatch)
+    collector.init_db()
+    current_ms = 2_000_000_000
+    day_ms = 24 * 3600 * 1000
+    first_day = current_ms - 4 * day_ms
+    conn = collector.db_connect()
+    try:
+        _insert_event(
+            conn,
+            received_ms=first_day,
+            ts_ms=first_day,
+            event="invocation_start",
+            invocation_id="first-a",
+            install_id="device-a",
+            agent_id="agent-a",
+        )
+        _insert_event(
+            conn,
+            received_ms=first_day + day_ms,
+            ts_ms=first_day + day_ms,
+            event="invocation_start",
+            invocation_id="return-a",
+            install_id="device-a",
+            agent_id="agent-a",
+        )
+        _insert_event(
+            conn,
+            received_ms=first_day,
+            ts_ms=first_day,
+            event="invocation_start",
+            invocation_id="first-b",
+            install_id="device-b",
+            agent_id="agent-b",
+        )
+        conn.commit()
+        while not collector.retention_backfill_batch(conn):
+            pass
+        monkeypatch.setattr(collector, "now_ms", lambda: current_ms)
+        device_rows = collector.query_retention_stats(conn, "install_id", offsets=(1,))
+    finally:
+        conn.close()
+
+    assert device_rows == [{"offset": 1, "cohort": 2, "retained": 1, "rate": 50.0}]
+
+
+def test_new_invocation_start_updates_retention_model_without_raw_replay(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
+    collector = _load_collector(monkeypatch)
+    collector.init_db()
+    current_ms = 2_000_000_000
+    monkeypatch.setattr(collector, "now_ms", lambda: current_ms)
+
+    assert collector.record_event(
+        {
+            "event": "invocation_start",
+            "ts": current_ms,
+            "install_id": "device-a",
+            "agent_id": "agent-a",
+            "invocation_id": "call-a",
+        },
+        "203.0.113.9",
+    )
+    conn = collector.db_connect()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM retention_entities").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM retention_activity").fetchone()[0] == 2
+    finally:
+        conn.close()
+
+
+def test_retention_pending_state_is_explicit_not_an_ambiguous_ellipsis(monkeypatch):
+    collector = _load_collector(monkeypatch)
+    html = collector.render_retention_panel(
+        collector.retention_placeholder((1,)),
+        collector.retention_placeholder((1,)),
+        {"processed": 10, "total": 100, "percent": 10},
+    )
+
+    assert "建立中" in html
+    assert "等待历史回放完成" in html
+    assert "... / ..." not in html
+
+
 def test_health_cards_use_one_cached_snapshot_instead_of_mixing_fresh_orphans(tmp_path, monkeypatch):
     monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
     collector = _load_collector(monkeypatch)

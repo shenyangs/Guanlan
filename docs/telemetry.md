@@ -59,7 +59,7 @@ still running:
   "invocation_id": "uuid",
   "surface": "cli",
   "command": "search",
-  "version": "0.10.6",
+  "version": "0.10.7",
   "agent_kind": "codex",
   "agent_id": "anonymous-hash",
   "platform": "darwin",
@@ -89,6 +89,20 @@ anonymous stable agent identifier: if `GUANLAN_AGENT_ID` is set, Guanlan hashes
 that value before sending it; otherwise it falls back to one agent instance per
 `install_id + agent_kind`.
 
+## Collector reliability model
+
+The dashboard has separate liveness boundaries for lifecycle events, feedback,
+and retention. A new collector keeps raw events as the audit log, but computes
+retention from a durable compact model of anonymous first-active dates and
+active dates. Historical events are backfilled in bounded, restart-safe batches;
+until that replay is complete, the dashboard explicitly says `建立中` with
+progress and does not show a partial retention rate as fact.
+
+Health metrics use the latest complete snapshot. The collector exposes recent
+event age and the separate latest-feedback receipt time, so a stale feedback
+inbox cannot be mistaken for a stalled lifecycle pipeline. The collector does
+not replace existing raw SQLite data during this migration.
+
 ## Search dissatisfaction feedback
 
 For agent workflows, Guanlan can auto-submit diagnostic feedback when a search
@@ -99,3 +113,9 @@ triage dashboards.
 
 This pathway is intended for agent-side automation rather than end-user manual
 submission.
+
+Automatic feedback remains opt-in (`GUANLAN_AUTO_FEEDBACK=1` or the matching
+local setting). Therefore an empty or old feedback inbox means no feedback was
+submitted by an opted-in client; it is not by itself evidence that anonymous
+lifecycle telemetry has stopped. The dashboard labels the latest receipt time
+to make that distinction visible.
