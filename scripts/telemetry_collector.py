@@ -38,6 +38,17 @@ ORPHAN_SETTLEMENT_GRACE_SECONDS = max(
     ACTIVE_TTL_SECONDS,
     int(os.environ.get("GUANLAN_ORPHAN_SETTLEMENT_GRACE_SECONDS", "600")),
 )
+# A client event timestamp is the semantic time for health metrics.  Received
+# time is retained separately for delivery-lag diagnostics and must not make a
+# week-old local queue replay look like fresh product activity.
+EVENT_TIME_FUTURE_SKEW_SECONDS = max(
+    0,
+    int(os.environ.get("GUANLAN_EVENT_TIME_FUTURE_SKEW_SECONDS", "300")),
+)
+INGEST_EVENT_MAX_AGE_SECONDS = max(
+    3600,
+    int(os.environ.get("GUANLAN_INGEST_EVENT_MAX_AGE_SECONDS", str(7 * 24 * 3600))),
+)
 MAX_BODY_BYTES = 16 * 1024
 IP_GEO_LOOKUP_ENABLED = os.environ.get("GUANLAN_IP_GEO_LOOKUP", "0") == "1"
 IP_GEO_CACHE_TTL_SECONDS = int(os.environ.get("GUANLAN_IP_GEO_CACHE_TTL_SECONDS", str(7 * 24 * 3600)))
@@ -87,10 +98,23 @@ _DASHBOARD_CACHE_LOCK = threading.Lock()
 _DASHBOARD_CACHE = {"built_ms": 0, "html": "", "refreshing": False, "refresh_started_ms": 0}
 _ASYNC_STATS_CACHE_LOCK = threading.Lock()
 _ASYNC_STATS_CACHE = {}
+_HEAVY_STATS_LOCK = threading.Lock()
 
 
 def now_ms():
     return int(time.time() * 1000)
+
+
+def event_time_upper_bound(current_ms):
+    """Allow a small client clock lead without admitting unbounded future data."""
+    return current_ms + EVENT_TIME_FUTURE_SKEW_SECONDS * 1000
+
+
+def event_time_is_acceptable(event_ms, current_ms):
+    """Return whether an event is recent enough to retain as telemetry."""
+    return (
+        current_ms - INGEST_EVENT_MAX_AGE_SECONDS * 1000 <= int(event_ms) <= event_time_upper_bound(current_ms)
+    )
 
 
 def log_info(message):
@@ -218,10 +242,17 @@ def _async_cache_finish(name, keep_value=False):
             entry["value"] = None
 
 
-def _async_cache_worker(name, builder):
+def _async_cache_worker(name, builder, heavy=False):
     started = time.time()
     try:
-        value = builder()
+        if heavy:
+            # Retention/all-time scans share one SQLite database with ingest.
+            # A single-flight queue is slower for a stale secondary panel, but
+            # prevents dashboard requests from multiplying full-table scans.
+            with _HEAVY_STATS_LOCK:
+                value = builder()
+        else:
+            value = builder()
         _async_cache_store(name, value)
         elapsed = time.time() - started
         if elapsed >= 1.0:
@@ -231,7 +262,7 @@ def _async_cache_worker(name, builder):
         log_info("async cache refresh failed for %s: %s" % (name, exc))
 
 
-def ensure_async_cache_refresh(name, builder, default_value=None):
+def ensure_async_cache_refresh(name, builder, default_value=None, *, heavy=False):
     current = now_ms()
     with _ASYNC_STATS_CACHE_LOCK:
         entry = _ASYNC_STATS_CACHE.setdefault(
@@ -244,19 +275,15 @@ def ensure_async_cache_refresh(name, builder, default_value=None):
             },
         )
         refresh_started_ms = int(entry.get("refresh_started_ms") or 0)
-        if entry.get("refreshing") and refresh_started_ms:
-            if current - refresh_started_ms <= DASHBOARD_REFRESH_STUCK_SECONDS * 1000:
-                return False
-            entry["refreshing"] = False
-            entry["refresh_started_ms"] = 0
-            log_info("async cache refresh reset after timeout: %s" % name)
         if entry.get("refreshing"):
+            if refresh_started_ms and current - refresh_started_ms > DASHBOARD_REFRESH_STUCK_SECONDS * 1000:
+                log_info("async cache refresh remains single-flight after timeout: %s" % name)
             return False
         entry["refreshing"] = True
         entry["refresh_started_ms"] = current
     thread = threading.Thread(
         target=_async_cache_worker,
-        args=(name, builder),
+        args=(name, builder, heavy),
         name="guanlan-async-cache-%s" % name,
         daemon=True,
     )
@@ -264,7 +291,15 @@ def ensure_async_cache_refresh(name, builder, default_value=None):
     return True
 
 
-def get_async_cached_value(name, ttl_seconds, builder, default_value=None, *, wait_for_initial=False):
+def get_async_cached_value(
+    name,
+    ttl_seconds,
+    builder,
+    default_value=None,
+    *,
+    wait_for_initial=False,
+    heavy=False,
+):
     current = now_ms()
     snapshot = _async_cache_snapshot(name, default_value)
     built_ms = int(snapshot.get("built_ms") or 0)
@@ -279,7 +314,7 @@ def get_async_cached_value(name, ttl_seconds, builder, default_value=None, *, wa
         value = builder()
         _async_cache_store(name, value)
         return value
-    ensure_async_cache_refresh(name, builder, default_value)
+    ensure_async_cache_refresh(name, builder, default_value, heavy=heavy)
     return value
 
 
@@ -433,7 +468,6 @@ def db_connect():
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
@@ -441,6 +475,11 @@ def db_connect():
 def init_db():
     conn = db_connect()
     try:
+        # Configure journal mode once at service start. Reissuing this pragma
+        # for every ingest connection contends with readers under dashboard
+        # load and amplifies write latency.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA wal_autocheckpoint=1000")
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS events (
@@ -468,6 +507,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_events_invocation ON events(invocation_id);
             CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
             CREATE INDEX IF NOT EXISTS idx_events_event_received ON events(event, received_ms);
+            CREATE INDEX IF NOT EXISTS idx_events_event_ts ON events(event, ts_ms);
 
             CREATE TABLE IF NOT EXISTS active_invocations (
                 invocation_id TEXT PRIMARY KEY,
@@ -651,6 +691,10 @@ def record_event(payload, remote_addr):
         row["duration_ms"] = int(row["duration_ms"]) if row["duration_ms"] is not None else None
     except Exception:
         row["duration_ms"] = None
+    if not event_time_is_acceptable(row["ts_ms"], current):
+        # Acknowledge stale local-queue telemetry so legacy clients stop
+        # retrying it. This is observability data, not product state.
+        return True
 
     conn = db_connect()
     try:
@@ -878,15 +922,19 @@ def query_feedback_groups(conn, column, since_ms, limit=10, real_only=False):
     return [{"key": r["key"] or "unknown", "count": r["count"]} for r in rows]
 
 
-def query_platform_unique(conn, field, since_ms=None, limit=10):
+def query_platform_unique(conn, field, since_ms=None, limit=10, current_ms=None):
     allowed = set(["install_id", "agent_id"])
     if field not in allowed:
         return []
     where = "platform <> '' AND {field} <> ''".format(field=field)
     params = []
     if since_ms is not None:
-        where = "received_ms >= ? AND " + where
-        params.append(since_ms)
+        if current_ms is not None:
+            where = "ts_ms >= ? AND ts_ms < ? AND " + where
+            params.extend([since_ms, event_time_upper_bound(current_ms)])
+        else:
+            where = "ts_ms >= ? AND " + where
+            params.append(since_ms)
     params.append(limit)
     rows = conn.execute(
         """
@@ -912,16 +960,22 @@ def query_percentile(values, percentile):
     return ordered[max(0, min(index, len(ordered) - 1))]
 
 
-def query_duration_stats(conn, since_ms):
+def query_duration_stats(conn, since_ms, current_ms=None):
+    params = [since_ms]
+    upper_clause = ""
+    if current_ms is not None:
+        upper_clause = " AND ts_ms < ?"
+        params.append(event_time_upper_bound(current_ms))
     rows = conn.execute(
         """
         SELECT duration_ms FROM events
-        WHERE received_ms >= ?
+        WHERE ts_ms >= ?
+        {upper_clause}
           AND event = 'invocation_end'
           AND duration_ms IS NOT NULL
           AND duration_ms >= 0
-        """,
-        (since_ms,),
+        """.format(upper_clause=upper_clause),
+        tuple(params),
     ).fetchall()
     values = [r["duration_ms"] for r in rows]
     if not values:
@@ -934,7 +988,12 @@ def query_duration_stats(conn, since_ms):
     }
 
 
-def query_session_stats(conn, since_ms):
+def query_session_stats(conn, since_ms, current_ms=None):
+    params = [since_ms]
+    upper_clause = ""
+    if current_ms is not None:
+        upper_clause = " AND ts_ms < ?"
+        params.append(event_time_upper_bound(current_ms))
     rows = conn.execute(
         """
         SELECT install_id,
@@ -943,15 +1002,16 @@ def query_session_stats(conn, since_ms):
                    WHEN TRIM(COALESCE(session_id, '')) <> '' THEN session_id
                    ELSE 'invocation:' || invocation_id
                END AS effective_session_id,
-               MIN(received_ms) AS first_seen,
-               MAX(received_ms) AS last_seen,
+               MIN(ts_ms) AS first_seen,
+               MAX(ts_ms) AS last_seen,
                COUNT(CASE WHEN event = 'invocation_start' THEN 1 END) AS calls
         FROM events
-        WHERE received_ms >= ?
+        WHERE ts_ms >= ?
+          {upper_clause}
           AND event IN ('invocation_start', 'invocation_end')
         GROUP BY install_id, agent_id, effective_session_id
-        """,
-        (since_ms,),
+        """.format(upper_clause=upper_clause),
+        tuple(params),
     ).fetchall()
     if not rows:
         return {"count": 0, "avg_duration_ms": 0, "p95_duration_ms": 0, "avg_calls": 0}
@@ -970,7 +1030,7 @@ def query_new_installs(conn, since_ms):
         conn,
         """
         SELECT COUNT(*) FROM (
-            SELECT install_id, MIN(received_ms) AS first_seen
+            SELECT install_id, MIN(ts_ms) AS first_seen
             FROM events
             GROUP BY install_id
             HAVING first_seen >= ?
@@ -987,11 +1047,11 @@ def query_returning_installs(conn, since_ms):
         SELECT COUNT(DISTINCT e.install_id)
         FROM events e
         JOIN (
-            SELECT install_id, MIN(received_ms) AS first_seen
+            SELECT install_id, MIN(ts_ms) AS first_seen
             FROM events
             GROUP BY install_id
         ) firsts ON firsts.install_id = e.install_id
-        WHERE e.received_ms >= ?
+        WHERE e.ts_ms >= ?
           AND firsts.first_seen < ?
         """,
         (since_ms, since_ms),
@@ -1060,6 +1120,7 @@ def query_retention_stats_cached(field, offsets=(1, 3, 7, 14, 30)):
         RETENTION_CACHE_TTL_SECONDS,
         builder,
         default_rows,
+        heavy=True,
     )
 
 
@@ -1071,19 +1132,21 @@ def query_orphan_starts(conn, since_ms, current_ms):
         """
         SELECT COUNT(*)
         FROM events starts
-        LEFT JOIN events ends
-          ON ends.invocation_id = starts.invocation_id
-         AND ends.event = 'invocation_end'
-        LEFT JOIN active_invocations active
-          ON active.invocation_id = starts.invocation_id
-         AND active.last_seen_ms >= ?
         WHERE starts.event = 'invocation_start'
-          AND starts.received_ms >= ?
-          AND starts.received_ms < ?
-          AND ends.id IS NULL
-          AND active.invocation_id IS NULL
+          AND starts.ts_ms >= ?
+          AND starts.ts_ms < ?
+          AND NOT EXISTS (
+              SELECT 1 FROM events ends
+              WHERE ends.invocation_id = starts.invocation_id
+                AND ends.event = 'invocation_end'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM active_invocations active
+              WHERE active.invocation_id = starts.invocation_id
+                AND active.last_seen_ms >= ?
+          )
         """,
-        (active_cutoff, since_ms, settled_cutoff),
+        (since_ms, settled_cutoff, active_cutoff),
     )
 
 
@@ -1100,8 +1163,8 @@ def query_settled_starts(conn, since_ms, current_ms):
         SELECT COUNT(*)
         FROM events
         WHERE event = 'invocation_start'
-          AND received_ms >= ?
-          AND received_ms < ?
+          AND ts_ms >= ?
+          AND ts_ms < ?
         """,
         (since_ms, settled_cutoff),
     )
@@ -1116,41 +1179,47 @@ def query_orphan_breakdown(conn, since_ms, current_ms):
             SELECT invocation_id
             FROM events
             WHERE event = 'invocation_start'
-              AND received_ms >= ?
-              AND received_ms < ?
-        ),
-        ended AS (
-            SELECT DISTINCT invocation_id
-            FROM events
-            WHERE event = 'invocation_end'
-        ),
-        active AS (
-            SELECT DISTINCT invocation_id
-            FROM active_invocations
-            WHERE last_seen_ms >= ?
-        ),
-        heartbeats AS (
-            SELECT DISTINCT invocation_id
-            FROM events
-            WHERE event = 'invocation_heartbeat'
+              AND ts_ms >= ?
+              AND ts_ms < ?
         )
         SELECT
             SUM(CASE
-                WHEN ended.invocation_id IS NULL
-                 AND active.invocation_id IS NULL
-                 AND heartbeats.invocation_id IS NOT NULL
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM events ended
+                    WHERE ended.invocation_id = starts.invocation_id
+                      AND ended.event = 'invocation_end'
+                )
+                 AND NOT EXISTS (
+                    SELECT 1 FROM active_invocations active
+                    WHERE active.invocation_id = starts.invocation_id
+                      AND active.last_seen_ms >= ?
+                )
+                 AND EXISTS (
+                    SELECT 1 FROM events heartbeats
+                    WHERE heartbeats.invocation_id = starts.invocation_id
+                      AND heartbeats.event = 'invocation_heartbeat'
+                )
                 THEN 1 ELSE 0 END) AS with_heartbeat,
             SUM(CASE
-                WHEN ended.invocation_id IS NULL
-                 AND active.invocation_id IS NULL
-                 AND heartbeats.invocation_id IS NULL
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM events ended
+                    WHERE ended.invocation_id = starts.invocation_id
+                      AND ended.event = 'invocation_end'
+                )
+                 AND NOT EXISTS (
+                    SELECT 1 FROM active_invocations active
+                    WHERE active.invocation_id = starts.invocation_id
+                      AND active.last_seen_ms >= ?
+                )
+                 AND NOT EXISTS (
+                    SELECT 1 FROM events heartbeats
+                    WHERE heartbeats.invocation_id = starts.invocation_id
+                      AND heartbeats.event = 'invocation_heartbeat'
+                )
                 THEN 1 ELSE 0 END) AS without_heartbeat
         FROM starts
-        LEFT JOIN ended ON ended.invocation_id = starts.invocation_id
-        LEFT JOIN active ON active.invocation_id = starts.invocation_id
-        LEFT JOIN heartbeats ON heartbeats.invocation_id = starts.invocation_id
         """,
-        (since_ms, settled_cutoff, active_cutoff),
+        (since_ms, settled_cutoff, active_cutoff, active_cutoff),
     ).fetchone()
     return {
         "with_heartbeat": int((row and row["with_heartbeat"]) or 0),
@@ -1167,50 +1236,67 @@ def query_orphan_sources(conn, since_ms, current_ms, limit=12):
             SELECT invocation_id, command, agent_kind, version, platform
             FROM events
             WHERE event = 'invocation_start'
-              AND received_ms >= ?
-              AND received_ms < ?
-        ),
-        ended AS (
-            SELECT DISTINCT invocation_id
-            FROM events
-            WHERE event = 'invocation_end'
-        ),
-        active AS (
-            SELECT DISTINCT invocation_id
-            FROM active_invocations
-            WHERE last_seen_ms >= ?
-        ),
-        heartbeats AS (
-            SELECT DISTINCT invocation_id
-            FROM events
-            WHERE event = 'invocation_heartbeat'
+              AND ts_ms >= ?
+              AND ts_ms < ?
         )
         SELECT starts.command AS command,
                starts.agent_kind AS agent_kind,
                starts.version AS version,
                starts.platform AS platform,
                COUNT(*) AS starts,
-               SUM(CASE WHEN ended.invocation_id IS NULL AND active.invocation_id IS NULL THEN 1 ELSE 0 END) AS orphans,
                SUM(CASE
-                   WHEN ended.invocation_id IS NULL
-                    AND active.invocation_id IS NULL
-                    AND heartbeats.invocation_id IS NOT NULL
+                   WHEN NOT EXISTS (
+                       SELECT 1 FROM events ended
+                       WHERE ended.invocation_id = starts.invocation_id
+                         AND ended.event = 'invocation_end'
+                   )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM active_invocations active
+                        WHERE active.invocation_id = starts.invocation_id
+                          AND active.last_seen_ms >= ?
+                    )
+                   THEN 1 ELSE 0 END) AS orphans,
+               SUM(CASE
+                   WHEN NOT EXISTS (
+                       SELECT 1 FROM events ended
+                       WHERE ended.invocation_id = starts.invocation_id
+                         AND ended.event = 'invocation_end'
+                   )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM active_invocations active
+                        WHERE active.invocation_id = starts.invocation_id
+                          AND active.last_seen_ms >= ?
+                    )
+                    AND EXISTS (
+                        SELECT 1 FROM events heartbeats
+                        WHERE heartbeats.invocation_id = starts.invocation_id
+                          AND heartbeats.event = 'invocation_heartbeat'
+                    )
                    THEN 1 ELSE 0 END) AS with_heartbeat,
                SUM(CASE
-                   WHEN ended.invocation_id IS NULL
-                    AND active.invocation_id IS NULL
-                    AND heartbeats.invocation_id IS NULL
+                   WHEN NOT EXISTS (
+                       SELECT 1 FROM events ended
+                       WHERE ended.invocation_id = starts.invocation_id
+                         AND ended.event = 'invocation_end'
+                   )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM active_invocations active
+                        WHERE active.invocation_id = starts.invocation_id
+                          AND active.last_seen_ms >= ?
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM events heartbeats
+                        WHERE heartbeats.invocation_id = starts.invocation_id
+                          AND heartbeats.event = 'invocation_heartbeat'
+                    )
                    THEN 1 ELSE 0 END) AS without_heartbeat
         FROM starts
-        LEFT JOIN ended ON ended.invocation_id = starts.invocation_id
-        LEFT JOIN active ON active.invocation_id = starts.invocation_id
-        LEFT JOIN heartbeats ON heartbeats.invocation_id = starts.invocation_id
         GROUP BY starts.command, starts.agent_kind, starts.version, starts.platform
         HAVING orphans > 0
         ORDER BY orphans DESC, starts DESC
         LIMIT ?
         """,
-        (since_ms, settled_cutoff, active_cutoff, limit),
+        (since_ms, settled_cutoff, active_cutoff, active_cutoff, active_cutoff, limit),
     ).fetchall()
     items = []
     for row in rows:
@@ -1307,11 +1393,11 @@ def query_slow_dashboard_metrics(current_ms, day_ms, week_ms):
             "new_installs_24h": query_new_installs(conn, day_ms),
             "new_installs_7d": query_new_installs(conn, week_ms),
             "returning_installs_24h": query_returning_installs(conn, day_ms),
-            "task_duration_7d": query_duration_stats(conn, week_ms),
-            "session_24h": query_session_stats(conn, day_ms),
-            "session_7d": query_session_stats(conn, week_ms),
-            "platform_unique_devices": query_platform_unique(conn, "install_id", week_ms),
-            "platform_unique_agents": query_platform_unique(conn, "agent_id", week_ms),
+            "task_duration_7d": query_duration_stats(conn, week_ms, current_ms),
+            "session_24h": query_session_stats(conn, day_ms, current_ms),
+            "session_7d": query_session_stats(conn, week_ms, current_ms),
+            "platform_unique_devices": query_platform_unique(conn, "install_id", week_ms, current_ms=current_ms),
+            "platform_unique_agents": query_platform_unique(conn, "agent_id", week_ms, current_ms=current_ms),
             "platform_unique_devices_all": query_platform_unique(conn, "install_id"),
             "platform_unique_agents_all": query_platform_unique(conn, "agent_id"),
             "orphan_sources_24h": query_orphan_sources(conn, day_ms, current_ms),
@@ -1336,18 +1422,18 @@ def query_health_dashboard_metrics(current_ms, day_ms, week_ms, month_ms):
         conn.commit()
         calls_24h = query_one(
             conn,
-            "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_start'",
-            (day_ms,),
+            "SELECT COUNT(*) FROM events WHERE ts_ms >= ? AND ts_ms < ? AND event = 'invocation_start'",
+            (day_ms, event_time_upper_bound(current_ms)),
         )
         calls_7d = query_one(
             conn,
-            "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_start'",
-            (week_ms,),
+            "SELECT COUNT(*) FROM events WHERE ts_ms >= ? AND ts_ms < ? AND event = 'invocation_start'",
+            (week_ms, event_time_upper_bound(current_ms)),
         )
         calls_30d = query_one(
             conn,
-            "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_start'",
-            (month_ms,),
+            "SELECT COUNT(*) FROM events WHERE ts_ms >= ? AND ts_ms < ? AND event = 'invocation_start'",
+            (month_ms, event_time_upper_bound(current_ms)),
         )
         orphan_breakdown = query_orphan_breakdown(conn, day_ms, current_ms)
         last_event_ms = query_one(conn, "SELECT MAX(received_ms) FROM events") or current_ms
@@ -1361,36 +1447,36 @@ def query_health_dashboard_metrics(current_ms, day_ms, week_ms, month_ms):
             "calls_30d": calls_30d,
             "active_installs_24h": query_one(
                 conn,
-                "SELECT COUNT(DISTINCT install_id) FROM events WHERE received_ms >= ?",
-                (day_ms,),
+                "SELECT COUNT(DISTINCT install_id) FROM events WHERE ts_ms >= ? AND ts_ms < ?",
+                (day_ms, event_time_upper_bound(current_ms)),
             ),
             "active_installs_7d": query_one(
                 conn,
-                "SELECT COUNT(DISTINCT install_id) FROM events WHERE received_ms >= ?",
-                (week_ms,),
+                "SELECT COUNT(DISTINCT install_id) FROM events WHERE ts_ms >= ? AND ts_ms < ?",
+                (week_ms, event_time_upper_bound(current_ms)),
             ),
             "unique_agents_24h": query_one(
                 conn,
-                "SELECT COUNT(DISTINCT agent_id) FROM events WHERE received_ms >= ?",
-                (day_ms,),
+                "SELECT COUNT(DISTINCT agent_id) FROM events WHERE ts_ms >= ? AND ts_ms < ?",
+                (day_ms, event_time_upper_bound(current_ms)),
             ),
             "unique_agents_7d": query_one(
                 conn,
-                "SELECT COUNT(DISTINCT agent_id) FROM events WHERE received_ms >= ?",
-                (week_ms,),
+                "SELECT COUNT(DISTINCT agent_id) FROM events WHERE ts_ms >= ? AND ts_ms < ?",
+                (week_ms, event_time_upper_bound(current_ms)),
             ),
             "errors_24h": query_one(
                 conn,
-                "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_end' AND status = 'error'",
-                (day_ms,),
+                "SELECT COUNT(*) FROM events WHERE ts_ms >= ? AND ts_ms < ? AND event = 'invocation_end' AND status = 'error'",
+                (day_ms, event_time_upper_bound(current_ms)),
             ),
             "aborted_24h": query_one(
                 conn,
-                "SELECT COUNT(*) FROM events WHERE received_ms >= ? AND event = 'invocation_end' AND status = 'aborted'",
-                (day_ms,),
+                "SELECT COUNT(*) FROM events WHERE ts_ms >= ? AND ts_ms < ? AND event = 'invocation_end' AND status = 'aborted'",
+                (day_ms, event_time_upper_bound(current_ms)),
             ),
-            "task_duration_24h": query_duration_stats(conn, day_ms),
-            "session_24h": query_session_stats(conn, day_ms),
+            "task_duration_24h": query_duration_stats(conn, day_ms, current_ms),
+            "session_24h": query_session_stats(conn, day_ms, current_ms),
             "orphan_starts_24h": query_orphan_starts(conn, day_ms, current_ms),
             "settled_calls_24h": query_settled_starts(conn, day_ms, current_ms),
             "orphan_with_heartbeat_24h": orphan_breakdown["with_heartbeat"],
@@ -1406,7 +1492,7 @@ def query_slow_dashboard_metrics_cached(current_ms, day_ms, week_ms):
         SLOW_METRICS_CACHE_TTL_SECONDS,
         lambda: query_slow_dashboard_metrics(current_ms, day_ms, week_ms),
         slow_dashboard_metrics_placeholder(),
-        wait_for_initial=True,
+        heavy=True,
     )
 
 
@@ -2773,7 +2859,8 @@ def render_dashboard():
     health_snapshot_note = (
         "<p class='panel-note'>健康指标正在生成完整快照；暂不把占位值当作当前异常率。</p>"
         if data.get("health_metrics_pending")
-        else "<p class='panel-note'>本组指标同一快照生成于：%s。</p>" % html.escape(health_generated_at)
+        else "<p class='panel-note'>本组指标同一快照生成于：%s。24h 使用客户端事件发生时间；延迟补传仅计入投递健康，不混入当前使用健康。</p>"
+        % html.escape(health_generated_at)
     )
 
     core_cards = [
@@ -2841,13 +2928,13 @@ def render_dashboard():
             "<a class='core-card core-card-link' href='{href}'><span>{label}</span><strong>{value}</strong><em>{hint}</em></a>".format(
                 href=html.escape(str(card.get("href") or "")),
                 label=html.escape(str(card.get("label") or "")),
-                value=html.escape(str(card.get("value") or "")),
+                value=html.escape(metric_text(card.get("value"), default="—")),
                 hint=html.escape(str(card.get("hint") or "打开逐条反馈")),
             )
             if card.get("href")
             else "<div class='core-card'><span>{label}</span><strong>{value}</strong></div>".format(
                 label=html.escape(str(card.get("label") or "")),
-                value=html.escape(str(card.get("value") or "")),
+                value=html.escape(metric_text(card.get("value"), default="—")),
             )
         )
         for card in core_cards
@@ -3256,13 +3343,9 @@ def ensure_dashboard_refresh():
     current = now_ms()
     with _DASHBOARD_CACHE_LOCK:
         refresh_started_ms = int(_DASHBOARD_CACHE.get("refresh_started_ms") or 0)
-        if _DASHBOARD_CACHE.get("refreshing") and refresh_started_ms:
-            if current - refresh_started_ms <= DASHBOARD_REFRESH_STUCK_SECONDS * 1000:
-                return False
-            _DASHBOARD_CACHE["refreshing"] = False
-            _DASHBOARD_CACHE["refresh_started_ms"] = 0
-            log_info("dashboard cache refresh reset after timeout")
-        elif _DASHBOARD_CACHE.get("refreshing"):
+        if _DASHBOARD_CACHE.get("refreshing"):
+            if refresh_started_ms and current - refresh_started_ms > DASHBOARD_REFRESH_STUCK_SECONDS * 1000:
+                log_info("dashboard cache refresh remains single-flight after timeout")
             return False
         _DASHBOARD_CACHE["refreshing"] = True
         _DASHBOARD_CACHE["refresh_started_ms"] = current
@@ -3281,14 +3364,6 @@ def render_dashboard_cached(force_refresh=False):
         html_text = _DASHBOARD_CACHE.get("html") or ""
         built_ms = int(_DASHBOARD_CACHE.get("built_ms") or 0)
         refreshing = bool(_DASHBOARD_CACHE.get("refreshing"))
-        refresh_started_ms = int(_DASHBOARD_CACHE.get("refresh_started_ms") or 0)
-    if refreshing and refresh_started_ms:
-        if current - refresh_started_ms > DASHBOARD_REFRESH_STUCK_SECONDS * 1000:
-            with _DASHBOARD_CACHE_LOCK:
-                _DASHBOARD_CACHE["refreshing"] = False
-                _DASHBOARD_CACHE["refresh_started_ms"] = 0
-            refreshing = False
-            log_info("dashboard cache stale refresh lock cleared")
     if force_refresh:
         if not refreshing:
             return _build_dashboard_html()

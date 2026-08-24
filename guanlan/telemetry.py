@@ -36,6 +36,7 @@ DEFAULT_ENDPOINT = (
 )
 MAX_QUEUE_EVENTS = 2000
 MAX_FLUSH_EVENTS = 5
+MAX_QUEUE_EVENT_AGE_SECONDS = 7 * 24 * 3600
 END_EVENT_RETRY = 3
 END_EVENT_RETRY_DELAY_SECONDS = 0.05
 _TRUTHY = {"1", "true", "yes", "on"}
@@ -289,6 +290,30 @@ def _flush_limit() -> int:
         return MAX_FLUSH_EVENTS
 
 
+def _queue_event_max_age_ms() -> int:
+    raw = os.environ.get("GUANLAN_TELEMETRY_QUEUE_MAX_AGE_SECONDS", "")
+    if not raw:
+        seconds = MAX_QUEUE_EVENT_AGE_SECONDS
+    else:
+        try:
+            seconds = int(raw)
+        except ValueError:
+            seconds = MAX_QUEUE_EVENT_AGE_SECONDS
+    return max(3600, min(seconds, 30 * 24 * 3600)) * 1000
+
+
+def _queue_event_is_fresh(item: dict[str, object], current_ms: int) -> bool:
+    """Discard telemetry that can no longer describe current product health."""
+    original_ms = item.get("ts") or item.get("queued_ms") or current_ms
+    try:
+        age_ms = current_ms - int(original_ms)
+    except (TypeError, ValueError):
+        return False
+    # A clock that is slightly ahead is harmless. Absurd future timestamps are
+    # not safe metric evidence and should not live in the durable queue.
+    return -5 * 60 * 1000 <= age_ms <= _queue_event_max_age_ms()
+
+
 def _read_queue(path: Path) -> list[dict[str, object]]:
     if not path.exists():
         return []
@@ -345,7 +370,13 @@ def flush_queue(settings: TelemetrySettings) -> int:
     path = Path(settings.queue_path)
     with _QUEUE_LOCK:
         items = _read_queue(path)
+        current_ms = int(time.time() * 1000)
+        items = [item for item in items if _queue_event_is_fresh(item, current_ms)]
         if not items:
+            try:
+                path.unlink()
+            except OSError:
+                pass
             return 0
         sent = 0
         remaining = []

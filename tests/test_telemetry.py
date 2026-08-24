@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """Tests for privacy-preserving anonymous telemetry."""
 
+import json
 import signal
+import time
 from unittest.mock import patch
 
 import pytest
@@ -164,6 +166,33 @@ def test_telemetry_emit_retries_before_queueing(tmp_path, monkeypatch):
     queue_path = tmp_path / "telemetry_queue.jsonl"
     assert attempts["count"] == 2
     assert not queue_path.exists()
+
+
+def test_telemetry_flush_drops_stale_queue_events(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_TELEMETRY_ENDPOINT", "https://metrics.example/v1/events")
+    monkeypatch.setenv("GUANLAN_TELEMETRY", "1")
+    config = Config(config_path=tmp_path / "config.yaml")
+    settings = load_settings(config)
+    assert settings is not None
+    queue_path = tmp_path / "telemetry_queue.jsonl"
+    queue_path.write_text(
+        json.dumps(
+            {
+                "event": "invocation_start",
+                "invocation_id": "week-old",
+                "ts": int(time.time() * 1000) - 8 * 24 * 3600 * 1000,
+                "queued_ms": int(time.time() * 1000) - 8 * 24 * 3600 * 1000,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with patch("guanlan.telemetry.request.urlopen") as post:
+        assert flush_queue(settings) == 0
+
+    assert not queue_path.exists()
+    post.assert_not_called()
 
 
 def test_telemetry_span_marks_termination_signal_as_aborted(tmp_path, monkeypatch):

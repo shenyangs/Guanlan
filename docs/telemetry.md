@@ -59,7 +59,7 @@ still running:
   "invocation_id": "uuid",
   "surface": "cli",
   "command": "search",
-  "version": "0.10.4",
+  "version": "0.10.5",
   "agent_kind": "codex",
   "agent_id": "anonymous-hash",
   "platform": "darwin",
@@ -71,6 +71,18 @@ still running:
 Collector-side concurrency can be calculated from active `invocation_start`
 events minus matching `invocation_end` events, with heartbeat-updated TTLs for
 abandoned invocations.
+
+## Time semantics and delayed delivery
+
+The collector records both the client event time (`ts`) and its own receipt
+time. Health cards such as 24-hour calls, duration, error rate, and unclosed
+calls use the client event time, so an offline queue replay cannot be presented
+as fresh usage. Receipt time is retained only for delivery-lag diagnostics.
+
+Telemetry is best effort. The client and collector acknowledge but discard
+lifecycle events older than seven days by default; this keeps historical local
+queues from degrading current telemetry or delaying normal Guanlan commands.
+The client limit can be adjusted with `GUANLAN_TELEMETRY_QUEUE_MAX_AGE_SECONDS`.
 
 `install_id` is the anonymous device/install identifier. `agent_id` is an
 anonymous stable agent identifier: if `GUANLAN_AGENT_ID` is set, Guanlan hashes

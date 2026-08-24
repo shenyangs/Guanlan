@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Deploy the standalone telemetry collector with a recoverable server-side
+# backup. It intentionally does not deploy website assets.
+# Usage:
+#   scripts/deploy_telemetry_collector.sh root@101.37.70.222 ~/.ssh/guanlan_telemetry_deploy
+
+TARGET="${1:-root@101.37.70.222}"
+SSH_KEY="${2:-$HOME/.ssh/guanlan_telemetry_deploy}"
+WORKDIR="$(cd "$(dirname "$0")/.." && pwd)"
+SOURCE="$WORKDIR/scripts/telemetry_collector.py"
+VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$WORKDIR/pyproject.toml" | head -1)"
+REMOTE_STAGE="/tmp/guanlan-telemetry-collector-${VERSION}.py"
+
+test -s "$SOURCE"
+scp -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=12 "$SOURCE" "$TARGET:$REMOTE_STAGE"
+ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=12 "$TARGET" "
+set -e
+source=/opt/guanlan-telemetry/telemetry_collector.py
+stage=$REMOTE_STAGE
+backup_dir=/opt/guanlan-telemetry/backups
+backup=\$backup_dir/telemetry_collector-\$(date +%Y%m%d%H%M%S)-${VERSION}.py
+test -s \$stage
+/usr/bin/python3 -m py_compile \$stage
+mkdir -p \$backup_dir
+cp \$source \$backup
+install -m 0644 \$stage \$source
+rm -f \$stage
+systemctl restart guanlan-telemetry
+curl -fsS --max-time 8 http://127.0.0.1:8080/healthz | grep -qx 'ok'
+printf 'backup=%s\n' \$backup
+"
