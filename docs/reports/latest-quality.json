@@ -104,7 +104,7 @@
     },
     "warned_case_ids": []
   },
-  "generated_at": "2026-08-24T04:48:14Z",
+  "generated_at": "2026-08-24T04:57:58Z",
   "legacy_inventory": {
     "buckets": {
       "compat": [
@@ -934,5 +934,5 @@
     "total_cases": 160
   },
   "schema_version": "guanlan_quality_report_v1",
-  "version": "0.10.5"
+  "version": "0.10.6"
 }

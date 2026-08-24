@@ -100,6 +100,25 @@ def test_telemetry_collector_nonlocal_bind_accepts_both_secrets(monkeypatch):
     collector.validate_bind_security()
 
 
+def test_existing_lifecycle_unique_index_skips_repeated_startup_migration(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
+    collector = _load_collector(monkeypatch)
+    collector.init_db()
+
+    monkeypatch.setattr(
+        collector,
+        "backfill_agent_ids",
+        lambda _conn: (_ for _ in ()).throw(AssertionError("backfill must be a one-time migration")),
+    )
+    monkeypatch.setattr(
+        collector,
+        "dedupe_events",
+        lambda _conn: (_ for _ in ()).throw(AssertionError("dedupe must be a one-time migration")),
+    )
+
+    collector.init_db()
+
+
 def test_collector_minimizes_new_network_identifiers(tmp_path, monkeypatch):
     monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
     collector = _load_collector(monkeypatch)

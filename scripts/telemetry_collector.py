@@ -606,11 +606,21 @@ def init_db():
         ):
             ensure_column(conn, "site_visits", column, definition)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_site_visits_remote ON site_visits(remote_addr)")
-        backfill_agent_ids(conn)
-        dedupe_events(conn)
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_event_invocation ON events(event, invocation_id)"
-        )
+        # Old collectors need one migration to fill legacy agent ids and
+        # remove duplicate lifecycle rows before the uniqueness guard exists.
+        # Re-running those full-table writes at every restart made a large
+        # collector unavailable for minutes, so their completed index is the
+        # durable migration marker.
+        has_lifecycle_unique_index = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?",
+            ("idx_events_event_invocation",),
+        ).fetchone()
+        if not has_lifecycle_unique_index:
+            backfill_agent_ids(conn)
+            dedupe_events(conn)
+            conn.execute(
+                "CREATE UNIQUE INDEX idx_events_event_invocation ON events(event, invocation_id)"
+            )
         conn.commit()
     finally:
         conn.close()
