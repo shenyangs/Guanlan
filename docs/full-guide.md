@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.10.8`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.10.9`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 

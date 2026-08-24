@@ -37,7 +37,7 @@ set +a
 health_url=http://127.0.0.1:\${GUANLAN_PORT:-8080}/healthz
 ready=0
 for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
-  if curl -fsS --max-time 2 \$health_url | grep -qx 'ok'; then
+  if curl -fsS --max-time 2 \$health_url 2>/dev/null | grep -qx 'ok'; then
     ready=1
     break
   fi
