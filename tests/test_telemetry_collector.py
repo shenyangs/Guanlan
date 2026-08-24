@@ -490,6 +490,27 @@ def test_new_invocation_start_updates_retention_model_without_raw_replay(tmp_pat
         conn.close()
 
 
+def test_completed_retention_backfill_reports_a_coherent_100_percent_status(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUANLAN_DB", str(tmp_path / "events.db"))
+    collector = _load_collector(monkeypatch)
+    collector.init_db()
+    conn = collector.db_connect()
+    try:
+        _insert_event(conn, received_ms=1_000, event="invocation_start", invocation_id="call-a")
+        conn.commit()
+        assert collector.retention_backfill_batch(conn) is False
+        assert collector.retention_backfill_batch(conn) is True
+        assert collector.retention_model_status(conn) == {
+            "state": "ready",
+            "complete": True,
+            "processed": 1,
+            "total": 1,
+            "percent": 100,
+        }
+    finally:
+        conn.close()
+
+
 def test_retention_pending_state_is_explicit_not_an_ambiguous_ellipsis(monkeypatch):
     collector = _load_collector(monkeypatch)
     html = collector.render_retention_panel(

@@ -766,13 +766,13 @@ def retention_model_status(conn):
     # A newly created database has no historical work to replay.
     if total == 0:
         complete = True
-    processed = min(cursor, total)
+    processed = total if complete else min(cursor, total)
     return {
         "state": "ready" if complete else "building",
         "complete": complete,
         "processed": processed,
         "total": total,
-        "percent": int((100.0 * processed / total)) if total else 100,
+        "percent": 100 if complete else (int((100.0 * processed / total)) if total else 100),
     }
 
 

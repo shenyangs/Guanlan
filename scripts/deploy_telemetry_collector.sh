@@ -34,6 +34,15 @@ systemctl restart guanlan-telemetry
 set -a
 . /etc/guanlan-telemetry.env
 set +a
-curl -fsS --max-time 12 http://127.0.0.1:\${GUANLAN_PORT:-8080}/healthz | grep -qx 'ok'
+health_url=http://127.0.0.1:\${GUANLAN_PORT:-8080}/healthz
+ready=0
+for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  if curl -fsS --max-time 2 \$health_url | grep -qx 'ok'; then
+    ready=1
+    break
+  fi
+  sleep 1
+done
+test \$ready = 1
 printf 'backup=%s\n' \$backup
 "
