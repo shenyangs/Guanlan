@@ -1,7 +1,7 @@
 # Guanlan Public Quality Report / 观澜公开质量报告
 
-- 版本: `v0.10.4`
-- 生成时间: `2026-08-22T19:02:14Z`
+- 版本: `v0.10.10`
+- 生成时间: `2026-08-30T08:43:26Z`
 - 口径: 确定性基准、评测套件、路由回归和质量门禁默认不触网；公网漂移只从 live-smoke 历史读取。
 
 ## 1. Deterministic Benchmark
@@ -31,8 +31,8 @@
 ## 3. Routing Regression Inventory
 
 - 夹具: `tests/fixtures/routing_regression_cases.jsonl`
-- 总数: 160
-- Case types: {"near_miss": 41, "negative": 2, "positive": 117}
+- 总数: 162
+- Case types: {"near_miss": 41, "negative": 2, "positive": 119}
 - 高风险类目覆盖:
   - `finance`: pass {"near_miss": 7, "positive": 9}
   - `legal_policy`: pass {"near_miss": 5, "positive": 19}
@@ -41,7 +41,7 @@
   - `sports_local_life`: pass {"near_miss": 1, "negative": 1, "positive": 9}
   - `tech_wps`: pass {"near_miss": 6, "negative": 1, "positive": 27}
 - 覆盖缺口: 无
-- 规则索引: intents=54, scopes=37, sites=78, demotions=30
+- 规则索引: intents=55, scopes=39, sites=83, demotions=30
 
 ## 4. Quality Gate Signals
 

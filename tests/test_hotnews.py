@@ -208,6 +208,140 @@ def test_fetch_ithome_parses_public_rss(monkeypatch):
     assert items[0]["published_at"] == "Fri, 01 May 2026 08:00:00 GMT"
 
 
+def test_fetch_hackernews_parses_first_party_rss(monkeypatch):
+    monkeypatch.setattr(
+        hotnews,
+        "_read_text",
+        lambda _url, **_kwargs: """
+        <rss><channel><item>
+          <title>Show HN: Evidence router</title>
+          <link>https://example.com/project</link>
+          <comments>https://news.ycombinator.com/item?id=42</comments>
+          <description><![CDATA[<p>A research tool</p>]]></description>
+          <pubDate>Fri, 28 Aug 2026 08:00:00 GMT</pubDate>
+        </item></channel></rss>
+        """,
+    )
+
+    items = hotnews.fetch_hotnews("hackernews", limit=1)
+
+    assert items[0]["source_id"] == "hackernews"
+    assert items[0]["title"] == "Show HN: Evidence router"
+    assert items[0]["summary"] == "A research tool"
+    assert items[0]["metrics"]["discussion_url"].endswith("id=42")
+    assert items[0]["evidence_role"] == "developer_discussion_signal"
+
+
+def test_fetch_linuxdo_normalizes_public_discourse_topics(monkeypatch):
+    monkeypatch.setattr(
+        hotnews,
+        "_read_json",
+        lambda _url: {
+            "topic_list": {
+                "topics": [
+                    {
+                        "id": 123,
+                        "slug": "ai-agent",
+                        "fancy_title": "AI Agent 工具讨论",
+                        "posts_count": 8,
+                        "views": 900,
+                        "like_count": 30,
+                        "last_posted_at": "2026-08-28T08:00:00Z",
+                    }
+                ]
+            }
+        },
+    )
+
+    items = hotnews.fetch_hotnews("linuxdo", limit=1)
+
+    assert items[0]["source_id"] == "linuxdo"
+    assert items[0]["url"] == "https://linux.do/t/ai-agent/123"
+    assert items[0]["metrics"]["replies"] == 7
+    assert items[0]["metrics"]["views"] == 900
+
+
+def test_fetch_linuxdo_falls_back_to_first_party_rss(monkeypatch):
+    monkeypatch.setattr(hotnews, "_read_json", lambda _url: (_ for _ in ()).throw(RuntimeError("403")))
+    monkeypatch.setattr(
+        hotnews,
+        "_read_http2_text",
+        lambda _url, **_kwargs: """
+        <rss><channel><item>
+          <title>Linux.do RSS 主题</title>
+          <link>https://linux.do/t/topic/456</link>
+          <description><![CDATA[<p>公开主题摘要</p>]]></description>
+          <pubDate>Fri, 28 Aug 2026 08:00:00 GMT</pubDate>
+        </item></channel></rss>
+        """,
+    )
+
+    items = hotnews.fetch_hotnews("linuxdo", limit=1)
+
+    assert items[0]["title"] == "Linux.do RSS 主题"
+    assert items[0]["summary"] == "公开主题摘要"
+    assert items[0]["url"] == "https://linux.do/t/topic/456"
+
+
+def test_fetch_cisa_kev_sorts_official_catalog_by_date(monkeypatch):
+    monkeypatch.setattr(
+        hotnews,
+        "_read_json",
+        lambda _url: {
+            "vulnerabilities": [
+                {"cveID": "CVE-2026-1", "dateAdded": "2026-08-20", "vendorProject": "Old"},
+                {
+                    "cveID": "CVE-2026-2",
+                    "dateAdded": "2026-08-28",
+                    "vendorProject": "Example",
+                    "product": "Server",
+                    "shortDescription": "Remote code execution.",
+                    "requiredAction": "Apply updates.",
+                    "dueDate": "2026-09-01",
+                    "knownRansomwareCampaignUse": "Known",
+                },
+            ]
+        },
+    )
+
+    items = hotnews.fetch_hotnews("cisa-kev", limit=1)
+
+    assert items[0]["title"] == "CVE-2026-2 · Example Server"
+    assert items[0]["published_at"] == "2026-08-28"
+    assert items[0]["metrics"]["due_date"] == "2026-09-01"
+    assert items[0]["evidence_role"] == "official_security_alert"
+
+
+def test_fetch_usgs_earthquakes_normalizes_geojson(monkeypatch):
+    monkeypatch.setattr(
+        hotnews,
+        "_read_json",
+        lambda _url: {
+            "features": [
+                {
+                    "properties": {
+                        "mag": 6.2,
+                        "place": "Test Ridge",
+                        "time": 1787904000000,
+                        "url": "https://earthquake.usgs.gov/earthquakes/eventpage/test",
+                        "title": "M 6.2 - Test Ridge",
+                        "alert": "green",
+                        "tsunami": 0,
+                        "status": "reviewed",
+                    },
+                    "geometry": {"coordinates": [120.0, 30.0, 10.0]},
+                }
+            ]
+        },
+    )
+
+    items = hotnews.fetch_hotnews("usgs-earthquakes", limit=1)
+
+    assert items[0]["title"] == "M6.2 · Test Ridge"
+    assert items[0]["metrics"]["coordinates"] == [120.0, 30.0, 10.0]
+    assert items[0]["evidence_role"] == "official_disaster_alert"
+
+
 def test_fetch_sspai_parses_public_rss(monkeypatch):
     monkeypatch.setattr(
         hotnews,

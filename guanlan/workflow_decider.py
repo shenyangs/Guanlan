@@ -1297,10 +1297,10 @@ def _agent_scoped_search_fallback(query: str, decision: WorkflowDecision, *, pro
         scope = "finance_disclosure"
     elif "global_policy" in intents:
         scope = "global_official"
+    elif "standards_compliance" in intents:
+        scope = "standards"
     elif "policy" in intents or "official_position" in intents:
         scope = "gov"
-    elif "standards_compliance" in intents:
-        scope = "global_official"
     elif "medical_health" in intents:
         scope = "global_official"
     elif "cybersecurity" in intents:
@@ -2171,7 +2171,7 @@ def _scope_from_intents(intents: list[str]) -> str:
         "policy": "gov",
         "official_position": "gov",
         "global_policy": "global_official",
-        "standards_compliance": "global_official",
+        "standards_compliance": "standards",
         "legal_judicial": "gov",
         "transport": "local_official",
         "local_life": "social_web",
@@ -2207,10 +2207,10 @@ def _scope_from_intents(intents: list[str]) -> str:
         "company_primary",
         "podcast",
         "global_policy",
+        "standards_compliance",
         "policy",
         "official_position",
         "legal_judicial",
-        "standards_compliance",
         "cybersecurity",
         "weather_disaster",
         "tech",

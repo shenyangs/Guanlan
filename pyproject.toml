@@ -1,6 +1,6 @@
 [project]
 name = "guanlan"
-version = "0.10.9"
+version = "0.10.10"
 description = "Guanlan: a China-aware source and platform router for AI agents."
 readme = "README.md"
 license = {text = "MIT"}
@@ -29,6 +29,7 @@ classifiers = [
 
 dependencies = [
     "requests>=2.28",
+    "httpx[http2]>=0.27",
     "feedparser>=6.0",
     "python-dotenv>=1.0",
     "loguru>=0.7",

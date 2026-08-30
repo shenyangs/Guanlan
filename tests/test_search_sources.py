@@ -17,6 +17,9 @@ def test_search_scopes_include_requested_china_sources():
     assert "southcn.com" in scopes["local_official"]["domains"]
     assert "ebrun.com" in scopes["ecommerce"]["domains"]
     assert "engineeringvillage.com" in scopes["academic"]["domains"]
+    assert "datacite.org" in scopes["academic"]["domains"]
+    assert "openalex.org" in scopes["academic"]["domains"]
+    assert "ncbi.nlm.nih.gov" in scopes["academic"]["domains"]
     assert scopes["academic"]["source_type"] == "学术/论文检索"
     assert "edu.cn" in scopes["university"]["domains"]
     assert "cs.tsinghua.edu.cn" in scopes["university"]["domains"]
@@ -37,11 +40,18 @@ def test_search_scopes_include_requested_china_sources():
     assert scopes["global_official"]["source_type"] == "英文官方/监管"
     assert "openai.com" in scopes["company_primary"]["domains"]
     assert "github.com" in scopes["developer"]["domains"]
+    assert "crates.io" in scopes["developer"]["domains"]
+    assert "pkg.go.dev" in scopes["developer"]["domains"]
+    assert "osv.dev" in scopes["cybersecurity"]["domains"]
+    assert "security-tracker.debian.org" in scopes["cybersecurity"]["domains"]
     assert "nvd.nist.gov" in scopes["cybersecurity"]["domains"]
     assert scopes["cybersecurity"]["source_type"] == "网络安全/漏洞/反诈"
     assert "espn.com" in scopes["sports"]["domains"]
     assert "nmc.cn" in scopes["weather_disaster"]["domains"]
     assert "nasa.gov" in scopes["science"]["domains"]
+    assert "rfc-editor.org" in scopes["standards"]["domains"]
+    assert "std.samr.gov.cn" in scopes["standards"]["domains"]
+    assert scopes["standards"]["source_type"] == "标准/规范/合规原文"
     assert "xiaoyuzhoufm.com" in scopes["podcast"]["domains"]
     assert "levels.fyi" in scopes["career"]["domains"]
     assert "ielts.org" in scopes["test_prep"]["domains"]
@@ -68,6 +78,8 @@ def test_resolve_scope_aliases():
     assert resolve_scope("graduate").id == "university"
     assert resolve_scope("faculty").id == "university"
     assert resolve_scope("company").id == "company_primary"
+    assert resolve_scope("standards").id == "standards"
+    assert resolve_scope("rfc").id == "standards"
     assert resolve_scope("reddit").id == "community_sample"
     assert resolve_scope("movie").id == "entertainment"
     assert resolve_scope("douban").id == "entertainment"
@@ -128,6 +140,19 @@ def test_classify_domain_detects_academic_sources():
     assert meta["source_type"] == "学术/论文检索"
     assert meta["matched_scope"] == "academic"
     assert meta["trust_level"] == 4
+
+    datacite = classify_domain("api.datacite.org")
+    assert datacite["matched_scope"] == "academic"
+
+
+def test_classify_domain_detects_standard_sources():
+    rfc = classify_domain("www.rfc-editor.org", preferred_scope="standards")
+    tc260 = classify_domain("www.tc260.org.cn")
+
+    assert rfc["source_type"] == "标准/规范/合规原文"
+    assert rfc["matched_scope"] == "standards"
+    assert rfc["trust_level"] == 5
+    assert tc260["matched_scope"] == "standards"
 
 
 def test_classify_domain_detects_university_sources():

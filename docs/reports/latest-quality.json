@@ -104,7 +104,7 @@
     },
     "warned_case_ids": []
   },
-  "generated_at": "2026-08-24T05:19:26Z",
+  "generated_at": "2026-08-30T08:43:26Z",
   "legacy_inventory": {
     "buckets": {
       "compat": [
@@ -545,9 +545,12 @@
     "case_type_distribution": {
       "near_miss": 41,
       "negative": 2,
-      "positive": 117
+      "positive": 119
     },
     "category_distribution": {
+      "academic": {
+        "positive": 1
+      },
       "career": {
         "near_miss": 1,
         "positive": 1
@@ -612,6 +615,9 @@
         "negative": 1,
         "positive": 1
       },
+      "standards": {
+        "positive": 1
+      },
       "tech": {
         "near_miss": 5,
         "negative": 1,
@@ -637,14 +643,14 @@
     },
     "expected_field_usage": {
       "expected_command_contains": 43,
-      "expected_intents_any": 159,
-      "expected_primary_contains": 146,
-      "expected_sites_contains": 81
+      "expected_intents_any": 161,
+      "expected_primary_contains": 148,
+      "expected_sites_contains": 83
     },
     "fixture": "tests/fixtures/routing_regression_cases.jsonl",
     "forbidden_field_usage": {
       "forbidden_command_contains": 48,
-      "forbidden_intents": 113
+      "forbidden_intents": 115
     },
     "high_risk_coverage": {
       "education_university": {
@@ -759,7 +765,7 @@
         "!company_primary": 2,
         "!entertainment": 3,
         "!finance_quote": 1,
-        "!general": 94,
+        "!general": 96,
         "!industry": 1,
         "!local": 2,
         "!purchase_advice": 2,
@@ -770,6 +776,7 @@
         "!university_admissions": 1,
         "!weather_disaster": 1,
         "!wps_office": 2,
+        "academic": 1,
         "career": 2,
         "company_primary": 33,
         "cybersecurity": 3,
@@ -803,7 +810,7 @@
         "reputation": 3,
         "science": 1,
         "sports": 1,
-        "standards_compliance": 6,
+        "standards_compliance": 7,
         "tech": 26,
         "test_prep": 1,
         "transport": 2,
@@ -825,6 +832,7 @@
         "!university": 1,
         "!weather_disaster": 1,
         "!wps_office": 1,
+        "academic": 1,
         "career": 2,
         "company_primary": 27,
         "cybersecurity": 3,
@@ -836,7 +844,7 @@
         "finance_research": 2,
         "global_entertainment": 1,
         "global_official": 6,
-        "gov": 16,
+        "gov": 14,
         "industry_analysis": 11,
         "jp_kr_entertainment": 7,
         "local_official": 3,
@@ -844,6 +852,7 @@
         "science": 1,
         "social_web": 18,
         "sports": 1,
+        "standards": 3,
         "tech_dev": 13,
         "test_prep": 2,
         "university": 3,
@@ -871,6 +880,7 @@
         "coze.cn": 1,
         "ctext.org": 2,
         "damai.cn": 1,
+        "datacite.org": 1,
         "developer.android.com": 1,
         "developer.tuya.com": 1,
         "douban.com": 1,
@@ -888,6 +898,7 @@
         "harness.io": 1,
         "help.icostapp.com": 1,
         "huawei.com": 1,
+        "ietf.org": 1,
         "ihchina.cn": 1,
         "imf.org": 1,
         "juhe.cn": 1,
@@ -907,6 +918,7 @@
         "notion.com": 1,
         "npc.gov.cn": 1,
         "olympics.com": 1,
+        "openalex.org": 1,
         "pantone.com": 1,
         "pay.weixin.qq.com": 1,
         "pbc.gov.cn": 3,
@@ -915,6 +927,7 @@
         "postgresql.org": 1,
         "qxsfjq.com": 1,
         "replika.com": 1,
+        "rfc-editor.org": 1,
         "samr.gov.cn": 1,
         "stats.gov.cn": 1,
         "std.samr.gov.cn": 1,
@@ -928,11 +941,12 @@
         "xjjt.gov.cn": 1,
         "yichun.gov.cn": 1,
         "zenless.hoyoverse.com": 1,
+        "zenodo.org": 1,
         "zhipuai.cn": 1
       }
     },
-    "total_cases": 160
+    "total_cases": 162
   },
   "schema_version": "guanlan_quality_report_v1",
-  "version": "0.10.9"
+  "version": "0.10.10"
 }

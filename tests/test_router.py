@@ -330,10 +330,11 @@ def test_route_plan_detects_standards_compliance_need():
     plan = build_route_plan("SOC2 合规认证标准和审计要求", profile="china")
 
     assert "standards_compliance" in plan.primary_intents + plan.secondary_intents
+    assert "standards" in plan.preferred_scopes
     assert "global_official" in plan.preferred_scopes
     assert "standard_original" in plan.evidence_roles
     assert "厂商单方合规声明" in plan.avoid_as_primary
-    assert any("--scope global_official" in command for command in plan.recommended_commands)
+    assert any("--scope standards" in command for command in plan.recommended_commands)
 
 
 def test_route_plan_detects_medical_health_need():

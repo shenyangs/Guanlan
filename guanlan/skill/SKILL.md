@@ -286,6 +286,11 @@ guanlan hotnews today --limit 80 --trends
 guanlan hotnews weibo --limit 80
 guanlan hotnews bilibili --limit 80
 guanlan hotnews ithome --limit 80
+guanlan hotnews hackernews --limit 80
+guanlan hotnews linuxdo --limit 80
+guanlan hotnews alerts --limit 80
+guanlan hotnews cisa-kev --limit 80
+guanlan hotnews usgs-earthquakes --limit 80
 guanlan hotnews ebrun:cross-border --limit 10
 guanlan hotnews ebrun:retail --limit 10
 guanlan hotnews ebrun:ai --limit 10

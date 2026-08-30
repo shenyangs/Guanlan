@@ -15,15 +15,15 @@
 
 | 项目 | 数量 |
 | --- | --- |
-| search scopes | 35 |
-| scope 域名行数 | 518 |
-| scope 去重域名 | 429 |
-| source packs | 10 |
-| source pack 条目 | 172 |
-| source matrix 条目 | 32 |
+| search scopes | 36 |
+| scope 域名行数 | 579 |
+| scope 去重域名 | 474 |
+| source packs | 12 |
+| source pack 条目 | 204 |
+| source matrix 条目 | 40 |
 | search entrypoint catalog | 17 |
-| 热榜 source_id 入口 | 25 |
-| feeds 入口 | 7 |
+| 热榜 source_id 入口 | 31 |
+| feeds 入口 | 9 |
 | Ebrun 垂类频道 | 27 |
 | UAPI hotboard 平台 | 46 |
 | VVHAN hotlist alias | 9 |
@@ -40,11 +40,11 @@
 | local_official | 核心地方官媒 | 地方官媒 | 4 | 18 | `bjd.com.cn, jfdaily.com, thepaper.cn, eastday.com, southcn.com, ycwb.com, xhby.net, dzwww.com, dahe.cn, rednet.cn, cnhubei.com, cqnews.net,`<br>`newssc.org, yunnan.cn, fjnews.com, hinews.cn, gxnews.com.cn, hebnews.cn` |
 | business | 商业与产业媒体 | 商业/产业媒体 | 3 | 13 | `36kr.com, huxiu.com, cyzone.cn, iyiou.com, ebrun.com, tmtpost.com, geekpark.net, pingwest.com, leiphone.com, donews.com, jiemian.com, yicai.com, latepost.com` |
 | ecommerce | 电商与零售垂类 | 电商/零售垂类 | 3 | 10 | `ebrun.com, iyiou.com, donews.com, jiemian.com, linkshop.com, ccfa.org.cn, 100ec.cn, chuhai-club.com, cifnews.com, egainnews.com` |
-| tech_dev | 科技与开发者社区 | 科技/开发者社区 | 3 | 19 | `v2ex.com, juejin.cn, segmentfault.com, csdn.net, cnblogs.com, oschina.net, infoq.cn, 51cto.com, sspai.com, ithome.com, geekpark.net,`<br>`ifanr.com, leiphone.com, jiqizhixin.com, qbitai.com, aiera.com.cn, readhub.cn, solidot.org, testerhome.com` |
+| tech_dev | 科技与开发者社区 | 科技/开发者社区 | 3 | 28 | `v2ex.com, juejin.cn, segmentfault.com, csdn.net, cnblogs.com, oschina.net, infoq.cn, 51cto.com, sspai.com, ithome.com, linux.do, nodeseek.com,`<br>`52pojie.cn, geekpark.net, ifanr.com, leiphone.com, jiqizhixin.com, qbitai.com, aiera.com.cn, readhub.cn, solidot.org, the-decoder.com, techcrunch.com, venturebeat.com, wired.com, marktechpost.com, artificialintelligence-news.com, testerhome.com` |
 | wps_office | 金山办公/WPS 与 AI Office | 办公软件/AI Office/SaaS | 3 | 56 | `wps.cn, 365.wps.cn, bbs.wps.cn, security.wps.cn, kdocs.cn, wps.com, kingsoftoffice.com, ir.kingsoft.com, microsoft.com,`<br>`support.microsoft.com, techcommunity.microsoft.com, office.com, microsoft365.com, workspace.google.com, notion.so, coda.io, canva.com,`<br>`gamma.app, beautiful.ai, tome.app, prezi.com, pitch.com, feishu.cn, larkoffice.com, yuque.com, shimo.im, processon.com, jianguoyun.com,`<br>`ithome.com, sspai.com, 36kr.com, huxiu.com, geekpark.net, leiphone.com, jiqizhixin.com, qbitai.com, aiera.com.cn, infoq.cn, v2ex.com,`<br>`juejin.cn, producthunt.com, g2.com, capterra.com, reddit.com, news.ycombinator.com, lingxi.wps.cn, kimi.com, doubao.com, openai.com,`<br>`anthropic.com, deepmind.google, simonwillison.net, oneusefulthing.org, karpathy.ai, blog.samaltman.com, github.com` |
-| cybersecurity | 网络安全/CVE/反诈 | 网络安全/漏洞/反诈 | 5 | 13 | `nvd.nist.gov, cisa.gov, mitre.org, cve.org, cnvd.org.cn, cnnvd.org.cn, cert.org.cn, cert.org, openssl.org, msrc.microsoft.com,`<br>`security.googleblog.com, krebsonsecurity.com, bbs.kanxue.com` |
-| academic | 学术与论文检索 | 学术/论文检索 | 4 | 12 | `elsevier.com, engineeringvillage.com, sciencedirect.com, ieee.org, acm.org, springer.com, webofscience.com, clarivate.com, cnki.net,`<br>`wanfangdata.com.cn, cqvip.com, xueshu.baidu.com` |
-| science | 科学机构与科研新闻 | 科学机构/科研新闻 | 5 | 14 | `nasa.gov, esa.int, nature.com, science.org, sciencemag.org, arxiv.org, pnas.org, noirlab.edu, stsci.edu, nih.gov, lmsys.org,`<br>`bair.berkeley.edu, ml.cmu.edu, eleuther.ai` |
+| cybersecurity | 网络安全/CVE/反诈 | 网络安全/漏洞/反诈 | 5 | 18 | `nvd.nist.gov, cisa.gov, mitre.org, cve.org, cnvd.org.cn, cnnvd.org.cn, cert.org.cn, cert.org, openssl.org, msrc.microsoft.com,`<br>`security.googleblog.com, krebsonsecurity.com, osv.dev, security-tracker.debian.org, ubuntu.com, access.redhat.com, cert.europa.eu, bbs.kanxue.com` |
+| academic | 学术与论文检索 | 学术/论文检索 | 4 | 22 | `elsevier.com, engineeringvillage.com, sciencedirect.com, ieee.org, acm.org, springer.com, webofscience.com, clarivate.com, cnki.net,`<br>`wanfangdata.com.cn, cqvip.com, xueshu.baidu.com, crossref.org, datacite.org, openalex.org, ncbi.nlm.nih.gov, europepmc.org, zenodo.org, doaj.org, semanticscholar.org, core.ac.uk, unpaywall.org` |
+| science | 科学机构与科研新闻 | 科学机构/科研新闻 | 5 | 19 | `nasa.gov, esa.int, nature.com, science.org, sciencemag.org, arxiv.org, pnas.org, noirlab.edu, stsci.edu, nih.gov, ncbi.nlm.nih.gov,`<br>`europepmc.org, openalex.org, datacite.org, zenodo.org, lmsys.org, bair.berkeley.edu, ml.cmu.edu, eleuther.ai` |
 | university | 高校招生与院系官网 | 高校/院系官网 | 5 | 15 | `edu.cn, tsinghua.edu.cn, cs.tsinghua.edu.cn, yz.tsinghua.edu.cn, gradadmission.tsinghua.edu.cn, pku.edu.cn, eecs.pku.edu.cn, zju.edu.cn,`<br>`fudan.edu.cn, sjtu.edu.cn, ustc.edu.cn, nju.edu.cn, hit.edu.cn, whu.edu.cn, buaa.edu.cn` |
 | test_prep | 考试与培训资料 | 考试/培训/备考 | 3 | 10 | `ielts.org, toefl.cn, ets.org, neea.edu.cn, chinaielts.org, chsi.com.cn, eol.cn, koolearn.com, xdf.cn, zhihu.com` |
 | finance | 财经与资本市场 | 财经/资本市场 | 4 | 20 | `cninfo.com.cn, sse.com.cn, szse.cn, csrc.gov.cn, stats.gov.cn, pbc.gov.cn, cls.cn, eastmoney.com, stcn.com, cnstock.com, yicai.com,`<br>`xueqiu.com, sec.gov, cs.com.cn, 21jingji.com, wallstreetcn.com, eeo.com.cn, nbd.com.cn, caixin.com, gelonghui.com` |
@@ -63,13 +63,14 @@
 | entertainment | 文娱与内容消费 | 文娱/内容平台 | 3 | 28 | `douban.com, maoyan.com, piaofang.maoyan.com, lighthouse.alibaba.com, taopiaopiao.com, mtime.com, 1905.com, bilibili.com, weibo.com,`<br>`v.qq.com, iqiyi.com, youku.com, mgtv.com, taptap.cn, gamersky.com, 3dmgame.com, ign.com.cn, indienova.com, bangumi.tv, pixiv.net,`<br>`mangapedia.com, manba.co.jp, comic-walker.com, bookwalker.jp, movie.douban.com, taptap.com, gcores.com, yystv.cn` |
 | global_entertainment | 欧美娱乐与音乐产业 | 欧美文娱/音乐产业 | 3 | 12 | `variety.com, deadline.com, hollywoodreporter.com, billboard.com, rollingstone.com, people.com, ew.com, pitchfork.com, stereogum.com,`<br>`nme.com, grammy.com, officialcharts.com` |
 | jp_kr_entertainment | 日韩娱乐与 K-pop/J-pop | 日韩文娱/K-pop/J-pop | 3 | 12 | `soompi.com, oricon.co.jp, natalie.mu, entertain.naver.com, koreaherald.com, koreatimes.co.kr, mdpr.jp, realsound.jp, mantan-web.jp,`<br>`allkpop.com, koreaboo.com, tokyohive.com` |
+| standards | 标准、规范与合规原文 | 标准/规范/合规原文 | 5 | 14 | `std.samr.gov.cn, samr.gov.cn, tc260.org.cn, iso.org, iec.ch, nist.gov, csrc.nist.gov, w3.org, ietf.org, rfc-editor.org, oasis-open.org,`<br>`standards.ieee.org, etsi.org, itu.int` |
 | global_official | 英文官方/监管与公共机构 | 英文官方/监管 | 5 | 16 | `usa.gov, whitehouse.gov, congress.gov, federalregister.gov, sec.gov, ftc.gov, fda.gov, nist.gov, iso.org, iec.ch, cdc.gov, who.int,`<br>`oecd.org, worldbank.org, europa.eu, ec.europa.eu` |
 | company_primary | 公司一手资料 | 公司一手资料 | 5 | 29 | `openai.com, anthropic.com, googleblog.com, blog.google, microsoft.com, azure.microsoft.com, aws.amazon.com, aboutamazon.com, meta.com,`<br>`ai.meta.com, nvidia.com, tsmc.com, apple.com, tesla.com, bytedance.com, doubao.com, volcengine.com, stripe.com, shopify.com,`<br>`luckincoffee.com, deepmind.google, research.google, mistral.ai, x.ai, cursor.com, openrouter.ai, runwayml.com, midjourney.com,`<br>`machinelearning.apple.com` |
-| developer | 英文开发者与开源 | 英文开发者/开源 | 4 | 22 | `github.com, docs.github.com, stackoverflow.com, developer.mozilla.org, docs.python.org, nodejs.org, npmjs.com, pypi.org, huggingface.co,`<br>`pytorch.org, kubernetes.io, docs.docker.com, cloudflare.com, vercel.com, milvus.io, qdrant.tech, weaviate.io, trychroma.com, github.blog,`<br>`blog.cloudflare.com, developer.nvidia.com, hellogithub.com` |
+| developer | 英文开发者与开源 | 英文开发者/开源 | 4 | 32 | `github.com, docs.github.com, stackoverflow.com, developer.mozilla.org, docs.python.org, nodejs.org, npmjs.com, pypi.org, crates.io,`<br>`rubygems.org, packagist.org, search.maven.org, pkg.go.dev, osv.dev, rfc-editor.org, ietf.org, w3.org, oasis-open.org, huggingface.co, pytorch.org, kubernetes.io, docs.docker.com, cloudflare.com, vercel.com, milvus.io, qdrant.tech, weaviate.io, trychroma.com, github.blog, blog.cloudflare.com, developer.nvidia.com, hellogithub.com` |
 | global_news | 国际主流新闻 | 国际主流媒体 | 4 | 14 | `reuters.com, apnews.com, bbc.com, cnn.com, nytimes.com, washingtonpost.com, theguardian.com, ft.com, wsj.com, bloomberg.com, cnbc.com,`<br>`taipeitimes.com, theverge.com, technologyreview.com` |
 | industry_analysis | 英文产业与分析 | 英文产业/分析 | 3 | 14 | `gartner.com, forrester.com, mckinsey.com, bain.com, bcg.com, a16z.com, stratechery.com, theinformation.com, semianalysis.com,`<br>`trendforce.com, tomshardware.com, anandtech.com, ben-evans.com, similarweb.com` |
 | community_sample | 英文社区样本 | 英文社区样本 | 2 | 12 | `reddit.com, news.ycombinator.com, lobste.rs, medium.com, dev.to, producthunt.com, quora.com, simonwillison.net, oneusefulthing.org,`<br>`interconnects.ai, karpathy.ai, blog.samaltman.com` |
-| market_review | 英文评价与消费样本 | 评价/消费样本 | 2 | 10 | `g2.com, capterra.com, trustpilot.com, trustradius.com, amazon.com, apps.apple.com, play.google.com, qimai.cn, diandian.com, producthunt.com` |
+| market_review | 英文评价与消费样本 | 评价/消费样本 | 2 | 14 | `g2.com, capterra.com, trustpilot.com, trustradius.com, amazon.com, apps.apple.com, play.google.com, qimai.cn, diandian.com, producthunt.com,`<br>`store.steampowered.com, steamdb.info, alternativeto.net, appbrain.com` |
 
 ## 二、Source Pack 研究源包
 
@@ -82,7 +83,9 @@
 | market_review_research | 9 | core:4, vertical:4, sample:1 | market_review:9 | `apps.apple.com, play.google.com, g2.com, capterra.com, trustpilot.com, trustradius.com, qimai.cn, diandian.com, producthunt.com` | saas_review_sample, app_store_review, app_market_signal, consumer_review_sample, product_launch_signal |
 | competitive_watch_research | 8 | sample:1, core:6, vertical:1 | market_review:3, business:4, industry_analysis:1 | `producthunt.com, g2.com, capterra.com, 36kr.com, huxiu.com, tmtpost.com, latepost.com, similarweb.com` | saas_review_sample, industry_report, industry_analysis, product_launch_signal, traffic_signal |
 | entertainment_research | 14 | core:8, sample:2, vertical:4 | entertainment:14 | `movie.douban.com, douban.com, maoyan.com, piaofang.maoyan.com, lighthouse.alibaba.com, 1905.com, mtime.com, bilibili.com, weibo.com,`<br>`taptap.com, gamersky.com, 3dmgame.com, gcores.com, yystv.cn` | box_office, film_news, game_news, game_culture, rating_sample, review_sample |
-| developer_research | 20 | core:7, vertical:7, sample:6 | developer:6, tech_dev:8, cybersecurity:1, community_sample:5 | `github.com, huggingface.co, github.blog, blog.cloudflare.com, developer.nvidia.com, v2ex.com, juejin.cn, segmentfault.com, oschina.net,`<br>`cnblogs.com, csdn.net, infoq.cn, hellogithub.com, testerhome.com, bbs.kanxue.com, simonwillison.net, oneusefulthing.org, interconnects.ai,`<br>`karpathy.ai, blog.samaltman.com` | developer_article, developer_news, technical_commentary, ai_commentary, code_host, model_hub |
+| developer_research | 22 | core:7, vertical:7, sample:8 | developer:6, tech_dev:10, cybersecurity:1, community_sample:5 | `github.com, huggingface.co, github.blog, blog.cloudflare.com, developer.nvidia.com, v2ex.com, juejin.cn, segmentfault.com, oschina.net,`<br>`cnblogs.com, csdn.net, infoq.cn, hellogithub.com, testerhome.com, linux.do, nodeseek.com, bbs.kanxue.com, simonwillison.net, oneusefulthing.org,`<br>`interconnects.ai, karpathy.ai, blog.samaltman.com` | developer_article, developer_news, developer_discussion, technical_commentary, ai_commentary, code_host, model_hub |
+| academic_discovery | 10 | core:5, vertical:5 | academic:10 | `crossref.org, datacite.org, openalex.org, ncbi.nlm.nih.gov, europepmc.org, zenodo.org, doaj.org, semanticscholar.org, core.ac.uk, unpaywall.org` | doi_metadata_primary, dataset_doi_metadata, scholarly_graph, biomedical_index, research_repository, journal_directory, scholarly_discovery, open_access_discovery, open_access_status |
+| standards_research | 12 | core:8, vertical:4 | standards:12 | `std.samr.gov.cn, tc260.org.cn, iso.org, iec.ch, nist.gov, w3.org, ietf.org, rfc-editor.org, oasis-open.org, standards.ieee.org, etsi.org, itu.int` | standard_original, standard_catalog, web_standard_original, internet_standard_original, rfc_original, telecom_standard_original |
 | wps_office_research | 44 | core:15, vertical:17, sample:12 | wps_office:44 | `wps.cn, 365.wps.cn, bbs.wps.cn, security.wps.cn, kdocs.cn, wps.com, ir.kingsoft.com, lingxi.wps.cn, microsoft.com, support.microsoft.com,`<br>`techcommunity.microsoft.com, workspace.google.com, kimi.com, doubao.com, notion.so, canva.com, gamma.app, beautiful.ai, feishu.cn,`<br>`larkoffice.com, yuque.com, shimo.im, ithome.com, sspai.com, 36kr.com, huxiu.com, leiphone.com, jiqizhixin.com, qbitai.com, infoq.cn,`<br>`openai.com, anthropic.com, deepmind.google, simonwillison.net, oneusefulthing.org, karpathy.ai, blog.samaltman.com, news.ycombinator.com,`<br>`github.com, v2ex.com, juejin.cn, g2.com, producthunt.com, reddit.com` | competitor_primary, product_primary, collaboration_product, presentation_ai_tool, company_primary, document_collaboration |
 | university_official | 10 | core:10 | university:10 | `tsinghua.edu.cn, pku.edu.cn, fudan.edu.cn, sjtu.edu.cn, zju.edu.cn, nju.edu.cn, ustc.edu.cn, hit.edu.cn, whu.edu.cn, buaa.edu.cn` | university_official |
 
@@ -95,12 +98,18 @@
 | 层级 | 入口 | 名称/范围 | 后端/平台 | 状态 | 域名/目录 | 证据角色/用途 |
 | --- | --- | --- | --- | --- | --- | --- |
 | source_id | today | 今日多源热榜 | guanlan | stable | baidu/weibo/bilibili/ithome/v2ex 等 | multi_source_snapshot |
+| source_id | tech | 科技与开发者多源快照 | guanlan | stable | IT之家/新智元/V2EX/Linux.do/Hacker News 等 | multi_source_snapshot |
+| source_id | alerts | 官方安全与灾害预警 | guanlan | stable | CISA KEV/USGS | official_alert_snapshot |
 | source_id | baidu | 百度热搜 | baidu | stable | baidu.com | fresh_trend_signal |
 | source_id | weibo | 微博热搜 | weibo | best-effort | weibo.com | public_discussion_signal |
 | source_id | bilibili-hot-search | B站热搜 | bilibili | stable | bilibili.com | video_attention_signal |
 | source_id | bilibili | B站热门视频 | bilibili | best-effort | bilibili.com | video_attention_signal |
 | source_id | ithome | IT之家资讯 | ithome | stable | ithome.com | tech_news_signal |
 | source_id | sspai | 少数派文章 | sspai | stable | sspai.com | tech_reading_signal |
+| source_id | hackernews | Hacker News | hackernews | stable | news.ycombinator.com | developer_discussion_signal |
+| source_id | linuxdo | Linux.do 每日热门 | linuxdo | best-effort | linux.do | developer_discussion_signal |
+| source_id | cisa-kev | CISA 已知在野利用漏洞目录 | cisa | stable | cisa.gov | official_security_alert |
+| source_id | usgs-earthquakes | USGS 显著地震 | usgs | stable | earthquake.usgs.gov | official_disaster_alert |
 | source_id | xinzhiyuan | 新智元 | xinzhiyuan | stable | aiera.com.cn | ai_news_signal |
 | source_id | youtube-ai-rss | YouTube AI 频道 RSS | youtube | stable | youtube.com | video_source_signal |
 | source_id | zeli-hn | Zeli HN 24h | zeli | best-effort | zeli.app | developer_discussion_signal |

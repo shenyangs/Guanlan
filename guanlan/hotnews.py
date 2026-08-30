@@ -151,6 +151,21 @@ def _read_text(url: str, timeout: int = _TIMEOUT, headers: dict[str, str] | None
     return read_url_bytes(req, timeout=timeout, ssl_context=_ssl_context()).decode("utf-8", errors="replace")
 
 
+def _read_http2_text(url: str, timeout: int = _TIMEOUT, headers: dict[str, str] | None = None) -> str:
+    """Read a public endpoint that explicitly requires HTTP/2."""
+    import httpx
+
+    with httpx.Client(
+        http2=True,
+        follow_redirects=True,
+        timeout=timeout,
+        headers={"User-Agent": _UA, **(headers or {})},
+    ) as client:
+        response = client.get(url)
+        response.raise_for_status()
+        return response.text
+
+
 def _ssl_context() -> ssl.SSLContext:
     try:
         import certifi
@@ -609,6 +624,184 @@ def fetch_ithome(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
     return [item for item in results if item.title]
 
 
+def fetch_hackernews(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
+    """Fetch Hacker News from its public first-party RSS feed."""
+    raw_xml = _read_text(
+        "https://news.ycombinator.com/rss",
+        headers={"Accept": "application/rss+xml,application/xml,text/xml,*/*"},
+    )
+    root = ElementTree.fromstring(raw_xml)
+    rows = root.findall(".//item")
+
+    results: list[HotNewsItem] = []
+    for idx, row in enumerate(rows[:limit], start=1):
+        comments_url = row.findtext("comments", default="")
+        results.append(
+            _item(
+                source_id="hackernews",
+                title=row.findtext("title", default=""),
+                url=row.findtext("link", default=""),
+                summary=_strip_html(row.findtext("description", default="")),
+                published_at=row.findtext("pubDate", default=""),
+                metrics={"discussion_url": comments_url} if comments_url else {},
+                rank=idx,
+                confidence="medium",
+            )
+        )
+    return [item for item in results if item.title]
+
+
+def fetch_linuxdo(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
+    """Fetch Linux.do top topics from public Discourse JSON, then RSS."""
+    try:
+        payload = _read_json("https://linux.do/top/daily.json")
+    except Exception:
+        raw_xml = _read_http2_text(
+            "https://linux.do/top.rss",
+            headers={"Accept": "application/rss+xml,application/xml,text/xml,*/*"},
+        )
+        root = ElementTree.fromstring(raw_xml)
+        results: list[HotNewsItem] = []
+        for idx, row in enumerate(root.findall(".//item")[:limit], start=1):
+            results.append(
+                _item(
+                    source_id="linuxdo",
+                    title=row.findtext("title", default=""),
+                    url=row.findtext("link", default=""),
+                    summary=_strip_html(row.findtext("description", default="")),
+                    published_at=row.findtext("pubDate", default=""),
+                    rank=idx,
+                    confidence="medium",
+                )
+            )
+        return [item for item in results if item.title]
+
+    topic_list = payload.get("topic_list") if isinstance(payload, dict) else {}
+    rows = topic_list.get("topics") if isinstance(topic_list, dict) else []
+
+    results: list[HotNewsItem] = []
+    for idx, raw in enumerate((rows or [])[:limit], start=1):
+        if not isinstance(raw, dict):
+            continue
+        topic_id = _pick(raw, "id")
+        slug = _pick(raw, "slug")
+        if topic_id and slug:
+            topic_url = f"https://linux.do/t/{urllib.parse.quote(str(slug), safe='')}/{topic_id}"
+        elif topic_id:
+            topic_url = f"https://linux.do/t/{topic_id}"
+        else:
+            topic_url = ""
+        posts_count = _pick(raw, "posts_count")
+        try:
+            replies = max(int(posts_count) - 1, 0) if posts_count not in ("", None) else None
+        except (TypeError, ValueError):
+            replies = None
+        metrics = {
+            "views": _pick(raw, "views"),
+            "likes": _pick(raw, "like_count"),
+            "posts": posts_count,
+            "replies": replies,
+            "category_id": _pick(raw, "category_id"),
+        }
+        results.append(
+            _item(
+                source_id="linuxdo",
+                title=_pick(raw, "fancy_title", "title"),
+                url=topic_url,
+                published_at=_pick(raw, "last_posted_at", "bumped_at", "created_at"),
+                metrics={key: value for key, value in metrics.items() if value not in ("", None)},
+                rank=idx,
+                confidence="medium",
+            )
+        )
+    return [item for item in results if item.title]
+
+
+def fetch_cisa_kev(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
+    """Fetch CISA's official Known Exploited Vulnerabilities catalog feed."""
+    payload = _read_json(
+        "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+    )
+    rows = payload.get("vulnerabilities") if isinstance(payload, dict) else []
+    rows = sorted(
+        (row for row in (rows or []) if isinstance(row, dict)),
+        key=lambda row: str(row.get("dateAdded") or ""),
+        reverse=True,
+    )
+
+    results: list[HotNewsItem] = []
+    for idx, raw in enumerate(rows[:limit], start=1):
+        cve_id = _pick(raw, "cveID")
+        vendor = _pick(raw, "vendorProject")
+        product = _pick(raw, "product")
+        label = " ".join(part for part in (vendor, product) if part)
+        title = f"{cve_id} · {label}".strip(" ·")
+        description = _pick(raw, "shortDescription", "vulnerabilityName")
+        required_action = _pick(raw, "requiredAction")
+        summary = " ".join(part for part in (description, f"Required action: {required_action}" if required_action else "") if part)
+        query = urllib.parse.quote(str(cve_id or title))
+        results.append(
+            _item(
+                source_id="cisa-kev",
+                title=title,
+                url=f"https://www.cisa.gov/known-exploited-vulnerabilities-catalog?search_api_fulltext={query}",
+                summary=summary,
+                published_at=_pick(raw, "dateAdded"),
+                metrics={
+                    "cve_id": cve_id,
+                    "vendor": vendor,
+                    "product": product,
+                    "due_date": _pick(raw, "dueDate"),
+                    "known_ransomware_use": _pick(raw, "knownRansomwareCampaignUse"),
+                },
+                rank=idx,
+            )
+        )
+    return [item for item in results if item.title]
+
+
+def fetch_usgs_earthquakes(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
+    """Fetch significant earthquakes from the official USGS GeoJSON feed."""
+    payload = _read_json(
+        "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_month.geojson"
+    )
+    rows = payload.get("features") if isinstance(payload, dict) else []
+
+    results: list[HotNewsItem] = []
+    for idx, raw in enumerate((rows or [])[:limit], start=1):
+        if not isinstance(raw, dict):
+            continue
+        props = raw.get("properties") if isinstance(raw.get("properties"), dict) else {}
+        geometry = raw.get("geometry") if isinstance(raw.get("geometry"), dict) else {}
+        magnitude = _pick(props, "mag")
+        place = _pick(props, "place")
+        event_time = _pick(props, "time")
+        try:
+            published_at = _unix_time_iso(float(event_time) / 1000) if event_time not in ("", None) else ""
+        except (TypeError, ValueError):
+            published_at = ""
+        title = f"M{magnitude} · {place}" if magnitude not in ("", None) else place
+        results.append(
+            _item(
+                source_id="usgs-earthquakes",
+                title=title,
+                url=_pick(props, "url", "detail"),
+                summary=_pick(props, "title"),
+                published_at=published_at,
+                metrics={
+                    "magnitude": magnitude,
+                    "alert": _pick(props, "alert"),
+                    "tsunami": _pick(props, "tsunami"),
+                    "felt_reports": _pick(props, "felt"),
+                    "status": _pick(props, "status"),
+                    "coordinates": geometry.get("coordinates") if isinstance(geometry, dict) else None,
+                },
+                rank=idx,
+            )
+        )
+    return [item for item in results if item.title]
+
+
 def fetch_sspai(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[HotNewsItem]:
     """Fetch Sspai articles from its public RSS feed."""
     raw_xml = _read_text("https://sspai.com/feed")
@@ -871,11 +1064,25 @@ def fetch_tech(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
             ("ithome", fetch_ithome),
             ("xinzhiyuan", fetch_xinzhiyuan),
             ("v2ex", fetch_v2ex),
+            ("linuxdo", fetch_linuxdo),
+            ("hackernews", fetch_hackernews),
             ("zeli-hn", fetch_zeli_hn),
             ("buzzing", fetch_buzzing),
         ],
         limit=limit,
         snapshot_name="technology",
+    )
+
+
+def fetch_alerts(limit: int = DEFAULT_HOTNEWS_LIMIT) -> list[dict[str, Any]]:
+    """Fetch a compact official cybersecurity and disaster alert snapshot."""
+    return _fetch_multi_source_snapshot(
+        [
+            ("cisa-kev", fetch_cisa_kev),
+            ("usgs-earthquakes", fetch_usgs_earthquakes),
+        ],
+        limit=limit,
+        snapshot_name="official alerts",
     )
 
 
@@ -1546,11 +1753,16 @@ def fetch_hotnews(
     fetchers = {
         "today": fetch_today,
         "tech": fetch_tech,
+        "alerts": fetch_alerts,
         "baidu": fetch_baidu,
         "weibo": fetch_weibo,
         "bilibili-hot-search": fetch_bilibili_hot_search,
         "bilibili": fetch_bilibili,
         "ithome": fetch_ithome,
+        "hackernews": fetch_hackernews,
+        "linuxdo": fetch_linuxdo,
+        "cisa-kev": fetch_cisa_kev,
+        "usgs-earthquakes": fetch_usgs_earthquakes,
         "sspai": fetch_sspai,
         "xinzhiyuan": fetch_xinzhiyuan,
         "youtube-ai-rss": fetch_youtube_ai_rss,

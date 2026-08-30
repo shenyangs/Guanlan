@@ -159,6 +159,7 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “查欧美娱乐/明星/巡演/新专辑/榜单” | `guanlan research "Taylor Swift 最新动态" --preset global_entertainment --profile english` |
 | “查日韩娱乐/K-pop/J-pop/韩剧日剧” | `guanlan research "BLACKPINK K-pop 最新回归" --preset jp_kr_entertainment --profile hybrid` |
 | “查 CVE/漏洞/补丁/诈骗短信” | `guanlan search "OpenSSL CVE 最新 漏洞" --scope cybersecurity --limit 80 --trace` |
+| “查已知在野利用漏洞官方清单” | `guanlan hotnews cisa-kev --limit 80` |
 | “查台风路径/天气/地震/灾害预警” | `guanlan search "台风 路径 中央气象台" --scope weather_disaster --trace` |
 | “查体育比赛/伤病/转会” | `guanlan research "梅西 比赛 伤病 最新" --preset sports` |
 | “查 NBA/赛事实时比分和战绩” | `guanlan route "NBA季后赛2026年首轮战绩比分" --json` 后先读推荐的 ESPN/NBA direct read |
@@ -167,7 +168,8 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “查播客/小宇宙节目” | `guanlan search "AI 创业 播客 小宇宙" --scope podcast --limit 80` |
 | “查雅思/托福/题库/机经” | `guanlan research "雅思 口语 题库 机经" --preset test_prep` |
 | “查英文公司官网/文档/价格/发布说明” | `guanlan research "OpenAI API pricing release notes" --preset company --profile english` |
-| “查英文政策/监管/标准原文” | `guanlan research "AI regulation NIST standard" --preset global_policy --profile english` |
+| “查国际标准/RFC/Web 规范原文” | `guanlan search "RFC 9110 HTTP Semantics" --scope standards --profile english --limit 80 --trace` |
+| “查英文政策/监管原文” | `guanlan research "AI regulation agency guidance" --preset global_policy --profile english` |
 | “查英文社区/评价样本” | `guanlan research "Product reviews Reddit G2" --preset global_reputation --profile english --read-top 0` |
 | “我该去哪搜/怎么分信源/该跑哪个命令” | `guanlan route "关键词"`，先看 `recommended_commands` |
 | “这个任务该轻搜还是深查” | `guanlan workflow "关键词" --json` |
@@ -200,6 +202,8 @@ ms。不要把 `timeout=120` 这种裸数字交给下游 Agent 或工具，必�
 | “需要找某类平台热榜入口” | `guanlan hotnews hotboard:catalog:finance --limit 30` |
 | “需要确认某个榜单今天有哪些快照” | `guanlan hotnews hotboard:snapshots:weibo --limit 20` |
 | “技术社区在讨论什么” | `guanlan hotnews v2ex --limit 80` |
+| “中英文开发者社区在讨论什么” | `guanlan hotnews tech --limit 80`，或分别使用 `linuxdo` / `hackernews` |
+| “看官方漏洞与显著地震预警” | `guanlan hotnews alerts --limit 80` |
 | “今天有什么值得读的技术/AI 文章” | `guanlan feeds curated --limit 80` |
 | “今天微信/公众号有什么热文” | `guanlan feeds wechat-rss --limit 80` |
 | “查 arXiv 论文/预印本线索” | `guanlan feeds arxiv --keyword "AI Agent" --limit 80`，再读代表论文页面 |
@@ -504,7 +508,7 @@ Preset 会自动选择一个或多个 scope，并可包含平台定向站点。�
 | `test_prep` | `test_prep` + `social_web` + `company_primary`；IELTS/ETS/NEEA、培训资料、考生经验 | 雅思、托福、题库、机经和考试政策。 |
 | `tech` | `tech_dev` + `social_web`；V2EX、掘金、SegmentFault、GitHub | 技术选型、开发者社区、工程实践。 |
 | `wps_office` | `wps_office` + `business` + `tech_dev` + `social_web` + `company_primary` + `cybersecurity`；WPS/WPS 365/金山文档、竞品 SaaS、科技媒体、社区样本和安全/信创入口 | 金山办公/WPS/WPS AI/WPS 365、办公 AI、PPT/Agent、文档协作、SaaS、信创、安全和品牌市场选题。 |
-| `academic` | `academic` + `tech_dev` + `business`；Elsevier、Engineering Village、IEEE、CNKI、百度学术 | EI/SCI/Scopus、学术会议、论文投稿、数据库检索和高校认定口径。 |
+| `academic` | `academic` + `tech_dev` + `business`；Elsevier、Engineering Village、Crossref、DataCite、OpenAlex、PubMed、Zenodo、CNKI | EI/SCI/Scopus、学术会议、论文投稿、DOI/数据集/开放学术元数据和高校认定口径。 |
 | `university` | `university` + `academic` + `tech_dev`；高校、研究生招生网和院系官网 | 研究生招生、导师名单、院系介绍、招生目录、招生简章、推免复试和培养方案。 |
 | `finance` | `finance_disclosure` + `finance_quote` + `finance_news` + `finance_macro` + `finance_research` + `finance_sentiment`；巨潮、交易所、东方财富、财联社、央行/统计局、雪球 | 股票/基金/ETF、行情、公告财报、监管风险、宏观金融、研报观点和投资者情绪；必须分层，不输出投资建议。 |
 | `local` | `local_official` + `gov` + `party_central` | 地方政策、区域产业、城市治理。 |
@@ -572,9 +576,12 @@ guanlan hotnews weibo --limit 80
 guanlan hotnews bilibili --limit 80
 guanlan hotnews ithome --limit 80
 guanlan hotnews v2ex --limit 80
+guanlan hotnews linuxdo --limit 80
+guanlan hotnews hackernews --limit 80
+guanlan hotnews alerts --limit 80
 ```
 
-`today` 会混合百度热搜、微博热搜、B站热门视频、IT之家 RSS 和 V2EX 热门，适合作为“今天发生了什么”的默认入口。单个公开源失败时，观澜会保留其它源的结果。
+`today` 会混合百度热搜、微博热搜、B站热门视频、IT之家 RSS 和 V2EX 热门，适合作为“今天发生了什么”的默认入口。`tech` 补充 Linux.do 与 Hacker News；`alerts` 聚合 CISA KEV 与 USGS 显著地震。单个公开源失败时，观澜会保留其它源的结果。
 
 如果需要更多来源，可以使用 NewsNow 可选增强后端，例如：
 

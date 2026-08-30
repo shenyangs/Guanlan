@@ -13,6 +13,11 @@ def test_source_matrix_marks_native_and_optional_boundaries():
     assert sources["sspai"]["backend"] == "native"
     assert sources["xinzhiyuan"]["evidence_role"] == "ai_news_signal"
     assert sources["youtube-ai-rss"]["quality"] == "official YouTube channel RSS"
+    assert sources["hackernews"]["quality"] == "first-party public RSS"
+    assert sources["linuxdo"]["quality"] == "public Discourse JSON with first-party RSS fallback"
+    assert sources["cisa-kev"]["evidence_role"] == "official_security_alert"
+    assert sources["usgs-earthquakes"]["evidence_role"] == "official_disaster_alert"
+    assert sources["alerts"]["evidence_role"] == "official_alert_snapshot"
     assert sources["zeli-hn"]["risk_tags"] == ["third_party_aggregation", "community_bias"]
     assert sources["buzzing"]["verification"] == "direct"
     assert sources["newsnow:thepaper"]["backend"] == "optional"

@@ -231,7 +231,7 @@ guanlan version
 guanlan doctor
 ```
 
-看到 `观澜 / Guanlan v0.10.9`，并且 `doctor` 通过基础自检，就说明基础部署成功。
+看到 `观澜 / Guanlan v0.10.10`，并且 `doctor` 通过基础自检，就说明基础部署成功。
 
 如果 Homebrew 装出来的版本低于这里标注的版本，通常是 tap 或本地缓存滞后。先运行：
 
@@ -453,9 +453,11 @@ guanlan configure --from-browser chrome
 | `guanlan search "梅西 比赛 伤病 最新" --scope sports` | 在体育赛事、伤病、转会和可信体育媒体源内搜索。 |
 | `guanlan search "AI 创业 播客 小宇宙" --scope podcast` | 在播客目录、节目页、单集页和 RSS 相关来源内搜索。 |
 | `guanlan search "EI会议 投稿 检索" --scope academic` | 在学术数据库、出版商和论文检索相关信源内搜索。 |
+| `guanlan search "DataCite DOI Zenodo OpenAlex 数据集元数据" --scope academic` | 在 DOI 注册机构、开放学术图谱、生物医学索引和研究仓储中发现论文、数据集与软件记录。 |
 | `guanlan search "清华大学计算机系研究生招生 导师" --scope university` | 在高校、研究生招生网和院系官网信源内搜索。 |
 | `guanlan search "OpenAI API pricing" --profile english --scope company_primary` | 在英文公司一手资料、文档、价格页和发布说明中搜索。 |
-| `guanlan search "AI regulation NIST standard" --profile english --scope global_official` | 在英文官方、监管、标准和公共机构信源中搜索。 |
+| `guanlan search "RFC 9110 HTTP Semantics" --profile english --scope standards` | 在国家标准、ISO/IEC/NIST、W3C、IETF/RFC Editor、OASIS、IEEE、ETSI 和 ITU 原文入口中搜索。 |
+| `guanlan search "AI regulation agency guidance" --profile english --scope global_official` | 在英文官方、监管和公共机构信源中搜索。 |
 | `guanlan research "关键词"` | 生成 Agent 可直接使用的研究证据包，并附带版本/叫法冲突、来源时间线和核验建议。 |
 | `guanlan research "关键词" --profile china` | 自动路由并按证据角色拆 query，合并 scope/site/open web 候选池。 |
 | `guanlan research "影视 综艺 游戏 明星 票房口碑" --preset entertainment --read-top 0` | 用文娱路由整理平台热度、用户评分、产业报道和公开讨论样本。 |
@@ -832,6 +834,11 @@ guanlan hotnews weibo --limit 80
 guanlan hotnews bilibili --limit 80
 guanlan hotnews ithome --limit 80
 guanlan hotnews v2ex --limit 80
+guanlan hotnews hackernews --limit 80
+guanlan hotnews linuxdo --limit 80
+guanlan hotnews alerts --limit 80
+guanlan hotnews cisa-kev --limit 80
+guanlan hotnews usgs-earthquakes --limit 80
 guanlan hotnews newsnow:36kr-quick --limit 80
 guanlan hotnews tophub:weibo --limit 80
 guanlan hotnews tophub:catalog:news --limit 80
@@ -839,7 +846,7 @@ guanlan hotnews uapis:catalog --limit 80
 guanlan hotnews vvhan:all --limit 80
 ```
 
-`today` 是默认推荐入口，会把百度热搜、微博热搜、B站热门视频、IT之家 RSS 和 V2EX 热门混合成一个多源快照；其中单个公开端点失败时不会拖垮其它来源。
+`today` 是默认推荐入口，会把百度热搜、微博热搜、B站热门视频、IT之家 RSS 和 V2EX 热门混合成一个多源快照；`tech` 额外聚合 Linux.do 与 Hacker News，`alerts` 聚合 CISA KEV 与 USGS 显著地震。任一公开端点失败时不会拖垮同组其它来源。
 
 如果想让 Agent 先看一份更像“今日水势”的简报：
 

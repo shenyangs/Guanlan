@@ -310,6 +310,11 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "certification",
             "standard",
             "standards",
+            "rfc",
+            "ietf",
+            "w3c",
+            "specification",
+            "技术规范",
             "无障碍",
             "信息无障碍",
             "适老化",
@@ -324,9 +329,12 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "公共场所数字化指示",
             "accessibility",
         ),
-        "scopes": ("global_official", "gov", "company_primary", "academic"),
-        "fallback": ("developer", "industry_analysis", "business"),
+        "scopes": ("standards", "global_official", "gov", "company_primary"),
+        "fallback": ("developer", "academic", "industry_analysis", "business"),
         "sites": (
+            "rfc-editor.org",
+            "ietf.org",
+            "w3.org",
             "iso.org",
             "iec.ch",
             "nist.gov",
@@ -334,7 +342,10 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "std.samr.gov.cn",
             "tc260.org.cn",
             "miit.gov.cn",
-            "w3.org",
+            "oasis-open.org",
+            "standards.ieee.org",
+            "etsi.org",
+            "itu.int",
             "ec.europa.eu",
             "eur-lex.europa.eu",
         ),
@@ -1969,10 +1980,32 @@ _INTENT_RULES: tuple[dict[str, Any], ...] = (
             "版面",
             "conference",
             "proceedings",
+            "doi",
+            "dataset",
+            "数据集",
+            "元数据",
+            "citation metadata",
+            "crossref",
+            "datacite",
+            "openalex",
+            "zenodo",
+            "pubmed",
         ),
         "scopes": ("academic",),
         "fallback": ("tech_dev", "business", "social_web"),
-        "sites": ("elsevier.com", "engineeringvillage.com", "ieee.org", "cnki.net", "xueshu.baidu.com"),
+        "sites": (
+            "datacite.org",
+            "zenodo.org",
+            "openalex.org",
+            "crossref.org",
+            "ncbi.nlm.nih.gov",
+            "europepmc.org",
+            "elsevier.com",
+            "engineeringvillage.com",
+            "ieee.org",
+            "cnki.net",
+            "xueshu.baidu.com",
+        ),
         "roles": ("database_official", "publisher_guideline", "institution_policy", "community_discussion"),
         "warning": "学术会议/检索问题应区分数据库官方说明、出版商要求、会议 CFP 和学校/单位认定口径；SEO 代投文章只能作线索。",
     },
@@ -3185,8 +3218,8 @@ def _recommended_commands(
         commands.append(f"guanlan research {quoted}{profile_part} --scope global_official --limit {research_limit} --read-top {max(effective_read_top, 5)}")
         commands.append(f"guanlan search {quoted}{profile_part} --scope academic --limit {search_limit}")
     elif "standards_compliance" in intents and not (profile == "english" and "global_policy" in intents):
-        commands.append(f"guanlan research {quoted}{profile_part} --scope global_official --limit {research_limit} --read-top {max(effective_read_top, 5)}")
-        commands.append(f"guanlan search {quoted}{profile_part} --scope gov --limit {search_limit}")
+        commands.append(f"guanlan research {quoted}{profile_part} --scope standards --limit {research_limit} --read-top {max(effective_read_top, 5)}")
+        commands.append(f"guanlan search {quoted}{profile_part} --scope standards --limit {search_limit}")
     elif "legal_judicial" in intents:
         commands.append(f"guanlan research {quoted}{profile_part} --scope gov --limit {research_limit} --read-top {max(effective_read_top, 5)}")
         commands.append(f"guanlan search {quoted}{profile_part} --scope global_official --limit {search_limit}")
